@@ -1,10 +1,11 @@
 // /api/storage/appdata の一覧・削除（キー・prefix の検証を含む）
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import app from "./storage.js";
+import { appDataFileName, appDataKeyFromFileName } from "../app-data-file-name.js";
 
 let dir: string;
 let prevDataDir: string | undefined;
@@ -67,6 +68,58 @@ describe("DELETE /appdata/:key", () => {
       expect(res.status).toBe(400);
     }
     expect(existsSync(join(dir, "appdata", "k1.json"))).toBe(true);
+  });
+});
+
+describe("appdata のファイル名（: を含むキー）", () => {
+  const ad = () => join(dir, "appdata");
+
+  it("PUT は符号化した名前で書き、GET で読める", async () => {
+    const put = await app.request("/appdata/snapshot-index:abc", { method: "PUT", body: '{"v":1}' });
+    expect(put.status).toBe(200);
+    expect(existsSync(join(ad(), "snapshot-index%3Aabc.json"))).toBe(true);
+    expect(existsSync(join(ad(), "snapshot-index:abc.json"))).toBe(false);
+    const res = await app.request("/appdata/snapshot-index:abc");
+    expect(await res.json()).toEqual({ v: 1 });
+  });
+
+  it("新しい名前が無ければ旧来の名前から読み、新しい名前へ移す（旧ファイルは残す）", async () => {
+    // Windows の ADS は再現できないので、旧来名は `%` を含むキーで代用する
+    writeFileSync(join(ad(), "a%b.json"), '{"old":1}');
+    const res = await app.request("/appdata/a%25b");
+    expect(await res.json()).toEqual({ old: 1 });
+    expect(readFileSync(join(ad(), "a%25b.json"), "utf-8")).toBe('{"old":1}');
+    expect(existsSync(join(ad(), "a%b.json"))).toBe(true);
+  });
+
+  it("新しい名前があればそちらを優先する", async () => {
+    writeFileSync(join(ad(), "a%b.json"), '{"old":1}');
+    writeFileSync(join(ad(), "a%25b.json"), '{"new":1}');
+    const res = await app.request("/appdata/a%25b");
+    expect(await res.json()).toEqual({ new: 1 });
+  });
+
+  it("どちらも無ければ null", async () => {
+    expect(await (await app.request("/appdata/x:y")).json()).toBeNull();
+  });
+
+  it("一覧は規則に合わないキーを従来どおり除外する", async () => {
+    writeFileSync(join(ad(), "snapshot%3Aabc.json"), "{}");
+    writeFileSync(join(ad(), "k-1.json"), "{}");
+    const res = await app.request("/appdata?prefix=k-");
+    expect(((await res.json()) as { keys: string[] }).keys).toEqual(["k-1"]);
+    const none = await app.request("/appdata?prefix=snapshot");
+    expect(((await none.json()) as { keys: string[] }).keys).toEqual([]);
+  });
+});
+
+describe("appDataFileName の往復", () => {
+  it("a:b%c は a%3Ab%25c.json になり、戻せる", () => {
+    expect(appDataFileName("a:b%c")).toBe("a%3Ab%25c.json");
+    expect(appDataKeyFromFileName("a%3Ab%25c")).toBe("a:b%c");
+    for (const k of ["plain", "snapshot:abc", "x%3Ay", "%25", "a%:b"]) {
+      expect(appDataKeyFromFileName(appDataFileName(k).slice(0, -5))).toBe(k);
+    }
   });
 });
 

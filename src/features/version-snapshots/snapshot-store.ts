@@ -13,6 +13,42 @@ import type { SnapshotMeta } from "./types";
 const indexKey = (noteId: string) => `snapshot-index:${noteId}`;
 const docKey = (snapshotId: string) => `snapshot:${snapshotId}`;
 
+/** 封印した版を削除・改名しようとしたときのエラー */
+export class SealedSnapshotError extends Error {
+  constructor() {
+    super("封印した版は削除・名前の変更ができません");
+    this.name = "SealedSnapshotError";
+  }
+}
+
+// snapshot-index:<noteId> は「読む → 変える → 全部書き戻す」方式なので、版を残す操作と
+// AI の自動版・封印の更新が並ぶと、後から書いた側が先の変更を消してしまう。
+// ノートごとに書き込みを 1 本の列に並べて直列化する。
+// ブラウザの Web Locks（navigator.locks）があれば、同じ端末の別のタブとも列を共有する
+// （Web 版で 2 つのタブが同じノートの版を同時に書くと、後から書いた側が封印の記録を消しうるため）。
+// 無い環境（テストの Node など）では、同じタブの中だけで並べる。
+const indexLocks = new Map<string, Promise<unknown>>();
+
+type LockManagerLike = { request: <T>(name: string, cb: () => Promise<T>) => Promise<T> };
+
+function webLocks(): LockManagerLike | null {
+  const locks = (globalThis as { navigator?: { locks?: LockManagerLike } }).navigator?.locks;
+  return locks && typeof locks.request === "function" ? locks : null;
+}
+
+function withIndexLock<T>(noteId: string, fn: () => Promise<T>): Promise<T> {
+  const locks = webLocks();
+  if (locks) return locks.request(`graphium-snapshot-index-${noteId}`, () => fn());
+  const prev = indexLocks.get(noteId) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined);
+  indexLocks.set(noteId, tail);
+  void tail.then(() => {
+    if (indexLocks.get(noteId) === tail) indexLocks.delete(noteId);
+  });
+  return run;
+}
+
 /** 版の全文ハッシュ。既存 recordRevision と同じく pages[0] を対象にする */
 async function snapshotHash(doc: GraphiumDocument): Promise<string> {
   const page = doc.pages[0];
@@ -63,6 +99,20 @@ export async function takeSnapshot(
   if (!provider.writeAppData || !provider.readAppData) {
     throw new Error("この保存先は版の記録に対応していません");
   }
+  return withIndexLock(noteId, () =>
+    takeSnapshotLocked(provider, noteId, doc, label, origin, force),
+  );
+}
+
+async function takeSnapshotLocked(
+  provider: StorageProvider,
+  noteId: string,
+  doc: GraphiumDocument,
+  label: string | undefined,
+  origin: SnapshotMeta["origin"],
+  force: boolean,
+): Promise<TakeSnapshotResult> {
+  const writeAppData = provider.writeAppData!;
   const metas = await listSnapshots(provider, noteId);
   const contentHash = await snapshotHash(doc);
   const last = metas[metas.length - 1];
@@ -78,8 +128,8 @@ export async function takeSnapshot(
     contentHash,
     origin,
   };
-  await provider.writeAppData(docKey(meta.id), doc);
-  await provider.writeAppData(indexKey(noteId), [...metas, meta]);
+  await writeAppData(docKey(meta.id), doc);
+  await writeAppData(indexKey(noteId), [...metas, meta]);
   return { status: "created", meta };
 }
 
@@ -118,33 +168,70 @@ export function buildRestoredDocument(
   };
 }
 
-/** 版のラベルを変更（未指定・空文字なら未命名に戻す） */
+/** 版のラベルを変更（未指定・空文字なら未命名に戻す）。封印した版は SealedSnapshotError */
 export async function renameSnapshot(
   provider: StorageProvider,
   noteId: string,
   snapshotId: string,
   label: string,
 ): Promise<void> {
-  if (!provider.writeAppData) return;
-  const metas = await listSnapshots(provider, noteId);
-  const next = metas.map((m) =>
-    m.id === snapshotId ? { ...m, label: label.trim() || undefined } : m,
-  );
-  await provider.writeAppData(indexKey(noteId), next);
+  const writeAppData = provider.writeAppData;
+  if (!writeAppData) return;
+  await withIndexLock(noteId, async () => {
+    const metas = await listSnapshots(provider, noteId);
+    if (metas.find((m) => m.id === snapshotId)?.seal) throw new SealedSnapshotError();
+    const next = metas.map((m) =>
+      m.id === snapshotId ? { ...m, label: label.trim() || undefined } : m,
+    );
+    await writeAppData(indexKey(noteId), next);
+  });
+}
+
+/**
+ * 版のメタを 1 件だけ書き換える（封印の要約の更新用）。
+ * updater が null を返したら何も書かない。対象が無ければ null を返す。
+ */
+export async function updateSnapshotMeta(
+  provider: StorageProvider,
+  noteId: string,
+  snapshotId: string,
+  updater: (meta: SnapshotMeta, all: SnapshotMeta[]) => SnapshotMeta | null,
+  /** メタを書き戻す直前に、同じロックの中で行う書き込み（更新が採用されるときだけ呼ぶ） */
+  beforeWrite?: (next: SnapshotMeta) => Promise<void>,
+): Promise<SnapshotMeta | null> {
+  const writeAppData = provider.writeAppData;
+  if (!writeAppData) throw new Error("この保存先は版の記録に対応していません");
+  return withIndexLock(noteId, async () => {
+    const metas = await listSnapshots(provider, noteId);
+    const current = metas.find((m) => m.id === snapshotId);
+    if (!current) return null;
+    const next = updater(current, metas);
+    if (!next) return current;
+    if (beforeWrite) await beforeWrite(next);
+    await writeAppData(
+      indexKey(noteId),
+      metas.map((m) => (m.id === snapshotId ? next : m)),
+    );
+    return next;
+  });
 }
 
 /**
  * 版を削除する（メタ index から外し、全文を論理削除）。
- * プロバイダに appData の delete API が無いため、全文は writeAppData(key, null) で null 上書きする
- * （loadSnapshot は null を「無い」として扱う）。
+ * 全文は writeAppData(key, null) で null 上書きする（loadSnapshot は null を「無い」として扱う）。
+ * 封印した版は SealedSnapshotError（画面には削除の手段を出さないが、経路でも止める）。
  */
 export async function deleteSnapshot(
   provider: StorageProvider,
   noteId: string,
   snapshotId: string,
 ): Promise<void> {
-  if (!provider.writeAppData) return;
-  const metas = await listSnapshots(provider, noteId);
-  await provider.writeAppData(indexKey(noteId), metas.filter((m) => m.id !== snapshotId));
-  await provider.writeAppData(docKey(snapshotId), null);
+  const writeAppData = provider.writeAppData;
+  if (!writeAppData) return;
+  await withIndexLock(noteId, async () => {
+    const metas = await listSnapshots(provider, noteId);
+    if (metas.find((m) => m.id === snapshotId)?.seal) throw new SealedSnapshotError();
+    await writeAppData(indexKey(noteId), metas.filter((m) => m.id !== snapshotId));
+    await writeAppData(docKey(snapshotId), null);
+  });
 }

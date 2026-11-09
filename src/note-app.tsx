@@ -296,6 +296,15 @@ import { contextTitles } from "./features/standalone-chat/used-pages";
 import { loadUsageActivity } from "./features/ai-usage/usage-activity";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
+import type { SnapshotRowSeal } from "./features/version-snapshots/SnapshotRow";
+import {
+  sealAndTimestamp,
+  summarizeSeals,
+  verifySealReport,
+  retryPendingProofs,
+} from "./features/version-seal/seal-actions";
+import { formatSealReport } from "./features/version-seal/report-text";
+import { collectEvidenceFiles, zipEvidence } from "./features/version-seal/evidence-export";
 import type { ChatImageRef, ChatMessage, GraphiumDocument, NoteLink, PaperSize, SourceCheckEntry, SourceCheckProfile, WikiMeta } from "./lib/document-types";
 import { applyNewNoteWidth } from "./features/paper-mode/new-note-draft";
 import { bodyWidthToDocFields, newNoteBodyWidth,resolveBodyWidth, type BodyWidth, toggleA4Choice, toggleFullWidthChoice, effectivePaperMode, withNormalizedBodyWidth } from "./features/paper-mode/body-width";
@@ -6501,6 +6510,126 @@ function NoteEditorInner({
     [fileId],
   );
 
+  // ── 版の封印（証拠として固定する）──
+  // 固定できるのは人が書くノートだけ（Wiki・スキル・AI 生成の文書は対象外）。
+  const canSealSnapshots = !!fileId && !isWikiDoc && initialDoc?.source !== "skill" && initialDoc?.source !== "ai";
+  const [sealSummaries, setSealSummaries] = useState<Record<string, SnapshotRowSeal>>({});
+  useEffect(() => {
+    if (!snapshots.some((m) => m.seal)) {
+      setSealSummaries({});
+      return;
+    }
+    let cancelled = false;
+    summarizeSeals(getActiveProvider(), snapshots)
+      .then((s) => {
+        if (!cancelled) setSealSummaries(s);
+      })
+      .catch((e) => console.error("固定した記録の要約に失敗:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshots]);
+
+  // ノートを開いたら、確定待ちの時刻の証明を裏で付け直す（通知は出さない）
+  useEffect(() => {
+    if (!fileId || !snapshots.some((m) => m.seal)) return;
+    let cancelled = false;
+    const provider = getActiveProvider();
+    retryPendingProofs(provider, fileId, snapshots)
+      .then(async (changed) => {
+        if (changed && !cancelled) setSnapshots(await listSnapshots(provider, fileId));
+      })
+      .catch((e) => console.error("時刻の証明の付け直しに失敗:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, snapshots]);
+
+  // 証拠 zip の書き出し。中身（全文と素材）と大きさを先に伝えてから保存先を選んでもらう
+  const handleExportSeal = useCallback(
+    async (snapshotId: string, askFirst = true) => {
+      if (!fileId) return;
+      try {
+        const ev = await collectEvidenceFiles(getActiveProvider(), fileId, snapshotId);
+        if (!ev) {
+          showVersionToast(t("version.seal.exportFailedToast"));
+          return;
+        }
+        const mb = ev.totalBytes / (1024 * 1024);
+        const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(ev.totalBytes / 1024))} KB`;
+        let msg = t("version.seal.exportConfirm", { size });
+        if (ev.omittedMedia.length > 0) {
+          msg += t("version.seal.exportOmitted", { count: String(ev.omittedMedia.length) });
+        }
+        if (askFirst && !(await confirmAction(msg, { confirmLabel: t("version.seal.exportSeal") }))) return;
+        const { bytes, filename } = zipEvidence(ev);
+        const saved = await downloadBlob(new Blob([bytes as BlobPart], { type: "application/zip" }), filename);
+        if (saved) showVersionToast(t("version.seal.exportDoneToast"));
+      } catch (e) {
+        console.error("証拠の書き出しに失敗:", e);
+        showVersionToast(t("version.seal.exportFailedToast"));
+      }
+    },
+    [fileId, showVersionToast, t],
+  );
+
+  const [sealBusy, setSealBusy] = useState(false);
+  const handleSealSnapshot = useCallback(
+    async (snapshotId: string) => {
+      if (!fileId || sealBusy) return;
+      if (!(await confirmAction(t("version.seal.confirm"), { confirmLabel: t("version.seal.seal") }))) return;
+      setSealBusy(true);
+      const provider = getActiveProvider();
+      try {
+        const res = await sealAndTimestamp(provider, fileId, snapshotId);
+        setSnapshots(await listSnapshots(provider, fileId));
+        const statuses = res.proofs.map((p) => p.status);
+        showVersionToast(
+          statuses.includes("confirmed")
+            ? t("version.seal.doneToast")
+            : statuses.every((s) => s === "unsupported")
+              ? t("version.seal.doneUnsupportedToast")
+              : t("version.seal.doneLaterToast"),
+        );
+        // 固定した直後に書き出しを促す（「あとで」も選べる。何度も聞かない）
+        if (
+          res.sealed &&
+          (await confirmAction(t("version.seal.exportAfterSeal"), {
+            confirmLabel: t("version.seal.exportSeal"),
+            cancelLabel: t("version.seal.later"),
+          }))
+        ) {
+          await handleExportSeal(snapshotId, false);
+        }
+      } catch (e) {
+        console.error("版の固定に失敗:", e);
+        showVersionToast(t("version.seal.failedToast"));
+      } finally {
+        setSealBusy(false);
+      }
+    },
+    [fileId, sealBusy, showVersionToast, t, handleExportSeal],
+  );
+
+  const handleVerifySeal = useCallback(
+    async (snapshotId: string) => {
+      if (!fileId) return;
+      try {
+        const report = await verifySealReport(getActiveProvider(), fileId, snapshotId);
+        if (!report) return;
+        // 結果を見たその場で書き出せるよう、ボタンは「閉じる」と「証拠を書き出す」
+        const exportNow = await confirmAction(formatSealReport(report, t), {
+          cancelLabel: t("common.close"),
+          confirmLabel: t("version.seal.exportSeal"),
+        });
+        if (exportNow) await handleExportSeal(snapshotId, false);
+      } catch (e) {
+        console.error("固定した内容の確認に失敗:", e);
+      }
+    },
+    [fileId, t, handleExportSeal],
+  );
+
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定
   const handleContentChange = useCallback(() => {
     markDirty();
@@ -7909,6 +8038,10 @@ function NoteEditorInner({
                     onRestoreSnapshot={onRestoreSnapshot}
                     onRenameSnapshot={handleRenameSnapshot}
                     onDeleteSnapshot={handleDeleteSnapshot}
+                    sealSummaries={sealSummaries}
+                    onSealSnapshot={canSealSnapshots ? handleSealSnapshot : undefined}
+                    onVerifySeal={handleVerifySeal}
+                    onExportSeal={(id) => void handleExportSeal(id)}
                     maintenance={maintenance}
                     onHighlightBlocks={setHighlightBlockIds}
                     resolveSource={resolveRevisionSource}

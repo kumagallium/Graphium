@@ -17,6 +17,11 @@ let sidecarIdentity: { pid: number; dataDir: string; version: string } = {
   version: "dev",
 };
 
+/** アプリの版（GRAPHIUM_APP_VERSION。dev 起動では "dev"） */
+export function getSidecarVersion(): string {
+  return sidecarIdentity.version;
+}
+
 export function setSidecarIdentity(info: {
   pid: number;
   dataDir: string;

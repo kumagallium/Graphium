@@ -6,7 +6,8 @@ hero:
   text: ユーザーマニュアル
   tagline: Graphium の使い方 — 最初のノートから、素材・AI・来歴まで。
   image:
-    src: /logo.png
+    light: /logo.png
+    dark: /logo-light.png
     alt: Graphium
   actions:
     - theme: brand

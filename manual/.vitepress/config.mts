@@ -37,6 +37,7 @@ const enSidebar = [
     text: 'Going Further',
     items: [
       { text: 'Labels & provenance', link: '/labels-and-provenance' },
+      { text: 'Using it as a lab notebook', link: '/lab-notebook' },
       { text: 'Setting up AI', link: '/ai-setup' },
       { text: 'AI usage and free tiers', link: '/ai-usage-limits' },
       { text: 'Chat & Ask (⌘K / Ctrl+K)', link: '/ai-chat-and-ask' },
@@ -109,6 +110,7 @@ const jaSidebar = [
     text: 'さらに先へ',
     items: [
       { text: 'ラベルと来歴', link: '/ja/labels-and-provenance' },
+      { text: '実験ノートとして使う', link: '/ja/lab-notebook' },
       { text: 'AI のセットアップ', link: '/ja/ai-setup' },
       { text: 'AI の使用量と無料枠', link: '/ja/ai-usage-limits' },
       { text: 'チャットと Ask (⌘K / Ctrl+K)', link: '/ja/ai-chat-and-ask' },
@@ -165,7 +167,10 @@ export default defineConfig({
   description:
     'How to use Graphium — features, workflows, and reference for the AI-native notebook that keeps track of how your ideas came to be.',
   lastUpdated: true,
-  head: [['link', { rel: 'icon', href: '/Graphium/manual/favicon.ico' }]],
+  head: [
+    ['link', { rel: 'icon', href: '/Graphium/manual/favicon.ico?v=2' }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/Graphium/manual/apple-touch-icon.png?v=2' }],
+  ],
 
   locales: {
     root: {
@@ -208,7 +213,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: '/logo.png',
+    logo: { light: '/logo.png', dark: '/logo-light.png', alt: 'Graphium' },
     socialLinks: [{ icon: 'github', link: 'https://github.com/kumagallium/Graphium' }],
     search: {
       provider: 'local',
