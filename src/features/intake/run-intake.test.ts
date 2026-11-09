@@ -349,7 +349,7 @@ describe("runIntake", () => {
     expect(outcome.ocrTargets).toEqual([{ fileId: "id-not-yet.png", url: "url-not-yet.png", name: "not-yet.png" }]);
   });
 
-  it("createdNoteIds は importMarkdown の createdIds をそのまま反映し、createdMediaFileIds は新規登録（非 duplicate）の fileId だけを積む", async () => {
+  it("createdNoteIds は importMarkdown の createdIds をそのまま反映し、mediaFileIds は登録済み（duplicate）も含めて取り込んだ素材の fileId を積む", async () => {
     const files = [mdFile("a.md"), pdfFile("new.pdf"), pdfFile("existing.pdf")];
     const uploadAsset = vi.fn(async (file: File) => ({
       fileId: `id-${file.name}`,
@@ -360,7 +360,7 @@ describe("runIntake", () => {
     const outcome = await runIntake(files, deps, () => {});
 
     expect(outcome.createdNoteIds).toEqual(["note-0"]);
-    expect(outcome.createdMediaFileIds).toEqual(["id-new.pdf"]);
+    expect(outcome.mediaFileIds).toEqual(["id-new.pdf", "id-existing.pdf"]);
   });
 });
 
@@ -497,7 +497,7 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 1 },
       lastNewId: "note-a",
       createdNoteIds: ["note-a"],
-      createdMediaFileIds: ["file-a"],
+      mediaFileIds: ["file-a"],
       folders: 2,
       ocrTargets: [{ fileId: "img-a", url: "url-a", name: "a.png" }],
       officeDerived: 4,
@@ -515,7 +515,7 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 1, ".xlsx": 1 },
       lastNewId: null,
       createdNoteIds: ["note-b1", "note-b2"],
-      createdMediaFileIds: ["file-b1", "file-b2"],
+      mediaFileIds: ["file-b1", "file-b2"],
       folders: 1,
       ocrTargets: [{ fileId: "img-b", url: "url-b", name: "b.png" }],
       officeDerived: 2,
@@ -536,9 +536,9 @@ describe("mergeOutcome", () => {
       skippedByExt: { ".pptx": 2, ".xlsx": 1 },
       // b の lastNewId が null なので a を保つ
       lastNewId: "note-a",
-      // createdNoteIds / createdMediaFileIds は連結
+      // createdNoteIds / mediaFileIds は連結
       createdNoteIds: ["note-a", "note-b1", "note-b2"],
-      createdMediaFileIds: ["file-a", "file-b1", "file-b2"],
+      mediaFileIds: ["file-a", "file-b1", "file-b2"],
       // folders は集合を持たないので加算で近似する
       folders: 3,
       // ocrTargets は連結

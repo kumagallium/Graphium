@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.125.5](https://github.com/kumagallium/Graphium/compare/v0.125.4...v0.125.5) - 2026-11-09
+
+- feat(graph): spread out on zoom-in and show hover titles from afar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1556
+- [feat] Draw the genealogy as one line: made from, you are viewing, made from this by @kumagallium in https://github.com/kumagallium/Graphium/pull/1558
+- [feat] Lead the intake report with what to do with what you just brought in by @kumagallium in https://github.com/kumagallium/Graphium/pull/1561
+- [infra] Weekly updaters badge: skip the per-release bot fetch by @kumagallium in https://github.com/kumagallium/Graphium/pull/1562
+
 ## [v0.125.4](https://github.com/kumagallium/Graphium/compare/v0.125.3...v0.125.4) - 2026-11-09
 
 - Chat answers on the default model; Research before answering uses the precise tier by @kumagallium in https://github.com/kumagallium/Graphium/pull/1555

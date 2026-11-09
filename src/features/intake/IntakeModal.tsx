@@ -28,6 +28,24 @@ function formatSkippedByExt(skippedByExt: Record<string, number>): string {
   return `（${top.join("・")}${suffix}）`;
 }
 
+/** 完了画面で「開く」の行き先になる 1 件 */
+export type IntakeOpenTarget = { kind: "note"; id: string } | { kind: "media"; id: string };
+
+/**
+ * 取り込んだものがちょうど 1 件なら、その 1 件を返す（完了画面の主ボタンを「開く」にする）。
+ * PDF を 1 本入れた直後にやりたいのは、探すことより中身を見ることなので。
+ * 既にあったノート（notesExisting）は ID を持たないので開けない — 数に入れて「1 件ではない」側に倒す
+ */
+export function singleIntakeTarget(
+  state: Pick<Extract<IntakeState, { kind: "done" }>, "createdNoteIds" | "notesExisting" | "mediaFileIds">,
+): IntakeOpenTarget | null {
+  const total = state.createdNoteIds.length + state.notesExisting + state.mediaFileIds.length;
+  if (total !== 1) return null;
+  if (state.createdNoteIds.length === 1) return { kind: "note", id: state.createdNoteIds[0] };
+  if (state.mediaFileIds.length === 1) return { kind: "media", id: state.mediaFileIds[0] };
+  return null;
+}
+
 export type IntakeState =
   | { kind: "idle" }
   | { kind: "running"; done: number; total: number; current?: string; failed: string[] }
@@ -50,8 +68,8 @@ export type IntakeState =
       folders: number;
       /** 今回新規作成したノートの ID（「まとめてナレッジ化」の対象特定に使う） */
       createdNoteIds: string[];
-      /** 今回新規登録した素材の fileId（「まとめてナレッジ化」の対象特定に使う） */
-      createdMediaFileIds: string[];
+      /** 今回取り込んだ素材の fileId（登録済みも含む。「開く」「ナレッジ化」の対象特定に使う） */
+      mediaFileIds: string[];
       /** 文字がまだ読めていない画像素材の件数（このあと裏で順に読み取る） */
       ocrPending: number;
       /** PowerPoint / Excel の展開で追加登録された派生素材（画像・CSV）の合計件数 */
@@ -77,6 +95,8 @@ type IntakeModalProps = {
   onSetupAi?: () => void;
   /** 「まとめてナレッジ化」。今回取り込んだノート ID・素材 fileId を渡す */
   onIngestAll?: (noteIds: string[], mediaFileIds: string[]) => void;
+  /** 取り込んだものが 1 件のときの「開く」 */
+  onOpen?: (target: IntakeOpenTarget) => void;
 };
 
 export function IntakeModal({
@@ -90,6 +110,7 @@ export function IntakeModal({
   onAskAi,
   onSetupAi,
   onIngestAll,
+  onOpen,
 }: IntakeModalProps) {
   const t = useT();
 
@@ -229,45 +250,15 @@ export function IntakeModal({
                   </p>
                 )}
 
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">{t("intake.next")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="primary" size="sm" onClick={onSearch}>
-                      {t("intake.search")}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={onShowGraph}>
-                      {t("intake.graph")}
-                    </Button>
-                    {state.aiAvailable ? (
-                      <Button variant="outline" size="sm" onClick={onAskAi}>
-                        {t("intake.askAi")}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onSetupAi}
-                        data-tooltip={t("intake.setupAiHint")}
-                      >
-                        {t("intake.setupAi")}
-                      </Button>
-                    )}
-                    {/* まとめてナレッジ化: AI 未設定のときは上の「AI を設定する」に任せる
-                        （ここで別の分岐を増やさない）。取り込んだノート・素材が
-                        1 件も無ければそもそも出さない */}
-                    {state.aiAvailable &&
-                      (state.createdNoteIds.length > 0 || state.createdMediaFileIds.length > 0) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onIngestAll?.(state.createdNoteIds, state.createdMediaFileIds)}
-                          data-tooltip={t("intake.ingestAllHint")}
-                        >
-                          {t("intake.ingestAll")}
-                        </Button>
-                      )}
-                  </div>
-                </div>
+                <IntakeNextActions
+                  state={state}
+                  onSearch={onSearch}
+                  onShowGraph={onShowGraph}
+                  onAskAi={onAskAi}
+                  onSetupAi={onSetupAi}
+                  onIngestAll={onIngestAll}
+                  onOpen={onOpen}
+                />
               </div>
             </ModalBody>
             <ModalFooter>
@@ -279,5 +270,79 @@ export function IntakeModal({
         )}
       </div>
     </Modal>
+  );
+}
+
+type IntakeNextActionsProps = Pick<
+  IntakeModalProps,
+  "onSearch" | "onShowGraph" | "onAskAi" | "onSetupAi" | "onIngestAll" | "onOpen"
+> & { state: Extract<IntakeState, { kind: "done" }> };
+
+/**
+ * 完了画面の「次に」のボタン群。取り込んだ件数で主ボタンを変える。
+ * - 1 件: 主ボタンは「開く」。続けて「ナレッジ化」「AI に聞く」。探す・つながりは出さない（入れたばかりの 1 件には用が無い）
+ * - 複数: AI があれば主ボタンは「まとめてナレッジ化」。探す・つながり・AI に聞くは脇に置く
+ * 登録済みだったものも対象に含める（同じファイルを入れ直しても同じボタンが出る）
+ */
+function IntakeNextActions({
+  state,
+  onSearch,
+  onShowGraph,
+  onAskAi,
+  onSetupAi,
+  onIngestAll,
+  onOpen,
+}: IntakeNextActionsProps) {
+  const t = useT();
+  const single = onOpen ? singleIntakeTarget(state) : null;
+  const canIngest =
+    state.aiAvailable && (state.createdNoteIds.length > 0 || state.mediaFileIds.length > 0);
+  const ingest = () => onIngestAll?.(state.createdNoteIds, state.mediaFileIds);
+
+  // AI 未設定のときは「AI を設定する」1 つに任せる（ナレッジ化・AI に聞くの分岐を増やさない）
+  const aiButtons = state.aiAvailable ? (
+    <Button variant="outline" size="sm" onClick={onAskAi}>
+      {t("intake.askAi")}
+    </Button>
+  ) : (
+    <Button variant="ghost" size="sm" onClick={onSetupAi} data-tooltip={t("intake.setupAiHint")}>
+      {t("intake.setupAi")}
+    </Button>
+  );
+
+  if (single) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" size="sm" onClick={() => onOpen?.(single)}>
+          {t("intake.open")}
+        </Button>
+        {canIngest && (
+          <Button variant="outline" size="sm" onClick={ingest} data-tooltip={t("intake.ingestOneHint")}>
+            {t("intake.ingestOne")}
+          </Button>
+        )}
+        {aiButtons}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground mb-2">{t("intake.next")}</p>
+      <div className="flex flex-wrap gap-2">
+        {canIngest && (
+          <Button variant="primary" size="sm" onClick={ingest} data-tooltip={t("intake.ingestAllHint")}>
+            {t("intake.ingestAll")}
+          </Button>
+        )}
+        <Button variant={canIngest ? "outline" : "primary"} size="sm" onClick={onSearch}>
+          {t("intake.search")}
+        </Button>
+        <Button variant="outline" size="sm" onClick={onShowGraph}>
+          {t("intake.graph")}
+        </Button>
+        {aiButtons}
+      </div>
+    </div>
   );
 }

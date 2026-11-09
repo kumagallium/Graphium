@@ -126,11 +126,12 @@ export type IntakeOutcome = {
    */
   createdNoteIds: string[];
   /**
-   * 今回新規登録した素材の fileId 一覧（既に登録済みだった素材は含まない。
-   * notes 側の createdNoteIds と対称: 「中身が同じで既にあったもの」は
-   * まとめてナレッジ化の対象から外す）
+   * 今回取り込んだ素材の fileId 一覧（既に登録済みだった素材も含む）。
+   * 完了画面の「開く」「ナレッジ化」が対象を特定するために使う。
+   * 同じファイルを入れ直したときも、入れたものに対して次の操作を出したいので
+   * 登録済みを外さない（ナレッジ化済みで変わっていないものは、ナレッジ化の側が外す）
    */
-  createdMediaFileIds: string[];
+  mediaFileIds: string[];
   /** フォルダを付けたファイルの「異なるフォルダ数」（ノート・素材あわせて重複なし） */
   folders: number;
   /**
@@ -171,7 +172,7 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     skippedByExt,
     lastNewId: b.lastNewId ?? a.lastNewId,
     createdNoteIds: [...a.createdNoteIds, ...b.createdNoteIds],
-    createdMediaFileIds: [...a.createdMediaFileIds, ...b.createdMediaFileIds],
+    mediaFileIds: [...a.mediaFileIds, ...b.mediaFileIds],
     folders: a.folders + b.folders,
     ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
     officeDerived: a.officeDerived + b.officeDerived,
@@ -256,7 +257,7 @@ export async function runIntake(
   // materials: 1 件ずつアップロード。失敗しても続行する
   let materialsUploaded = 0;
   let materialsExisting = 0;
-  const createdMediaFileIds: string[] = [];
+  const mediaFileIds: string[] = [];
   const ocrTargets: BulkOcrTarget[] = [];
   let officeDerived = 0;
   let officeSkipped = 0;
@@ -283,9 +284,8 @@ export async function runIntake(
         ocrTargets.push({ fileId: entry.fileId, url: entry.url, name: entry.name });
       }
       const fileId = result && typeof result === "object" ? (result as { fileId?: string }).fileId : undefined;
-      // notes 側の createdNoteIds と対称: 中身が同じで既に登録済みだったもの（duplicate）は
-      // 「今回新規に持ち込んだ」対象から外す
-      if (fileId && !duplicate) createdMediaFileIds.push(fileId);
+      // 登録済みだったもの（duplicate）も含める。入れ直したファイルにも「開く」「ナレッジ化」を出すため
+      if (fileId) mediaFileIds.push(fileId);
       const folder = folderOfFile(m);
       if (folder) {
         foldersSeen.add(folder);
@@ -361,7 +361,7 @@ export async function runIntake(
     skippedByExt,
     lastNewId: markdownResult.lastNewId,
     createdNoteIds: markdownResult.createdIds,
-    createdMediaFileIds,
+    mediaFileIds,
     folders: foldersSeen.size,
     ocrTargets,
     officeDerived,

@@ -28,6 +28,11 @@ jobs:
           # 78 → 472 に膨らみ、指標として壊れた。max 方式なら一斉取得が入っても
           # +1 しか動かない。更新資産は手動インストールと混ざらない点でも dmg より純度が高い。
           #
+          # 資産ごとの最初の 1 回は数えない。新しい版が出るたびに、何者かが全資産
+          # （dmg・exe・msi・nsis.zip・app.tar.gz）を 1 回ずつ取りに来る
+          # （2026-11-02〜08 の 33 版で dmg 34・exe 36・msi 35）。人がそうするとは考えにくいので
+          # ボットとみなす。本物の最初の 1 人も引いてしまうので、下限の性質は変わらない。
+          #
           # 7 日以内のリリースが無い週は最新 1 件にフォールバックして 0 を避ける。
           # --paginate + --jq はページごとに出力されるので行で流して awk で畳む
           # （ページ境界で合計が複数行になる罠は v0.50.0 時点で踏んだ）。
@@ -36,7 +41,7 @@ jobs:
             --jq '.[] | select(.draft | not) | select(.prerelease | not)
                   | "\(.published_at) " + ([.assets[]
                       | select((.name | endswith(".app.tar.gz")) or (.name | endswith(".nsis.zip")))
-                      | .download_count] | add // 0 | tostring)' \
+                      | ([.download_count - 1, 0] | max)] | add // 0 | tostring)' \
             | sort -r > releases.txt
           weekly=$(awk -v since="$since" '$1 >= since { if ($2 > m) m = $2 } END { print m+0 }' releases.txt)
           in_window=$(awk -v since="$since" '$1 >= since' releases.txt | wc -l)
