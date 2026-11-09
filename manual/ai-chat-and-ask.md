@@ -139,9 +139,10 @@ On a wide window the chat screen shows your [Global Graph](/labels-and-provenanc
 | Dark green, large | A page the latest answer cited |
 | Mid green | A page an earlier answer in this conversation cited |
 | Pale green with a rim | A page the AI read — in the context it was given, or with its tools when it [searches again](#letting-the-ai-search-again) — but did not cite |
+| Green line | A link between two pages the AI touched — how its sources connect |
 | Grey | A page the AI did not touch |
 
-While you wait for an answer, each page lights up once as the AI reads it, and the header counts them ("Reading 8"). When the answer arrives, sparks run once along the links from the pages it cited, then stop. The header then shows **Pages read** and **Used in this answer**, plus **Web sources** for an External answer.
+While you wait for an answer, each page lights up once as the AI reads it, and the header counts them ("Reading 8"). When the answer arrives, a line between two pages the AI touched — both read or cited — turns green and stays, so you can see how the sources connect (for example a claim and the record it came from). Sparks run once along those green lines, starting from the cited pages, then stop; nothing lights up elsewhere. The links are easiest to see when you zoom in around the lit pages. The header then shows **Pages read** and **Used in this answer**, plus **Web sources** for an External answer.
 
 The graph also shows the scope you set. The header names it (for example *Internal · Folder "Spring batch"*), and when a **Folder to search** is chosen, pages outside it fade. Pages you attached with `@` get a purple ring. If the latest answer ever read or cited a page outside the folder it was asked in, that page gets a red dashed ring and the header counts it — this should not happen, so it tells you the scope was not kept. The colours stay when you reopen the conversation, because each answer keeps the list of pages it read. Clicking a page opens it in the side peek without leaving the chat.
 
