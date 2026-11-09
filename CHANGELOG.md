@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.127.2](https://github.com/kumagallium/Graphium/compare/v0.127.1...v0.127.2) - 2026-11-09
+
+- [fix] Verify receipts before showing 'proven' on history rows; lock snapshot writes across tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1579
+- [docs] Manual: how far Graphium goes as a lab notebook (ELN) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1578
+- [fix] Encode ':' in appData file names so Windows does not hide history in alternate data streams by @kumagallium in https://github.com/kumagallium/Graphium/pull/1580
+
 ## [v0.127.1](https://github.com/kumagallium/Graphium/compare/v0.127.0...v0.127.1) - 2026-11-09
 
 - [feat] Left nav: put Labels above the folders in the Notes tab by @kumagallium in https://github.com/kumagallium/Graphium/pull/1577
