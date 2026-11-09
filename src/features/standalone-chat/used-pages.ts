@@ -122,3 +122,25 @@ export function chatReadPageIds(
   for (const r of liveRefs) add(r);
   return out;
 }
+
+/**
+ * 範囲の外で使った・読んだページ（赤い点線の輪と見出しの数）。
+ * - いちばん新しい答えで引用したページ（重み 1）は、その答えを出したときの範囲（usedScope）で見る
+ * - 読んだページ（readIds）は readScope で見る。答えを待っているあいだはいまの範囲、
+ *   答えが返ったあとはその答えを出したときの範囲を渡す
+ * 範囲が null（すべて）なら、その側は判定しない。@ で渡したページは範囲の外でも数えない。
+ */
+export function outOfScopePageIds(opts: {
+  weights: ReadonlyMap<string, number>;
+  readIds: ReadonlySet<string>;
+  usedScope: ReadonlySet<string> | null;
+  readScope: ReadonlySet<string> | null;
+  attached?: ReadonlySet<string>;
+}): Set<string> {
+  const { weights, readIds, usedScope, readScope, attached } = opts;
+  const out = new Set<string>();
+  const outside = (scope: ReadonlySet<string> | null, id: string) => !!scope && !scope.has(id) && !attached?.has(id);
+  for (const [id, w] of weights) if (w >= 0.999 && outside(usedScope, id)) out.add(id);
+  for (const id of readIds) if (outside(readScope, id)) out.add(id);
+  return out;
+}
