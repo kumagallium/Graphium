@@ -617,7 +617,7 @@ Forking is how you explore a different direction without losing the original: th
 
 Knowledge pages you've edited by hand get a version automatically, right before the AI rewrites them (topic revision, merge, cross-update, or regenerate). This only kicks in once a page has some human editing history — a page the AI generated and you've never touched isn't versioned this way, since the AI can freely regenerate it. These automatic versions show a small **AI** badge in the panel so you can tell them apart from ones you saved yourself, and they can be restored with one click the same way a Skill's versions can. The copies kept so that [upkeep operations can be undone](/knowledge-layer#undo-maintenance) are a separate store, not part of this list, and they are removed after one year. Undoing through MCP also shows up in the history. When an outside AI rewrites a knowledge page through MCP, no version is made here — go back from the Upkeep history in Upkeep. <Badge type="tip" text="Added in v0.79.0 (2026-09-18)" />
 
-### Seal as evidence {#seal-as-evidence}
+### Seal as evidence <Badge type="tip" text="Added in v0.127.0 (2026-11-09)" /> {#seal-as-evidence}
 
 Sometimes you need to show someone later that "this content already existed before this date" — to answer a research-integrity question, or as evidence of priority. **Sealing** a saved point burns its content into a seal file and hands it to outside timestamp services.
 
