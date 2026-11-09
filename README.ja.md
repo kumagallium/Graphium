@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo.png" alt="Graphium" width="80" />
+  <img src="public/app-icon.png" alt="Graphium" width="96" />
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
@@ -48,7 +48,7 @@ Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E
 ### 2. AI と広げる
 あなたの AI（Claude のサブスクや API キー）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
 
-<p align="center"><img src="public/landing/screen-knowledge.png" alt="AI が抽出した知見・洞察が並ぶ Knowledge リスト" width="760" /></p>
+<p align="center"><img src="public/landing/screen-knowledge.png" alt="パン作りのノートから作られたナレッジのトピック一覧" width="760" /></p>
 
 ### 3. 起源まで辿る
 AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられます。

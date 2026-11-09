@@ -34,6 +34,7 @@
     "bundle:server": "node scripts/bundle-server.mjs",
     "bundle:node": "node scripts/fetch-node.mjs",
     "bundle:fonts": "node scripts/fetch-fonts.mjs",
+    "brand:generate": "node scripts/generate-brand-assets.mjs",
     "bench:run": "tsx bench/runner.ts",
     "bench:report": "tsx bench/report.ts",
     "bench:compare": "tsx bench/compare.ts",

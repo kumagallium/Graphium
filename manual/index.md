@@ -6,7 +6,8 @@ hero:
   text: User Manual
   tagline: How to use Graphium — from your first note to materials, AI, and provenance.
   image:
-    src: /logo.png
+    light: /logo.png
+    dark: /logo-light.png
     alt: Graphium
   actions:
     - theme: brand
