@@ -12,11 +12,12 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 
 /** グラフの「使った」緑（global-graph-view の act の濃い側・薄い側）と、範囲の輪の色に合わせる */
 const USED_DOT = "#2f6b3a";
-const EARLIER_DOT = "#a9bfad";
+// act 0.5（EARLIER_WEIGHT）の色。mapData(act, 0, 1, #a9bfad, #2f6b3a) の真ん中
+const EARLIER_DOT = "#6c9573";
 const ATTACHED_RING = "#534AB7";
 /** 読んだが使わなかったページ（global-graph-view の ai-read と同じ地と縁） */
-const READ_FILL = "#dcebdf";
-const READ_RING = "#6f9a78";
+const READ_FILL = "#c9e2ce";
+const READ_RING = "#4f8a5c";
 const BREACH_RING = "#C0392B";
 
 export type ChatGraphCounts = {

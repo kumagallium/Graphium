@@ -369,10 +369,35 @@ function styleZoomOf(ele: cytoscape.NodeSingular): number | undefined {
   return typeof z === "number" ? z : undefined;
 }
 
+/**
+ * AI が使った・読んだページの、画面上の最小の直径（px）。俯瞰の倍率でも点として見えるように、
+ * 使った（この答え）> 使った（前の答え）> 読んだだけ の順に大きく描く
+ */
+export const LIT_USED_SCREEN_PX = 16;
+export const LIT_EARLIER_SCREEN_PX = 12;
+export const LIT_READ_SCREEN_PX = 10;
+/** 使った・読んだページは、元の大きさよりもこの倍率だけは大きくする（寄せたときも目立つように） */
+const LIT_SCALE = 1.35;
+
+/** 使った・読んだページの画面上の最小の直径（px）。どちらでもなければ 0 */
+export function litScreenPx(act: number, read: boolean): number {
+  if (act >= 0.999) return LIT_USED_SCREEN_PX;
+  if (act > 0) return LIT_EARLIER_SCREEN_PX;
+  return read ? LIT_READ_SCREEN_PX : 0;
+}
+
 function nodeDiameterStyle(ele: cytoscape.NodeSingular): number {
   const size = Number(ele.data("size")) || KIND_SIZE.note;
   const z = styleZoomOf(ele);
-  return z === undefined ? size : nodeSizeForZoom(size, z);
+  const base = z === undefined ? size : nodeSizeForZoom(size, z);
+  // 大きくするのはチャットの横のグラフ（usageScope が印を付ける）だけ。全体グラフの「AI に
+  // 使われたところ」（30 日分）は数が多いので、色だけで大きさは変えない
+  const litPx = ele.hasClass("ai-used")
+    ? litScreenPx(Number(ele.data("act")) || 0, false)
+    : litScreenPx(0, ele.hasClass("ai-read"));
+  if (litPx === 0) return base;
+  const zoom = Math.max(ele.cy().zoom(), 0.01);
+  return Math.max(base * LIT_SCALE, litPx / zoom);
 }
 
 /** ラベルの折り返し幅は文字の大きさに合わせる（寄せたとき 1 行が長く伸びないように） */
@@ -604,7 +629,7 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     // 触れていない灰色とは常に見分けが付くように
     {
       selector: "node.simple.ai-read",
-      style: { "background-color": "#dcebdf", "border-width": 1.5, "border-color": "#6f9a78", "border-opacity": 1, "z-index": 35 },
+      style: { "background-color": "#c9e2ce", "border-width": 2, "border-color": "#4f8a5c", "border-opacity": 1, "z-index": 35 },
     },
     { selector: "node.simple.scope-out", style: { opacity: 0.18 } },
     { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
@@ -1753,7 +1778,9 @@ export function GlobalGraphCanvas({
     const read = on ? usageScope!.read : undefined;
     const latestRead = on ? usageScope!.latestRead : undefined;
     cy.batch(() => {
-      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read").removeClass("scope-out scope-attached scope-breach ai-read");
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used").removeClass(
+        "scope-out scope-attached scope-breach ai-read ai-used",
+      );
       if (!on) return;
       const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
         !set || set.has(id) || !!attached?.has(id);
@@ -1764,8 +1791,10 @@ export function GlobalGraphCanvas({
         if (attached?.has(id)) n.addClass("scope-attached");
         const w = usageWeights?.get(id) ?? 0;
         const wasRead = !!read?.has(id);
-        // 読んだが使わなかったページは「読んだ」色（使ったページは act の緑が勝つ）
+        // 読んだが使わなかったページは「読んだ」色（使ったページは act の緑が勝つ）。
+        // 使ったページには ai-used を付けて大きく描く（nodeDiameterStyle）
         if (wasRead && w === 0) n.addClass("ai-read");
+        if (w > 0) n.addClass("ai-used");
         // いちばん新しい答えで使った・読んだページが、答えたときの範囲の外なら赤い輪
         if ((w >= 0.999 || !!latestRead?.has(id)) && !isIn(answered, id)) n.addClass("scope-breach");
         // 使った・読んだページは柵の外でも薄くしない（前の範囲で触れたものが見えなくならないように）
