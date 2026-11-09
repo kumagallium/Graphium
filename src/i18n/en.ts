@@ -384,6 +384,7 @@ export const en: Record<string, string> = {
   "version.seal.exportOmitted": "\n\n{count} media file(s) are not included because they are too large or have changed since sealing.",
   "version.seal.exportAfterSeal": "Export the evidence now?\n\nThe record inside the app is lost if its files are deleted. Keeping a copy elsewhere is safer. You can also export it later from the history.",
   "version.seal.exportFailedToast": "Could not export the evidence",
+  "version.seal.later": "Later",
   "version.seal.exportDoneToast": "Evidence exported",
 
   // ── ラベル UI ──

@@ -6554,7 +6554,7 @@ function NoteEditorInner({
         if (ev.omittedMedia.length > 0) {
           msg += t("version.seal.exportOmitted", { count: String(ev.omittedMedia.length) });
         }
-        if (askFirst && !window.confirm(msg)) return;
+        if (askFirst && !(await confirmAction(msg, { confirmLabel: t("version.seal.exportSeal") }))) return;
         const { bytes, filename } = zipEvidence(ev);
         const saved = await downloadBlob(new Blob([bytes as BlobPart], { type: "application/zip" }), filename);
         if (saved) showVersionToast(t("version.seal.exportDoneToast"));
@@ -6570,7 +6570,7 @@ function NoteEditorInner({
   const handleSealSnapshot = useCallback(
     async (snapshotId: string) => {
       if (!fileId || sealBusy) return;
-      if (!window.confirm(t("version.seal.confirm"))) return;
+      if (!(await confirmAction(t("version.seal.confirm"), { confirmLabel: t("version.seal.seal") }))) return;
       setSealBusy(true);
       const provider = getActiveProvider();
       try {
@@ -6585,7 +6585,13 @@ function NoteEditorInner({
               : t("version.seal.doneLaterToast"),
         );
         // 固定した直後に書き出しを促す（「あとで」も選べる。何度も聞かない）
-        if (res.sealed && window.confirm(t("version.seal.exportAfterSeal"))) {
+        if (
+          res.sealed &&
+          (await confirmAction(t("version.seal.exportAfterSeal"), {
+            confirmLabel: t("version.seal.exportSeal"),
+            cancelLabel: t("version.seal.later"),
+          }))
+        ) {
           await handleExportSeal(snapshotId, false);
         }
       } catch (e) {
@@ -6604,12 +6610,17 @@ function NoteEditorInner({
       try {
         const report = await verifySealReport(getActiveProvider(), fileId, snapshotId);
         if (!report) return;
-        window.alert(formatSealReport(report, t));
+        // 結果を見たその場で書き出せるよう、ボタンは「閉じる」と「証拠を書き出す」
+        const exportNow = await confirmAction(formatSealReport(report, t), {
+          cancelLabel: t("common.close"),
+          confirmLabel: t("version.seal.exportSeal"),
+        });
+        if (exportNow) await handleExportSeal(snapshotId, false);
       } catch (e) {
         console.error("固定した内容の確認に失敗:", e);
       }
     },
-    [fileId, t],
+    [fileId, t, handleExportSeal],
   );
 
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定

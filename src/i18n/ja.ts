@@ -384,6 +384,7 @@ export const ja: Record<string, string> = {
   "version.seal.exportOmitted": "\n\n素材 {count} 件は、大きいか、固定したときから変わっているため入りません。",
   "version.seal.exportAfterSeal": "いま証拠を書き出しておきますか？\n\nアプリの中の記録は、ファイルを消すと失われます。別の場所に書き出しておくと安心です。あとで履歴から書き出すこともできます。",
   "version.seal.exportFailedToast": "証拠を書き出せませんでした",
+  "version.seal.later": "あとで",
   "version.seal.exportDoneToast": "証拠を書き出しました",
 
   // ── ラベル UI ──
