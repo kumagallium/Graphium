@@ -73,6 +73,7 @@ export function StandaloneChatWorkspace({
   now,
   renderGraph,
   onGraphVisibleChange,
+  navInSidebar = false,
 }: {
   chats: StandaloneChatSummary[];
   /** 選択中の会話 id。null なら「新しいチャット」（まだ保存されていない） */
@@ -107,10 +108,14 @@ export function StandaloneChatWorkspace({
   sourceLinks?: SourceLinkHandlers;
   /** 子ナビの日付グループの基準時刻（ストーリー用） */
   now?: Date;
-  /** 会話の右に並べるグラフ（ChatGraphPane）。並べているときだけ呼ぶ。閉じる関数を受け取る */
-  renderGraph?: (close: () => void) => ReactNode;
+  /** 会話の右に並べるグラフ（StandaloneChatGraph）。並べているときだけ呼ぶ。閉じる関数と、
+   *  いま効いている渡す範囲・探すフォルダ（会話が無いうちはこの部品が持つ値）を受け取る */
+  renderGraph?: (close: () => void, ctx: { scope: GroundingScope; folder: string | undefined }) => ReactNode;
   /** グラフを並べているかが変わったとき（呼び出し側はこのときだけグラフのデータを組む） */
   onGraphVisibleChange?: (visible: boolean) => void;
+  /** 会話一覧を左のサイドバー（FileSidebar の chatNav）に出しているか。true のとき、
+   *  広い画面ではこの画面の子ナビと開閉ボタンを出さない（会話とグラフの幅を空ける） */
+  navInSidebar?: boolean;
 }) {
   const t = useT();
   const isDesktop = useIsDesktop();
@@ -135,7 +140,9 @@ export function StandaloneChatWorkspace({
     else setDraftFolder(next);
   };
 
-  const showNav = isDesktop ? navOpen : mobilePane === "nav";
+  // 一覧をサイドバーに出しているなら、広い画面では自前の子ナビを出さない
+  const ownNav = !(isDesktop && navInSidebar);
+  const showNav = !ownNav ? false : isDesktop ? navOpen : mobilePane === "nav";
   const showChat = isDesktop || mobilePane === "chat";
 
   // 全体グラフを並べる（広い画面で、呼び出し側がグラフを渡したときだけ）
@@ -155,7 +162,7 @@ export function StandaloneChatWorkspace({
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー: 子ナビの開閉 + パンくず（他の一覧画面と同じ高さ・余白） */}
       <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border">
-        {isDesktop && (
+        {isDesktop && ownNav && (
           <button
             onClick={() => setNavOpen((v) => !v)}
             aria-pressed={navOpen}
@@ -233,7 +240,7 @@ export function StandaloneChatWorkspace({
         {showGraph && (
           // 会話を主にして、グラフは右に 4 割ほど（広すぎても狭すぎても読みにくいので上下限つき）
           <aside className="shrink-0 border-l border-border min-h-0" style={{ width: "clamp(360px, 40%, 720px)" }}>
-            {renderGraph!(() => setGraphOpen(false))}
+            {renderGraph!(() => setGraphOpen(false), { scope, folder })}
           </aside>
         )}
       </div>

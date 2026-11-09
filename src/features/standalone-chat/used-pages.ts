@@ -73,3 +73,20 @@ export function chatUsedPageWeights(
 export function usedPagesSignature(weights: ReadonlyMap<string, number>): string {
   return [...weights].map(([id, w]) => `${id}=${w}`).join("|");
 }
+
+const WEB_LINK_RE = /\]\((https?:\/\/[^)\s]+)\)/g;
+
+/** 本文に出てくる Web の出典（Markdown リンクの URL）の数（重複なし） */
+export function countWebSources(content: string): number {
+  const urls = new Set<string>();
+  for (const m of content.matchAll(WEB_LINK_RE)) urls.add(m[1]);
+  return urls.size;
+}
+
+/** いちばん新しい答えの Web の出典の数（答えが無ければ 0） */
+export function latestWebSourceCount(messages: readonly Pick<ChatMessage, "role" | "content">[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") return countWebSources(messages[i].content);
+  }
+  return 0;
+}

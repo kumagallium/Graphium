@@ -598,8 +598,31 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
       selector: "node.simple[act > 0]",
       style: { "background-color": "mapData(act, 0, 1, #a9bfad, #2f6b3a)" as any, "z-index": 40 },
     },
+    // チャットの横のグラフで見せる「AI が探せる範囲」（usageScope）。範囲の外は薄く、
+    // @ で渡したページは紫の輪、範囲の外なのに使ったページは赤い点線の輪
+    { selector: "node.simple.scope-out", style: { opacity: 0.18 } },
+    { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
+    {
+      selector: "node.simple.scope-attached",
+      style: { "border-width": 2.5, "border-color": "#534AB7", "border-opacity": 1, "z-index": 41 },
+    },
+    {
+      selector: "node.simple.scope-breach",
+      style: { opacity: 1, "border-width": 2.5, "border-color": "#C0392B", "border-style": "dashed", "z-index": 42 },
+    },
   ];
 }
+
+/** チャットの横のグラフで見せる「AI が探せる範囲」 */
+export type GraphUsageScope = {
+  /** いま探せるページ（ノート・知見の ID）。柵として外を薄くする。null なら全体が範囲 */
+  inScope: ReadonlySet<string> | null;
+  /** @ で渡したページ（範囲に関わらず渡る） */
+  attached?: ReadonlySet<string>;
+  /** いちばん新しい答えを出したときの範囲。範囲の外で使ったかはこれで判定する
+   *  （答えのあとにフォルダを変えても、前の答えを赤くしない）。未指定なら inScope */
+  answeredInScope?: ReadonlySet<string> | null;
+};
 
 function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
@@ -1348,6 +1371,7 @@ export function GlobalGraphCanvas({
   bundleCrossIslandEdges = false,
   usageWeights,
   usageFiring = "loop",
+  usageScope,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1420,6 +1444,9 @@ export function GlobalGraphCanvas({
   usageWeights?: ReadonlyMap<string, number>;
   /** 発火の仕方（graph-firing.ts）。loop=繰り返し（既定）/ once=重み 1 のページを一度だけ */
   usageFiring?: GraphFiringMode;
+  /** AI が探せる範囲（シンプル表示のときだけ）。範囲の外を薄くし、渡したページと、
+   *  範囲の外なのに使ったページ（usageWeights にあるもの）に輪を付ける */
+  usageScope?: GraphUsageScope;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1702,6 +1729,38 @@ export function GlobalGraphCanvas({
     if (reduce) return;
     return startGraphFiring(cy, usageWeights!, Math.random, usageFiring);
   }, [settledCy, colorMode, usageWeights, usageFiring]);
+
+  // AI が探せる範囲を印す（クラスの付け外しだけ。配置は動かさない）
+  useEffect(() => {
+    const cy = settledCy;
+    if (!cy || cy.destroyed()) return;
+    const on = colorMode === "simple" && !!usageScope;
+    const inScope = on ? usageScope!.inScope : null;
+    const attached = on ? usageScope!.attached : undefined;
+    const answered = on && usageScope!.answeredInScope !== undefined ? usageScope!.answeredInScope : inScope;
+    cy.batch(() => {
+      cy.elements(".scope-out, .scope-attached, .scope-breach").removeClass("scope-out scope-attached scope-breach");
+      if (!on) return;
+      const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
+        !set || set.has(id) || !!attached?.has(id);
+      cy.nodes().forEach((n) => {
+        const id = n.id();
+        // 重心などの見えない点は触らない
+        if (n.hasClass("cluster-hub")) return;
+        if (attached?.has(id)) n.addClass("scope-attached");
+        const w = usageWeights?.get(id) ?? 0;
+        // いちばん新しい答えのページ（重み 1）が、答えたときの範囲の外なら赤い輪
+        if (w >= 0.999 && !isIn(answered, id)) n.addClass("scope-breach");
+        // 使ったページは柵の外でも薄くしない（前の範囲で使ったものが見えなくならないように）
+        else if (!isIn(inScope, id) && w === 0) n.addClass("scope-out");
+      });
+      if (inScope) {
+        cy.edges().forEach((e) => {
+          if (e.source().hasClass("scope-out") || e.target().hasClass("scope-out")) e.addClass("scope-out");
+        });
+      }
+    });
+  }, [settledCy, colorMode, usageScope, usageWeights]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2868,6 +2927,7 @@ export function GlobalGraphView({
   bundleCrossIslandEdges = true,
   usageWeights,
   usageFiring,
+  usageScope,
   compact = false,
   sidePanel,
   peek,
@@ -2906,6 +2966,8 @@ export function GlobalGraphView({
   usageWeights?: ReadonlyMap<string, number>;
   /** 発火の仕方（GlobalGraphCanvas にそのまま渡す。既定 loop） */
   usageFiring?: GraphFiringMode;
+  /** AI が探せる範囲（GlobalGraphCanvas にそのまま渡す） */
+  usageScope?: GraphUsageScope;
   /** 他の画面の横に並べる小さな表示（チャットの横など）。ツールバー・凡例を出さず、
    *  Esc でも閉じない（入力欄の Esc を奪わないように）。表示はシンプル・島の既定のまま */
   compact?: boolean;
@@ -3367,6 +3429,7 @@ export function GlobalGraphView({
                 bundleCrossIslandEdges={bundleCrossIslandEdges}
                 usageWeights={showAiActivity ? usageWeights : undefined}
                 usageFiring={usageFiring}
+                usageScope={usageScope}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}

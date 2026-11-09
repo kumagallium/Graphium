@@ -1023,6 +1023,13 @@ export type ChatMessage = {
    * optional な plain JSON なので旧ビルドの読み込みを壊さない（フィールド追加のみ）。
    */
   toolSteps?: AgentToolStep[];
+  /**
+   * この答えを出したときに探したフォルダ（assistant メッセージのみ・ノートに紐づかないチャットのみ）。
+   * null はすべてのノート、文字列はそのフォルダ（"親" または "親/子"）。チャットの横の全体グラフで
+   * 「答えに使ったページが、そのときの範囲の中にあったか」を判定するのに使う。
+   * 無い（この項目より前の答え）ときは判定しない。optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  searchFolder?: string | null;
 };
 
 /** AI が呼んだ道具 1 回分の記録（ChatMessage.toolSteps） */

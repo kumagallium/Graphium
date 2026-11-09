@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatUsedPageWeights, citedTitles, EARLIER_WEIGHT, usedPagesSignature } from "./used-pages";
+import { chatUsedPageWeights, citedTitles, EARLIER_WEIGHT, latestWebSourceCount, usedPagesSignature } from "./used-pages";
 
 const nodes = [
   { id: "w1", title: "発酵の温度" },
@@ -65,5 +65,20 @@ describe("usedPagesSignature", () => {
   it("中身が同じなら同じ署名", () => {
     expect(usedPagesSignature(new Map([["a", 1]]))).toBe(usedPagesSignature(new Map([["a", 1]])));
     expect(usedPagesSignature(new Map([["a", 1]]))).not.toBe(usedPagesSignature(new Map([["a", 0.3]])));
+  });
+});
+
+describe("latestWebSourceCount", () => {
+  it("いちばん新しい答えの Web の出典を重複なく数える", () => {
+    expect(
+      latestWebSourceCount([
+        msg("assistant", "[a](https://old.example)"),
+        msg("user", "q"),
+        msg("assistant", "x\n**🌐 Web の出典**\n  - [A](https://a.example/p)\n  - [B](https://b.example)\n  - [A again](https://a.example/p)"),
+      ]),
+    ).toBe(2);
+  });
+  it("答えが無ければ 0", () => {
+    expect(latestWebSourceCount([msg("user", "q")])).toBe(0);
   });
 });
