@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.125.6](https://github.com/kumagallium/Graphium/compare/v0.125.5...v0.125.6) - 2026-11-09
+
+- Call on-device models "Local" in the model guide by @kumagallium in https://github.com/kumagallium/Graphium/pull/1560
+- Turn the standard and precise model tiers on or off by @kumagallium in https://github.com/kumagallium/Graphium/pull/1563
+
 ## [v0.125.5](https://github.com/kumagallium/Graphium/compare/v0.125.4...v0.125.5) - 2026-11-09
 
 - feat(graph): spread out on zoom-in and show hover titles from afar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1556
