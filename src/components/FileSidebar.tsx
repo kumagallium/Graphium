@@ -1300,10 +1300,14 @@ export function FileSidebar({
         {isTabs ? (
           // タブ表示: 見出し（GroupLabel）は出さない。タブの名前が「どこにあるか」を示す
           activeTab === "notes" ? (
+            // 並びは「長さの決まっているものが先、伸びる一覧が最後」。ラベルは多くても数行だが、
+            // フォルダは増えるほど伸びるので、ラベルをフォルダの下に置くと押し出されて
+            // スクロールしないと見えなくなる（共有フォルダを上へ移したのと同じ理由）。
+            // ラベルの節は畳めるので、使わない人は 1 行にしておける
             <>
               {noteLinksBlock}
-              {foldersBlock}
               {labelsBlock}
+              {foldersBlock}
             </>
           ) : activeTab === "knowledge" ? (
             <>
