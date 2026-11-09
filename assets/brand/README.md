@@ -7,7 +7,9 @@ letter shapes; no installed font is required.
 
 The compact in-app lockup uses the generated PNGs as alpha masks, with a 24 px
 mark and an 18 px wordmark. Both use the theme's muted foreground color, preserving
-the approved shapes while matching the surrounding interface.
+the approved shapes while matching the surrounding interface. The wordmark is
+shifted down by 2 CSS px for optical alignment of the G crossbars in the mark
+and wordmark.
 
 Run from the repository root after `pnpm install` (Playwright Chromium must be
 installed):

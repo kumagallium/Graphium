@@ -111,3 +111,39 @@ export const InContext: Story = {
     </section>
   ),
 };
+
+export const OpticalAlignment: Story = {
+  name: "文字の上下位置を比較",
+  render: () => (
+    <section className="space-y-6 bg-background p-6 text-foreground">
+      <h2 className="text-lg font-semibold">文字の上下位置</h2>
+      {([1, 2] as const).map((scale) => (
+        <div key={scale}>
+          <h3 className="mb-3 text-sm font-semibold">{scale === 1 ? "実寸" : "2倍拡大"}</h3>
+          <div className="flex flex-wrap items-start gap-6">
+            {[
+              { title: "先ほど（1px）", className: "[&>span:last-child]:translate-y-px" },
+              { title: "横線をそろえた調整（2px）", className: undefined },
+            ].map(({ title, className }) => (
+              <article key={title} style={{ width: 256 * scale }}>
+                <h4 className="mb-2 text-sm font-semibold">{title}</h4>
+                <div style={{ width: 256 * scale, height: 120 * scale }}>
+                  <div className="w-64 origin-top-left" style={{ transform: `scale(${scale})` }}>
+                    <HeaderSlice>
+                      <span className="relative inline-flex">
+                        <BrandLockup className={className} />
+                        {scale === 2 && (
+                          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-[12.75px] h-px -translate-y-1/2 bg-red-500/40" />
+                        )}
+                      </span>
+                    </HeaderSlice>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  ),
+};
