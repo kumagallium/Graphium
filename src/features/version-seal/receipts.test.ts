@@ -6,7 +6,7 @@ import type { StorageProvider } from "../../lib/storage/types";
 import { listSnapshots } from "../version-snapshots/snapshot-store";
 import { sha256HexOfText } from "./manifest";
 import { bytesToBase64 } from "./rfc3161";
-import { attachRfc3161, checkReceipts } from "./receipts";
+import { attachRfc3161, checkReceipts, isBackedOff } from "./receipts";
 import { sealKey } from "./seal-store";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,5 +104,23 @@ describe("attachRfc3161", () => {
     });
     expect(called).toBe(false);
     expect(again.status).toBe("confirmed");
+  });
+});
+
+describe("失敗が続いたときの控え", () => {
+  it("失敗のたびに回数を積み、5 回続いたら 7 日は付け直さない。成功したら消える", async () => {
+    const { provider } = await makeSealedProvider();
+    const fail = async () => ({ status: 502, json: { message: "down" } });
+    for (let i = 0; i < 5; i++) await attachRfc3161(provider, "n1", "s1", { post: fail });
+    let [meta] = await listSnapshots(provider, "n1");
+    const r = meta.seal!.receipts[0];
+    expect(r.failures).toBe(5);
+    expect(isBackedOff(r)).toBe(true);
+    // 8 日後なら 1 回だけ試す
+    expect(isBackedOff(r, new Date(Date.parse(r.updatedAt) + 8 * 86400_000))).toBe(false);
+    await attachRfc3161(provider, "n1", "s1", { post: ok(bytesToBase64(tsr)) });
+    [meta] = await listSnapshots(provider, "n1");
+    expect(meta.seal!.receipts[0].status).toBe("confirmed");
+    expect(meta.seal!.receipts[0].failures).toBeUndefined();
   });
 });

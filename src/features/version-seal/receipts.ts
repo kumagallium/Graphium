@@ -95,6 +95,21 @@ export async function loadReceiptBytes(
   }
 }
 
+/** その受領書の、これまでの続けての失敗回数 */
+function failuresOf(receipts: SealReceipt[], key: string): number {
+  return receipts.find((r) => r.receiptKey === key)?.failures ?? 0;
+}
+
+/** 失敗が続いた受領書は、付け直しを 7 日に 1 回へ控える */
+export const RETRY_BACKOFF_AFTER = 5;
+export const RETRY_BACKOFF_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isBackedOff(receipt: SealReceipt | undefined, now: Date = new Date()): boolean {
+  if (!receipt || (receipt.failures ?? 0) < RETRY_BACKOFF_AFTER) return false;
+  const last = Date.parse(receipt.updatedAt);
+  return Number.isFinite(last) && now.getTime() - last < RETRY_BACKOFF_MS;
+}
+
 /** 受領書のメタを足す・置き換える（同じ kind の pending があればそれを置き換える） */
 function upsertReceipt(receipts: SealReceipt[], next: SealReceipt): SealReceipt[] {
   const i = receipts.findIndex((r) => r.receiptKey === next.receiptKey);
@@ -149,6 +164,7 @@ export async function attachRfc3161(
               status: "pending",
               receiptKey: key,
               updatedAt: nowIso(),
+              failures: failuresOf(m.seal.receipts, key) + 1,
             }),
           },
         }
@@ -318,6 +334,7 @@ export async function attachOts(
   } catch (e) {
     await setReceipt(provider, noteId, snapshotId, {
       kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "failed", receiptKey: key, updatedAt: nowIso(),
+      failures: (existing?.failures ?? 0) + 1,
     });
     return { status: "pending", message: e instanceof Error ? e.message : String(e) };
   }
@@ -327,6 +344,7 @@ export async function attachOts(
     // 出せなかった。受領書の本体が無いので "failed"（次に開いたときに出し直す）
     await setReceipt(provider, noteId, snapshotId, {
       kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "failed", receiptKey: key, updatedAt: nowIso(),
+      failures: (existing?.failures ?? 0) + 1,
     });
     return { status: "pending", message: `HTTP ${res.status}` };
   }

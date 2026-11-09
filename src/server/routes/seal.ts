@@ -26,6 +26,15 @@ import {
 } from "../../features/version-seal/tsa-registry.js";
 import { bytesToHex, hexToBytes } from "../../features/version-seal/rfc3161.js";
 import { headerMeetsProofOfWork } from "../../features/version-seal/opentimestamps.js";
+import { getSidecarVersion } from "./health.js";
+
+/**
+ * 外部のサービスへの名乗り。問題があったときに、相手がどのアプリかを知って連絡できるように
+ * （FreeTSA は公開サービスを IP ごとの回数で守っており、名無しの要求は止められやすい）
+ */
+export function sealUserAgent(): string {
+  return `Graphium/${getSidecarVersion()} (+https://github.com/kumagallium/Graphium)`;
+}
 
 const app = new Hono();
 
@@ -100,6 +109,7 @@ async function fetchLimited(
     const res = await deps.fetch(url, {
       method: init.method,
       headers: {
+        "User-Agent": sealUserAgent(),
         ...(init.body ? { "Content-Type": "application/octet-stream" } : {}),
         ...(init.accept ? { Accept: init.accept } : {}),
       },
@@ -120,7 +130,7 @@ async function sendOnce(url: string, der: Uint8Array): Promise<Uint8Array> {
   try {
     const res = await deps.fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/timestamp-query" },
+      headers: { "Content-Type": "application/timestamp-query", "User-Agent": sealUserAgent() },
       body: der as BodyInit,
       redirect: "error",
       signal: ac.signal,

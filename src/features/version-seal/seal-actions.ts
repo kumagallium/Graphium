@@ -16,6 +16,7 @@ import { inspectTimeStampResponse } from "./rfc3161";
 import {
   attachOts,
   attachRfc3161,
+  isBackedOff,
   upgradeOts,
   checkReceipts,
   loadReceiptBytes,
@@ -147,15 +148,18 @@ export async function retryPendingProofs(
     if (!meta.seal || retried.has(meta.id)) continue;
     const rfc = meta.seal.receipts.find((r) => r.kind === "rfc3161");
     const ots = meta.seal.receipts.find((r) => r.kind === "opentimestamps");
-    const needRfc = !rfc || rfc.status !== "confirmed";
-    const needOts = !ots || ots.status !== "confirmed";
+    // 止まった局を叩き続けないよう、失敗が続いたものは 7 日に 1 回に控える
+    const needRfc = (!rfc || rfc.status !== "confirmed") && !isBackedOff(rfc);
+    const needOts = (!ots || ots.status !== "confirmed") && !isBackedOff(ots);
     if (!needRfc && !needOts) continue;
     retried.add(meta.id);
     if (needRfc) {
       const res = await attachRfc3161(provider, noteId, meta.id);
       if (res.status === "confirmed") changed = true;
     }
-    if (!ots || ots.status === "failed") {
+    if (!needOts) {
+      // 控えている
+    } else if (!ots || ots.status === "failed") {
       const res = await attachOts(provider, noteId, meta.id);
       if (res.status !== "unsupported") changed = true;
     } else if (ots.status === "pending") {

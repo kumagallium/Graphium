@@ -44,6 +44,8 @@ describe("POST /api/seal/rfc3161", () => {
     expect(url).toBe("https://freetsa.org/tsr");
     expect(init.redirect).toBe("error");
     expect(init.headers["Content-Type"]).toBe("application/timestamp-query");
+    // 名乗る（どのアプリからの要求か、局が分かるように）
+    expect(init.headers["User-Agent"]).toMatch(/^Graphium\/\S+ \(\+https:\/\/github\.com\/kumagallium\/Graphium\)$/);
   });
 
   it("応答の種類が違えば 502", async () => {
