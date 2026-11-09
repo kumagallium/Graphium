@@ -1,12 +1,16 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
 import cytoscape from "cytoscape";
 import {
   applyZoomStyle,
   globalGraphStyle,
+  HOVER_LABEL_PADDING_SCREEN_PX,
   HOVER_LABEL_SCREEN_PX,
+  ISLAND_LABELS_HOVER_OPACITY,
   NODE_MIN_SCREEN_PX,
   NODE_SHRINK_FROM_ZOOM,
   nodeSizeForZoom,
+  setIslandLabelsDimmed,
   shrinkForZoom,
 } from "./global-graph-view";
 import { GRAPH_FADED_EDGE_OPACITY, GRAPH_FADED_OPACITY } from "./graph-theme";
@@ -177,6 +181,18 @@ describe("ズームに応じた見た目（寄せるとまばらに）", () => {
     a.removeClass("hover");
     expect(a.numericStyle("font-size") * 0.2).toBeLessThan(HOVER_LABEL_SCREEN_PX);
   });
+
+  it("ホバーの題の白地の余白も画面上で一定（引いても字が縁で切れて見えない）", () => {
+    const cy = make();
+    for (const z of [0.2, 1, 3]) {
+      cy.zoom(z);
+      applyZoomStyle(cy);
+      const a = cy.getElementById("a");
+      a.addClass("hover");
+      expect(parseFloat(String(a.style("text-background-padding"))) * z).toBeCloseTo(HOVER_LABEL_PADDING_SCREEN_PX);
+      a.removeClass("hover");
+    }
+  });
 });
 
 describe("ズームに応じた線の太さ", () => {
@@ -196,5 +212,23 @@ describe("ズームに応じた線の太さ", () => {
     const w = cy.getElementById("e").numericStyle("width");
     expect(w).toBeCloseTo(shrinkForZoom(0.6, 3));
     expect(w).toBeLessThan(0.6);
+  });
+});
+
+describe("ホバー中の島の名前", () => {
+  it("薄くしてマウスを素通りさせ、外れたら戻す", () => {
+    const wrap = document.createElement("div");
+    const btn = document.createElement("button");
+    btn.setAttribute("data-island-label", "i1");
+    btn.style.pointerEvents = "auto";
+    wrap.appendChild(btn);
+    setIslandLabelsDimmed(wrap, true);
+    expect(wrap.style.opacity).toBe(String(ISLAND_LABELS_HOVER_OPACITY));
+    expect(btn.style.pointerEvents).toBe("none");
+    setIslandLabelsDimmed(wrap, false);
+    expect(wrap.style.opacity).toBe("");
+    expect(btn.style.pointerEvents).toBe("auto");
+    // 島が無いとき（ref が空）は何もしない
+    expect(() => setIslandLabelsDimmed(null, true)).not.toThrow();
   });
 });
