@@ -261,11 +261,15 @@ app.post("/ots/submit", async (c) => {
           }
         },
         OTS_MIN_INTERVAL_MS,
-      ),
+      ).catch((e) => (e instanceof QueueFullError ? ("queue_full" as const) : null)),
     ),
   );
-  const responses = results.filter((r): r is { calendar: string; body: string } => r !== null);
-  if (responses.length === 0) return c.json({ error: "calendars_unreachable" }, 502);
+  const responses = results.filter((r): r is { calendar: string; body: string } => r !== null && r !== "queue_full");
+  if (responses.length === 0) {
+    // 列がいっぱいで出せなかった局があれば 429（しばらくして出し直せば通る）
+    if (results.includes("queue_full")) return c.json({ error: "queue_full" }, 429);
+    return c.json({ error: "calendars_unreachable" }, 502);
+  }
   return c.json({ responses });
 });
 

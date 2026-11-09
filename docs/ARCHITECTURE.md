@@ -4616,7 +4616,7 @@ public services that do not allow CORS, so the sidecar sends it
 | `POST /api/seal/rfc3161` | takes `{ hash, tsa? }`, sends an RFC 3161 request to a registered authority and returns the reply (DER, base64) after checking that it answers the request (status, hash, nonce) |
 | `POST /api/seal/ots/submit` | submits a hash to the OpenTimestamps calendars and returns their pending answers. The app sends `sha256(sealHash ‖ 16 random bytes)`, not the seal hash itself, and writes the `append(nonce)` → `sha256` step into the `.ots`, so the calendars cannot match the hash with the one sent to the RFC 3161 TSA |
 | `POST /api/seal/ots/upgrade` | asks a calendar whether a pending proof has been completed (the calendar URI is length-checked, then must match the registry exactly) |
-| `GET /api/seal/btc-header/:height` | returns a Bitcoin block header (80 bytes, hex). It asks both blockstream.info and mempool.space and returns the header only if it hashes to the block hash, meets the proof of work in its own `bits` (and `bits` is no easier than a minimum difficulty for that height, set at about a quarter of the real mainnet difficulty, so a forged header costs minutes of the whole network's hash power instead of 2^32 hashes), and both explorers answer with the same block. If either explorer fails, it returns an error and the app tries again later. The app checks the proof of work again when it verifies an `.ots` |
+| `GET /api/seal/btc-header/:height` | returns a Bitcoin block header (80 bytes, hex). It asks both blockstream.info and mempool.space and returns the header only if it hashes to the block hash, meets the proof of work in its own `bits` (and `bits` is no easier than a minimum difficulty for that height, set at about a quarter of the real mainnet difficulty from height 500,000 on, so a forged header costs from seconds (older heights) to minutes (recent heights) of the whole network's hash power instead of 2^32 hashes; older heights rely on the two explorers agreeing), and both explorers answer with the same block. If either explorer fails, it returns an error and the app tries again later. The app checks the proof of work again when it verifies an `.ots` |
 
 Guards (this is the only place that handles foreign responses):
 
@@ -4626,7 +4626,8 @@ Guards (this is the only place that handles foreign responses):
 - HTTPS only, redirects are refused, a timeout (20 s), and a cap on
   response size (64 KB for a timestamp reply, 16 KB for a calendar reply).
 - A 15 s minimum interval per authority, queued per authority, with at most
-  8 requests waiting per authority (more get `429`), and request bodies
+  8 requests waiting per authority (more get `429`; a submit still returns
+  the calendars that accepted it), and request bodies
   capped at 4 KB.
 - Signatures are verified on the client, with the full seal file and the
   root certificate bundled for that authority.

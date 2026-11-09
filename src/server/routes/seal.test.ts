@@ -176,6 +176,26 @@ describe("OpenTimestamps のルート", () => {
     expect(await res.json()).toEqual({ status: "pending" });
   });
 
+  it("提出: 一部の局の列がいっぱいでも 500 にせず、届いた分を返す", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (url.includes("/timestamp/")) await gate;
+      return new Response(new Uint8Array([0]), { status: 200 });
+    });
+    __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
+    // 提出先のうち 1 局（a.pool）の列を upgrade で埋める
+    const cal = "https://a.pool.opentimestamps.org";
+    const fill = Array.from({ length: MAX_QUEUED_PER_ENDPOINT }, () => postJson("/ots/upgrade", { calendar: cal, commitment: "aa" }));
+    const partial = await postJson("/ots/submit", { hash });
+    expect(partial.status).toBe(200);
+    const body = await partial.json();
+    expect(body.responses.map((r: any) => r.calendar)).not.toContain(cal);
+    expect(body.responses.length).toBeGreaterThan(0);
+    release();
+    await Promise.all(fill);
+  });
+
   it("本文が大きすぎれば 413", async () => {
     const fetchSpy = vi.fn();
     __setSealDepsForTest({ fetch: fetchSpy as any, ...noSleep });
