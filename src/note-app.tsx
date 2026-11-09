@@ -17457,6 +17457,17 @@ export function NoteApp() {
           intake.closeIntake();
           handleIntakeIngestAll(noteIds, mediaFileIds);
         }}
+        onOpen={(target) => {
+          intake.closeIntake();
+          if (target.kind === "note") {
+            handleComposerNoteSelect(target.id, undefined);
+            return;
+          }
+          // 取り込み直後は fm.mediaIndex の再描画が追いついていないことがあるので、最新の索引から引く。
+          // ノートを開いていれば横のピーク、そうでなければ素材ギャラリーで右に開く（Cmd+K の素材行と同じ）
+          const entry = (getLatestMediaIndex() ?? fm.mediaIndex)?.media.find((m) => m.fileId === target.id);
+          if (entry) handleComposerMediaOpenInPeek(entry);
+        }}
       />
       {/* 投入口が持ち込んだ画像の文字読み取り。取り込み完了後に裏で走る分の進行表示。
           ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
