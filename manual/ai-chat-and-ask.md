@@ -132,7 +132,7 @@ Conversations live on this device, in app data — never mixed into a note file,
 
 ### Seeing what the AI read and used {#seeing-what-the-ai-read-and-used}
 
-On a wide window the chat screen shows your [Global Graph](/labels-and-provenance#graph-views-beyond-one-note) beside the conversation, so you can see where the AI went for each answer. The button at the right end of the header shows or hides it, and Graphium remembers your choice. The graph itself does not move while you talk; only the pages the AI touches change.
+On a wide window the chat screen shows your [Global Graph](/labels-and-provenance#graph-views-beyond-one-note) beside the conversation, so you can see where the AI went for each answer. The button at the right end of the header shows or hides it, and Graphium remembers your choice. The graph itself does not move while you talk; only the pages the AI touches change. Only those pages show their titles — hover over any other point to see its title.
 
 | What you see | What it means |
 |---|---|

@@ -646,16 +646,12 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
     // 触れたページ同士（使った・読んだページを両端に持つ）の線＝根拠のつながり。答えの光もこの線だけを
     // 走るので、光ったあとにそのまま残る。太さは画面上で一定（俯瞰でも見えるように）
-    // AI が来歴の道具で実際にたどった線（じっくり調べたとき）。根拠のつながりより濃く太く
+    // チャットの横では、題名を出すのは AI が触れたページだけ（ほかは文字が重なって根拠が埋もれる）。
+    // マウスを乗せたとき・つながる相手として出すとき・選んだときは出す
+    { selector: "node.simple.label-muted", style: { "text-opacity": 0 } },
     {
-      selector: "edge.simple.ai-walked",
-      style: {
-        "line-color": "#2f6b3a",
-        "target-arrow-color": "#2f6b3a",
-        width: aiWalkedWidthStyle as any,
-        opacity: 0.95,
-        "z-index": 31,
-      },
+      selector: "node.simple.label-muted.hover, node.simple.label-muted.hover-label, node.simple.label-muted:selected",
+      style: { "text-opacity": 1 },
     },
     {
       selector: "edge.simple.ai-link",
@@ -665,6 +661,17 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
         width: aiLinkWidthStyle as any,
         opacity: 0.75,
         "z-index": 30,
+      },
+    },
+    // AI が来歴の道具で実際にたどった線（じっくり調べたとき）。根拠のつながりより濃く太く。ai-link の後に置いて上書きする
+    {
+      selector: "edge.simple.ai-walked",
+      style: {
+        "line-color": "#2f6b3a",
+        "target-arrow-color": "#2f6b3a",
+        width: aiWalkedWidthStyle as any,
+        opacity: 0.95,
+        "z-index": 31,
       },
     },
     {
@@ -1820,8 +1827,8 @@ export function GlobalGraphCanvas({
     const latestRead = on ? usageScope!.latestRead : undefined;
     const readScope = on && usageScope!.readInScope !== undefined ? usageScope!.readInScope : answered;
     cy.batch(() => {
-      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used, .ai-link, .ai-walked").removeClass(
-        "scope-out scope-attached scope-breach ai-read ai-used ai-link ai-walked",
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used, .ai-link, .ai-walked, .label-muted").removeClass(
+        "scope-out scope-attached scope-breach ai-read ai-used ai-link ai-walked label-muted",
       );
       if (!on) return;
       const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
@@ -1836,6 +1843,8 @@ export function GlobalGraphCanvas({
         // 読んだが使わなかったページは「読んだ」色（使ったページは act の緑が勝つ）。
         // 使ったページには ai-used を付けて大きく描く（nodeDiameterStyle）
         if (wasRead && w === 0) n.addClass("ai-read");
+        // 触れていないページの題名は隠す（マウスを乗せれば出る）
+        if (w === 0 && !wasRead) n.addClass("label-muted");
         if (w > 0) n.addClass("ai-used");
         // いちばん新しい答えで使った・読んだページが、答えたときの範囲の外なら赤い輪
         // 根拠は答えたときの範囲、読んだページは readScope で見る（standalone-chat の outOfScopePageIds と同じ決まり）
