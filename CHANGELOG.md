@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.128.1](https://github.com/kumagallium/Graphium/compare/v0.128.0...v0.128.1) - 2026-11-09
+
+- fix(ci): NSISを検証付きで事前取得しOS別に再配布する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1592
+- [feat] Keep the links between pages the AI touched beside the chat, and run the sparks only along them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1591
+- [feat] Draw the links the AI followed with its provenance tools beside the chat, and show titles only for touched pages by @kumagallium in https://github.com/kumagallium/Graphium/pull/1594
+
 ## [v0.128.0](https://github.com/kumagallium/Graphium/compare/v0.127.2...v0.128.0) - 2026-11-09
 
 - fix(ci): Windows配布ツールの取得を再試行し検証する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1584
