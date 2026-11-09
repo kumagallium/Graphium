@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.128.2](https://github.com/kumagallium/Graphium/compare/v0.128.1...v0.128.2) - 2026-11-09
+
+- fix: open the chat view from the Chat tab's New chat and chat rows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1595
+
 ## [v0.128.1](https://github.com/kumagallium/Graphium/compare/v0.128.0...v0.128.1) - 2026-11-09
 
 - fix(ci): NSISを検証付きで事前取得しOS別に再配布する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1592
