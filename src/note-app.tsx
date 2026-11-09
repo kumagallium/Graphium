@@ -15305,6 +15305,9 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
+    // ヘッダーの検索ボタン。⌘K と同じコマンドパレット（Composer）を開く。
+    // モバイルの Sheet からも使うので、開いたらサイドバーは閉じる
+    onOpenSearch: () => { openComposerFromEditor(); setSidebarOpen(false); },
     // ヘッダーの「戻る」導線。ノート A →（ピーク等経由で）ノート B / 素材へ飛んだあと A へ戻る。
     onBack: router.back,
     canGoBack: router.canGoBack,

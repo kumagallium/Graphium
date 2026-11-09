@@ -486,6 +486,7 @@ export const InsightsHidden: Story = {
     <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <FileSidebar
         {...COMMON_PROPS}
+        defaultTab="knowledge"
         showAtomLayer={false}
       />
       <div className="flex-1 p-8 text-sm text-muted-foreground">
@@ -508,6 +509,7 @@ export const WithTopics: Story = {
     <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <FileSidebar
         {...COMMON_PROPS}
+        defaultTab="knowledge"
         wikiCounts={{ summary: 9, claim: 14, atom: 3, synthesis: 4, topic: 6 }}
       />
       <div className="flex-1 p-8 text-sm text-muted-foreground">
@@ -527,6 +529,7 @@ export const WikiLintBadge: Story = {
     <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <FileSidebar
         {...COMMON_PROPS}
+        defaultTab="knowledge"
         onShowWikiLog={() => {}}
         onShowWikiLint={() => {}}
         wikiLintBadge={{ count: 4, hasError: true }}
@@ -559,7 +562,7 @@ export const BackendStarting: Story = {
   render: () => (
     <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <WithFakeTauri>
-        <FileSidebar {...COMMON_PROPS} aiAvailable={null} />
+        <FileSidebar {...COMMON_PROPS} defaultTab="knowledge" aiAvailable={null} />
       </WithFakeTauri>
       <div className="flex-1 p-8 text-sm text-muted-foreground">
         <h2 className="text-base font-semibold mb-2">デスクトップ版の起動直後</h2>
@@ -1155,6 +1158,7 @@ export const IaRound2Applied: Story = {
     <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
       <FileSidebar
         {...COMMON_PROPS}
+        layout="sections"
         onShowMobile={() => {}}
         mobileCount={2}
         onShowSharedLibrary={() => {}}
@@ -1167,7 +1171,7 @@ export const IaRound2Applied: Story = {
         emptyFolders={["Sourdough", "Kiln study"]}
       />
       <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
-        <p className="text-sm font-semibold text-foreground">実装後の実物（E 案）</p>
+        <p className="text-sm font-semibold text-foreground">実装後の実物（E 案・節の並び = layout="sections"）</p>
         <p>記録と知識: すべてのノート（シェブロンでフォルダ開閉 / 文字で一覧へ）→ ナレッジ</p>
         <p>外部連携: モバイル → ライブラリ</p>
         <p>保管庫: 素材（中にメモ）→ プロセス → ラベル</p>
@@ -1205,7 +1209,7 @@ const lowHeightRender = () => (
     />
     <div className="flex-1 p-6 text-xs text-muted-foreground space-y-2">
       <p className="text-sm font-semibold text-foreground">高さが 620px 以下のとき</p>
-      <p>下の 5 項目（スキル〜Release Notes）の固定をやめ、中段と一緒にスクロールする。</p>
+      <p>下の 5 項目（スキル〜Release Notes）の固定をやめ、中段（タブの中身）と一緒にスクロールする。タブの列は上に固定のまま。</p>
       <p>下にまだ項目があるあいだは、入れ物の下端に薄いフェードが出る（一番下までスクロールすると消える）。</p>
       <p>高さが 620px を超えると、今まで通り下に固定される（1280×660 は境目の上）。</p>
     </div>
@@ -1264,5 +1268,117 @@ export const IntakePlacementComparison: Story = {
         </div>
       ))}
     </div>
+  ),
+};
+
+// ── 左ナビのタブ化（以前 vs 採用） ─────────────────────────────────────────
+//
+// 指摘: 節の縦並びだと、フォルダが増えるとラベルや素材が画面の外へ押し出され、
+// ナレッジ・素材・ラベルへ辿り着くのにスクロールが要る。
+// 見に行く場所を ノート / ナレッジ / 素材 の 3 タブに分け、検索・取り込み・モバイル・チャットは
+// 動詞・入口としてヘッダーに集めた。タブの下だけがスクロールする。
+// 旧配置は layout="sections" で比較のために残す。
+
+// フォルダが 20 個あるノート索引（フォルダ＝ noteContexts 由来なので、1 フォルダにつき 1 冊ずつ足す）
+const BREAD_FOLDERS = [
+  "Sourdough", "Baguette", "Focaccia", "Ciabatta", "Brioche", "Rye", "Bagel", "Pretzel",
+  "Croissant", "Pita", "Naan", "Pizza dough", "Whole wheat", "Spelt", "Milk bread",
+  "Scones", "Flatbread", "Sweet buns", "Cinnamon rolls", "Pan de mie",
+];
+
+const MANY_FOLDERS_INDEX: GraphiumIndex = {
+  ...MOCK_INDEX,
+  notes: [
+    ...MOCK_INDEX.notes,
+    ...BREAD_FOLDERS.map((folder, i) => ({
+      noteId: `bread-${i}`,
+      title: `${folder} の焼き上がりメモ`,
+      modifiedAt: daysAgo(i + 1),
+      createdAt: daysAgo(i + 30),
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      noteContexts: [folder],
+    })),
+  ],
+};
+
+const TABS_COMPARISON_PROPS = {
+  ...COMMON_PROPS,
+  noteIndex: MANY_FOLDERS_INDEX,
+  onOpenSearch: () => {},
+  onShowChatList: () => {},
+  chatCount: 12,
+  onShowMobile: () => {},
+  mobileCount: 3,
+  onShowTemplateList: () => {},
+  onShowProcessGallery: () => {},
+  processCount: 4,
+  onShowSharedLibrary: () => {},
+  onOpenIntake: () => {},
+  onNewMemo: () => {},
+  onSelectFolder: () => {},
+  onSelectUnfiledFolder: () => {},
+  onCreateFolder: () => {},
+} as const;
+
+// フォルダの節を開いた状態で見せる（CollapsibleSection は描画時に localStorage を読む）
+function WithFoldersOpen({ children }: { children: ReactNode }) {
+  try {
+    localStorage.setItem("graphium-sidebar-section:folders", "1");
+  } catch {
+    /* ignore */
+  }
+  return <>{children}</>;
+}
+
+export const TabsComparison: Story = {
+  name: "タブ化（以前 vs 採用）",
+  render: () => (
+    <WithFoldersOpen>
+      <div className="flex gap-4 p-4 overflow-x-auto" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+        {([
+          { key: "sections", label: "以前: 節の縦並び", layout: "sections" },
+          { key: "tabs", label: "採用: 3 タブ", layout: "tabs" },
+        ] as const).map(({ key, label, layout }) => (
+          <div key={key} className="shrink-0">
+            <div className="text-xs text-muted-foreground mb-1">{label}</div>
+            <div
+              data-variant={key}
+              className="border border-sidebar-border rounded-lg overflow-hidden flex"
+              style={{ width: 256, height: 720 }}
+            >
+              <FileSidebar {...TABS_COMPARISON_PROPS} layout={layout} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </WithFoldersOpen>
+  ),
+};
+
+export const TabsEachTab: Story = {
+  name: "タブごとの中身",
+  render: () => (
+    <WithFoldersOpen>
+      <div className="flex gap-4 p-4 overflow-x-auto" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+        {([
+          { key: "notes", label: "ノート" },
+          { key: "knowledge", label: "ナレッジ" },
+          { key: "materials", label: "素材" },
+        ] as const).map(({ key, label }) => (
+          <div key={key} className="shrink-0">
+            <div className="text-xs text-muted-foreground mb-1">{label}</div>
+            <div
+              data-variant={key}
+              className="border border-sidebar-border rounded-lg overflow-hidden flex"
+              style={{ width: 256, height: 720 }}
+            >
+              <FileSidebar {...TABS_COMPARISON_PROPS} layout="tabs" defaultTab={key} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </WithFoldersOpen>
   ),
 };

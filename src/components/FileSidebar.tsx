@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -180,7 +180,58 @@ export type FileSidebarProps = {
   chatActive?: boolean;
   /** チャット件数 */
   chatCount?: number;
+  /** 検索（コマンドパレット）を開く。渡されたときだけヘッダーに検索ボタンを出す */
+  onOpenSearch?: () => void;
+  /**
+   * 本文の組み方。"tabs"（採用）= 見に行く場所を ノート / ナレッジ / 素材 の 3 タブに分け、
+   * チャットとモバイルはヘッダーの動詞列へ移す。"sections" = 旧来の節の縦並び。
+   * 比較ストーリー用に残す（intakePlacement と同じ考え方）
+   */
+  layout?: "tabs" | "sections";
+  /** 初期タブ。保存値より優先する（ストーリー・テスト用） */
+  defaultTab?: SidebarTab;
 };
+
+export type SidebarTab = "notes" | "knowledge" | "materials";
+
+/** 選択中タブを覚える localStorage キー */
+const TAB_STORAGE_KEY = "graphium-sidebar-tab";
+
+function readSavedTab(): SidebarTab | null {
+  try {
+    const v = localStorage.getItem(TAB_STORAGE_KEY);
+    return v === "notes" || v === "knowledge" || v === "materials" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 最後にタブが追従した画面の署名（セッション内。再マウントをまたいで手動のタブを守る） */
+const SIGNATURE_STORAGE_KEY = "graphium-sidebar-tab-signature";
+
+function readSavedSignature(): string | null {
+  try {
+    return sessionStorage.getItem(SIGNATURE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedSignature(sig: string): void {
+  try {
+    sessionStorage.setItem(SIGNATURE_STORAGE_KEY, sig);
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeSavedTab(tab: SidebarTab): void {
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, tab);
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * セクションのまとまりを示す小さな見出し（IA 第 2 ラウンド E 案）。
@@ -295,6 +346,9 @@ export function FileSidebar({
   onShowChatList,
   chatActive = false,
   chatCount = 0,
+  onOpenSearch,
+  layout = "tabs",
+  defaultTab,
 }: FileSidebarProps) {
   const meeting = useMeetingRecorder();
   const recording = meeting.phase === "recording" || meeting.phase === "stopping";
@@ -394,6 +448,73 @@ export function FileSidebar({
     }
     return counts;
   }, [noteIndex]);
+  const isTabs = layout === "tabs";
+
+  // ナレッジの節（タブ）を出す条件。従来ナレッジの節を出していた 3 つの場合の OR:
+  // 起動待ち（デスクトップのみ）/ 到達不可が確定 / AI が使える（モデル登録済み or 既存データあり）。
+  // タブにするときも、使えない人に空のタブを見せない
+  const knowledgeAvailable =
+    !!onShowWikiList &&
+    ((aiAvailable === null && isTauri()) ||
+      aiAvailable === false ||
+      (!!aiAvailable && (agentConfigured || aiTotalCount > 0)));
+
+  // 選択中のタブ。初期値は defaultTab → 保存値 → ノート
+  const [tab, setTab] = useState<SidebarTab>(() => defaultTab ?? readSavedTab() ?? "notes");
+  const uid = useId();
+  const tabDomId = (id: SidebarTab) => `${uid}-tab-${id}`;
+  const panelDomId = `${uid}-panel`;
+  const chooseTab = useCallback((next: SidebarTab) => {
+    setTab(next);
+    writeSavedTab(next);
+  }, []);
+  // ナレッジのタブが出ないのに選択中がナレッジのときは、ノートに落とす（保存値は触らない）
+  const activeTab: SidebarTab = tab === "knowledge" && !knowledgeAvailable ? "notes" : tab;
+
+  // 開いている画面に合わせてタブを切り替える。右の画面から「今どの棚にいるか」を導き、
+  // 別の棚の画面を開いたとき（検索・リンク・戻る等）にサイドバーが追従する。
+  // 依存を「画面を決める値の署名」にしているのは、画面はそのままで利用者が手でタブを
+  // 切り替えたときに、effect が走って戻されないようにするため。
+  // selectedFolder は判定にも署名にも使わない: 一覧を離れても null に戻らないため、
+  // 一度フォルダを選ぶとチャットなど棚の無い画面でもノートのタブへ戻されてしまう。
+  // フォルダを選べば noteListActive が立つので、それで足りる。
+  // どの棚でもない画面（ノートを開いている・チャット等）は何もせず、最後のタブのまま。
+  const derivedTab: SidebarTab | null =
+    activeWikiKind != null || activeWikiView != null
+      ? "knowledge"
+      : activeAssetType != null || memosActive
+        ? "materials"
+        : noteListActive || templateActive || processGalleryActive || sharedLibraryActive || activeLabel != null
+          ? "notes"
+          : null;
+  const screenSignature = [
+    activeWikiKind ?? "",
+    activeWikiView ?? "",
+    activeAssetType ?? "",
+    memosActive,
+    noteListActive,
+    templateActive,
+    !!processGalleryActive,
+    sharedLibraryActive,
+    activeLabel ?? "",
+  ].join("|");
+  const lastSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    // 署名は sessionStorage に持つ。サイドバーは畳む・開く、モバイルの Sheet の開閉で
+    // アンマウントされるので、ref だけだと再マウントのたびに手で選んだタブが上書きされる。
+    // sessionStorage が使えないときだけ ref を控えにする
+    const last = readSavedSignature() ?? lastSignatureRef.current;
+    if (last === screenSignature) return;
+    const first = last === null;
+    lastSignatureRef.current = screenSignature;
+    writeSavedSignature(screenSignature);
+    // 初回は defaultTab（ストーリー・テストの指定）を上書きしない
+    if (first && defaultTab) return;
+    if (derivedTab) chooseTab(derivedTab);
+    // derivedTab / defaultTab は署名から決まる（または初回だけ見る）値
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenSignature]);
+
   // 再読み込みは一瞬で終わることが多く、押せたのか分からない。
   // 終わるまで回し、早く終わっても 1 回転（animate-spin の 1 周 = 1 秒）は見せる。
   const [refreshing, setRefreshing] = useState(false);
@@ -413,131 +534,70 @@ export function FileSidebar({
   // 一致する条件は下の入れ物の [@media(max-height:620px)] と同じ値にそろえる
   const { ref: sidebarScrollRef, moreBelow: sidebarMoreBelow } =
     useScrollMoreBelow("(max-height: 620px)");
-  return (
-    <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
-      {/* ヘッダー */}
-      <div className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
-            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
-          </div>
-          <div className="flex items-center gap-2">
-            {onBack && (
-              <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
-            )}
-            <button
-              onClick={handleRefresh}
-              aria-busy={refreshing}
-              aria-label={t("sidebar.refresh")}
-              data-tooltip={t("sidebar.refresh")}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-            </button>
-            {onCollapse && (
-              <button
-                onClick={onCollapse}
-                aria-label={t("tooltip.sidebarCollapse")}
-                data-tooltip={t("tooltip.sidebarCollapse")}
-                data-tooltip-usage={t("tooltip.sidebarShortcut", sidebarToggleShortcutParams())}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <PanelLeftClose size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-        {/* 入口の列（design.md 決定事項ログ 2026-09-05 → 2026-10-20 で更新）:
-            1 行目は「作る」= ノートの分割ボタン（本体は白紙ノート、▾ で白紙 / 音声ノート）。
-            以前はメモとノートの双子ボタンだったが、ノートを作るボタンと素材（メモ）を作るボタンが
-            混在し、▾ が増えてメモの文字が潰れたので、メモは素材の節の「メモ」行の ＋ に降格した。
-            ⌘⇧M のショートカットは残す（判定は note-app.tsx。metaKey/ctrlKey 両対応）。
-            ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
-            preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
-            2 行目は「持ち込む」の投入口。手元のファイルを入れる動詞で、ゼロから書くのではなく
-            過去資産の再利用から始めるのが初回の推奨導線なので常設にする。ただし「作る」とは種類が
-            違うので、枠線を外した軽い 1 行にしてアイコンで区別する。
-            以前は 3 本を同じ見た目で縦に並べていたが場所を取りすぎるため、双子を横並びにした
-            （比較は FileSidebar.ia.stories.tsx の IntakePlacementComparison。旧配置は
-            intakePlacement="stacked" で比較用に残す）。
-            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
-        {intakePlacement === "twins" ? (
-          // メモのボタンは上段から外した（2026-10-20）。メモは素材の節の「メモ」行の ＋ から作る。
-          // ⌘⇧M のショートカットは残る。
-          <div className="flex gap-1 mb-1">
-            <NewNoteSplitButton
-              onNewNote={onNewNote}
-              onNewVoiceNote={voiceNoteHandler}
-              onNewNoteFromTemplate={onNewNoteFromTemplate}
-              recording={recording}
-              className="w-full"
-            />
-          </div>
-        ) : (
-          // 旧配置（比較用）: 双子を縦に並べる
-          <>
-            <NewNoteSplitButton
-              onNewNote={onNewNote}
-              onNewVoiceNote={voiceNoteHandler}
-              onNewNoteFromTemplate={onNewNoteFromTemplate}
-              recording={recording}
-              className="mb-1 w-full"
-            />
-          </>
-        )}
-        {onOpenIntake && (
-          intakePlacement === "twins" ? (
-            // 枠線を外した軽い 1 行。存在は保ちつつ、視覚的な主張を「作る」より下げる
-            <button
-              onClick={onOpenIntake}
-              data-tooltip={t("sidebar.intakeTooltip")}
-              className="w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              <FolderInput size={14} />
-              <span>{t("sidebar.intake")}</span>
-            </button>
-          ) : (
-            // 旧配置（比較用）: 3 本目として同じ見た目のボタン
-            <button
-              onClick={onOpenIntake}
-              data-tooltip={t("sidebar.intakeTooltip")}
-              className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-            >
-              {t("sidebar.intake")}
-            </button>
-          )
-        )}
-      </div>
-
-      {/* セクション一覧 — IA 第 2 ラウンド E 案（design.md 2026-09-03）。
-          並べる軸は「何であるか（種類）」ではなく「どこにあるか（在り処）」:
-            記録と知識: すべてのノート（中にフォルダ）→ ナレッジ
-            外部連携:   モバイル → ライブラリ
-            保管庫:     素材（中にメモ）→ プロセス → ラベル
-          プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ
-          「取っておいて使い回す部品」として素材と対等に並べる（素材の中に入れない）。
-          見出し風リンク（→）は中身を持たない節で、シェブロンは出さない。 */}
-      {/* 中段とフッターを 1 つの入れ物にまとめる。高い画面では今まで通り、中段だけが
-          縮んでスクロールし、フッターは下に固定。高さが低い画面（max-height:620px。
-          Windows 既定の 150% 表示は 660 でここに入らない）では入れ物のほうがスクロールし、
-          フッターの 5 項目が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
-          見えなくなる）。DOM は 1 か所のまま CSS だけで切り替えるので、フォーカス順も
-          読み上げも変わらない。ヘッダーは常に上に固定。
-          スクロールできる間（下にまだ項目があるとき）だけ、入れ物の下端に薄いフェードを出す。
-          macOS のオーバーレイ式スクロールバーは止まっていると消えるので、設定などが下にあることに
-          気づけない。一番下までスクロールすると消える。高い画面（固定のとき）では出さない。 */}
-      <div
-        ref={sidebarScrollRef}
-        className="flex-1 min-h-0 flex flex-col [@media(max-height:620px)]:overflow-y-auto"
+  // 取り込みの行。枠線を外した軽い 1 行（採用）/ 旧配置（比較用）。
+  // タブ表示ではモバイルと同じ行に並ぶので flex-1 にする
+  const intakeWidth = isTabs ? "flex-1 min-w-0" : "w-full";
+  const intakeButton = onOpenIntake ? (
+    intakePlacement === "twins" ? (
+      // 枠線を外した軽い 1 行。存在は保ちつつ、視覚的な主張を「作る」より下げる
+      <button
+        onClick={onOpenIntake}
+        data-tooltip={t("sidebar.intakeTooltip")}
+        className={`${intakeWidth} flex items-center gap-2 rounded-lg px-3 py-1 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors`}
       >
-      <div className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
-        {/* ── グループ見出し ── */}
-        <GroupLabel text={t("sidebar.groupRecords")} first />
+        <FolderInput size={14} />
+        <span>{t("sidebar.intake")}</span>
+      </button>
+    ) : (
+      // 旧配置（比較用）: 3 本目として同じ見た目のボタン
+      <button
+        onClick={onOpenIntake}
+        data-tooltip={t("sidebar.intakeTooltip")}
+        className={`${intakeWidth} text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors`}
+      >
+        {t("sidebar.intake")}
+      </button>
+    )
+  ) : null;
 
-        {/* ① すべてのノート（中にフォルダ）— IA 第 2 ラウンド E 案（2026-09-03）。
-            シェブロン＝フォルダの開閉 / 文字＝一覧へ遷移。フォルダはノートの中の分類なので、
-            独立した節ではなくノートの中身として畳む。 */}
+  // モバイル受信箱（タブ表示では取り込みの行の右端）。件数は未処理がある間だけ
+  const mobileButton = onShowMobile ? (
+    <button
+      onClick={onShowMobile}
+      aria-label={t("mobile.title")}
+      data-tooltip={t("mobile.title")}
+      className={`ml-auto shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-sidebar-accent ${
+        mobileActive ? "text-primary" : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+      }`}
+    >
+      <Smartphone size={14} />
+      {mobileCount > 0 && <span className="text-xs tabular-nums">{mobileCount}</span>}
+    </button>
+  ) : null;
+
+  // チャット（タブ表示ではヘッダー）。ノートに紐づかない会話の入口で、取り込みと同じ軽い 1 行
+  const chatRow = onShowChatList ? (
+    <button
+      onClick={onShowChatList}
+      data-tooltip={t("sidebar.chatHint")}
+      className={`w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${
+        chatActive
+          ? "bg-primary/10 text-primary font-semibold"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      }`}
+    >
+      <MessageSquare size={14} />
+      <span className="flex-1 text-left">{t("sidebar.chat")}</span>
+      {chatCount > 0 && (
+        <span className="text-xs text-muted-foreground tabular-nums">{chatCount}</span>
+      )}
+    </button>
+  ) : null;
+
+  // ── 本文のまとまり（tabs / sections の両方から組み立てる） ──
+  // 見た目と DOM は sections で従来と同じ。tabs では bare（見出し無し）で中身だけ出す
+  const foldersBlock = (
+    <>
         {onSelectFolder ? (
           <CollapsibleSection
             storageKey="folders"
@@ -560,6 +620,9 @@ export function FileSidebar({
               onFolderContextMenu={onFolderContextMenu}
               onRenameFolder={onRenameFolder}
               onDropNotes={onDropNotesToFolder}
+              // 20 個を超えるようなフォルダ数でも他の棚（ラベル等）が押し出されないよう、
+              // タブ表示では最上位 8 件で止めて「残りを表示」にする
+              maxTopLevel={isTabs ? 8 : undefined}
             />
           </CollapsibleSection>
         ) : (
@@ -586,7 +649,11 @@ export function FileSidebar({
         </button>
 
         )}
+    </>
+  );
 
+  const chatLinkBlock = (
+    <>
         {/* ①'' チャット（見出し風リンク） — ノートに紐づかない会話。すべてのノートと
             ナレッジの間に置く（ノートの一覧・AI が編む知識、どちらとも違う「対話」の置き場）。 */}
         {onShowChatList && (
@@ -608,7 +675,11 @@ export function FileSidebar({
             )}
           </button>
         )}
+    </>
+  );
 
+  const templateLinkBlock = (
+    <>
         {/* ①''' テンプレート（見出し風リンク） — 自分・共有・公式のテンプレートをまとめて見る一覧。
             チャットと同じ見出し風の並びで、矢印の代わりにテンプレートのアイコンを置く */}
         {onShowTemplateList && (
@@ -627,7 +698,11 @@ export function FileSidebar({
             <span className="flex-1 text-left">{t("sidebar.templates")}</span>
           </button>
         )}
+    </>
+  );
 
+  const knowledgeBlock = (
+    <>
         {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}
         {/* 到達性が未判定（null）の間は「起動中」だけを示す。ここで web 版向けの
             AiUpgradeNotice を出すと、デスクトップ版の起動直後の数秒間だけ
@@ -637,6 +712,7 @@ export function FileSidebar({
         {onShowWikiList && aiAvailable === null && isTauri() && (
           <CollapsibleSection
             storageKey="ai"
+            bare={isTabs}
             title={(
               <span className="flex items-center gap-1">
                 {t("sidebar.knowledge")}
@@ -653,6 +729,7 @@ export function FileSidebar({
         {onShowWikiList && aiAvailable === false && (
           <CollapsibleSection
             storageKey="ai"
+            bare={isTabs}
             title={(
               <span className="flex items-center gap-1">
                 {t("sidebar.knowledge")}
@@ -670,6 +747,7 @@ export function FileSidebar({
         {onShowWikiList && aiAvailable && (agentConfigured || aiTotalCount > 0) && (
           <CollapsibleSection
             storageKey="ai"
+            bare={isTabs}
             // 見出しに title ツールチップを付けて「ナレッジ」が何かを補足する。
             title={<span data-tooltip={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
             // 初見ユーザーには閉じた状態で出す（気軽さ優先 / サイドバーの圧迫を減らす）。
@@ -776,7 +854,11 @@ export function FileSidebar({
             )}
           </CollapsibleSection>
         )}
+    </>
+  );
 
+  const externalBlock = (
+    <>
         {/* ── グループ見出し ──
             モバイルも共有ストレージも設定されていなければ、見出しごと出さない。
             中身が 1 つも無いグループだけが残ると、設定していない機能の存在を
@@ -829,13 +911,15 @@ export function FileSidebar({
             </button>
           </CollapsibleSection>
         )}
+    </>
+  );
 
-        {/* ── グループ見出し ── */}
-        <GroupLabel text={t("sidebar.groupRepository")} />
-
+  const materialsBlock = (
+    <>
         {/* ③ 素材（旧: データ） */}
         <CollapsibleSection
           storageKey="data"
+          bare={isTabs}
           // 「素材」は名前だけでは中身が分かりにくいので説明を添える（design.md「ヒントの 3 種類」）
           title={<span data-tooltip={t("sidebar.materialsHint")}>{t("asset.dataSection")}</span>}
           defaultOpen={true}
@@ -911,7 +995,11 @@ export function FileSidebar({
             );
           })}
         </CollapsibleSection>
+    </>
+  );
 
+  const processLinkBlock = (
+    <>
         {/* ①' プロセス（見出し風リンク） — ノートの別の見方なので隣に置く。
             手順を書いたノートが 1 件も無いうちは出さない（progressive disclosure）。 */}
         {onShowProcessGallery && processCount > 0 && (
@@ -932,7 +1020,11 @@ export function FileSidebar({
             </span>
           </button>
         )}
+    </>
+  );
 
+  const labelsBlock = (
+    <>
         {/* ④ ラベル: 1 件以上付与されてから表示（progressive disclosure） */}
         {labelCounts.size > 0 && (
         <CollapsibleSection
@@ -965,6 +1057,252 @@ export function FileSidebar({
                 );
               })}
         </CollapsibleSection>
+        )}
+    </>
+  );
+
+  // タブの「ノート」先頭の 3 行（素材タブの行と同じ見た目）。3 つとも出ないときは入れ物ごと出さない
+  const noteRowClass = (active: boolean) =>
+    `w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+      active
+        ? "bg-primary/10 text-primary font-semibold"
+        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+    }`;
+  const showProcessRow = !!onShowProcessGallery && processCount > 0;
+  const noteLinksBlock =
+    onShowTemplateList || showProcessRow || onShowSharedLibrary ? (
+      <CollapsibleSection storageKey="note-links" title="" bare>
+        {onShowTemplateList && (
+          <button
+            onClick={onShowTemplateList}
+            data-tooltip={t("sidebar.templatesHint")}
+            className={noteRowClass(templateActive)}
+          >
+            <span className="text-muted-foreground shrink-0"><LayoutTemplate size={14} /></span>
+            <span className="flex-1 text-left">{t("sidebar.templates")}</span>
+          </button>
+        )}
+        {showProcessRow && (
+          <button onClick={onShowProcessGallery} className={noteRowClass(!!processGalleryActive)}>
+            <span className="text-muted-foreground shrink-0"><ListOrdered size={14} /></span>
+            <span className="flex-1 text-left">{t("process.title")}</span>
+            <span className="text-xs text-muted-foreground">{processCount}</span>
+          </button>
+        )}
+        {onShowSharedLibrary && (
+          <button
+            onClick={onShowSharedLibrary}
+            data-tooltip={t("sidebar.libraryHint")}
+            className={noteRowClass(sharedLibraryActive)}
+          >
+            <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
+            <span className="flex-1 text-left">{t("sidebar.shared")}</span>
+          </button>
+        )}
+      </CollapsibleSection>
+    ) : null;
+
+  // タブの列。ヘッダーの直下・スクロールする入れ物の外に置くので、中身をスクロールしても動かない。
+  // タブを押しても右の画面は切り替えない（どの棚を眺めるかを選ぶだけ）
+  const tabItems: { id: SidebarTab; label: string }[] = [
+    { id: "notes", label: t("sidebar.tabNotes") },
+    ...(knowledgeAvailable ? [{ id: "knowledge" as const, label: t("sidebar.knowledge") }] : []),
+    { id: "materials", label: t("asset.dataSection") },
+  ];
+
+  return (
+    <aside className="w-full md:w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col h-full">
+      {/* ヘッダー */}
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
+            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
+          </div>
+          <div className="flex items-center gap-2">
+            {onBack && (
+              <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
+            )}
+            <button
+              onClick={handleRefresh}
+              aria-busy={refreshing}
+              aria-label={t("sidebar.refresh")}
+              data-tooltip={t("sidebar.refresh")}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            </button>
+            {onCollapse && (
+              <button
+                onClick={onCollapse}
+                aria-label={t("tooltip.sidebarCollapse")}
+                data-tooltip={t("tooltip.sidebarCollapse")}
+                data-tooltip-usage={t("tooltip.sidebarShortcut", sidebarToggleShortcutParams())}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        {/* 検索: 「＋ ノート」の上。検索欄に見えるボタンで、押すとコマンドパレットが開く（⌘K）。
+            探す入口を一番上に置くと、タブの中身（一覧）を辿らずに目的のノートへ行ける */}
+        {isTabs && onOpenSearch && (
+          <button
+            onClick={onOpenSearch}
+            className="w-full mb-1 flex items-center gap-2 rounded-lg border border-sidebar-border px-3 py-1.5 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+          >
+            <Search size={14} className="shrink-0" />
+            <span className="flex-1 text-left">{t("sidebar.search")}</span>
+            <span className="text-[10px] text-sidebar-foreground/40">{formatShortcut(["mod", "K"])}</span>
+          </button>
+        )}
+        {/* 入口の列（design.md 決定事項ログ 2026-09-05 → 2026-10-20 で更新）:
+            1 行目は「作る」= ノートの分割ボタン（本体は白紙ノート、▾ で白紙 / 音声ノート）。
+            以前はメモとノートの双子ボタンだったが、ノートを作るボタンと素材（メモ）を作るボタンが
+            混在し、▾ が増えてメモの文字が潰れたので、メモは素材の節の「メモ」行の ＋ に降格した。
+            ⌘⇧M のショートカットは残す（判定は note-app.tsx。metaKey/ctrlKey 両対応）。
+            ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
+            preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
+            2 行目は「持ち込む」の投入口。手元のファイルを入れる動詞で、ゼロから書くのではなく
+            過去資産の再利用から始めるのが初回の推奨導線なので常設にする。ただし「作る」とは種類が
+            違うので、枠線を外した軽い 1 行にしてアイコンで区別する。
+            以前は 3 本を同じ見た目で縦に並べていたが場所を取りすぎるため、双子を横並びにした
+            （比較は FileSidebar.ia.stories.tsx の IntakePlacementComparison。旧配置は
+            intakePlacement="stacked" で比較用に残す）。
+            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
+        {intakePlacement === "twins" ? (
+          // メモのボタンは上段から外した（2026-10-20）。メモは素材の節の「メモ」行の ＋ から作る。
+          // ⌘⇧M のショートカットは残る。
+          <div className="flex gap-1 mb-1">
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              recording={recording}
+              className="w-full"
+            />
+          </div>
+        ) : (
+          // 旧配置（比較用）: 双子を縦に並べる
+          <>
+            <NewNoteSplitButton
+              onNewNote={onNewNote}
+              onNewVoiceNote={voiceNoteHandler}
+              onNewNoteFromTemplate={onNewNoteFromTemplate}
+              recording={recording}
+              className="mb-1 w-full"
+            />
+          </>
+        )}
+        {isTabs ? (
+          // タブ表示: 取り込みの右端にモバイル、その下にチャット。どちらも「見に行く場所」ではなく
+          // 動詞・入口なので、タブの外（ヘッダー）に置く
+          <>
+            {(onOpenIntake || onShowMobile) && (
+              <div className="flex items-center gap-1">
+                {intakeButton}
+                {mobileButton}
+              </div>
+            )}
+            {chatRow}
+          </>
+        ) : (
+          intakeButton
+        )}
+      </div>
+
+      {isTabs && (
+        <div
+          role="tablist"
+          aria-label={t("sidebar.tabsLabel")}
+          className="shrink-0 flex gap-1 px-4 pt-2 pb-1"
+        >
+          {tabItems.map(({ id, label }, index) => (
+            <button
+              key={id}
+              id={tabDomId(id)}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === id}
+              aria-controls={panelDomId}
+              tabIndex={activeTab === id ? 0 : -1}
+              onClick={() => chooseTab(id)}
+              onKeyDown={(e) => {
+                // ← → は端で折り返し、Home / End は先頭・末尾。選択とフォーカスを一緒に移す
+                const n = tabItems.length;
+                let to = -1;
+                if (e.key === "ArrowRight") to = (index + 1) % n;
+                else if (e.key === "ArrowLeft") to = (index - 1 + n) % n;
+                else if (e.key === "Home") to = 0;
+                else if (e.key === "End") to = n - 1;
+                if (to < 0) return;
+                e.preventDefault();
+                const next = tabItems[to].id;
+                chooseTab(next);
+                document.getElementById(tabDomId(next))?.focus();
+              }}
+              className={`flex-1 min-w-0 truncate rounded-md py-1 text-xs transition-colors ${
+                activeTab === id
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* セクション一覧 — IA 第 2 ラウンド E 案（design.md 2026-09-03）。
+          並べる軸は「何であるか（種類）」ではなく「どこにあるか（在り処）」:
+            記録と知識: すべてのノート（中にフォルダ）→ ナレッジ
+            外部連携:   モバイル → ライブラリ
+            保管庫:     素材（中にメモ）→ プロセス → ラベル
+          プロセスとラベルは将来その場でも作れるようにする方針なので、画像などと同じ
+          「取っておいて使い回す部品」として素材と対等に並べる（素材の中に入れない）。
+          見出し風リンク（→）は中身を持たない節で、シェブロンは出さない。 */}
+      {/* 中段とフッターを 1 つの入れ物にまとめる。高い画面では今まで通り、中段だけが
+          縮んでスクロールし、フッターは下に固定。高さが低い画面（max-height:620px。
+          Windows 既定の 150% 表示は 660 でここに入らない）では入れ物のほうがスクロールし、
+          フッターの 5 項目が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
+          見えなくなる）。DOM は 1 か所のまま CSS だけで切り替えるので、フォーカス順も
+          読み上げも変わらない。ヘッダーは常に上に固定。
+          スクロールできる間（下にまだ項目があるとき）だけ、入れ物の下端に薄いフェードを出す。
+          macOS のオーバーレイ式スクロールバーは止まっていると消えるので、設定などが下にあることに
+          気づけない。一番下までスクロールすると消える。高い画面（固定のとき）では出さない。 */}
+      <div
+        ref={sidebarScrollRef}
+        className="flex-1 min-h-0 flex flex-col [@media(max-height:620px)]:overflow-y-auto"
+      >
+      <div role={isTabs ? "tabpanel" : undefined} id={isTabs ? panelDomId : undefined} aria-labelledby={isTabs ? tabDomId(activeTab) : undefined} className="flex-1 overflow-y-auto pb-2 [@media(max-height:620px)]:flex-none [@media(max-height:620px)]:overflow-y-visible">
+        {isTabs ? (
+          // タブ表示: 見出し（GroupLabel）は出さない。タブの名前が「どこにあるか」を示す
+          activeTab === "notes" ? (
+            <>
+              {noteLinksBlock}
+              {foldersBlock}
+              {labelsBlock}
+            </>
+          ) : activeTab === "knowledge" ? (
+            knowledgeBlock
+          ) : (
+            materialsBlock
+          )
+        ) : (
+          <>
+            {/* ── グループ見出し ── */}
+            <GroupLabel text={t("sidebar.groupRecords")} first />
+            {foldersBlock}
+            {chatLinkBlock}
+            {templateLinkBlock}
+            {knowledgeBlock}
+            {externalBlock}
+            <GroupLabel text={t("sidebar.groupRepository")} />
+            {materialsBlock}
+            {processLinkBlock}
+            {labelsBlock}
+          </>
         )}
       </div>
 
