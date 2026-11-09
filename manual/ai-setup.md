@@ -124,7 +124,7 @@ Assignments remember a model by its display name. Rename a model and the assignm
 | **Advanced work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on. Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
 
-### Turning a tier on or off {#turning-a-tier-on-or-off}
+### Turning a tier on or off <Badge type="tip" text="Added in v0.125.6 (2026-11-09)" /> {#turning-a-tier-on-or-off}
 
 **Standard work model** and **Advanced work model** each have a switch left of the heading (**Use standard work**, **Use advanced work**). If you only want the work your model can handle, turn a tier off. Both start on, for new and existing users alike.
 
