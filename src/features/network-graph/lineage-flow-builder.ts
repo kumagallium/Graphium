@@ -249,27 +249,6 @@ export function withPlanSteps(flow: LevelFlow, input: Omit<BuildProcedureFlowInp
   return { ...flow, graph, steps: proc.operationIds.length > 0 ? proc : null };
 }
 
-/** 系譜で描く段。pathIndex は経路（validPath）の中の位置 */
-export type DisplayLevel = { id: string; pathIndex: number; flow: LevelFlow };
-
-/**
- * 経路から、描く段を決める。計画の段の直後の工程の段は描かない（計画の段に含まれる）。
- * getLevelFlow の nextId は経路の次のノード（工程なら計画の段が focusOperationId にする）
- */
-export function displayLevels(
-  path: string[],
-  getLevelFlow: (nodeId: string, nextId?: string) => LevelFlow,
-): DisplayLevel[] {
-  const out: DisplayLevel[] = [];
-  path.forEach((id, i) => {
-    const last = out[out.length - 1];
-    // 直前の段（経路で隣）が計画で、このノートがその計画の工程なら飛ばす
-    if (last && last.pathIndex === i - 1 && planHasOperation(last.flow, id)) return;
-    out.push({ id, pathIndex: i, flow: getLevelFlow(id, path[i + 1]) });
-  });
-  return out;
-}
-
 export type BuildProcedureFlowInput = {
   planId: string;
   docs: Map<string, GraphiumDocument>;

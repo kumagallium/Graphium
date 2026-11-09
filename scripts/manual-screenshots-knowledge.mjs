@@ -746,10 +746,14 @@ function writePlanNote() {
   writeFileSync(join(dataDir, "notes", `${PLAN_NOTE_ID}.json`), JSON.stringify(doc));
 }
 
-/** 右パネルの Graph → Genealogy（2 つめのサブタブ。v0.109.0 から既定は Neighbors なので押して開く）。計画ノートを開いて、手順の表示スイッチと下の階層への導線を写す */
+/**
+ * 右パネルの Graph → Genealogy（2 つめのサブタブ。v0.109.0 から既定は Neighbors なので押して開く）。
+ * 計画ノートを開き、いま見ている（計画）→ ここから作ったもの（工程に結んだノート）の 1 本線を写す。
+ * 見本のノートには派生の元が無いので、計画を注目にする。計画は工程の図が最初から開くので、手順の表示スイッチごと写す
+ */
 SHOTS["genealogy"] = async () => {
   writePlanNote();
-  const { ctx, page } = await newPage({ viewport: { width: 1280, height: 900 } });
+  const { ctx, page } = await newPage({ viewport: { width: 1280, height: 1000 } });
   await open(page);
   await page.evaluate(() => localStorage.setItem("graphium:graphSelectionLearned", "1"));
   await open(page, `#note/${PLAN_NOTE_ID}`);
@@ -757,17 +761,23 @@ SHOTS["genealogy"] = async () => {
   await page.getByRole("button", { name: "Graph", exact: true }).first().click();
   await page.getByRole("button", { name: "Genealogy", exact: true }).first().waitFor({ state: "visible", timeout: 15000 });
   await page.getByRole("button", { name: "Genealogy", exact: true }).first().click();
+  await page.getByText("You are viewing").first().waitFor({ state: "visible", timeout: 15000 });
+  // 注目が計画なら工程の図は最初から開いている
   await page.getByText("Show steps").first().waitFor({ state: "visible", timeout: 15000 });
-  // グラフがパネルに収まる（fit）まで待つ
   // 手順を表示オンだと全工程の手順が横に長く並び、右パネルでは読めない大きさになる。
   // オフにして工程だけの図にする（スイッチ自体は見えたまま）
   if (opt("--steps", "off") === "off") await page.getByRole("button", { name: "Show steps", exact: true }).first().click();
+  // グラフがパネルに収まる（fit）まで待つ
   await page.waitForTimeout(4500);
   await page.mouse.move(700, 10);
   await hideNoise(page);
-  // 右パネルだけを切る（本文の幅に縮めても図の文字が読める大きさにする）。パネルは 856px から幅 384px
-  const rf = await page.getByText("React Flow").first().boundingBox();
-  await shot(page, opt("--out-name", "genealogy"), { clip: { x: 856, y: 46, width: 384, height: Math.ceil(rf.y + rf.height + 10 - 46) } });
+  // 右パネルだけを切る。パネルは 856px から幅 384px。下端は 1 本線の終わり（ここから作ったもの）まで
+  const bottom = await page.evaluate(() => {
+    const label = [...document.querySelectorAll("div")].find((d) => d.textContent === "Made from this");
+    const row = label?.parentElement?.parentElement;
+    return row ? row.getBoundingClientRect().bottom : 900;
+  });
+  await shot(page, opt("--out-name", "genealogy"), { clip: { x: 856, y: 46, width: 384, height: Math.ceil(bottom + 12 - 46) } });
   await ctx.close();
 };
 

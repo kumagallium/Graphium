@@ -1,15 +1,15 @@
-// 来歴の「図」表示。段（起点 → … → 現在のノート）を 1 段ずつ、工程グラフと同じ
-// StepFlowView（variant="preview"）で描く。手で並べた配置は工程グラフ・ステップタブと共有する
-// （layoutScope は LevelFlow が持つ）。線の無い段（資料から知見が多数、など）は図にせず札の折り返しにする。
+// 系譜の表示。起点 → … → 注目（いま見ているノート）→ ここから作ったもの を点と線の 1 本線で描く。
+// 計画・手順のあるノートは「図を見る」で、工程グラフと同じ StepFlowView（variant="preview"）を
+// その行の下に開く。手で並べた配置は工程グラフ・ステップタブと共有する（layoutScope は LevelFlow が持つ）。
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FileText, Maximize2, Workflow, X } from "lucide-react";
+import { FileText, Library, Lightbulb, Maximize2, NotebookPen, Workflow, X } from "lucide-react";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useT } from "../../i18n";
 import type { FlowGraphData, FlowNoteRef } from "./activity-graph-adapter";
-import { displayLevels, type LevelFlow } from "./lineage-flow-builder";
-import type { LineageStackModel, StackNode } from "./lineage-stack-model";
+import type { LevelFlow } from "./lineage-flow-builder";
+import type { LineageStackModel, StackNode, StackNodeKind } from "./lineage-stack-model";
 import { KIND_PALETTE } from "./flow-palette";
 import {
   PLAN_AS_PLANNED_COLOR,
@@ -151,117 +151,237 @@ function writeShowSteps(on: boolean) {
   }
 }
 
-type FlowLevelProps = {
+type LineItem = { id: string; title: string; kind: StackNodeKind };
+
+/** 段のノードの子（箱の中身と、上限で省いた名前だけの札）。箱の見出しごと */
+function childGroupsOf(stack: LineageStackModel, node: StackNode): { key: string; label: string; items: LineItem[] }[] {
+  return node.groups
+    .map((g) => {
+      const items: LineItem[] = [];
+      const seen = new Set<string>();
+      for (const id of g.children) {
+        const c = stack.nodes[id];
+        if (!c || seen.has(id)) continue;
+        seen.add(id);
+        items.push({ id, title: c.title, kind: c.kind });
+      }
+      for (const h of g.hidden ?? []) {
+        if (seen.has(h.id)) continue;
+        seen.add(h.id);
+        items.push(h);
+      }
+      return { key: g.key, label: g.label, items };
+    })
+    .filter((g) => g.items.length > 0);
+}
+
+/** 種類ごとの印（工程グラフの色に揃える） */
+function KindIcon({ kind, size = 12 }: { kind: StackNodeKind; size?: number }) {
+  const [Icon, color] =
+    kind === "plan"
+      ? [Workflow, KIND_PALETTE.activity.text]
+      : kind === "knowledge"
+        ? [Lightbulb, KIND_PALETTE.tool.text]
+        : kind === "asset"
+          ? [FileText, KIND_PALETTE.material.text]
+          : kind === "root"
+            ? [Library, "var(--color-text-tertiary)"]
+            : [NotebookPen, KIND_PALETTE.activity.text];
+  return <Icon size={size} className="shrink-0" style={{ color }} />;
+}
+
+/** 1 本線の点。いま注目しているものは大きい輪 */
+function Dot({ focus }: { focus?: boolean }) {
+  return focus ? (
+    <span className="mt-2 h-3.5 w-3.5 shrink-0 rounded-full border-[3px] border-primary bg-background" />
+  ) : (
+    <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/50" />
+  );
+}
+
+/** 1 本線の 1 行（左に点と縦線、右に中身） */
+function LineRow({ dot, line, children }: { dot: ReactNode; line: boolean; children: ReactNode }) {
+  return (
+    <div className="flex gap-2.5">
+      <div className="flex w-3.5 shrink-0 flex-col items-center">
+        {dot}
+        {line && <span className="w-px flex-1 bg-border" />}
+      </div>
+      <div className="min-w-0 flex-1 pb-3">{children}</div>
+    </div>
+  );
+}
+
+const linkButton = "cursor-pointer text-left text-[11px] text-primary hover:underline";
+
+/** 名前の一覧。押すとそのノートを 1 本線の注目に据える */
+function ItemList({ items, onPick, muted }: { items: LineItem[]; onPick: (item: LineItem) => void; muted?: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          onClick={() => onPick(it)}
+          title={it.title}
+          className={`flex min-w-0 cursor-pointer items-start gap-1.5 rounded px-1 py-0.5 text-left hover:bg-muted ${muted ? "text-[11px] text-muted-foreground" : "text-xs"}`}
+        >
+          <span className="mt-0.5">
+            <KindIcon kind={it.kind} size={muted ? 11 : 12} />
+          </span>
+          <span className="min-w-0 flex-1 break-words line-clamp-2">{it.title}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** ここから作ったもの：箱ごとに先頭の数件を出し、残りは「ほかに N 件」に畳む */
+const DERIVED_VISIBLE = 5;
+
+function DerivedRows({
+  stack,
+  node,
+  onPick,
+  inDiagram,
+}: {
+  stack: LineageStackModel;
   node: StackNode;
+  onPick: (item: LineItem) => void;
+  /** 一覧に出すものは無いが、図（計画の工程など）にはある */
+  inDiagram?: boolean;
+}) {
+  const t = useT();
+  const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set());
+  const groups = childGroupsOf(stack, node);
+  if (node.truncated) return <div className="text-xs text-muted-foreground">{t("lineageStack.truncated")}</div>;
+  if (groups.length === 0)
+    return (
+      <div className="text-xs text-muted-foreground">{inDiagram ? t("lineageLine.derivedInDiagram") : t("lineageLine.derivedNone")}</div>
+    );
+  const toggle = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <div className="flex flex-col gap-2">
+      {groups.map((g) => {
+        const open = openKeys.has(g.key);
+        const shown = open ? g.items : g.items.slice(0, DERIVED_VISIBLE);
+        const rest = g.items.length - DERIVED_VISIBLE;
+        return (
+          <div key={g.key} className="flex flex-col gap-0.5">
+            {groups.length > 1 && <div className="text-[11px] text-muted-foreground">{g.label}</div>}
+            <div className={open ? "max-h-72 overflow-y-auto" : ""}>
+              <ItemList items={shown} onPick={onPick} />
+            </div>
+            {rest > 0 && (
+              <button type="button" onClick={() => toggle(g.key)} className={`${linkButton} px-1`}>
+                {open ? t("lineageStack.close") : t("lineageLine.others", { count: String(rest) })}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 図を描ける段か（線のある図。線の無い札の並びは「ここから作ったもの」の一覧で足りる） */
+function hasDiagram(flow: LevelFlow): boolean {
+  if (flow.kind === "none") return false;
+  if (flow.kind === "plan") return true;
+  return flow.graph.edges.length > 0;
+}
+
+type LevelDiagramProps = {
   index: number;
-  last: boolean;
   flow: LevelFlow;
-  next?: StackNode;
   expanded: boolean;
   currentId?: string;
+  nextId?: string;
   /** 計画の段で「手順を表示」がオンか（図全体で 1 つ） */
   showSteps: boolean;
   onToggleSteps: () => void;
   onOpenRef: (levelIndex: number, ref: FlowNoteRef) => void;
-  onOpen?: (node: StackNode) => void;
-  canOpen?: (node: StackNode) => boolean;
 };
 
 /**
- * 1 段。onOpenNoteRef を段ごとに安定させる（毎描画で作り直すと StepFlowView の
- * ノード再構築 effect が走り続けるため）。memo で、無関係な再描画でも図を触らない
+ * 1 本線の行の下に開く図（工程グラフ・ステップタブと同じ StepFlowView）。onOpenNoteRef を段ごとに
+ * 安定させる（毎描画で作り直すと StepFlowView のノード再構築 effect が走り続けるため）
  */
-const FlowLevel = memo(function FlowLevel({
-  node,
+const LevelDiagram = memo(function LevelDiagram({
   index,
-  last,
   flow,
-  next,
   expanded,
   currentId,
+  nextId,
   showSteps,
   onToggleSteps,
   onOpenRef,
-  onOpen,
-  canOpen,
-}: FlowLevelProps) {
+}: LevelDiagramProps) {
   const t = useT();
   const onOpenNoteRef = useCallback((ref: FlowNoteRef) => onOpenRef(index, ref), [onOpenRef, index]);
   // 参照を固定する（毎描画で作り直すと StepFlowView のノード再構築 effect が走り続ける）
   const expandLabel = t("lineageFlow.expand");
   const noteRefAction = useMemo(() => ({ label: expandLabel, icon: "expand" as const }), [expandLabel]);
   const openLabel = t("lineageStack.openNote");
-  // 計画の段: 手順を表示オンなら全工程の手順をつなげた図、オフなら工程グラフ
+  if (flow.kind === "none") return null;
   const hasSteps = flow.kind === "plan" && !!flow.steps;
   const useSteps = flow.kind === "plan" && !!flow.steps && showSteps;
-  const active = flow.kind === "plan" && flow.steps && showSteps ? flow.steps : flow.kind === "none" ? null : flow;
+  const active = flow.kind === "plan" && flow.steps && showSteps ? flow.steps : flow;
   const height = useSteps
     ? expanded ? PROCEDURE_EXPANDED_FLOW_HEIGHT : PROCEDURE_PANEL_FLOW_HEIGHT
     : expanded ? EXPANDED_FLOW_HEIGHT : PANEL_FLOW_HEIGHT;
-  const title = node.title;
   return (
-    <section className={`rounded-xl border border-border bg-background ${last ? "" : "opacity-60"}`}>
-      <header className={`flex items-start gap-2 px-3 py-2 ${flow.kind === "none" && !node.truncated ? "" : "border-b border-border"}`}>
-        <span className="min-w-0 flex-1 break-words text-sm font-medium line-clamp-2" title={title}>
-          {title}
-        </span>
-        {hasSteps && (
-          <button
-            type="button"
-            aria-pressed={showSteps}
-            onClick={onToggleSteps}
-            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs cursor-pointer ${
-              showSteps ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {t("lineageFlow.showSteps")}
-          </button>
-        )}
-        {node.isCurrent && <HereBadge label={t("lineageStack.here")} />}
-        {last && index > 0 && onOpen && node.open && (canOpen?.(node) ?? true) && (
-          <button
-            type="button"
-            onClick={() => onOpen(node)}
-            className="shrink-0 whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-xs hover:bg-muted"
-          >
-            {t("lineageStack.openNote")}
-          </button>
-        )}
-      </header>
-      {flow.kind === "none" || !active ? (
-        <div className={`px-3 pb-2 text-xs text-muted-foreground ${node.truncated ? "pt-2" : ""}`}>
-          {node.truncated ? t("lineageStack.truncated") : t("lineageStack.derived.none")}
+    <div className="mt-2 flex flex-col gap-1.5">
+      {(flow.kind === "plan" || hasSteps) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {hasSteps && (
+            <button
+              type="button"
+              aria-pressed={showSteps}
+              onClick={onToggleSteps}
+              className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs cursor-pointer ${
+                showSteps ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {t("lineageFlow.showSteps")}
+            </button>
+          )}
+          <Legend />
         </div>
-      ) : !useSteps && active.graph.edges.length === 0 ? (
-        <CardsLevel
-          graph={active.graph}
-          nextId={next?.id}
-          currentId={currentId}
-          hereLabel={t("lineageStack.here")}
-          height={height}
-          onOpenNoteRef={onOpenNoteRef}
-        />
-      ) : (
-        <div style={{ height }}>
-          <StepFlowView
+      )}
+      <div className="overflow-hidden rounded-lg border border-border bg-background">
+        {!useSteps && active.graph.edges.length === 0 ? (
+          <CardsLevel
             graph={active.graph}
-            variant="preview"
-            toolbar="layoutOnly"
-            // 右パネルの幅（300〜400px）でも図全体が収まるよう、全画面より深く縮める
-            fitMinZoom={expanded ? undefined : 0.25}
-            layoutScope={active.layoutScope}
+            nextId={nextId}
+            currentId={currentId}
+            hereLabel={t("lineageStack.here")}
+            height={height}
             onOpenNoteRef={onOpenNoteRef}
-            noteRefAction={noteRefAction}
-            noteRefOpenLabel={openLabel}
           />
-        </div>
-      )}
-      {next && (
-        <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
-          {t("lineageFlow.opening", { title: next.title })}
-        </div>
-      )}
-    </section>
+        ) : (
+          <div style={{ height }}>
+            <StepFlowView
+              graph={active.graph}
+              variant="preview"
+              toolbar="layoutOnly"
+              // 右パネルの幅（300〜400px）でも図全体が収まるよう、全画面より深く縮める
+              fitMinZoom={expanded ? undefined : 0.25}
+              layoutScope={active.layoutScope}
+              onOpenNoteRef={onOpenNoteRef}
+              noteRefAction={noteRefAction}
+              noteRefOpenLabel={openLabel}
+            />
+          </div>
+        )}
+      </div>
+    </div>
   );
 });
 
@@ -269,6 +389,11 @@ const FlowLevel = memo(function FlowLevel({
 // 1 列になり、知見の文が切れずに読める。全画面では列が増える
 const CARD_GRID = { gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" } as const;
 
+/**
+ * 系譜を「元 → いま → ここから作ったもの」の 1 本線で描く。経路（path）の最後が注目で、
+ * それより上は元にしたもの（押すとそこへ戻る）。同じ元から作ったほかのものは「ほかに N 件」に畳む。
+ * 計画・手順のあるノートは「図を見る」で工程グラフと同じ図をその場に開く
+ */
 export function LineageFlowView({
   stack,
   getLevelFlow,
@@ -283,7 +408,7 @@ export function LineageFlowView({
   /** 「ノートを開く」（サイドピーク） */
   onOpen?: (node: StackNode) => void;
   canOpen?: (node: StackNode) => boolean;
-  /** まだ作っていないノードを開くとき（段の「他 N 件」と同じ） */
+  /** まだ作っていないノードを開くとき（上限で省いた子） */
   onFocusPath?: (path: string[]) => void;
   /** まだ作っていないノード（上限で省いた子）を開いてよいか。無ければ許す */
   canFocus?: (nodeId: string) => boolean;
@@ -291,6 +416,10 @@ export function LineageFlowView({
   const t = useT();
   const [path, setPath] = useState<string[]>(stack.initialPath);
   const [expanded, setExpanded] = useState(false);
+  // 図の開閉を手で切り替えた行（ノード id → 開いているか）。無ければ既定（注目が計画なら開く）
+  const [diagramToggled, setDiagramToggled] = useState<Map<string, boolean>>(() => new Map());
+  // 「ほかに N 件」を開いている元の行（ノード id）
+  const [siblingsOpen, setSiblingsOpen] = useState<Set<string>>(() => new Set());
   // 計画の段の「手順を表示」。図全体で 1 つ（すべての計画の段で共通）、端末ごとに覚える
   const [showSteps, setShowSteps] = useState<boolean>(readShowSteps);
   const toggleSteps = useCallback(() => {
@@ -300,12 +429,14 @@ export function LineageFlowView({
     });
   }, []);
 
-  // 起点と初期の経路が変わったときだけ開き方を初期に戻す（段の表示と同じ鍵）
+  // 起点と初期の経路が変わったときだけ開き方を初期に戻す
   const modelKey = `${stack.rootId}|${stack.initialPath.join(">")}`;
   const initialPathRef = useRef(stack.initialPath);
   initialPathRef.current = stack.initialPath;
   useEffect(() => {
     setPath(initialPathRef.current);
+    setDiagramToggled(new Map());
+    setSiblingsOpen(new Set());
   }, [modelKey]);
 
   // Esc で全画面を閉じる
@@ -324,6 +455,16 @@ export function LineageFlowView({
     return i < 0 ? path : path.slice(0, i);
   }, [path, stack]);
 
+  /** 経路を chain まで伸ばす。stack に無い（上限で省いた）ノートは builder に作らせる */
+  const extendPath = (levelIndex: number, chain: string[]) => {
+    const known = chain.every((id) => !!stack.nodes[id]);
+    // 作っていないノードは、ほかの手がかり（素データにある）が無ければ何もしない
+    if (!known && !(onFocusPath && chain.every((id) => !!stack.nodes[id] || (canFocus?.(id) ?? true)))) return;
+    const next = [...validPath.slice(0, levelIndex + 1), ...chain];
+    setPath(next);
+    if (!known) onFocusPath?.(next);
+  };
+
   const openRef = (levelIndex: number, ref: FlowNoteRef) => {
     const target = ref.noteId;
     if (!target) return;
@@ -333,95 +474,171 @@ export function LineageFlowView({
       if (node && onOpen && (canOpen?.(node) ?? true)) onOpen(node);
       return;
     }
-    // 工程の派生ノートは、経路に工程を挟む（工程の段は描かないが、経路としては必要）
-    const chain = ref.via ? [ref.via, target] : [target];
-    const known = chain.every((id) => !!stack.nodes[id]);
-    // 作っていないノードは、ほかの手がかり（素データにある）が無ければ何もしない
-    if (!known && !(onFocusPath && chain.every((id) => !!stack.nodes[id] || (canFocus?.(id) ?? true)))) return;
-    const next = [...validPath.slice(0, levelIndex + 1), ...chain];
-    setPath(next);
-    // 上限で作っていないノードは、経路として builder に頼んで作らせる
-    if (!known) onFocusPath?.(next);
+    // 工程の派生ノートは、経路に工程を挟む
+    extendPath(levelIndex, ref.via ? [ref.via, target] : [target]);
   };
-  // 段から渡す関数は参照を固定し、中で最新の openRef を呼ぶ
+  // 図から渡す関数は参照を固定し、中で最新の openRef を呼ぶ
   const openRefLatest = useRef(openRef);
   openRefLatest.current = openRef;
   const stableOpenRef = useCallback((levelIndex: number, ref: FlowNoteRef) => openRefLatest.current(levelIndex, ref), []);
 
-  const header = (
-    <>
-      <div className="flex items-center gap-2 text-xs">
-        <Workflow size={14} className="shrink-0 text-muted-foreground" />
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {validPath.map((id, i) => {
-            const last = i === validPath.length - 1;
-            const title = stack.nodes[id].title;
-            return (
-              <span key={`${id}-${i}`} className={`flex min-w-0 items-center gap-1.5 ${last ? "flex-[2]" : "flex-1"}`}>
-                {i > 0 && <span className="shrink-0 text-muted-foreground">›</span>}
-                {last ? (
-                  <span className="min-w-0 truncate whitespace-nowrap text-foreground" title={title}>
-                    {title}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPath(validPath.slice(0, i + 1))}
-                    title={title}
-                    className="min-w-0 truncate whitespace-nowrap text-muted-foreground hover:underline"
-                  >
-                    {title}
-                  </button>
-                )}
-              </span>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          data-tooltip={expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
-          aria-label={expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
-          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
-        >
-          {expanded ? <X size={12} /> : <Maximize2 size={12} />}
-          {expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
-        </button>
-      </div>
-      <Legend />
-    </>
-  );
+  const toggleIn = (set: (f: (prev: Set<string>) => Set<string>) => void, id: string) =>
+    set((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const currentId = Object.values(stack.nodes).find((n) => n.isCurrent)?.id;
-  // 描く段（計画の段の直後の工程の段は、計画の段に含まれるので描かない）
-  const shown = displayLevels(validPath, getLevelFlow);
-  const levels = shown.map(({ id, pathIndex, flow }, k) => {
-    const last = k === shown.length - 1;
-    // 図の種類・手順を表示の切り替えで作り直す。ノードが原点に重なるのを防ぐ
-    const mode = flow.kind === "plan" && flow.steps ? (showSteps ? "steps" : "plan") : "";
+  const lastIndex = validPath.length - 1;
+
+  // 計画は工程が図にしか無いので、注目になったら最初から図を開く
+  const isDiagramOpen = (id: string, i: number, flow: LevelFlow) =>
+    diagramToggled.get(id) ?? (i === lastIndex && flow.kind === "plan");
+  const diagramToggle = (id: string, i: number, flow: LevelFlow) => {
+    if (!hasDiagram(flow)) return null;
+    const open = isDiagramOpen(id, i, flow);
     return (
-      <FlowLevel
-        key={`${id}-${pathIndex}-${flow.kind}-${mode}`}
-        node={stack.nodes[id]}
-        index={pathIndex}
-        last={last}
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setDiagramToggled((prev) => new Map(prev).set(id, !open))}
+        className={linkButton}
+      >
+        {open ? t("lineageLine.hideDiagram") : t("lineageLine.showDiagram")}
+      </button>
+    );
+  };
+
+  const diagramOf = (id: string, i: number, flow: LevelFlow) =>
+    isDiagramOpen(id, i, flow) && hasDiagram(flow) ? (
+      <LevelDiagram
+        index={i}
         flow={flow}
-        next={last ? undefined : stack.nodes[shown[k + 1].id]}
         expanded={expanded}
         currentId={currentId}
+        nextId={validPath[i + 1]}
         showSteps={showSteps}
         onToggleSteps={toggleSteps}
         onOpenRef={stableOpenRef}
-        onOpen={onOpen}
-        canOpen={canOpen}
       />
+    ) : null;
+
+  const rows = validPath.map((id, i) => {
+    const node = stack.nodes[id];
+    const flow = getLevelFlow(id, validPath[i + 1]);
+    if (i < lastIndex) {
+      // 元にしたもの。押すとそこを注目に戻す。同じ元から作ったほかのものは畳む
+      const others = childGroupsOf(stack, node)
+        .flatMap((g) => g.items)
+        .filter((it, k, all) => it.id !== validPath[i + 1] && all.findIndex((x) => x.id === it.id) === k);
+      const open = siblingsOpen.has(id);
+      return (
+        <LineRow key={`${id}-${i}`} dot={<Dot />} line>
+          <div className="flex flex-col gap-1">
+            {i === lastIndex - 1 && <div className="text-[11px] text-muted-foreground">{t("lineageLine.from")}</div>}
+            <div className="flex min-w-0 items-start gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPath(validPath.slice(0, i + 1))}
+                title={node.title}
+                className="flex min-w-0 flex-1 cursor-pointer items-start gap-1.5 text-left text-xs hover:underline"
+              >
+                <span className="mt-0.5">
+                  <KindIcon kind={node.kind} />
+                </span>
+                <span className="min-w-0 break-words line-clamp-2">{node.title}</span>
+              </button>
+              {node.isCurrent && <HereBadge label={t("lineageStack.here")} />}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              {others.length > 0 && (
+                <button type="button" aria-expanded={open} onClick={() => toggleIn(setSiblingsOpen, id)} className={linkButton}>
+                  {open ? t("lineageStack.close") : t("lineageLine.others", { count: String(others.length) })}
+                </button>
+              )}
+              {diagramToggle(id, i, flow)}
+            </div>
+            {open && (
+              <div className="max-h-60 overflow-y-auto">
+                <ItemList items={others} onPick={(it) => extendPath(i, [it.id])} muted />
+              </div>
+            )}
+            {diagramOf(id, i, flow)}
+          </div>
+        </LineRow>
+      );
+    }
+    // 注目（経路の最後）。現在のノートなら「いま見ている」
+    const canOpenHere = i > 0 && !!onOpen && !!node.open && (canOpen?.(node) ?? true);
+    return (
+      <LineRow key={`${id}-${i}`} dot={<Dot focus />} line>
+        <div className="rounded-xl border-2 border-primary bg-background px-3 py-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <KindIcon kind={node.kind} size={11} />
+            <span className="min-w-0 flex-1">{node.isCurrent ? t("lineageLine.here") : t("lineageLine.selected")}</span>
+          </div>
+          <div className="mt-1 flex items-start gap-2">
+            <span className="min-w-0 flex-1 break-words text-sm font-semibold line-clamp-3" title={node.title}>
+              {node.title}
+            </span>
+            {canOpenHere && (
+              <button
+                type="button"
+                onClick={() => onOpen?.(node)}
+                className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-xs hover:bg-muted"
+              >
+                {t("lineageStack.openNote")}
+              </button>
+            )}
+          </div>
+          {hasDiagram(flow) && <div className="mt-1">{diagramToggle(id, i, flow)}</div>}
+          {diagramOf(id, i, flow)}
+        </div>
+      </LineRow>
     );
   });
+
+  const focusNode = lastIndex >= 0 ? stack.nodes[validPath[lastIndex]] : undefined;
+  const focusHasDiagram = !!focusNode && hasDiagram(getLevelFlow(focusNode.id));
+
+  const header = (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="min-w-0 flex-1" />
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        data-tooltip={expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
+        aria-label={expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground"
+      >
+        {expanded ? <X size={12} /> : <Maximize2 size={12} />}
+        {expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
+      </button>
+    </div>
+  );
 
   const body = (
     <div className="@container flex flex-col gap-3">
       {header}
-      {levels}
+      <div className="flex flex-col">
+        {rows}
+        {focusNode && (
+          <LineRow dot={<Dot />} line={false}>
+            <div className="flex flex-col gap-1">
+              <div className="text-[11px] text-muted-foreground">{t("lineageLine.derived")}</div>
+              <DerivedRows
+                key={focusNode.id}
+                stack={stack}
+                node={focusNode}
+                onPick={(it) => extendPath(lastIndex, [it.id])}
+                inDiagram={focusHasDiagram}
+              />
+            </div>
+          </LineRow>
+        )}
+      </div>
     </div>
   );
 

@@ -1,6 +1,6 @@
 // 来歴の「図」: 段ごとの図の組み立てテスト（パン作りの世界観）
 import { describe, expect, it } from "vitest";
-import { buildLevelFlow, buildProcedureFlow, displayLevels, planHasOperation, withPlanSteps, type LevelFlow } from "./lineage-flow-builder";
+import { buildLevelFlow, buildProcedureFlow, planHasOperation, withPlanSteps, type LevelFlow } from "./lineage-flow-builder";
 import { buildPlanFlowGraph, collectOperationRows } from "./plan-flow";
 import { planFlowScope, procedureFlowScope, provFlowScope } from "./graph-layout";
 import type { LineageStackModel, StackNode } from "./lineage-stack-model";
@@ -553,41 +553,5 @@ describe("noteRef の action（系譜のボタン）", () => {
     expect(act("dough")).toBe("expand");
     expect(act("plan")).toBe("expand");
     expect(act("plain")).toBe("open");
-  });
-});
-
-describe("displayLevels（描く段）", () => {
-  const planFlow = (ops: string[]): LevelFlow => ({
-    kind: "plan",
-    layoutScope: "plan:p",
-    steps: null,
-    graph: {
-      steps: ops.map((id, i) => ({ id: `note:${id}`, name: id, params: [], noteRef: { noteId: id, tableBlockId: "t", rowIndex: i, action: "open" as const } })),
-      entities: [],
-      edges: [],
-    },
-  });
-  const noneFlow: LevelFlow = { kind: "none" };
-  const get = (nodeId: string, nextId?: string): LevelFlow => {
-    calls.push([nodeId, nextId]);
-    return nodeId === "plan" || nodeId === "plan2" ? planFlow(["op", "op2"]) : noneFlow;
-  };
-  const calls: [string, string | undefined][] = [];
-
-  it("[計画, 工程] は計画だけ（工程を focus に渡す）", () => {
-    calls.length = 0;
-    const out = displayLevels(["plan", "op"], get);
-    expect(out.map((l) => l.id)).toEqual(["plan"]);
-    expect(calls).toContainEqual(["plan", "op"]);
-  });
-
-  it("[計画, 工程, 派生] は計画と派生", () => {
-    const out = displayLevels(["plan", "op", "rye"], get);
-    expect(out.map((l) => [l.id, l.pathIndex])).toEqual([["plan", 0], ["rye", 2]]);
-  });
-
-  it("計画以外の段・工程でないノートは飛ばさない", () => {
-    expect(displayLevels(["know", "op"], get).map((l) => l.id)).toEqual(["know", "op"]);
-    expect(displayLevels(["plan", "other"], get).map((l) => l.id)).toEqual(["plan", "other"]);
   });
 });
