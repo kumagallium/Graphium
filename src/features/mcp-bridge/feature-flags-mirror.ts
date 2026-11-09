@@ -6,7 +6,7 @@
 // ・ベストエフォート（書けなくてもアプリは止めない）
 
 import { useEffect } from "react";
-import { isAtomLayerEnabled, isClaimsEnabled, SETTINGS_SAVED_EVENT } from "../settings/store";
+import { loadSettings, SETTINGS_SAVED_EVENT } from "../settings/store";
 
 export type FeatureFlagsFile = {
   claims: boolean;
@@ -20,9 +20,13 @@ export type FeatureFlagsStorage = {
 
 export const FEATURE_FLAGS_KEY = "feature-flags";
 
-/** 現在の設定から写しの中身（updatedAt を除く）を作る */
+/** 現在の設定から写しの中身（updatedAt を除く）を作る。
+ *  モデルの段のスイッチ（標準・精密）は写さない — MCP の道具は Graphium のモデルを呼ばず、
+ *  外のアシスタントが自分のモデルで作るので、段を切っても MCP からは作れるままにする */
 export function readCurrentFlags(): Pick<FeatureFlagsFile, "claims" | "insights"> {
-  return { claims: isClaimsEnabled(), insights: isAtomLayerEnabled() };
+  const f = loadSettings().features;
+  const claims = f?.claims === true;
+  return { claims, insights: claims && f?.insights === true };
 }
 
 /**

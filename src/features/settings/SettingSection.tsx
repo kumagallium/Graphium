@@ -19,6 +19,7 @@ import {
   SETTINGS_HEADING_ICON_SIZE,
   SETTINGS_ITEM_BODY_CLASS,
 } from "./SettingsGroup";
+import { SwitchButton } from "./SettingToggle";
 
 export type SettingSectionProps = {
   /** 見出しの左に置くアイコン（省略可） */
@@ -38,6 +39,11 @@ export type SettingSectionProps = {
    * 束（SettingsGroup）やまとまりの中に置く項目は false のまま（帯の中に帯を重ねない）
    */
   band?: boolean;
+  /**
+   * 見出しの左に置くスイッチ（段を使う・使わないなど）。オフのとき中身（children）は出さず、
+   * summary の代わりに offSummary を出す。オン・オフで何を隠すかは呼び出し側が決める
+   */
+  toggle?: { checked: boolean; onChange: () => void; label: string; offSummary?: ReactNode };
 };
 
 export function SettingSection({
@@ -48,6 +54,7 @@ export function SettingSection({
   defaultOpen = false,
   children,
   band = false,
+  toggle,
 }: SettingSectionProps) {
   const { t } = useLocale();
   const [open, setOpen] = useState(defaultOpen);
@@ -64,6 +71,11 @@ export function SettingSection({
     <div>
       <div className={`flex ${align} gap-1.5 ${band ? SETTINGS_BLOCK_BAND_CLASS : ""}`}>
         <div className={`flex flex-1 min-w-0 ${align} gap-1`}>
+          {toggle && (
+            <span className={band ? "" : "-mt-px"}>
+              <SwitchButton checked={toggle.checked} onChange={toggle.onChange} label={toggle.label} />
+            </span>
+          )}
           {Icon && <Icon size={SETTINGS_HEADING_ICON_SIZE} className={`text-muted-foreground shrink-0 ${band ? "" : "mt-0.5"}`} />}
           <h3 className={`${titleClass} flex-1 min-w-0`}>{title}</h3>
         </div>
@@ -81,9 +93,11 @@ export function SettingSection({
         )}
       </div>
 
-      {summary && (
-        <p className={`text-xs text-muted-foreground ${band ? "mt-1.5" : "mt-1"} ${indent}`}>{summary}</p>
-      )}
+      {(() => {
+        const off = toggle && !toggle.checked;
+        const line = off && toggle.offSummary ? toggle.offSummary : summary;
+        return line ? <p className={`text-xs text-muted-foreground ${band ? "mt-1.5" : "mt-1"} ${indent}`}>{line}</p> : null;
+      })()}
 
       {details && open && (
         <div className={indent}>
@@ -93,7 +107,7 @@ export function SettingSection({
         </div>
       )}
 
-      {children && <div className={`mt-2 ${indent}`}>{children}</div>}
+      {children && (!toggle || toggle.checked) && <div className={`mt-2 ${indent}`}>{children}</div>}
     </div>
   );
 }

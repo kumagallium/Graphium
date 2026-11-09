@@ -413,6 +413,12 @@ export type Settings = {
   preciseModel?: string;
   /** 難しさ別の 3 段（v0.125）へ設定を移し替え済みか。無ければ読み込み時に 1 回だけ移し替える */
   modelTiersV1?: boolean;
+  /** 標準の処理の段を使うか。false にすると、その段の機能（ナレッジ化・翻訳・トピックの整理）を
+   *  UI から隠し、自動の取り込みも走らせない。未保存（undefined）はオン。作ったページは消さない */
+  standardTierEnabled?: boolean;
+  /** 精密な処理の段を使うか。false にすると、その段の機能（手順の抽出・計画・洞察・清書と要約・
+   *  じっくり調べてから答える）を UI から隠し、自動では走らせない。未保存（undefined）はオン */
+  preciseTierEnabled?: boolean;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
   /** 旧: AI チャットだけを別のモデルにする上書き。v0.125.1 で選択欄を外し、読まない
@@ -1195,7 +1201,18 @@ export function isAgentConfigured(): boolean {
  * 既定値の向きは loadSettings 側（初回起動は OFF、既存ユーザーは ON）にのみ持たせる。
  */
 export function isClaimsEnabled(): boolean {
-  return loadSettings().features?.claims === true;
+  return isStandardTierEnabled() && loadSettings().features?.claims === true;
+}
+
+/** 標準の処理の段がオンか（未保存はオン）。オフのとき、ナレッジ化・翻訳・トピックの整理を隠す */
+export function isStandardTierEnabled(): boolean {
+  return loadSettings().standardTierEnabled !== false;
+}
+
+/** 精密な処理の段がオンか（未保存はオン）。オフのとき、手順の抽出・計画・洞察・清書と要約・
+ *  じっくり調べてから答えるを隠す */
+export function isPreciseTierEnabled(): boolean {
+  return loadSettings().preciseTierEnabled !== false;
 }
 
 /**
@@ -1209,7 +1226,12 @@ export function isClaimsEnabled(): boolean {
  */
 export function isAtomLayerEnabled(): boolean {
   const settings = loadSettings();
-  return settings.features?.claims === true && settings.features?.insights === true;
+  return (
+    settings.standardTierEnabled !== false &&
+    settings.preciseTierEnabled !== false &&
+    settings.features?.claims === true &&
+    settings.features?.insights === true
+  );
 }
 
 /**
@@ -1235,7 +1257,9 @@ export function isAutoFullCheckEnabled(): boolean {
 
 /** チャットの agentic search が ON か（送信のたびに即時判定する） */
 export function isAgenticSearchEnabled(): boolean {
-  return loadSettings().experimental?.agenticSearch === true;
+  const s = loadSettings();
+  // 精密な処理の段がオフなら、オンにしてあっても使わない（設定の欄も隠れている）
+  return s.preciseTierEnabled !== false && s.experimental?.agenticSearch === true;
 }
 
 /** 会議の文字起こし設定を読む（録音開始と設定画面が使う） */

@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isAgenticSearchEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -735,5 +735,45 @@ describe("features.sourceSummaries — 資料の要約ページ（オプトイ�
     expect(loadSettings().features?.sourceSummaries).toBe(false);
     localStorage.setItem("graphium-settings", JSON.stringify({ features: { claims: true, sourceSummaries: true } }));
     expect(loadSettings().features?.sourceSummaries).toBe(true);
+  });
+});
+
+describe("段のスイッチ（標準・精密を使うか）", () => {
+  beforeEach(() => localStorage.clear());
+  const save = (v: Record<string, unknown>) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, features: { claims: true, insights: true }, ...v }));
+
+  it("未保存（新規も既存も）はどちらもオン。機能は今までどおり", () => {
+    save({});
+    expect(isStandardTierEnabled()).toBe(true);
+    expect(isPreciseTierEnabled()).toBe(true);
+    expect(isClaimsEnabled()).toBe(true);
+    expect(isAtomLayerEnabled()).toBe(true);
+  });
+
+  it("標準をオフにすると、知見とそれに乗る洞察も使わない", () => {
+    save({ standardTierEnabled: false });
+    expect(isStandardTierEnabled()).toBe(false);
+    expect(isClaimsEnabled()).toBe(false);
+    expect(isAtomLayerEnabled()).toBe(false);
+  });
+
+  it("精密をオフにすると、洞察と「じっくり調べてから答える」を使わない。知見は使う", () => {
+    save({ preciseTierEnabled: false, experimental: { agenticSearch: true } });
+    expect(isPreciseTierEnabled()).toBe(false);
+    expect(isClaimsEnabled()).toBe(true);
+    expect(isAtomLayerEnabled()).toBe(false);
+    expect(isAgenticSearchEnabled()).toBe(false);
+  });
+
+  it("精密をオンに戻せば、オンにしてあった「じっくり調べてから答える」がまた効く", () => {
+    save({ preciseTierEnabled: true, experimental: { agenticSearch: true } });
+    expect(isAgenticSearchEnabled()).toBe(true);
+  });
+
+  it("段をオフにしてもモデル名は残る（オンに戻したとき選び直さなくてよい）", () => {
+    save({ standardTierEnabled: false, standardModel: "mid", preciseTierEnabled: false, preciseModel: "strong" });
+    expect(getStandardModelName()).toBe("mid");
+    expect(getPreciseModelName()).toBe("strong");
   });
 });

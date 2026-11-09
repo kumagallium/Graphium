@@ -4,6 +4,7 @@
 // どれだけの高さになるかを見比べるためのもの。文言はストレージタブの実物を使う。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { FolderOpen, Share2, Smartphone } from "lucide-react";
 import { Input } from "@ui/form-field";
 import { Button } from "@ui/button";
@@ -144,4 +145,46 @@ export const BeforeAfter: Story = {
       </div>
     </div>
   ),
+};
+
+/** 見出しにスイッチを持つ設定（モデルの割り当ての「標準の処理」「精密な処理」）。
+ *  オフにすると中身（モデルの選択欄）を畳み、何が隠れるかを 1 行で言う。 */
+function TierToggleDemo({ initial }: { initial: boolean }) {
+  const [on, setOn] = useState(initial);
+  return (
+    <div className="max-w-xl space-y-6">
+      <SettingSection
+        title="軽い処理のモデル"
+        summary="軽い処理（チャット・点検・出典照合・題付け）に使います。ほかの段を空欄にすれば、すべてこのモデルで動きます"
+      >
+        <select className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="軽い処理のモデル">
+          <option>Claude Sonnet</option>
+        </select>
+      </SettingSection>
+      <SettingSection
+        title="精密な処理のモデル"
+        summary="手順の抽出・計画・洞察・清書に使います。空欄なら標準の処理のモデル"
+        toggle={{
+          checked: on,
+          onChange: () => setOn((v) => !v),
+          label: "精密な処理を使う",
+          offSummary: "使っていません。手順の抽出・計画・洞察・清書と要約・「じっくり調べてから答える」は画面に出しません（作ったものは残ります）",
+        }}
+      >
+        <select className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="精密な処理のモデル">
+          <option>標準の処理のモデルと同じ</option>
+        </select>
+      </SettingSection>
+    </div>
+  );
+}
+
+export const WithTierToggleOn: Story = {
+  args: { title: "" },
+  render: () => <TierToggleDemo initial={true} />,
+};
+
+export const WithTierToggleOff: Story = {
+  args: { title: "" },
+  render: () => <TierToggleDemo initial={false} />,
 };
