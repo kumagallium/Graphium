@@ -641,6 +641,8 @@ Graphium は、編集の手が止まってから 3 秒後に自動保存しま�
 
 時刻の証明のために送るのは、内容から計算したハッシュ（32 バイト）だけです。本文も素材も送りません。ただし、サービスには通信元の IP アドレス・時刻が見えます。固定を押すまでは何も送りません。くわしくは[プライバシー](https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY_ja.md)をご覧ください。
 
+すぐに付く時刻の証明は [FreeTSA](https://freetsa.org/)、数時間で確定する証明は [OpenTimestamps](https://opentimestamps.org/) の公開カレンダーを使わせてもらっています。どちらも、無料で公開されているサービスです。
+
 **証拠の zip の中身と、Graphium なしでの確かめ方**
 
 | ファイル | 内容 |

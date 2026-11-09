@@ -643,6 +643,8 @@ Sometimes you need to show someone later that "this content already existed befo
 
 Only a hash computed from the content (32 bytes) is sent for the timestamps. The text and media are not sent. The services can see your IP address and the time of the request. Nothing is sent until you press the seal button. See the [privacy policy](https://github.com/kumagallium/Graphium/blob/main/docs/PRIVACY.md) for details.
 
+The immediate timestamp comes from [FreeTSA](https://freetsa.org/), and the one that confirms within a few hours from the public [OpenTimestamps](https://opentimestamps.org/) calendars. Both are free public services, and Graphium is grateful to them.
+
 **What is in the evidence zip, and how to check it without Graphium**
 
 | File | Content |
