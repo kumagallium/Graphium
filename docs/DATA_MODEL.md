@@ -3746,6 +3746,11 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   contents overwrites the same key in place, keeping its `id`, `createdAt`
   and description — no note is created and nothing is indexed), and other
   internal metadata.
+  On disk (Tauri commands and the server route) the file name is `<key>.json`
+  with `%` written as `%25` and `:` as `%3A`, because a `:` in a Windows file
+  name creates an alternate data stream that copies silently drop. A read that
+  finds no such file falls back to the old `<key>.json` name and copies it to
+  the new name; the old file is left in place.
   Two further optional methods, `listAppDataKeys?(prefix)` (keys starting
   with `prefix`, extension stripped, unordered) and `deleteAppData?(key)`
   (removes the entry; a missing key is not an error), exist for records
