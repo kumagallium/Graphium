@@ -1486,6 +1486,7 @@ export const ja: Record<string, string> = {
   "standaloneChat.graphWeb": "Web の出典 {n}",
   "standaloneChat.graphAttached": "@ で渡した {n}",
   "standaloneChat.graphOutOfScope": "範囲の外で使った {n}",
+  "standaloneChat.graphWalked": "たどった線 {n}",
   // どのフォルダから探すか（渡す範囲とは別の軸）
   "standaloneChat.folderScope.label": "探すフォルダ",
   "standaloneChat.folderScope.all": "すべてのフォルダ",

@@ -22,6 +22,7 @@ export function StandaloneChatGraph({
   scopeIdsFor,
   attachedIds,
   readingRefs = [],
+  readingWalked = [],
   insightsEnabled,
   onClose,
   onSelectNote,
@@ -42,6 +43,8 @@ export function StandaloneChatGraph({
   attachedIds: readonly string[];
   /** 答えを待っているあいだに AI が読んでいるページの参照（`wiki:` / `note:` / `asset:`） */
   readingRefs?: readonly string[];
+  /** 答えを待っているあいだに、来歴の道具がたどった線（じっくり調べるときだけ） */
+  readingWalked?: readonly { from: string; to: string }[];
   insightsEnabled?: boolean;
   onClose: () => void;
   onSelectNote: (noteId: string) => void;
@@ -80,6 +83,15 @@ export function StandaloneChatGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isReading, reading, lastAnswer, nodeIds],
   );
+  // AI が来歴の道具でたどった線: 読んでいる途中はその場の分、答えのあとはいちばん新しい答えの分
+  const walkedSrc = isReading || readingWalked.length > 0 ? readingWalked : (lastAnswer?.walkedEdges ?? []);
+  const walkedKey = walkedSrc.map((w) => `${w.from}>${w.to}`).join("|");
+  const walked = useMemo(
+    () => walkedSrc.filter((w) => nodeIds.has(w.from) && nodeIds.has(w.to)).map((w) => [w.from, w.to] as [string, string]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [walkedKey, nodeIds],
+  );
+
   // いちばん新しい答えの根拠は、その答えを出したときの範囲で判定する（記録の無い答えは判定しない）
   const answeredInScope =
     lastAnswer && lastAnswer.searchFolder !== undefined ? scopeIdsFor(lastAnswer.searchFolder ?? undefined) : null;
@@ -90,9 +102,9 @@ export function StandaloneChatGraph({
   // 範囲（中身が同じなら同じオブジェクト）
   const attachedKey = attachedIds.join("|");
   const usageScope: GraphUsageScope = useMemo(
-    () => ({ inScope: inScopeIds, attached: new Set(attachedIds), answeredInScope, readInScope, read, latestRead, reading }),
+    () => ({ inScope: inScopeIds, attached: new Set(attachedIds), answeredInScope, readInScope, read, latestRead, reading, walked }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inScopeIds, attachedKey, answeredInScope, readInScope, read, latestRead, reading],
+    [inScopeIds, attachedKey, answeredInScope, readInScope, read, latestRead, reading, walked],
   );
 
   const counts: ChatGraphCounts = useMemo(() => {
@@ -111,9 +123,9 @@ export function StandaloneChatGraph({
       attached: usageScope.attached,
     });
     const attached = attachedIds.filter((id) => nodeIds.has(id)).length;
-    return { latest, earlier, web, attached, outOfScope: outside.size, read: latestRead.size, reading: isReading };
+    return { latest, earlier, web, attached, outOfScope: outside.size, read: latestRead.size, reading: isReading, walked: walked.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weights, web, answeredInScope, readInScope, usageScope, nodeIds, latestRead, isReading]);
+  }, [weights, web, answeredInScope, readInScope, usageScope, nodeIds, latestRead, isReading, walked]);
 
   return (
     <ChatGraphPane counts={counts} scope={scope} folder={folder} onClose={onClose}>

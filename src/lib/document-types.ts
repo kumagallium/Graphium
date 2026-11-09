@@ -1038,6 +1038,13 @@ export type ChatMessage = {
    * optional な plain JSON なので旧ビルドの読み込みを壊さない。
    */
   readRefs?: string[];
+  /**
+   * じっくり調べる（agentic search）ときに、AI が来歴の道具（trace_lineage）で実際にたどった線
+   * （assistant メッセージのみ・ノートに紐づかないチャットのみ）。from は手前、to はたどった先の
+   * ノート・出典の ID（全体グラフのノード ID と同じ）。たどった順・同じ線は 1 本。
+   * チャットの横の全体グラフで「たどった線」を描くのに使う。optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  walkedEdges?: { from: string; to: string }[];
 };
 
 /** AI が呼んだ道具 1 回分の記録（ChatMessage.toolSteps） */

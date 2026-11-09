@@ -433,6 +433,8 @@ export type LineageNode = {
   noteId: string;
   title: string;
   depth: number;
+  /** この一段の手前のノート（＝どのノートから辿ってきたか）。たどった線を描くのに使う */
+  fromId?: string;
   /** この一段をどう辿ってきたか（起点ノートは undefined） */
   via?: {
     type: LinkType;
@@ -475,6 +477,7 @@ function walk(
           noteId: edge.noteId,
           title: edge.title || titleOf(edge.noteId),
           depth: d,
+          fromId: id,
           via: {
             type: edge.type,
             layer: edge.layer,

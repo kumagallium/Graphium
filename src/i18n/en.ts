@@ -1486,6 +1486,7 @@ export const en: Record<string, string> = {
   "standaloneChat.graphWeb": "Web sources {n}",
   "standaloneChat.graphAttached": "Passed with @ {n}",
   "standaloneChat.graphOutOfScope": "Used outside the scope {n}",
+  "standaloneChat.graphWalked": "Links followed {n}",
   // Which folder to search (a separate axis from grounding)
   "standaloneChat.folderScope.label": "Folder to search",
   "standaloneChat.folderScope.all": "All folders",

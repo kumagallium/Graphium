@@ -1305,6 +1305,14 @@ type ScopeChat = {
     // own colour, apart from pages the AI never touched. Absent on replies
     // saved before it existed.
     readRefs?: string[];
+    // Assistant messages in standalone chats only, and only when the AI
+    // called tools on its own (agentic search): the links it actually
+    // followed with the provenance tool (`trace_lineage`), as
+    // `{ from, to }` pairs of note / source ids (the Global Graph's node
+    // ids), `from` being the side it came from. In the order followed; the
+    // same link counted once whichever way it was walked. The graph beside
+    // the chat draws these as thick dark green lines.
+    walkedEdges?: { from: string; to: string }[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent
