@@ -415,6 +415,12 @@ function nodeFontSizeStyle(ele: cytoscape.NodeSingular): string {
   return z === undefined ? GRAPH_LABEL_FONT_SIZE : `${labelFontSizeForZoom(z)}px`;
 }
 
+/** 根拠のつながりの線（ai-link）の太さ。画面上で約 1.6px に保つ */
+function aiLinkWidthStyle(ele: cytoscape.EdgeSingular): number {
+  return AI_LINK_SCREEN_PX / Math.max(ele.cy().zoom(), 0.01);
+}
+export const AI_LINK_SCREEN_PX = 1.6;
+
 /** シンプル表示の線の太さ。寄せたらノードと同じ割合で細くする（線で埋まらないように） */
 function simpleEdgeWidthStyle(width: number) {
   return (ele: cytoscape.EdgeSingular): number => {
@@ -633,6 +639,18 @@ function simpleModeStyles(): cytoscape.StylesheetStyle[] {
     },
     { selector: "node.simple.scope-out", style: { opacity: 0.18 } },
     { selector: "edge.simple.scope-out", style: { opacity: 0.03 } },
+    // 触れたページ同士（使った・読んだページを両端に持つ）の線＝根拠のつながり。答えの光もこの線だけを
+    // 走るので、光ったあとにそのまま残る。太さは画面上で一定（俯瞰でも見えるように）
+    {
+      selector: "edge.simple.ai-link",
+      style: {
+        "line-color": "#4f8a5c",
+        "target-arrow-color": "#4f8a5c",
+        width: aiLinkWidthStyle as any,
+        opacity: 0.75,
+        "z-index": 30,
+      },
+    },
     {
       selector: "node.simple.scope-attached",
       style: { "border-width": 2.5, "border-color": "#534AB7", "border-opacity": 1, "z-index": 41 },
@@ -1749,6 +1767,8 @@ export function GlobalGraphCanvas({
     };
   }, [settledCy, bundleCrossIslandEdges, layoutMode, islandCommunities]);
 
+  // チャットの横のグラフか（範囲を渡されているか）。発火の effect の依存に入れるので真偽値にしておく
+  const chatMode = !!usageScope;
   // 最近 AI に使われたところを灯し、線に沿って発火させる（シンプル表示のときだけ）。
   // 束ねた後の線の形を読むので、配置が終わった cy に掛ける。OS の「視差効果を減らす」
   // が有効なら灯すだけで動かさない
@@ -1766,8 +1786,9 @@ export function GlobalGraphCanvas({
     if (!on) return;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
-    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring);
-  }, [settledCy, colorMode, usageWeights, usageFiring]);
+    // チャットの横では、光は根拠のつながりの線（ai-link。下の範囲の effect が付ける）だけを走る
+    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring, chatMode ? { edgeClass: "ai-link" } : {});
+  }, [settledCy, colorMode, usageWeights, usageFiring, chatMode]);
 
   // AI が探せる範囲を印す（クラスの付け外しだけ。配置は動かさない）
   useEffect(() => {
@@ -1781,8 +1802,8 @@ export function GlobalGraphCanvas({
     const latestRead = on ? usageScope!.latestRead : undefined;
     const readScope = on && usageScope!.readInScope !== undefined ? usageScope!.readInScope : answered;
     cy.batch(() => {
-      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used").removeClass(
-        "scope-out scope-attached scope-breach ai-read ai-used",
+      cy.elements(".scope-out, .scope-attached, .scope-breach, .ai-read, .ai-used, .ai-link").removeClass(
+        "scope-out scope-attached scope-breach ai-read ai-used ai-link",
       );
       if (!on) return;
       const isIn = (set: ReadonlySet<string> | null | undefined, id: string) =>
@@ -1809,6 +1830,12 @@ export function GlobalGraphCanvas({
           if (e.source().hasClass("scope-out") || e.target().hasClass("scope-out")) e.addClass("scope-out");
         });
       }
+      // 根拠のつながり: 両端とも AI が触れた（使った・読んだ）ページの線
+      const touched = (id: string) => (usageWeights?.get(id) ?? 0) > 0 || !!read?.has(id);
+      cy.edges().forEach((e) => {
+        if (e.hasClass("cluster-edge")) return;
+        if (touched(e.source().id()) && touched(e.target().id())) e.addClass("ai-link");
+      });
     });
   }, [settledCy, colorMode, usageScope, usageWeights]);
 
