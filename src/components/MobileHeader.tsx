@@ -2,6 +2,7 @@
 
 import { Menu } from "lucide-react";
 import { useT } from "../i18n";
+import { BrandLockup } from "../ui/brand-lockup";
 
 type MobileHeaderProps = {
   onMenuToggle: () => void;
@@ -18,10 +19,7 @@ export function MobileHeader({ onMenuToggle }: MobileHeaderProps) {
       >
         <Menu size={22} />
       </button>
-      <div className="flex items-center gap-2">
-        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-6 h-6" />
-        <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-4" />
-      </div>
+      <BrandLockup />
     </header>
   );
 }
