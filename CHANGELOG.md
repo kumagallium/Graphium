@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.128.0](https://github.com/kumagallium/Graphium/compare/v0.127.2...v0.128.0) - 2026-11-09
+
+- fix(ci): Windows配布ツールの取得を再試行し検証する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1584
+- [feat] Graph beside the chat: see what the AI read and used, and whether it kept the scope by @kumagallium in https://github.com/kumagallium/Graphium/pull/1583
+- fix(ui): ロゴを本文より控えめな色と大きさに整える by @kumagallium in https://github.com/kumagallium/Graphium/pull/1586
+- [fix] Do not flag the previous answer's sources as out of scope while the next one is being read by @kumagallium in https://github.com/kumagallium/Graphium/pull/1587
+- fix(ci): tagprの取得経路を検証付きAPI経由へ切り替える by @kumagallium in https://github.com/kumagallium/Graphium/pull/1589
+- fix(ui): ロゴ文字の上下位置を光学補正する by @kumagallium in https://github.com/kumagallium/Graphium/pull/1588
+
 ## [v0.127.2](https://github.com/kumagallium/Graphium/compare/v0.127.1...v0.127.2) - 2026-11-09
 
 - [fix] Verify receipts before showing 'proven' on history rows; lock snapshot writes across tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1579
