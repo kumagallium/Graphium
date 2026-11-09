@@ -19,7 +19,7 @@ import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
 import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
-import { startGraphFiring } from "./graph-firing";
+import { startGraphFiring, type GraphFiringMode } from "./graph-firing";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -1347,6 +1347,7 @@ export function GlobalGraphCanvas({
   islandLabels = false,
   bundleCrossIslandEdges = false,
   usageWeights,
+  usageFiring = "loop",
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -1417,6 +1418,8 @@ export function GlobalGraphCanvas({
   /** 最近 AI に使われた重み（ノード ID → 0〜1。usage-activity.ts）。シンプル表示のときだけ、
    *  緑に灯して線に沿って発火させる。未指定・空なら何もしない */
   usageWeights?: ReadonlyMap<string, number>;
+  /** 発火の仕方（graph-firing.ts）。loop=繰り返し（既定）/ once=重み 1 のページを一度だけ */
+  usageFiring?: GraphFiringMode;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -1697,8 +1700,8 @@ export function GlobalGraphCanvas({
     if (!on) return;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
-    return startGraphFiring(cy, usageWeights!);
-  }, [settledCy, colorMode, usageWeights]);
+    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring);
+  }, [settledCy, colorMode, usageWeights, usageFiring]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -2864,6 +2867,8 @@ export function GlobalGraphView({
   initialFocusLayer,
   bundleCrossIslandEdges = true,
   usageWeights,
+  usageFiring,
+  compact = false,
   sidePanel,
   peek,
   selectedNodeId,
@@ -2899,6 +2904,11 @@ export function GlobalGraphView({
   bundleCrossIslandEdges?: boolean;
   /** 最近 AI に使われた重み（ノード ID → 0〜1）。シンプル表示のときに灯して発火させる */
   usageWeights?: ReadonlyMap<string, number>;
+  /** 発火の仕方（GlobalGraphCanvas にそのまま渡す。既定 loop） */
+  usageFiring?: GraphFiringMode;
+  /** 他の画面の横に並べる小さな表示（チャットの横など）。ツールバー・凡例を出さず、
+   *  Esc でも閉じない（入力欄の Esc を奪わないように）。表示はシンプル・島の既定のまま */
+  compact?: boolean;
   /** 俯瞰モードでキャンバスの右に並べる来歴パネル。null/未指定ならキャンバスだけ */
   sidePanel?: ReactNode;
   /** キャンバスと sidePanel の間に並べるピーク。floating=true は幅が足りず重ねる見た目 */
@@ -3093,19 +3103,20 @@ export function GlobalGraphView({
     // 文脈（フォルダ）モードでも層は全部表示のまま（原料・知見は色が付かないだけ）
   };
 
-  // Esc で閉じる
+  // Esc で閉じる（横に並べる小さな表示では閉じない）
   useEffect(() => {
+    if (compact) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, compact]);
 
   return (
     <div className="flex flex-col h-full w-full" style={{ background: GRAPH_BG_COLOR }}>
-      {/* ヘッダー / ツールバー */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
+      {/* ヘッダー / ツールバー（横に並べる小さな表示では出さない） */}
+      <div className={`flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap${compact ? " hidden" : ""}`}>
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
           <>
             {/* 色の軸切替（種類 ⇄ フォルダ） */}
@@ -3306,7 +3317,7 @@ export function GlobalGraphView({
       </div>
         <>
           {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
-          <div className="px-4 py-2 border-b border-border">
+          <div className={`px-4 py-2 border-b border-border${compact ? " hidden" : ""}`}>
             {colorMode === "context" ? (
               <ContextLegend
                 data={data}
@@ -3355,6 +3366,7 @@ export function GlobalGraphView({
                 islandLabels={showIslandLabels}
                 bundleCrossIslandEdges={bundleCrossIslandEdges}
                 usageWeights={showAiActivity ? usageWeights : undefined}
+                usageFiring={usageFiring}
                 onSimilarityStats={setSimilarityStats}
                 searchQuery={searchInput}
                 searchJumpToken={searchJumpToken}

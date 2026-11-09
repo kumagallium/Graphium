@@ -1438,6 +1438,13 @@ export const ja: Record<string, string> = {
   "chatImages.editNote": "画像は添えたまま送り直します",
   "standaloneChat.hideNav": "一覧を隠す",
   "standaloneChat.showNav": "一覧を表示",
+  "standaloneChat.showGraph": "グラフを横に並べる",
+  "standaloneChat.hideGraph": "グラフを閉じる",
+  "standaloneChat.graphTitle": "全体グラフ",
+  "standaloneChat.graphUsed": "この答えで使ったページ {n}",
+  "standaloneChat.graphUsedEarlier": "前の答え {n}",
+  "standaloneChat.graphNone": "答えが返ると、AI が使ったページがここで光ります",
+  "standaloneChat.graphHint": "緑に光るのは、AI が答えに使ったページです。いちばん新しい答えのページは濃く、前の答えのページは薄く残ります",
   // どのフォルダから探すか（渡す範囲とは別の軸）
   "standaloneChat.folderScope.label": "探すフォルダ",
   "standaloneChat.folderScope.all": "すべてのフォルダ",

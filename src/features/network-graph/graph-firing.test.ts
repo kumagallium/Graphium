@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cumulativeLengths, edgeModelPath, pointAlong, seededRandom } from "./graph-firing";
+import { cumulativeLengths, edgeModelPath, pointAlong, seededRandom, pickOnceFiringIds } from "./graph-firing";
 
 describe("edgeModelPath", () => {
   it("制御点が無ければ直線", () => {
@@ -48,5 +48,18 @@ describe("seededRandom", () => {
     const xs = Array.from({ length: 5 }, () => a());
     expect(xs).toEqual(Array.from({ length: 5 }, () => b()));
     for (const x of xs) expect(x >= 0 && x < 1).toBe(true);
+  });
+});
+
+describe("pickOnceFiringIds", () => {
+  it("重み 1 のページだけを並び順に選び、上限で切る", () => {
+    const w = new Map([
+      ["a", 1],
+      ["b", 0.3],
+      ["c", 1],
+      ["d", 1],
+    ]);
+    expect(pickOnceFiringIds(w)).toEqual(["a", "c", "d"]);
+    expect(pickOnceFiringIds(w, 2)).toEqual(["a", "c"]);
   });
 });

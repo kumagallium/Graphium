@@ -132,6 +132,28 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
+/** 一度きりの発火で、ページごとに火を付ける間隔と、一度に付ける数の上限 */
+const ONCE_STAGGER_MS = 180;
+const ONCE_MAX_PAGES = 12;
+
+/**
+ * 発火の仕方。
+ * - loop（既定）: 重みに比例して選んだページから、ずっと繰り返し発火させる（全体グラフ）
+ * - once: 一番強い（重み 1）ページだけを一度ずつ順に発火させ、火花と残光が消えたら
+ *   自分で止まる（チャットの横のグラフ。答えが返ったときだけ動かすため）
+ */
+export type GraphFiringMode = "loop" | "once";
+
+/** once で発火させるページ（重み 1 のものだけ、上限つき）。純粋な選択なので分けてある */
+export function pickOnceFiringIds(weights: ReadonlyMap<string, number>, max: number = ONCE_MAX_PAGES): string[] {
+  const out: string[] = [];
+  for (const [id, w] of weights) {
+    if (out.length >= max) break;
+    if (w >= 0.999) out.push(id);
+  }
+  return out;
+}
+
 /**
  * 発火を始める。重みが 1 つも無ければ何もしない。戻り値で止める（canvas も外す）。
  * weights のキーは全体グラフのノード ID、値は 0〜1。
@@ -140,10 +162,13 @@ export function startGraphFiring(
   cy: cytoscape.Core,
   weights: ReadonlyMap<string, number>,
   rng: () => number = Math.random,
+  mode: GraphFiringMode = "loop",
 ): () => void {
   const container = cy.container();
   const active: { n: cytoscape.NodeSingular; w: number }[] = [];
+  const onceIds = mode === "once" ? new Set(pickOnceFiringIds(weights)) : null;
   for (const [id, w] of weights) {
+    if (onceIds && !onceIds.has(id)) continue;
     const n = cy.getElementById(id);
     if (n.nonempty() && n.isNode() && w > 0) active.push({ n: n as cytoscape.NodeSingular, w });
   }
@@ -192,6 +217,12 @@ export function startGraphFiring(
   const trails: Trail[] = [];
   const flashes: Flash[] = [];
 
+  // once: ページごとに一度だけ、少しずつずらして火を付ける（残りはここから取り出す）
+  const onceQueue =
+    mode === "once" ? active.map((a, i) => ({ n: a.n, at: now + 300 + i * ONCE_STAGGER_MS })) : [];
+  // once は連鎖を 1 段で止める（会話の横で動きすぎないように）
+  const maxDepth = mode === "once" ? 1 : MAX_DEPTH;
+
   const fire = (n: cytoscape.NodeSingular, s: number, depth: number, at: number) => {
     flashes.push({ n, t0: at, s });
     const edges = realEdges(n);
@@ -212,7 +243,9 @@ export function startGraphFiring(
   };
 
   const step = () => {
-    if (now >= nextFire) {
+    if (mode === "once") {
+      while (onceQueue.length > 0 && onceQueue[0].at <= now) fire(onceQueue.shift()!.n, 1, 0, now);
+    } else if (now >= nextFire) {
       const a = pick();
       // 重みの弱いページは弱く光る（最低でも見える強さは残す）
       fire(a.n, 0.45 + 0.55 * a.w, 0, now);
@@ -224,7 +257,7 @@ export function startGraphFiring(
       trails.push({ e: sp.e, from: sp.from, t0: now, s: sp.s });
       const s2 = sp.s * 0.55;
       flashes.push({ n: sp.to, t0: now, s: s2 });
-      if (sp.depth < MAX_DEPTH && rng() < 0.6 * sp.s) fire(sp.to, s2, sp.depth + 1, now + 60);
+      if (sp.depth < maxDepth && rng() < 0.6 * sp.s) fire(sp.to, s2, sp.depth + 1, now + 60);
     }
     for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i].done || sparks[i].e.removed()) sparks.splice(i, 1);
     for (let i = trails.length - 1; i >= 0; i--) if (now - trails[i].t0 > trailMs(trails[i].e) || trails[i].e.removed()) trails.splice(i, 1);
@@ -323,6 +356,11 @@ export function startGraphFiring(
       now = performance.now();
       step();
       draw();
+      // once は出し切って消えたら止まる（canvas も外す）
+      if (mode === "once" && onceQueue.length === 0 && sparks.length === 0 && trails.length === 0 && flashes.length === 0) {
+        stop();
+        return;
+      }
     }
     raf = requestAnimationFrame(loop);
   };

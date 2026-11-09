@@ -1438,6 +1438,13 @@ export const en: Record<string, string> = {
   "chatImages.editNote": "The images stay attached when you resend.",
   "standaloneChat.hideNav": "Hide chat list",
   "standaloneChat.showNav": "Show chat list",
+  "standaloneChat.showGraph": "Show the graph alongside",
+  "standaloneChat.hideGraph": "Close the graph",
+  "standaloneChat.graphTitle": "Graph",
+  "standaloneChat.graphUsed": "Used in this answer {n}",
+  "standaloneChat.graphUsedEarlier": "Earlier answers {n}",
+  "standaloneChat.graphNone": "When an answer comes back, the pages AI used light up here",
+  "standaloneChat.graphHint": "Green marks pages AI used in its answers. Pages from the latest answer are darker; pages from earlier answers stay faintly lit",
   // Which folder to search (a separate axis from grounding)
   "standaloneChat.folderScope.label": "Folder to search",
   "standaloneChat.folderScope.all": "All folders",

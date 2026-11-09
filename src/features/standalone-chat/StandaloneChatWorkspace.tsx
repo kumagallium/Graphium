@@ -7,11 +7,14 @@
 //
 // 狭い画面（md 未満）では 1 列ずつ: 子ナビを出し、選ぶと会話に切り替わり、戻るで子ナビへ。
 // 表示だけを受け持ち、読み込み・保存・AI 呼び出しは呼び出し側（props）が行う。
+//
+// 広い画面（GRAPH_MIN_WIDTH 以上）では、会話の右に全体グラフを並べられる（renderGraph）。
+// AI が答えに使ったページがグラフで光る。開閉はヘッダーのボタンで、端末ごとに覚える。
 
-import { useEffect, useState } from "react";
-import { PanelLeft } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { PanelLeft, Waypoints } from "lucide-react";
 import { Breadcrumb } from "../../components/Breadcrumb";
-import { useIsDesktop } from "../../hooks/use-media-query";
+import { useIsDesktop, useMediaQuery } from "../../hooks/use-media-query";
 import { useT } from "../../i18n";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import type { SourceLinkHandlers } from "../ai-assistant/panel";
@@ -21,6 +24,27 @@ import { DEFAULT_STANDALONE_CHAT_SCOPE, toStandaloneChatScope } from "./scope";
 import type { FolderNode } from "../note-context/folder-tree-model";
 import type { StandaloneChat, StandaloneChatSummary } from "./types";
 import type { ChatImageRef } from "../../lib/document-types";
+
+/** グラフを並べられる画面幅（左サイドバー・子ナビ・会話・グラフが窮屈にならない幅） */
+export const GRAPH_MIN_WIDTH = 1280;
+const GRAPH_OPEN_KEY = "graphium.standaloneChat.graphOpen";
+
+function readGraphOpen(): boolean {
+  try {
+    // 既定は並べる（広い画面のときだけ出る）。閉じたら覚える
+    return localStorage.getItem(GRAPH_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writeGraphOpen(open: boolean) {
+  try {
+    localStorage.setItem(GRAPH_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // 覚えられなくても表示は続ける
+  }
+}
 
 export function StandaloneChatWorkspace({
   chats,
@@ -47,6 +71,8 @@ export function StandaloneChatWorkspace({
   onOpenWiki,
   sourceLinks,
   now,
+  renderGraph,
+  onGraphVisibleChange,
 }: {
   chats: StandaloneChatSummary[];
   /** 選択中の会話 id。null なら「新しいチャット」（まだ保存されていない） */
@@ -81,6 +107,10 @@ export function StandaloneChatWorkspace({
   sourceLinks?: SourceLinkHandlers;
   /** 子ナビの日付グループの基準時刻（ストーリー用） */
   now?: Date;
+  /** 会話の右に並べるグラフ（ChatGraphPane）。並べているときだけ呼ぶ。閉じる関数を受け取る */
+  renderGraph?: (close: () => void) => ReactNode;
+  /** グラフを並べているかが変わったとき（呼び出し側はこのときだけグラフのデータを組む） */
+  onGraphVisibleChange?: (visible: boolean) => void;
 }) {
   const t = useT();
   const isDesktop = useIsDesktop();
@@ -108,6 +138,19 @@ export function StandaloneChatWorkspace({
   const showNav = isDesktop ? navOpen : mobilePane === "nav";
   const showChat = isDesktop || mobilePane === "chat";
 
+  // 全体グラフを並べる（広い画面で、呼び出し側がグラフを渡したときだけ）
+  const isWide = useMediaQuery(`(min-width: ${GRAPH_MIN_WIDTH}px)`);
+  const [graphOpen, setGraphOpenState] = useState(readGraphOpen);
+  const setGraphOpen = (open: boolean) => {
+    setGraphOpenState(open);
+    writeGraphOpen(open);
+  };
+  const canShowGraph = !!renderGraph && isWide;
+  const showGraph = canShowGraph && graphOpen;
+  useEffect(() => {
+    onGraphVisibleChange?.(showGraph);
+  }, [showGraph, onGraphVisibleChange]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー: 子ナビの開閉 + パンくず（他の一覧画面と同じ高さ・余白） */}
@@ -124,6 +167,21 @@ export function StandaloneChatWorkspace({
           </button>
         )}
         <Breadcrumb items={[{ label: t("nav.home"), onClick: onHome }, { label: t("sidebar.chat") }]} />
+        {canShowGraph && (
+          <button
+            onClick={() => setGraphOpen(!graphOpen)}
+            aria-pressed={graphOpen}
+            aria-label={graphOpen ? t("standaloneChat.hideGraph") : t("standaloneChat.showGraph")}
+            data-tooltip={graphOpen ? t("standaloneChat.hideGraph") : t("standaloneChat.showGraph")}
+            className={`ml-auto p-1 rounded transition-colors ${
+              graphOpen
+                ? "text-foreground bg-muted/60"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <Waypoints size={16} />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 flex min-h-0">
@@ -171,6 +229,12 @@ export function StandaloneChatWorkspace({
               folderScope={folders ? { value: folder, onChange: handleFolderChange, folders } : undefined}
             />
           </div>
+        )}
+        {showGraph && (
+          // 会話を主にして、グラフは右に 4 割ほど（広すぎても狭すぎても読みにくいので上下限つき）
+          <aside className="shrink-0 border-l border-border min-h-0" style={{ width: "clamp(360px, 40%, 720px)" }}>
+            {renderGraph!(() => setGraphOpen(false))}
+          </aside>
         )}
       </div>
     </div>
