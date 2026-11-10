@@ -473,6 +473,8 @@ import {
   rewriteAnswerFromConversation,
   type AnswerRewriteConversationMessage,
 } from "./features/wiki";
+import { planThingGroups, composeThingBody, type ThingGroup } from "./features/wiki/thing-groups";
+import type { ThingGroupProgressHooks, ThingGroupResult } from "./features/wiki/ThingGroupsSection";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
 import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
@@ -14671,7 +14673,13 @@ export function NoteApp() {
   const mergeTopicsFromSelection = useCallback(async (
     keepId: string,
     mergeIds: string[],
-    options?: { maintenance?: { run: MaintenanceRunHandle } },
+    options?: {
+      maintenance?: { run: MaintenanceRunHandle };
+      /** 残す側の題をこの題に付け替える（もの単位にまとめる。新形式どうしの統合だけで効く） */
+      retitle?: string;
+      /** 本文を AI でなくこの関数で作る（もの単位にまとめる。指定時は Knowledge Schema も読まない） */
+      composeBody?: (bodies: { id: string; body: string }[]) => string;
+    },
   ): Promise<{ merged: number } | void> => {
     const targetIds = new Set([keepId, ...mergeIds]);
     const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
@@ -14681,7 +14689,7 @@ export function NoteApp() {
         title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
         memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
       }));
-    const keepTitle = fm.wikiMetas.get(keepId)?.title ?? keepId;
+    const keepTitle = options?.retitle ?? fm.wikiMetas.get(keepId)?.title ?? keepId;
     const toastId = `merge-topics:${keepId}:${Date.now()}`;
     setIngestToast((prev) => ({
       items: [
@@ -14695,7 +14703,7 @@ export function NoteApp() {
     try {
       run = givenRun ?? await beginMaintenanceRun("merge_topics");
       const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
-      const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+      const knowledgeSchema = options?.composeBody ? "" : await fm.getKnowledgeSchemaPrompt();
       const result = await mergeTopicsExplicit(keepId, mergeIds, existingTopics, {
         loadDoc: fm.loadDoc,
         getCachedDoc: fm.getCachedDoc,
@@ -14707,7 +14715,9 @@ export function NoteApp() {
         locale: getGenerationLanguage(),
         knowledgeSchema,
         log: (...args: unknown[]) => console.warn(...args),
-        groupScope: topicMergeScope(run),
+        groupScope: topicMergeScope(run, options?.retitle ? { subjectTitle: options.retitle } : undefined),
+        ...(options?.retitle ? { retitleByTargetId: new Map([[keepId, options.retitle]]) } : {}),
+        ...(options?.composeBody ? { composeBodyByTargetId: new Map([[keepId, options.composeBody]]) } : {}),
       });
       // 記録された操作（1 実行につき 1 回だけ取り出せる）。残す側は 1 件なので高々 1 操作
       const recorded = recordedOperationsOf(run);
@@ -14775,6 +14785,51 @@ export function NoteApp() {
       await endMaintenanceSafely(undefined, givenRun ? undefined : run);
     }
   }, [fm, capture.captureIndex, beginMaintenanceRun, topicMergeScope, recordedOperationsOf, maintenanceUndoAction]);
+
+  // もの単位にまとめる: 題が「X の Y」の同じ X のページの組（機械的な組分け。AI は使わない）。
+  // 新形式（資料から作ったトピック。derivedFromClaims が空で資料が 1 件以上）だけを入れる —
+  // 旧形式を含む統合は組み直しになり、題の付け替えも効かないため。アーカイブ済みは除く
+  const thingGroups = useMemo(() => {
+    const topics: { id: string; title: string; sourceCount: number }[] = [];
+    for (const wf of fm.wikiFiles) {
+      const meta = fm.wikiMetas.get(wf.id);
+      if (meta?.kind !== "topic" || fm.archivedIdSet.has(wf.id)) continue;
+      if ((meta.derivedFromClaims?.length ?? 0) > 0) continue;
+      const sourceCount = meta.derivedFromNotes?.length ?? 0;
+      if (sourceCount < 1) continue;
+      topics.push({ id: wf.id, title: meta.title ?? wf.id, sourceCount });
+    }
+    return planThingGroups(topics);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.archivedIdSet]);
+
+  // 組をまとめる。保守の実行 1 つ（group_by_thing）の中で、組ごとに 1 回の操作で本文を機械的に連結する
+  // （AI は呼ばない。残す側の本文＋吸収側の本文を「## Y」の節として足す）。1 組の失敗で止めず、次の組へ進む
+  const mergeThingGroups = useCallback(async (
+    groups: ThingGroup[],
+    hooks?: ThingGroupProgressHooks,
+  ): Promise<ThingGroupResult[]> => {
+    const results: ThingGroupResult[] = [];
+    const run = await beginMaintenanceRun("group_by_thing");
+    try {
+      for (const group of groups) {
+        hooks?.onGroupStart?.(group.keepId);
+        const merged = await mergeTopicsFromSelection(group.keepId, group.absorbIds, {
+          maintenance: { run },
+          ...(group.retitle ? { retitle: group.thing } : {}),
+          composeBody: (bodies) => {
+            const bodyById = new Map(bodies.map((b) => [b.id, b.body]));
+            return composeThingBody(group.sections.map((s) => ({ heading: s.heading, body: bodyById.get(s.id) ?? "" })));
+          },
+        });
+        const ok = !!merged && merged.merged >= group.absorbIds.length;
+        results.push({ keepId: group.keepId, ok });
+        hooks?.onGroupDone?.(group.keepId, ok);
+      }
+    } finally {
+      await endMaintenanceSafely(undefined, run);
+    }
+    return results;
+  }, [beginMaintenanceRun, mergeTopicsFromSelection]);
 
   // 洞察（Atom）の選択統合（点検が共通して使う）。
   // ユーザーが明示的に選んだ組を渡すだけなのでモデルは呼ばない（mergeAtomsExplicit）。
@@ -16684,6 +16739,8 @@ export function NoteApp() {
               await sendStandaloneChatMessage(chat, question.question, undefined, question.needs);
             }}
             legacyTopics={legacyTopicList}
+            thingGroups={thingGroups}
+            onMergeThingGroups={mergeThingGroups}
             autoTidy={standardUiEnabled ? {
               progress: autoUpkeepProgress,
               result: autoUpkeepResult,

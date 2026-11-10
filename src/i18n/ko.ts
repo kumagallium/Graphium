@@ -2072,6 +2072,20 @@ export const ko: Record<string, string> = {
   "autoTidy.sourcePreparing": "출처와 대조할 항목을 세는 중…",
   // おまかせで照合する（出典照合タブ冒頭）
   "autoSourceCheck.manual.header": "직접 출처와 대조하기",
+  "thingGroups.header": "대상 단위로 묶기 ({count}개 묶음)",
+  "thingGroups.hint": "같은 대상에 대한 페이지가 성질별로 나뉘어 있습니다. 묶으면 1페이지가 되고, 각 페이지는 절이 됩니다. AI는 사용하지 않으며 본문은 그대로 남습니다. 나중에 되돌릴 수 있습니다.",
+  "thingGroups.rowTitle": "{thing}에 {count}페이지 묶기",
+  "thingGroups.retitleBadge": "제목 변경",
+  "thingGroups.retitleHint": "\"{thing}\"이라는 제목의 페이지가 아직 없어서, 남기는 페이지의 제목을 그것으로 바꿉니다",
+  "thingGroups.memberRest": "외 {count}건",
+  "thingGroups.select": "\"{thing}\" 묶음 선택",
+  "thingGroups.button": "묶기",
+  "thingGroups.buttonAria": "\"{thing}\"에 {count}페이지 묶기",
+  "thingGroups.running": "묶는 중…",
+  "thingGroups.failed": "묶지 못했습니다",
+  "thingGroups.bulkButton": "선택한 {count}개 묶음 묶기",
+  "thingGroups.bulkProgress": "묶는 중 {done}/{total}",
+  "thingGroups.confirm": "{groups}개 묶음, {pages}페이지를 묶습니다. 본문은 그대로 절로 남습니다. 정리 기록에서 되돌릴 수 있습니다.",
   "wikiLint.suggestionPrefix": "제안: ",
   "wikiLint.openWikiPrefix": "열기: ",
   // Next questions to investigate (full-lint LLM output only; not counted in the issue total)
@@ -4265,6 +4279,7 @@ export const ko: Record<string, string> = {
   "maintenance.row.viaMcpNoClient": "MCP",  // 영어 유지
   "maintenance.row.viaMcpHint": "외부 AI 어시스턴트(MCP)를 통해 요청된 작업입니다",
   "maintenance.trigger.merge_topics": "토픽 통합",
+  "maintenance.trigger.group_by_thing": "대상 단위로 묶기",
   "maintenance.trigger.organize_topics": "토픽 정리",
   "maintenance.trigger.auto_tidy": "알아서 정리하기",
   "maintenance.trigger.auto_source_check": "알아서 대조하기",

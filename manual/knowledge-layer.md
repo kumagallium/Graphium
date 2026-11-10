@@ -151,6 +151,18 @@ The checks that run on their own (after ingest, and on startup if it's been over
 
 Since most issues don't get a toast, the **Upkeep** button in the sidebar shows a small count whenever the last check found something that still needs a look; opening Upkeep clears it, and it only reappears once a later check finds something new.
 
+### Group pages by thing
+
+At the bottom of the Upkeep tab, after **Check against sources yourself**, a folded section **Group pages by thing (N)** appears when pages about the same thing have been split up by property — for example "Rye sourdough starter fermentation time" and "Rye sourdough starter acidity" as separate topics. It is not shown when there is nothing to group.
+
+- **What shows up.** Only titles in the Japanese form "X の Y" are looked at (X is at least 3 characters; English titles like "X of Y" are not). A group needs two or more pages with the same X, or one such page plus a page titled just X. Spaces, hyphens and a trailing parenthetical are ignored when matching X. The grouping is mechanical — no AI is used to find the groups.
+- **Nothing changes until you press a button.** **Group** on a row, or select rows and press **Group N selected**, asks you to confirm with the number of groups and pages first. The pages are merged into one, and each page becomes a section of it. No AI is used: the text is joined as it is (the headings inside each page move down one level, and source marks are unchanged).
+- **Which page stays.** The page titled just X if there is one; otherwise the page with the most sources, renamed to X (the row says so with a small **Title changes** tag). When a page is renamed this way its topic type is cleared, and a later pass sets it again.
+- **Order of sections.** The kept page's text comes first; each absorbed page then becomes a "## Y" section (Y is what follows "X の" in its title), in title order.
+- **It can be undone.** Each merge is recorded in the **Upkeep history** tab as **Group by thing**, and you can undo it from there.
+
+Only pages made from sources (the newer topic format) are grouped. **Tidy up for me** does not touch these groups, and they do not count toward the number shown on **Upkeep** in the sidebar.
+
 ## Upkeep operations can be undone <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#undo-maintenance}
 
 When you start an upkeep operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:

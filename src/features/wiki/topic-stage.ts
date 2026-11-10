@@ -165,6 +165,18 @@ export type ConsolidateExistingTopicsDeps = {
     handleDeleteWikiFile: ConsolidateExistingTopicsDeps["handleDeleteWikiFile"];
     end: () => Promise<void>;
   }>;
+  /**
+   * 残す側（統合先）の題を付け替える対応表（統合先の話題 id → 新しい題）。「もの単位にまとめる」で、
+   * X という題のページが無い組が使う。全員が新形式の経路だけで効く（旧形式を含む経路では付け替えない）。
+   * 付け替えたときは topicType を外す（元の種類が新しい題に合うとは限らない。未分類に戻り、種類付けが後で付ける）。
+   */
+  retitleByTargetId?: Map<string, string>;
+  /**
+   * 本文の作り方の差し込み（統合先の話題 id → 本文の作り方）。指定がある組は AI の本文統合
+   * （mergeTopicBodies）を呼ばず、これで本文を作る（「もの単位にまとめる」の機械的な連結）。
+   * 全員が新形式の経路だけで効く。戻りが空文字なら本文が作れなかった扱い。
+   */
+  composeBodyByTargetId?: Map<string, (bodies: { id: string; body: string }[]) => string>;
 };
 
 /**
@@ -282,17 +294,36 @@ export async function applyTopicMerges(
           targetDoc.wikiMeta.topicMarkdown as string,
           ...sourceDocs.map(({ doc }) => doc.wikiMeta!.topicMarkdown as string),
         ];
-        const mergedBody = await mergeTopicBodies(
-          targetDoc.title,
-          bodies,
-          deps.locale,
-          deps.model,
-          deps.knowledgeSchema,
-          noteFailure,
-        );
+        // 題の付け替え（指定があり、いまの題と違うときだけ）
+        const newTitle = deps.retitleByTargetId?.get(targetId);
+        const title = newTitle && newTitle !== targetDoc.title ? newTitle : targetDoc.title;
+        const compose = deps.composeBodyByTargetId?.get(targetId);
+        const mergedBody = compose
+          ? compose([
+              { id: targetId, body: bodies[0] },
+              ...sourceDocs.map(({ id, doc }) => ({ id, body: doc.wikiMeta!.topicMarkdown as string })),
+            ])
+          : await mergeTopicBodies(
+              title,
+              bodies,
+              deps.locale,
+              deps.model,
+              deps.knowledgeSchema,
+              noteFailure,
+            );
         if (mergedBody) {
           const sourceRefs = await collectSourceRefs(refIds, deps);
-          const rewritten = rebuildSourceTopicDocument(targetDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex, deps.locale);
+          let baseDoc: GraphiumDocument = targetDoc;
+          if (title !== targetDoc.title) {
+            const { topicType: _dropped, ...metaWithoutType } = targetDoc.wikiMeta;
+            baseDoc = {
+              ...targetDoc,
+              title,
+              pages: targetDoc.pages.map((p, i) => (i === 0 ? { ...p, title } : p)),
+              wikiMeta: metaWithoutType,
+            };
+          }
+          const rewritten = rebuildSourceTopicDocument(baseDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex, deps.locale);
           await groupDeps.handleSaveWikiFile(targetId, rewritten, {
             activityType: "wiki_cross_update",
             sources: sourceRefs.map((r) => r.id),
