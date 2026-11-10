@@ -384,6 +384,37 @@ export function seedUnplacedNodes(
 }
 
 /**
+ * 新しいノードを、すでに座標のある隣のノードの平均位置（少しずらす）に仮置きする。
+ * 隣に座標のあるノードが無いものは seedUnplacedNodes と同じく外周の輪に置く。
+ * 全体グラフの島の配置で、1 段目（物理）を回さずに続きから組むときに使う
+ * （外周に置くと、新しい話題だけが島から離れた所に立ってしまう）。
+ */
+export function seedNearPlacedNeighbors(cy: cytoscape.Core, unplacedIds: string[]): void {
+  if (unplacedIds.length === 0) return;
+  const unplaced = new Set(unplacedIds);
+  const rest: string[] = [];
+  unplacedIds.forEach((id, i) => {
+    const node = cy.getElementById(id);
+    if (node.length === 0) return;
+    const placed = node.neighborhood("node").filter((m) => !unplaced.has(m.id()));
+    if (placed.length === 0) {
+      rest.push(id);
+      return;
+    }
+    let x = 0;
+    let y = 0;
+    placed.forEach((m) => {
+      x += m.position("x");
+      y += m.position("y");
+    });
+    // 同じ隣を持つ新しいノードが同じ点に重ならないよう、黄金角で少しずつずらす
+    const angle = i * 2.4;
+    node.position({ x: x / placed.length + 30 * Math.cos(angle), y: y / placed.length + 30 * Math.sin(angle) });
+  });
+  seedUnplacedNodes(cy, rest);
+}
+
+/**
  * React Flow 版のノード仮置き。手順フローは上から下へ読むグラフなので、
  * 保存に無い新しいノードは既存の並びの「下」に横並びで置く
  * （Cytoscape の周辺グラフが外周に置くのと同じ趣旨で、向きだけ違う）。
