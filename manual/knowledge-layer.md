@@ -99,7 +99,7 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 <Badge type="tip" text="Added in v0.89.14 (2026-10-20)" /> On a Topic, a Q&A page or a Summary, the banner also lists **Pages citing the same sources**: the other Topics, Q&A pages and Summaries that cite at least one of the same documents, most shared first (up to eight, then a "+N more" count). This is worked out from the citations alone — no AI call, nothing to tune — so it is always there and always consistent with the References section; press a chip to open that page. Pages that cite no sources (topics from before the source-reading format, legacy per-note summaries) are not linked this way.
 
-### Links between topics
+### Links between topics <Badge type="tip" text="Added in v0.129.2 (2026-11-10)" />
 
 When a Topic's body mentions another Topic's title, the page links to that Topic. The link shows in the list's **Links** / **Refs in** columns and as a reference line in the global graph. Titles shorter than 3 characters are not linked, and neither are pages that share the same short name and differ only in the parentheses (for example two pages called "BP (...)"), since there is no telling which one is meant. It is decided by matching text only — no AI call. Existing pages can be linked again with **Tidy up for me**.
 
@@ -162,6 +162,8 @@ At the bottom of the Upkeep tab, after **Check against sources yourself**, a fol
 - **Which page stays.** The page titled just X if there is one; otherwise the page with the most sources, renamed to X (the row says so with a small **Title changes** tag). When a page is renamed this way its topic type is cleared, and a later pass sets it again.
 - **Order of sections.** The kept page's text comes first; each absorbed page then becomes a "## Y" section (Y is what follows "X の" in its title), in title order.
 - **It can be undone.** Each merge is recorded in the **Upkeep history** tab as **Group by thing**, and you can undo it from there.
+
+The reason it joins text instead of using AI is in [Merging pages by thing: join, don't summarize](/evaluations/merging-pages-by-thing).
 
 Only pages made from sources (the newer topic format) are grouped. **Tidy up for me** does not touch these groups, and they do not count toward the number shown on **Upkeep** in the sidebar.
 
