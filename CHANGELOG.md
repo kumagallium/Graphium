@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.129.2](https://github.com/kumagallium/Graphium/compare/v0.129.1...v0.129.2) - 2026-11-10
+
+- [feat] Link a topic to the topics its body names by @kumagallium in https://github.com/kumagallium/Graphium/pull/1605
+- [fix] Load the chat list at startup so the sidebar Chat tab is not empty by @kumagallium in https://github.com/kumagallium/Graphium/pull/1611
+- fix: keep the Global Graph steady when pages are added by @kumagallium in https://github.com/kumagallium/Graphium/pull/1612
+
 ## [v0.129.1](https://github.com/kumagallium/Graphium/compare/v0.129.0...v0.129.1) - 2026-11-10
 
 - docs: describe show_note and the in-conversation note preview in the MCP manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1607
