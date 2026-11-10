@@ -398,7 +398,8 @@ import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, rea
 import type { LintIssue, LintReport, WikiSnapshot } from "./server/services/wiki-linter";
 import type { LintProgress } from "./features/wiki/wiki-service";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
-import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
+import { assetFolderValues, buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
+import { buildGeneratedNoteFolders, GENERATED_NOTE_FOLDER_KEYS, type GeneratedNoteKind } from "./features/note-context/generated-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
 import { resolveAssetBackAction, stepsBackToNote } from "./features/asset-browser/asset-back";
 import { addFolderDefinition, ensureFolderDefinitions, removeFolderDefinition, renameFolderDefinition } from "./features/note-context/folder-store";
@@ -9026,6 +9027,16 @@ export function NoteApp() {
     () => buildNoteFolderLookup(fm.noteIndex?.notes ?? []),
     [fm.noteIndex],
   );
+  // アプリ内で生成するノート（翻訳・手順抽出）の置き場所: 種類のフォルダ＋元の素材のフォルダ。
+  // 素材をフォルダに入れないまま生成しても「未分類」に落ちないようにする（generated-folders.ts）
+  const generatedNoteFolders = useCallback(
+    (kind: GeneratedNoteKind, source?: Pick<MediaIndexEntry, "noteContexts" | "usedIn">) =>
+      buildGeneratedNoteFolders(
+        tStatic(GENERATED_NOTE_FOLDER_KEYS[kind]),
+        source ? assetFolderValues(source, noteFolderLookup) : [],
+      ),
+    [noteFolderLookup],
+  );
   const noteFolderNames = useMemo(() => {
     // 使われている名前と空フォルダの定義は同じ名前を両方に持ちうる。小文字で名寄せし、
     // 表示は先に出てきた形を残す（フォルダ名の突き合わせ規則と同じ）
@@ -10887,6 +10898,8 @@ export function NoteApp() {
             });
             runDoc.derivedFromNoteId = planId;
             runDoc.derivedFromBlockId = tableBlockId;
+            // 計画ノートの「計画」フォルダは引き継がない（工程ノートが計画ノート扱いになる）
+            runDoc.noteContexts = generatedNoteFolders("procedure");
             runNotes.push({ name: run.name, id: await fm.handleCreateNoteFromDocument(runDoc) });
           }
           // 3. 計画ノートの表を工程ノートへの @ リンクにする
@@ -10940,7 +10953,7 @@ export function NoteApp() {
         }
       })();
     },
-    [fm, navigateToNote],
+    [fm, navigateToNote, generatedNoteFolders],
   );
   const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
     const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
@@ -16214,6 +16227,7 @@ export function NoteApp() {
                       model: result.model,
                       tokenUsage: result.tokenUsage,
                     });
+                    provDoc.noteContexts = generatedNoteFolders("procedure", entry);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
@@ -16247,6 +16261,7 @@ export function NoteApp() {
                       model: result.model,
                       tokenUsage: result.tokenUsage,
                     });
+                    provDoc.noteContexts = generatedNoteFolders("procedure", entry);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
@@ -16282,6 +16297,7 @@ export function NoteApp() {
                       model: result.model,
                       tokenUsage: result.tokenUsage,
                     });
+                    provDoc.noteContexts = generatedNoteFolders("procedure", entry);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
@@ -16331,6 +16347,7 @@ export function NoteApp() {
                     // これでノート内参照 grounding 時にオフラインでも・URL 内容が変わっても同じ原文を引ける。
                     const textFileId = await persistUrlSourceText(article.textContent);
                     if (textFileId) result.doc.sourceTextFileId = textFileId;
+                    result.doc.noteContexts = generatedNoteFolders("translation", entry);
                     const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                     // Reader を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）
                     setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
@@ -16379,6 +16396,7 @@ export function NoteApp() {
                       },
                     },
                   );
+                  result.doc.noteContexts = generatedNoteFolders("translation", entry);
                   const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                   // PDF を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）。
                   setFocusedMaterial({ fileId: entry.fileId!, fullMode: true });

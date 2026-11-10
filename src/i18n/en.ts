@@ -754,6 +754,9 @@ export const en: Record<string, string> = {
   "template.plan.title": "Plan Template",
   "template.plan.desc": "Comparison plan with a table where each item has its own detail note",
   "template.plan.folder": "Plan",
+  // 生成ノートの種類のフォルダ（generated-folders.ts）。翻訳・論文からの手順抽出が作るノートの受け皿
+  "generatedFolder.translation": "Translations",
+  "generatedFolder.procedure": "Procedures",
   "template.plan.h1Placeholder": "Plan Title",
   "template.plan.backgroundHeading": "Background & Goals",
   "template.plan.samplesHeading": "Items & Conditions",

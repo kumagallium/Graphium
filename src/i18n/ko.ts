@@ -728,6 +728,9 @@ export const ko: Record<string, string> = {
   "template.plan.title": "계획 템플릿",
   "template.plan.desc": "항목마다 상세 노트를 둘 수 있는 표가 달린 비교 계획",
   "template.plan.folder": "계획",
+  // 生成ノートの種類のフォルダ（generated-folders.ts）。翻訳・論文からの手順抽出が作るノートの受け皿
+  "generatedFolder.translation": "번역",
+  "generatedFolder.procedure": "절차",
   "template.plan.h1Placeholder": "계획 제목",
   "template.plan.backgroundHeading": "배경과 목표",
   "template.plan.samplesHeading": "대상과 조건",
