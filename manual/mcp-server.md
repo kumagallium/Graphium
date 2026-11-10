@@ -158,6 +158,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 |---|---|
 | `search_notes` | "Find my notes about thermoelectric measurements" |
 | `get_note` | "Show me that note" |
+| `show_note` <Badge type="tip" text="Added in v0.129.0 (2026-11-10)" /> | "Open that note here so I can see it" (draws the note inside the conversation in clients that support it; see [below](#note-preview-in-the-conversation)) |
 | `get_note_steps` | "What were the steps, with the conditions?" / "Draw this procedure as a diagram" (`format: "mermaid"` returns a flowchart) |
 | `find_notes_using` | "Which experiments used a planetary ball mill?" |
 | `list_entities` | "What materials and instruments show up across my notes?" |
@@ -226,6 +227,22 @@ AI conversations pile up, and what was decided or explained in them is hard to f
 - **`list_folders`** returns your folders as the same tree the sidebar shows, with the number of notes in each. With it the assistant can see where things already go, so "Save this to Graphium" is enough: it picks the folder that fits the conversation instead of making a near-duplicate. If you always want one place, say so once in your assistant's instructions (for Claude Code, the project's `CLAUDE.md`), for example "When saving to Graphium, use the folder Research/Thermoelectrics".
 
 In Graphium, add those notes to Knowledge to get topics out of them, and use the **Folder to search** chip of [the chat without a note](/ai-chat-and-ask#chat-without-a-note-open) to talk with the AI about that folder only. Because everything stays as ordinary notes and Knowledge pages, you can read what was recorded and fix it directly when something looks off.
+
+### Seeing a note inside the conversation <Badge type="tip" text="Added in v0.129.0 (2026-11-10)" /> {#note-preview-in-the-conversation}
+
+In clients that support MCP Apps, such as Claude Desktop, a note can be drawn as a read-only view right inside the conversation, instead of as text.
+
+- **`show_note`** draws one note. Ask in plain words: "Show me the note on the first rise" or "Open that note here".
+- **`create_note`** shows the same view of the note it just saved, so you can check what was written without switching to Graphium.
+
+What the view shows:
+
+- Headings, lists, check items, tables, code and formulas, with steps as cards the way the app draws them
+- PROV labels, both on blocks and on ranges of text (materials, tools, attributes, outputs)
+- Images stored in your materials. An image on an outside site shows only its name and the site's host; the view never loads anything from the web
+- Long notes are cut at 200 blocks, and tables at 30 rows
+
+It is a view only. To change the note, open it in Graphium. Links in the view do not open. Clients without MCP Apps support (Claude Code, Codex and others) get a short text result as before; ask for `get_note` when the assistant should read the body.
 
 ### `create_note` vs. `save_answer`
 
