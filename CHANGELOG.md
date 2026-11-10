@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.5](https://github.com/kumagallium/Graphium/compare/v0.129.4...v0.129.5) - 2026-11-10
+
+- [feat] Find memos from the Cmd+K Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1621
+
 ## [v0.129.4](https://github.com/kumagallium/Graphium/compare/v0.129.3...v0.129.4) - 2026-11-10
 
 - [docs] Add the v0.129.3 badge to Group pages by thing in the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1619
