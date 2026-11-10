@@ -13,11 +13,14 @@ import {
   registerAppResource,
   registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
+import { readFileSync, statSync } from "node:fs";
+import { extname } from "node:path";
 import { z } from "zod";
 
 import { getNotePreviewHtml } from "./apps/note-preview-html";
-import { buildNotePreview, type NotePreview } from "./note-preview";
+import { buildNotePreview, flattenPreviewBlocks, type NotePreview } from "./note-preview";
 import type { ToolContext } from "./tools";
+import { findMediaDataFile, mediaDir, validateMediaId } from "./media-tools";
 import { getEntry } from "./search";
 import { readNote, vaultExists } from "./vault";
 
@@ -34,6 +37,59 @@ export function notePreviewFor(noteId: string): NotePreview | null {
   const doc = readNote(noteId);
   if (!doc) return null;
   return buildNotePreview({ noteId, doc: doc as any, modifiedAt: getEntry(noteId)?.modifiedAt });
+}
+
+/** 結果の _meta に画像を載せるキー（画面だけが読む。モデルの文脈には入らない） */
+export const PREVIEW_IMAGES_META_KEY = "graphium/previewImages";
+
+/** 画面に埋め込む画像の上限。会話の中の画面なので、大きな原寸画像は名前だけにする */
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const IMAGES_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const IMAGES_MAX_COUNT = 20;
+
+const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+};
+
+/**
+ * プレビューの画像ブロックのうち、手元の素材にあるものを data URL にする（blockId → data URL）。
+ * 外のサイトの画像・見つからない素材・上限を超えるものは入れない（画面は名前だけを見せる）。
+ * SVG は入れない（<img> 経由ならスクリプトは動かないが、中身を検査せずに配らない）。
+ */
+export function resolvePreviewImages(preview: NotePreview, root?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const dir = mediaDir(root);
+  let total = 0;
+  let count = 0;
+  for (const block of flattenPreviewBlocks(preview.blocks)) {
+    if (block.kind !== "media" || block.mediaType !== "image" || !block.mediaId || !block.blockId) continue;
+    if (count >= IMAGES_MAX_COUNT) break;
+    if (validateMediaId(block.mediaId) !== null) continue;
+    const file = findMediaDataFile(dir, block.mediaId);
+    if (!file) continue;
+    const mime = IMAGE_MIME[extname(file).toLowerCase()];
+    if (!mime) continue;
+    let size: number;
+    try {
+      size = statSync(file).size;
+    } catch {
+      continue;
+    }
+    if (size > IMAGE_MAX_BYTES || total + size > IMAGES_MAX_TOTAL_BYTES) continue;
+    try {
+      out[block.blockId] = `data:${mime};base64,${readFileSync(file).toString("base64")}`;
+    } catch {
+      continue;
+    }
+    total += size;
+    count += 1;
+  }
+  return out;
 }
 
 function text(s: string): CallToolResult {
@@ -90,6 +146,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
           },
         ],
         structuredContent: { preview },
+        _meta: { [PREVIEW_IMAGES_META_KEY]: resolvePreviewImages(preview) },
       };
     },
   );

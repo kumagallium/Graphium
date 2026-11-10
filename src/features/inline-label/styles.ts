@@ -17,18 +17,9 @@
 import { createStyleSpec } from "@blocknote/core";
 import { parseAttributeBinding } from "./attribute-binding";
 import { TABLE_ROW_IDENTITY_STYLE } from "../../lib/table-row-identity";
+import { INLINE_LABEL_COLORS as COLORS, type InlineLabelKind as InlineLabel } from "./colors";
 
 const BASE_STYLE = "padding: 0 0.1em; border-radius: 2px;";
-
-const COLORS = {
-  // Inline 4 種の色（既存のラベルバッジ色と揃える）
-  material: { bg: "rgba(75, 122, 82, 0.18)", border: "#4B7A52" },   // Input
-  tool: { bg: "rgba(192, 139, 62, 0.18)", border: "#c08b3e" },       // Tool
-  attribute: { bg: "rgba(160, 160, 160, 0.18)", border: "#8a8a8a" }, // Parameter
-  output: { bg: "rgba(194, 99, 86, 0.18)", border: "#c26356" },      // Output
-} as const;
-
-type InlineLabel = keyof typeof COLORS;
 
 function buildSpec(label: InlineLabel) {
   const colors = COLORS[label];
