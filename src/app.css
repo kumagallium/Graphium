@@ -689,10 +689,12 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 }
 /* BlockNote 0.48 からテーマ変数は .bn-root に掛かる（エディタの div は .bn-root と .bn-container の
    両方を持ち、body へ出すメニューの入れ物は .bn-root だけを持つ） */
-.bn-root {
+/* クラスを重ねて詳細度を上げている。本番ビルドでは BlockNote の CSS がこのファイルより後に
+   読み込まれるので（開発サーバーとは順序が逆）、同じ詳細度だと既定の #3f3f3f に負ける。 */
+.bn-root.bn-root {
   --bn-colors-editor-text: var(--ink);
 }
-.bn-editor {
+.bn-editor.bn-editor {
   color: var(--ink);
 }
 
@@ -879,8 +881,10 @@ body[data-prov-labels-off="true"] [data-inline-label] {
    BlockNote デフォルトは bg #161616 / 白文字（ダーク前提）。
    github-light シンタックスハイライト（@blocknote/code-block + shiki）に
    合わせて淡背景 + 枠 + foreground 文字を当てる。トークン色は shiki がインライン
-   style で当てるため、color は !important を付けない。 */
-.bn-editor [data-content-type="codeBlock"] {
+   style で当てるため、color は !important を付けない。
+   .bn-block-content を重ねて詳細度を上げている: 本番ビルドでは BlockNote の CSS が後に読み込まれ、
+   同じ詳細度だと既定の白文字（color: #fff）に負けて、淡い背景に白い字になる。 */
+.bn-editor .bn-block-content[data-content-type="codeBlock"] {
   background-color: var(--color-surface) !important;
   color: var(--color-foreground);
   border: 1px solid var(--color-border-subtle) !important;
@@ -1251,15 +1255,17 @@ body.gph-col-resizing * {
    Cytoscape のグラフと同じ見え方にする。Cytoscape 側は
    features/network-graph/graph-theme.ts の core スタイルが正で、
    ここはその数値に合わせた React Flow 版。React Flow の既定は青系なので、
-   同じ操作なのに手順フローだけ別の色で囲われることになる。 */
-.react-flow__selection {
+   同じ操作なのに手順フローだけ別の色で囲われることになる。
+   .react-flow を前に付けて詳細度を上げている: 本番ビルドでは React Flow の CSS が後に読み込まれ、
+   同じ詳細度だと既定の青に負ける。 */
+.react-flow .react-flow__selection {
   background: rgba(75, 122, 82, 0.12); /* #4B7A52 12% */
   border: 1px solid #4b7a52;
 }
 
 /* 選択が確定した後、グループを囲んで残る矩形。Cytoscape 側は
    use-graph-layout.ts の attachSelectionBoundsOverlay が同じ見た目を描く。 */
-.react-flow__nodesselection-rect {
+.react-flow .react-flow__nodesselection-rect {
   background: rgba(75, 122, 82, 0.08);
   border: 1px dashed #4b7a52;
   border-radius: 4px;
