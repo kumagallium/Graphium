@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.129.3](https://github.com/kumagallium/Graphium/compare/v0.129.2...v0.129.3) - 2026-11-10
+
+- [feat] Group topic pages by the thing they are about (Upkeep) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1613
+- [feat] Name new topics after the thing itself when a source is ingested by @kumagallium in https://github.com/kumagallium/Graphium/pull/1615
+- [docs] Record why grouping pages by thing joins bodies instead of merging them with AI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1617
+
 ## [v0.129.2](https://github.com/kumagallium/Graphium/compare/v0.129.1...v0.129.2) - 2026-11-10
 
 - [feat] Link a topic to the topics its body names by @kumagallium in https://github.com/kumagallium/Graphium/pull/1605
