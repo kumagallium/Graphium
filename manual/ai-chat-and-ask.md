@@ -258,11 +258,19 @@ As you type, matching notes appear instantly, searched by title, headings, label
 | `#label` | Notes containing that label |
 | `@author` | Notes by that author |
 
-Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so on) are listed separately, under **Notes** and **Knowledge**, so a busy Knowledge layer never pushes your own notes off the list. <Badge type="tip" text="Added in v0.98.1 (2026-10-27)" /> Each section shows its top matches — 8 notes, 5 Knowledge pages, 4 shared entries, 4 assets — and ends with **Show N more** when there are more; choose it (with the mouse, or `↑`/`↓` and `Enter`) to expand that section in place, up to 50; if there are still more, a line under it suggests adding words to narrow the search. With an empty input you get **Recent notes** and **Recent Knowledge**. Press `Enter` to open the highlighted note.
+Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so on) are listed separately, under **Notes** and **Knowledge**, so a busy Knowledge layer never pushes your own notes off the list. <Badge type="tip" text="Added in v0.98.1 (2026-10-27)" /> Each section shows its top matches — 8 notes, 5 Knowledge pages, 4 memos, 4 shared entries, 4 assets — and ends with **Show N more** when there are more; choose it (with the mouse, or `↑`/`↓` and `Enter`) to expand that section in place, up to 50; if there are still more, a line under it suggests adding words to narrow the search. With an empty input you get **Recent notes** and **Recent Knowledge**. Press `Enter` to open the highlighted note.
 
 <Badge type="tip" text="Added in v0.102.0 (2026-10-29)" /> While you are editing a note, choosing a note or Knowledge row — a click or `Enter` — opens it in the side peek next to the note you are writing, so you can look at two notes side by side without linking them. If a peek is already open, its note is replaced. Nothing is recorded as a link, so the provenance graph is unchanged. To move to the note instead, use **Open full screen**, the button at the right end of the row, or press `⇧Enter` (`Shift+Enter`). The row of the note you are editing, and every row when no note is being edited (the notes list, for example), still open full screen.
 
 ![The Composer opened from a note: the highlighted row opens alongside on Enter, and the button at the right end of each row opens it full screen](/screenshots/composer-open-alongside.png)
+
+### Finding memos {#finding-memos}
+
+[Memos](/mobile#the-memo-gallery) are searched too, and listed under **Memos**, between Knowledge and shared entries. A memo matches when every word you type appears somewhere in its text — in any order, even across line breaks — or when its folder name matches. A memo containing your words exactly as typed ranks above one where they are scattered. Memos have no title, so each row shows a line of the memo itself, starting a little before the first match, with the matched words highlighted.
+
+Selecting one opens the memo in the same peek you get from a memo source elsewhere: next to the note while you are editing one, or in the list's side peek otherwise. Memos you have archived or moved to the trash are not listed. Memos already inserted into a note are still listed, since the memo itself is still in your memo list.
+
+Like assets, memos stay out of the empty-input view and out of `#label` / `@author` queries.
 
 ### Finding assets <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" /> {#finding-images}
 

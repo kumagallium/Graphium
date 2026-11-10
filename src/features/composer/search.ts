@@ -12,11 +12,15 @@
 // 共有ライブラリ（fork していない共有ルート上のエントリ）も 3 本目の軸として
 // searchShared() で別立てにする。ラベルも見出しも持たず、代わりに作者と種別が
 // 一級なので、ノート・素材のどちらにも混ぜない。
+//
+// メモ（付箋キャプチャ）は 4 本目の軸として searchMemos() で探す。題名を持たず本文だけの
+// 短い文なので、語彙索引は通さず captureIndex の本文をその場で照合する。
 
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { matchesAllTokens, sourceInfoSearchText } from "../asset-browser/source-info-text";
 import type { SharedEntry } from "../../lib/storage/shared";
+import type { CaptureEntry } from "../mobile-capture/capture-store";
 // 語彙索引に入れている type と揃える（片方だけ増えると「出るのに本文で当たらない」
 // / 「索引にあるのに出ない」というズレになるので、定義は 1 か所から借りる）
 import { SHARED_INDEXABLE_TYPES } from "../sharing/shared-entry-source";
@@ -348,7 +352,7 @@ export type MediaSearchOptions = {
 const ASSET_TEXT_BASE_SCORE = 25;
 const ASSET_TEXT_RELATIVE_SCORE_MAX = 10;
 
-/** Cmd+K の素材検索で対象にする種類。memo は transient、video/audio は名前でしか当たらないので外す */
+/** Cmd+K の素材検索で対象にする種類。memo は transient（メモは searchMemos が別に探す）、video/audio は名前でしか当たらないので外す */
 const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document"]);
 
 /**
@@ -440,6 +444,128 @@ export function searchMedia(
   });
 
   return hits.slice(0, limit);
+}
+
+// ── メモ検索 ──
+
+export type MemoSearchReason = "text" | "folder";
+
+export type MemoHit = {
+  entry: CaptureEntry;
+  /** 行に出す 1 行の抜粋（当たった語を強調する）。フォルダだけで当たったときは本文の先頭 */
+  snippet: TextSnippet;
+  reasons: MemoSearchReason[];
+  score: number;
+};
+
+export type MemoSearchOptions = {
+  /** 最大ヒット数（既定値 4）。素材・共有と同じくノートの結果を押しのけない程度に抑える */
+  limit?: number;
+};
+
+/** メモの抜粋の長さ（当たった語の前に残す文字数 / 全体の文字数） */
+const MEMO_SNIPPET_BEFORE = 16;
+const MEMO_SNIPPET_LENGTH = 96;
+/** 入力した句がそのまま本文にある / 語がばらばらに含まれる ときの加点 */
+const MEMO_PHRASE_SCORE = 50;
+const MEMO_TOKENS_SCORE = 40;
+
+/**
+ * メモ本文から 1 行の抜粋を組み立てる。最初に当たった語の少し前から切り出し、
+ * 抜粋の中に出てくる語をすべて強調する。語が 1 つも無ければ本文の先頭を返す。
+ */
+export function buildMemoSnippet(text: string, tokens: readonly string[]): TextSnippet {
+  // 改行を 1 行に潰してから切り出す（そのまま出すと行が崩れる）
+  const flat = text.replace(/\s+/g, " ").trim();
+  const lower = flat.toLowerCase();
+  let first = -1;
+  for (const tok of tokens) {
+    const idx = lower.indexOf(tok);
+    if (idx >= 0 && (first < 0 || idx < first)) first = idx;
+  }
+  const from = first < 0 ? 0 : Math.max(0, first - MEMO_SNIPPET_BEFORE);
+  const to = Math.min(flat.length, from + MEMO_SNIPPET_LENGTH);
+  const head = from > 0 ? "…" : "";
+  const tail = to < flat.length ? "…" : "";
+  const body = flat.slice(from, to);
+
+  // 語ごとの範囲を集め、重なりは 1 つにまとめる（強調の描画は重ならない昇順を前提にしている）
+  const raw = tokens
+    .flatMap((tok) => findAllOccurrences(body, tok))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const ranges: { start: number; end: number }[] = [];
+  for (const r of raw) {
+    const last = ranges[ranges.length - 1];
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+    else ranges.push({ start: r.start + head.length, end: r.end + head.length });
+  }
+  return { text: head + body + tail, ranges };
+}
+
+/**
+ * クエリをメモ（付箋キャプチャ）の一覧に対して評価する。
+ *
+ * メモは短い文で、本文がすべてメモリ上にあるので、語彙索引は通さずその場で照合する。
+ * 空白で区切った語がすべて本文に含まれるか、フォルダ名に一致すれば当たる。
+ * ノートに挿入済みのメモも対象（メモ自体は一覧に残っているので、同じものとして開ける）。
+ *
+ * 素材検索と同じく、空クエリでは何も返さない（⌘K を開いただけの「最近のノート」
+ * ビューにメモを混ぜない）。`#ラベル` / `@作者` はノートを絞る記法なので、
+ * そのクエリでも返さない。アーカイブ・ゴミ箱のメモは一覧と同じく隠す。
+ */
+export function searchMemos(
+  query: string,
+  entries: readonly CaptureEntry[] | null | undefined,
+  options: MemoSearchOptions = {},
+): MemoHit[] {
+  const limit = options.limit ?? 4;
+  if (!entries || entries.length === 0) return [];
+  if (!query.trim()) return [];
+
+  const parsed = parseQuery(query);
+  if (parsed.labelTokens.length > 0 || parsed.authorTokens.length > 0) return [];
+  const textLower = parsed.text.trim().toLowerCase();
+  if (!textLower) return [];
+  const tokens = textLower.split(/\s+/).filter(Boolean);
+
+  const hits: MemoHit[] = [];
+
+  for (const entry of entries) {
+    if (entry.archivedAt || entry.deletedAt) continue;
+    const text = entry.text ?? "";
+    if (!text.trim()) continue;
+
+    let score = 0;
+    const reasons: MemoSearchReason[] = [];
+
+    if (matchesAllTokens(text, textLower)) {
+      // 入力した句がそのまま本文にあるほうを上に（語がばらばらに当たっただけのものより確か）
+      const flatLower = text.replace(/\s+/g, " ").toLowerCase();
+      score += flatLower.includes(textLower) ? MEMO_PHRASE_SCORE : MEMO_TOKENS_SCORE;
+      reasons.push("text");
+    }
+    // フォルダ名一致（ノート・共有の folder 理由と同じ重み）
+    if ((entry.noteContexts ?? []).some((c) => c.toLowerCase().includes(textLower))) {
+      score += FOLDER_SCORE;
+      reasons.push("folder");
+    }
+    if (reasons.length === 0) continue;
+
+    score += daysAgoBoost(memoTimestamp(entry));
+    hits.push({ entry, snippet: buildMemoSnippet(text, tokens), reasons, score });
+  }
+
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return memoTimestamp(b.entry) > memoTimestamp(a.entry) ? 1 : -1;
+  });
+
+  return hits.slice(0, limit);
+}
+
+/** メモの新しさ（編集していれば編集日時、無ければ作成日時） */
+function memoTimestamp(entry: CaptureEntry): string {
+  return entry.modifiedAt ?? entry.createdAt ?? "";
 }
 
 // ── 共有ライブラリ検索 ──

@@ -1,23 +1,25 @@
-// Cmd+K 用: 結果を段（ノート / ナレッジ / 共有 / 素材）ごとに切る純関数
+// Cmd+K 用: 結果を段（ノート / ナレッジ / メモ / 共有 / 素材）ごとに切る純関数
 //
 // searchNotes などは大きめの limit で全件に近い数を返し、表示件数はここで切る。
 // 切った残りの件数を「さらに N 件を表示」の行に出し、展開するとその段だけ上限が広がる。
 
 /** 段の種類（展開状態のキー） */
-export type SectionKey = "notes" | "knowledge" | "shared" | "media";
+export type SectionKey = "notes" | "knowledge" | "memos" | "shared" | "media";
 
 /** 検索時の既定の表示件数 */
 export const SECTION_LIMITS: Record<SectionKey, number> = {
   notes: 8,
   knowledge: 5,
+  memos: 4,
   shared: 4,
   media: 4,
 };
 
-/** 入力が空のとき（履歴ビュー）の表示件数。共有・素材は検索時と同じ */
+/** 入力が空のとき（履歴ビュー）の表示件数。メモ・共有・素材は検索時と同じ */
 export const RECENT_SECTION_LIMITS: Record<SectionKey, number> = {
   notes: 6,
   knowledge: 3,
+  memos: 4,
   shared: 4,
   media: 4,
 };
