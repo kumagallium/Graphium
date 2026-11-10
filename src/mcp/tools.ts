@@ -13,7 +13,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { buildIndexEntry } from "../features/navigation/index-file";
 import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
+import { NOTE_PREVIEW_TOOL_META } from "./app-tools";
 import { createNote } from "./create-note";
+import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { noteLinkKind } from "../lib/note-link-kind";
 import { traceLineage, upstreamOf } from "./lineage";
@@ -37,6 +39,11 @@ const FOLDER_SCOPE_DESCRIPTION =
 /** ツールの返り値（テキスト 1 本）を組む */
 function text(body: string) {
   return { content: [{ type: "text" as const, text: body }] };
+}
+
+/** 文字の結果に、画面（MCP Apps）向けの structuredContent を添える */
+function withStructured<T extends object>(result: T, structuredContent: Record<string, unknown>) {
+  return { ...result, structuredContent };
 }
 
 /** vault が無いときの共通エラー。設定の直し方まで書く */
@@ -627,6 +634,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               "search_notes / list_topics の folder でその範囲だけを探せる",
           ),
       },
+      // 対応しているクライアントでは、作ったノートを会話の中にプレビューとして描く（app-tools.ts）
+      _meta: NOTE_PREVIEW_TOOL_META,
     },
     async ({ title, body, sessionId, model, citations, folder }) => {
       try {
@@ -641,7 +650,12 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
         addCreatedNoteToIndex(result.noteId, result.doc);
-        return text(
+        const preview = buildNotePreview({
+          noteId: result.noteId,
+          doc: result.doc as any,
+          modifiedAt: (result.doc as { modifiedAt?: string }).modifiedAt,
+        });
+        return withStructured(text(
           [
             `ノートを作成しました。`,
             `  タイトル: ${result.title}`,
@@ -651,7 +665,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,
           ].join("\n"),
-        );
+        ), { preview });
       } catch (err) {
         return text(`ノートの作成に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }

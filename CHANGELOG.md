@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.129.0](https://github.com/kumagallium/Graphium/compare/v0.128.4...v0.129.0) - 2026-11-10
+
+- docs: at-a-glance chips on the manual's feature roadmap by @kumagallium in https://github.com/kumagallium/Graphium/pull/1604
+- [feat] Show a note as a read-only preview inside the conversation (MCP Apps) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1600
+
+## [v0.128.4](https://github.com/kumagallium/Graphium/compare/v0.128.3...v0.128.4) - 2026-11-10
+
+- fix: drop the Crucible Registry check from /api/health by @kumagallium in https://github.com/kumagallium/Graphium/pull/1601
+
 ## [v0.128.3](https://github.com/kumagallium/Graphium/compare/v0.128.2...v0.128.3) - 2026-11-10
 
 - fix: draw evidence links through a shared source beside the chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1597

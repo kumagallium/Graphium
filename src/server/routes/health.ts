@@ -1,8 +1,9 @@
 // ヘルスチェック API
-// GET /api/health — バックエンド + Registry の接続状態 + 認証状態
+// GET /api/health — バックエンドの応答 + 認証状態
+// Crucible Registry への疎通確認は外した（設定の registryUrl は savedRegistries へ
+// 移して常に空なので、ほぼ全員の画面で常に「未接続」と出ていた）。
 
 import { Hono } from "hono";
-import { getRegistryUrl } from "../services/env.js";
 import { findModelsWithMissingApiKey } from "../config/models.js";
 
 const app = new Hono();
@@ -31,37 +32,18 @@ export function setSidecarIdentity(info: {
 }
 
 app.get("/", async (c) => {
-  const registryUrl = getRegistryUrl(c);
-  let registryStatus: "ok" | "unavailable" = "unavailable";
-
-  if (registryUrl) {
-    try {
-      const res = await fetch(`${registryUrl.replace(/\/$/, "")}/api/servers`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (res.ok) registryStatus = "ok";
-    } catch {
-      // 接続失敗
-    }
-  }
-
   // 認証状態: 保存済みの API キーが読めないモデルが居ないか確認する。
   // Keychain ダウングレード罠（旧バイナリ + Keychain 移行済み環境）の早期発見用。
   const missingKeyModels = findModelsWithMissingApiKey();
   const authStatus: "ok" | "keys-missing" =
     missingKeyModels.length === 0 ? "ok" : "keys-missing";
 
-  // status は registry が unavailable でも auth が ok なら degraded で十分。
-  // auth が壊れていると AI 機能が完全に不能になるので、その時は warning を最優先にする。
-  // ここでは status を細分化せず、components.auth を見て UI 側で判断させる。
+  // auth が壊れていると AI 機能が使えなくなるので、その時だけ degraded にする。
+  // 細かい判断は components.auth を見て UI 側で行う。
   return c.json({
-    status:
-      authStatus === "keys-missing" || registryStatus !== "ok"
-        ? "degraded"
-        : "healthy",
+    status: authStatus === "keys-missing" ? "degraded" : "healthy",
     components: {
       backend: "ok",
-      registry: registryStatus,
       auth: authStatus,
     },
     /**

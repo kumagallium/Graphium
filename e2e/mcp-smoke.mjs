@@ -77,6 +77,8 @@ const EXPECTED_TOOLS = [
   "export_asterism_claims", "mark_asterism_sent",
   // 素材（外部アプリの取り込み元。JSON を返す）
   "list_media", "get_media_file", "add_material",
+  // 会話の中に画面を描く（MCP Apps）
+  "show_note",
 ];
 
 // --app-bundle: デスクトップ版に同梱する形（bundle-mcp.mjs --app）を、リポジトリの外に写して起動する。
@@ -404,6 +406,31 @@ try {
   const mermaid = await call("get_note_steps", { noteId: NOTE_A, format: "mermaid" });
   check("get_note_steps が mermaid 形式で返す", mermaid.includes("```mermaid") && mermaid.includes("flowchart"), mermaid);
 
+  // MCP Apps: 画面の HTML を ui:// で配り、show_note と create_note がその画面を指す
+  console.log("\n[apps]");
+  const PREVIEW_URI = "ui://graphium/note-preview.html";
+  const uiOf = (name) => tools.find((t) => t.name === name)?._meta?.ui?.resourceUri;
+  check("show_note と create_note が同じプレビュー画面を指す", uiOf("show_note") === PREVIEW_URI && uiOf("create_note") === PREVIEW_URI);
+  const { resources } = await client.listResources();
+  check("プレビュー画面が resources に出る", resources.some((r) => r.uri === PREVIEW_URI));
+  const ui = await client.readResource({ uri: PREVIEW_URI });
+  const uiHtml = ui.contents?.[0]?.text ?? "";
+  check(
+    "プレビュー画面が MCP Apps の MIME 型で 1 枚の HTML として返る",
+    ui.contents?.[0]?.mimeType === "text/html;profile=mcp-app" && uiHtml.startsWith("<!doctype html>") && uiHtml.includes('id="root"'),
+    String(ui.contents?.[0]?.mimeType),
+  );
+  check("プレビュー画面が外のサイトを読み込まない", !/<(script|link|img)[^>]+(src|href)=["']https?:/i.test(uiHtml));
+  const shown = await client.callTool({ name: "show_note", arguments: { noteId: NOTE_A } });
+  const shownPreview = shown.structuredContent?.preview;
+  check(
+    "show_note が本文の要約とプレビューのデータを返す",
+    (shown.content?.[0]?.text ?? "").includes(NOTE_A) && shownPreview?.noteId === NOTE_A && shownPreview.blocks.some((b) => b.kind === "step"),
+    JSON.stringify(shown).slice(0, 300),
+  );
+  const shownMissing = await call("show_note", { noteId: "no-such-note" });
+  check("show_note が存在しない id でノートが無い旨を返す", shownMissing.includes("見つかりません"), shownMissing);
+
   const prov = await call("export_prov", { noteId: NOTE_A });
   check("export_prov が JSON-LD（@context と prov:）を返す", prov.includes("@context") && prov.includes("prov:"), prov.slice(0, 300));
 
@@ -471,9 +498,19 @@ try {
     sessionId: "smoke",
   });
   check("create_note が noteId を返す", /noteId: [0-9a-f-]{36}/.test(created));
+  const createdRaw = await client.callTool({
+    name: "create_note",
+    arguments: { title: "プレビュー付きで作ったノート", body: "## 見出し\n\n本文", sessionId: "smoke" },
+  });
+  check(
+    "create_note がプレビューのデータを添える",
+    createdRaw.structuredContent?.preview?.title === "プレビュー付きで作ったノート" &&
+      createdRaw.structuredContent.preview.blocks.some((b) => b.kind === "heading"),
+    JSON.stringify(createdRaw.structuredContent ?? null).slice(0, 300),
+  );
 
   const after = readdirSync(join(root, "notes"));
-  check("create_note でファイルが 1 件だけ増える", after.length === before.length + 1);
+  check("create_note で作った件数だけファイルが増える", after.length === before.length + 2);
 
   const unchanged = before.every(([f, content]) => readFileSync(join(root, "notes", f), "utf8") === content);
   check("create_note が既存ノートを変更しない（add-only）", unchanged);
