@@ -8815,9 +8815,12 @@ export function NoteApp() {
   // 別の会話に切り替わっていたら画面の state を更新しない（保存は行ってよい）。
   const standaloneChatActiveIdRef = useRef<string | null>(null);
 
-  // ノートに紐づかないチャット（standalone chat）一覧を開いたときに索引を読む。
+  // ノートに紐づかないチャット（standalone chat）の索引を読む。
+  // 会話一覧は左ナビのチャットのタブに常に出る（件数も添える）ので、チャット画面を
+  // 開いたときだけ読むと、起動直後のタブが空のままになる。保存先が使えるように
+  // なった時点で一度読み、チャット画面の開け閉めでも読み直す。
   useEffect(() => {
-    if (!showChatList) return;
+    if (!authenticated) return;
     let cancelled = false;
     (async () => {
       const provider = getActiveProvider();
@@ -8825,7 +8828,7 @@ export function NoteApp() {
       if (!cancelled) setStandaloneChatSummaries(summaries);
     })();
     return () => { cancelled = true; };
-  }, [showChatList]);
+  }, [authenticated, storageProvider, showChatList]);
 
   // 一覧から会話を選ぶ: 全文を読み込んでアクティブにする。ノート一覧・ナレッジ一覧と
   // 同じ作法で、まずピーク（右から出る細い面）に開く。
