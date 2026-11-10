@@ -12,6 +12,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { registerAppTools } from "./app-tools";
 import { registerClaimTools } from "./claim-tools";
 import { registerInsightTools } from "./insight-tools";
 import { registerMediaTools } from "./media-tools";
@@ -57,6 +58,8 @@ async function main(): Promise<void> {
   registerClaimTools(server, ctx);
   registerInsightTools(server, ctx);
   registerMediaTools(server);
+  // 会話の中に画面を描く道具（MCP Apps）。対応していないクライアントには文字の結果だけが届く
+  registerAppTools(server, ctx);
 
   await server.connect(new StdioServerTransport());
 }
