@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isAgenticSearchEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isAgenticSearchEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getAgenticSearchModelName, getChatSynthesisModelName, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -282,9 +282,9 @@ describe("モデルの改名・削除への追従（設定はモデルを表示�
     localStorage.clear();
   });
 
-  it("名前で覚えている項目は 8 つ（3 段・チャット・埋め込み・照合・旧洞察・音声ノートの清書と要約）", () => {
+  it("名前で覚えている項目は 9 つ（3 段・チャット・旧チャット・埋め込み・照合・旧洞察・音声ノートの清書と要約）", () => {
     expect([...MODEL_NAME_SETTING_KEYS].sort()).toEqual(
-      ["chatSynthesisModel", "embeddingModel", "groundingModel", "insightModel", "meetingAiModel", "model", "preciseModel", "standardModel"],
+      ["chatModel", "chatSynthesisModel","embeddingModel", "groundingModel", "insightModel", "meetingAiModel", "model", "preciseModel", "standardModel"],
     );
   });
 
@@ -457,11 +457,36 @@ describe("getXxxLLMModel — 空・ある・見つからない・回り道の先
     });
   });
 
-  describe("getChatSynthesisLLMModel / getAgenticSearchLLMModel（チャットは default、じっくり調べるは精密の段）", () => {
+  describe("getChatSynthesisLLMModel / getAgenticSearchLLMModel（チャットのモデル → default、じっくり調べるはチャットのモデル → 精密の段）", () => {
     it("古い設定に chatSynthesisModel が残っていても読まず、チャットは default を使う", () => {
       setModels([model("Default"), model("Chat")]);
       setSettings({ model: "Default", chatSynthesisModel: "Chat" });
       expect(getChatSynthesisLLMModel()?.name).toBe("Default");
+      expect(getChatSynthesisModelName()).toBe("Default");
+    });
+
+    it("チャットのモデルを選ぶと、チャットの回答だけがそのモデルになる（段のモデルは変わらない）", () => {
+      setModels([model("Default"), model("Smart")]);
+      setSettings({ model: "Default", chatModel: "Smart" });
+      expect(getChatSynthesisLLMModel()?.name).toBe("Smart");
+      expect(getChatSynthesisModelName()).toBe("Smart");
+      expect(getDefaultLLMModel()?.name).toBe("Default");
+      expect(getStandardModelName()).toBe("Default");
+      expect(getPreciseModelName()).toBe("Default");
+    });
+
+    it("チャットのモデルを選ぶと、じっくり調べるときも（精密の段より先に）そのモデルで答える", () => {
+      setModels([model("Default"), model("Strong"), model("Smart")]);
+      setSettings({ model: "Default", preciseModel: "Strong", chatModel: "Smart" });
+      expect(getAgenticSearchLLMModel()?.name).toBe("Smart");
+      expect(getAgenticSearchModelName()).toBe("Smart");
+    });
+
+    it("チャットのモデルの名前が一覧に無いときは、default へ黙って回さない", () => {
+      setModels([model("Default")]);
+      setSettings({ model: "Default", chatModel: "Gone" });
+      expect(getChatSynthesisLLMModel()).toBeUndefined();
+      expect(getAgenticSearchLLMModel()).toBeUndefined();
     });
 
     it("じっくり調べてから答えるは精密の段（空なら標準 → default）", () => {

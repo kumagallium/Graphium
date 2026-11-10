@@ -176,7 +176,7 @@ function SettingsModalHarness({
         SETTINGS_KEY,
         JSON.stringify({
           features: { insights: true, worldGrounding: true, ...(knowledgeJobs ? { claims: true } : {}) },
-          ...(seedMissingModel ? { model: "Deleted model", chatSynthesisModel: "Old chat model" } : {}),
+          ...(seedMissingModel ? { model: "Deleted model", chatModel: "Old chat model" } : {}),
           // Claude Sonnet 5 は anthropic — 埋め込み欄の選択肢（openai/openai-compatible）には出ない
           ...(seedUnsupportedEmbeddingModel ? { embeddingModel: "Claude Sonnet 5" } : {}),
         }),

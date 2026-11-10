@@ -356,6 +356,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const [standardTierEnabled, setStandardTierEnabled] = useState(true);
   const [preciseTierEnabled, setPreciseTierEnabled] = useState(true);
   const [preciseModel, setPreciseModel] = useState("");
+  const [chatModel, setChatModel] = useState("");
   // 取り込み時の洞察スキャン予算（LLM 呼び出し回数上限、0 = 取り込み時は探さない）
   const [atomizeIngestBudget, setAtomizeIngestBudget] = useState(3);
   // 洞察モデルの能力テスト。同梱のテスト用知見（パン作り・3 件）で 1 回だけ atomize し、
@@ -667,6 +668,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setEmbeddingModel(fn);
     setStandardModel(fn);
     setPreciseModel(fn);
+    setChatModel(fn);
   }, []);
 
   // ── 見つからないモデル名（改名・削除のあとで残った古い名前）──
@@ -694,6 +696,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const standardModelMissing = isMissingModelName(standardModel, availableModelNames);
   const preciseModelMissing = isMissingModelName(preciseModel, availableModelNames);
+  const chatModelMissing = isMissingModelName(chatModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
   // （OpenAI / OpenAI 互換）ではないモデル名（手で編集した設定など）。一覧が読めていない
   // 間は null にし、判定しない（#1076 の不変条件を継承）。
@@ -713,6 +716,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
     standardModelMissing ? standardModel : "",
     preciseModelMissing ? preciseModel : "",
+    chatModelMissing ? chatModel : "",
   ].filter(Boolean))];
   const quoteModelName = (name: string) => (locale === "ja" ? `「${name}」` : `"${name}"`);
   // 選択欄の下の注意。埋め込み索引の注意（staleHint）と同じ見た目で出す
@@ -748,6 +752,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   const advancedName = preciseTierEnabled ? (preciseModel || standardModel || lightName) : offLabel;
   const assignGroupSummary = t("settings.group.assign.summary", { light: lightName, standard: standardName, advanced: advancedName });
   const stateWord = (on: boolean) => t(on ? "settings.group.stateOn" : "settings.group.stateOff");
+  // チャットの束の 1 行: 回答に使うモデル（空欄なら軽い処理のモデルの名前）と、じっくり調べるの状態
+  const chatGroupSummary = [
+    t("settings.group.stateLine", { name: t("settings.chatModel"), state: chatModel || lightName }),
+    ...(preciseTierEnabled ? [t("settings.group.stateLine", { name: t("settings.agenticSearch.title"), state: stateWord(experimental.agenticSearch) })] : []),
+  ].join(locale === "ja" ? "／" : " / ");
   const knowledgeGroupSummary = [
     ...(standardTierEnabled ? [t("settings.group.stateLine", { name: t("settings.features.sourceSummaries.title"), state: stateWord(!!features.sourceSummaries) })] : []),
     t("settings.group.stateLine", { name: t("settings.features.autoFullCheck.title"), state: stateWord(!!features.autoFullCheck) }),
@@ -770,6 +779,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       [embeddingModel, t("settings.embeddingModel.label")],
       [standardModel, t("settings.standardModel")],
       [preciseModel, t("settings.preciseModel")],
+      [chatModel, t("settings.chatModel")],
     ];
     return slots.filter(([value]) => value === target.name).map(([, label]) => label);
   };
@@ -832,6 +842,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     setEmbeddingModel(settings.embeddingModel ?? "");
     setStandardModel(settings.standardModel ?? "");
     setPreciseModel(settings.preciseModel ?? "");
+    setChatModel(settings.chatModel ?? "");
     setStandardTierEnabled(settings.standardTierEnabled !== false);
     setPreciseTierEnabled(settings.preciseTierEnabled !== false);
     setAsterism(settings.asterism);
@@ -1516,7 +1527,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       model: modelMissing ? "" : model,
       // 埋め込みに使えない種類のモデル名（手で編集した設定など）も同じ扱いで空に戻す
       embeddingModel: (embeddingModelMissing || embeddingModelUnsupported) ? "" : embeddingModel,
-      // チャットは v0.125.1 からデフォルトモデル（選択欄なし）。古い値は消す
+      // チャットのモデル（設定 → AI → チャット）。空 = 軽い処理のモデル
+      chatModel: chatModelMissing ? "" : chatModel,
+      // 旧チャットモデル（v0.125.1 で外した欄）。古い値は消す。今の欄は chatModel
       chatSynthesisModel: "",
       standardModel: standardModelMissing ? "" : standardModel,
       preciseModel: preciseModelMissing ? "" : preciseModel,
@@ -1544,7 +1557,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     applyColorMode(colorMode);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, standardModel, preciseModel, standardTierEnabled, preciseTierEnabled, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
+  }, [model, embeddingModel, standardModel, preciseModel, chatModel, standardTierEnabled, preciseTierEnabled, modelMissing, embeddingModelMissing, embeddingModelUnsupported, standardModelMissing, preciseModelMissing, chatModelMissing, asterism, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, colorMode, newNotesOnA4, experimental, features, atomizeIngestBudget, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -3362,8 +3375,64 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </>
             )}
 
+            {/* チャット — じっくり調べてから答える（agentic search・既定 OFF）。
+                先行公開の束から出した普通の設定（時間と利用量が増える選択肢なので既定はオフのまま）。
+                内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。
+                保存先は互換のため experimental.agenticSearch のまま。
+                チャットのモデル — 回答に使うモデルをここで選ぶ（空欄 = 軽い処理のモデル）。難しさ別の 3 段とは
+                選び方の向きが違う（大量に回す仕事は安く、人が読む会話は賢く）ので、段には足さずこの束に置く。
+                じっくり調べる切り替えは高度な処理の段がオンのときだけ出す（モデルの欄は段に関係なく出す）。
+                モデルを探す人は割り当てを見るので、束はモデルの割り当てのすぐ下に置く */}
+            {models.length > 0 && (
+            <SettingsGroup
+              storageKey="ai-chat"
+              title={t("settings.ai.sectionChat")}
+              summary={chatGroupSummary}
+            >
+                <SettingSection
+                  title={t("settings.chatModel")}
+                  summary={t("settings.chatModel.summary")}
+                  details={<p>{t("settings.chatModelHelp")}</p>}
+                >
+                  <div className="relative">
+                    <select
+                      value={chatModel}
+                      onChange={(e) => { setChatModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      aria-label={t("settings.chatModel")}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">{t("settings.standardModelSameAsDefault")}</option>
+                      {chatModelMissing && (
+                        <option value={chatModel}>{t("settings.modelMissingOption", { name: chatModel })}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {chatModelMissing && renderMissingModelHint(t("settings.standardModelSameAsDefault"))}
+                </SettingSection>
+                {preciseTierEnabled && (
+                <SettingToggle
+                  checked={experimental.agenticSearch}
+                  onChange={() => {
+                    setExperimental({ ...experimental, agenticSearch: !experimental.agenticSearch });
+                    setSaved(false);
+                  }}
+                  label={t("settings.agenticSearch.title")}
+                  summary={t("settings.agenticSearch.summary")}
+                  details={<p>{t("settings.agenticSearch.help")}</p>}
+                />
+                )}
+            </SettingsGroup>
+            )}
+
             {/* 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
-                先行公開ではない機能なので、モデルの割り当てのすぐ下に置く */}
+                先行公開ではない機能なので、モデルの割り当てとチャットのすぐ下に置く */}
             {meetingSection}
 
             {/* ナレッジ — 先行公開ではない取り込み・点検の設定。先行公開のもの（知見・洞察・世界照合）は下の束へ */}
@@ -3401,32 +3470,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   label={t("settings.features.autoFullCheck.title")}
                   summary={t("settings.features.autoFullCheck.summary")}
                   details={<p>{t("settings.features.autoFullCheck.help")}</p>}
-                />
-            </SettingsGroup>
-            )}
-
-            {/* チャット — じっくり調べてから答える（agentic search・既定 OFF）。
-                先行公開の束から出した普通の設定（時間と利用量が増える選択肢なので既定はオフのまま）。
-                内部参照・外部参照のチャットで、AI が自分でノート・トピックを検索し直す道具を渡す。
-                保存先は互換のため experimental.agenticSearch のまま */}
-            {models.length > 0 && preciseTierEnabled && (
-            <SettingsGroup
-              storageKey="ai-chat"
-              title={t("settings.ai.sectionChat")}
-              summary={t("settings.group.stateLine", {
-                name: t("settings.agenticSearch.title"),
-                state: t(experimental.agenticSearch ? "settings.group.stateOn" : "settings.group.stateOff"),
-              })}
-            >
-                <SettingToggle
-                  checked={experimental.agenticSearch}
-                  onChange={() => {
-                    setExperimental({ ...experimental, agenticSearch: !experimental.agenticSearch });
-                    setSaved(false);
-                  }}
-                  label={t("settings.agenticSearch.title")}
-                  summary={t("settings.agenticSearch.summary")}
-                  details={<p>{t("settings.agenticSearch.help")}</p>}
                 />
             </SettingsGroup>
             )}
