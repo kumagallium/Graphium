@@ -142,6 +142,7 @@ Pick the single best fit for what the page is *about*; when in doubt between con
  * Topic Router 用のシステムプロンプトを構築する。
  * 資料 1 本と既存トピックの一覧を見て、「改訂する既存トピック」「新しく作るトピック名」を
  * LLM 自身に決めさせる（埋め込み類似度・正規化タイトル一致による機械的な名寄せは撤去）。
+ * ただし題が同じと機械的に言い切れる場合だけ、呼び出し側（runSourceTopicStage）が create を update に回す。
  * 件数の上限・しきい値は置かない — 何も足さない資料なら両方空でよい。
  */
 export function buildTopicRouterSystemPrompt(language: string): string {

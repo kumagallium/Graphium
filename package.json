@@ -1,7 +1,7 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.128.4",
+  "version": "0.129.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
@@ -58,6 +58,7 @@
     "@blocknote/shadcn": "^0.56.0",
     "@github/copilot-sdk": "^1.0.9",
     "@hono/node-server": "^2.1.5",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@mozilla/readability": "^0.6.0",
     "@shikijs/core": "^4.5.0",
