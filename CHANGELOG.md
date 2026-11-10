@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.129.7](https://github.com/kumagallium/Graphium/compare/v0.129.6...v0.129.7) - 2026-11-10
+
+- [docs] Add the v0.129.5 badge to Finding memos in the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1625
+- [fix] Sort the knowledge list's Type column by the label each row shows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1628
+
 ## [v0.129.6](https://github.com/kumagallium/Graphium/compare/v0.129.5...v0.129.6) - 2026-11-10
 
 - [feat] Sort sidebar folders by how many notes they hold by @kumagallium in https://github.com/kumagallium/Graphium/pull/1624
