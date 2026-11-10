@@ -317,6 +317,9 @@ type GraphiumPage = {
   provLinks: BlockLink[];            // DAG-constrained. type: "derived_from" | "used" |
                                      // "generated" | "reproduction_of" | "informed_by"
   knowledgeLinks: BlockLink[];       // cycles allowed. type: "reference"
+                                     // A record with `via: "title-mention"` is a mechanical
+                                     // topic-to-topic reference: the topic body names another
+                                     // topic's title (see below)
                                      // BlockLink is defined in src/lib/block-link-types.ts
                                      // (re-exported from features/block-link/link-types.ts,
                                      // which keeps only the display metadata)
@@ -2005,6 +2008,20 @@ Differences from the legacy format (§3.1a):
 | Body regeneration | Pure function of the current member Claims; the previous body is never fed back in | Incremental revision: the previous `topicMarkdown` (empty for a new topic) plus one new source's text produce the next body — a full rewrite each time, not an append. A source longer than one window is folded in one window at a time (see below), not in a single call |
 | Assignment | Claim's `topics` field (proposed by the ingester) resolved by title match → embedding > 0.9 → create | A per-source, per-window LLM call (`POST /api/wiki/route-topics`) reads the window's text and an index of existing topics and returns which to update / which new ones to create — no embedding, no title-normalization matching, no count cap |
 | Source-check hop count | Two hops: topic statement → member Claim → the Claim's own `derivedFromNotes` | One hop: topic statement → resource, since the citation already names the resource |
+
+**Relations between topics: `via: "title-mention"`.** A new-format topic has no
+syntax for linking another topic, but when its body (`topicMarkdown`) names
+another topic's title, the page's `pages[0].knowledgeLinks` gets a
+`type: "reference"` record to that topic with `via: "title-mention"` (and
+`createdBy: "ai"`, for the same display treatment as citations). It is decided
+by a string match, not by a model: the body is NFKC-normalized with `[[...]]`
+marks removed; the candidate title loses one trailing parenthetical and must
+be at least 3 code points; an ASCII-only title matches case-insensitively at
+word boundaries, any other title as a whitespace-free substring; a title base
+shared by 2 or more topics links to none of them; the page itself is skipped.
+`via` is an optional field of `BlockLink` (older documents simply lack it) and
+is unrelated to the index's `outgoingLinks[].via`. Re-derivation replaces
+only the `title-mention` records and leaves every other link untouched.
 
 **Reading a long source in windows.** A source that fits in one 4,000-character
 window is routed and revised in a single call, same as before. A longer one is

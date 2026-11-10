@@ -1480,7 +1480,10 @@ append/revise updates to existing Claim pages after another note was
 ingested; it was removed 2026-09-17 because it silently dropped
 proposals below confidence 0.7 and carried unexplained caps (30
 candidates, 200-char previews). Page-to-page knowledge updates now go
-through Topic rebuilding (the Topic assignment stage below) instead.
+through Topic rebuilding (the Topic assignment stage below) instead. There is
+still no LLM cross-update: the only thing written between pages is the
+string-match link from a Topic body to another Topic's title (see
+"Cross-references between pages" below), which involves no model call.
 
 | Stage | File | What it does |
 |---|---|---|
@@ -1769,6 +1772,25 @@ Notes:
   eight in the UI). No model call, no threshold, always consistent with the
   References section; pages without sources (legacy Topics and legacy
   per-note summaries) are never linked.
+- **Topic-title mentions are written as link records (added 2026-11).** When
+  a Topic body contains another Topic's title, the page gets a
+  `knowledgeLinks` record to that Topic marked `via: "title-mention"`
+  (`src/features/wiki/topic-mention-links.ts`, pure functions). The index
+  carries it in `outgoingLinks`, so the list's Links / Refs-in columns and the
+  global graph's reference edges show it with no display-side code. Matching
+  is a string comparison, no model call: the body is NFKC-normalized with
+  `[[...]]` citation marks removed; a candidate title loses one trailing
+  parenthetical and is skipped if shorter than 3 code points; an
+  ASCII-only title matches case-insensitively at word boundaries, any other
+  title matches as a whitespace-free, case-insensitive substring; titles
+  whose base is shared by 2 or more Topics (they differ only inside the
+  parentheses) link to none of them; the page itself is excluded. Records
+  are written when a Topic is built or rebuilt
+  (`buildSourceBackedWikiDocument` / `rebuildSourceBackedWikiDocument`,
+  only for `kind: "topic"` when a `NoteIndex` with `kind` is passed) and
+  re-derived by **Tidy up for me** (`relinkTopicMentions`), which replaces
+  only the `title-mention` records and saves a page only when the set of
+  targets changed. The `via` here is not the index's `outgoingLinks[].via`.
 - **Merging Topics has four entry points**, all funneling into the same
   pure execution function `applyTopicMerges` (`src/features/wiki/topic-stage.ts`),
   which retargets member Claims (`retargetClaimTopicId`, kept for old-format

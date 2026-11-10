@@ -59,6 +59,7 @@ const doneResult: AutoUpkeepResult = {
     { step: { kind: "reconcile", wikiId: "t5", title: "一次発酵の目安" }, ok: true, stillFlagged: true },
   ],
   checkedCount: 9,
+  relinkedTopics: 3,
   finishedAt: "2026-11-04T07:30:00Z",
 };
 

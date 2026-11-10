@@ -1167,3 +1167,27 @@ describe("資料の要約ページ（summary）", () => {
     });
   });
 });
+
+describe("題の言及リンク（title-mention）の組み立て", () => {
+  const noteIndex = [
+    { id: "t1", title: "加水率", isWiki: true, kind: "topic" },
+    { id: "t2", title: "天然酵母", isWiki: true, kind: "topic" },
+    { id: "a1", title: "オーブンの癖", isWiki: true, kind: "answer" },
+  ];
+  const mentions = (doc: any) =>
+    doc.pages[0].knowledgeLinks.filter((l: any) => l.via === "title-mention").map((l: any) => l.targetNoteId);
+
+  it("新規のトピックは本文に出てくる別のトピックへの記録が付く（topic 以外の候補は結ばない）", () => {
+    const doc = buildSourceBackedWikiDocument("topic", "生地の一次発酵", "加水率と天然酵母とオーブンの癖の話。", [], null, noteIndex);
+    expect(mentions(doc)).toEqual(["t1", "t2"]);
+  });
+  it("answer のページには書かない・noteIndex が無ければ書かない", () => {
+    expect(mentions(buildSourceBackedWikiDocument("answer", "回答", "加水率の話", [], null, noteIndex))).toEqual([]);
+    expect(mentions(buildSourceBackedWikiDocument("topic", "生地", "加水率の話", [], null))).toEqual([]);
+  });
+  it("書き直しでも付き、自分と同じ題の候補は除く", () => {
+    const base = buildSourceBackedWikiDocument("topic", "加水率", "本文", [], null, noteIndex);
+    const next = rebuildSourceBackedWikiDocument(base, "加水率は天然酵母にも関わる", [], null, noteIndex);
+    expect(mentions(next)).toEqual(["t2"]);
+  });
+});

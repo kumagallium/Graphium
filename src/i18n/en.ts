@@ -2074,6 +2074,7 @@ export const en: Record<string, string> = {
   "autoTidy.nothingToDo": "Nothing needed tidying",
   "autoTidy.lintFailed": "The AI check didn't run, so only what the local check found was tidied up",
   "autoTidy.failedCount": "{count} item(s) couldn't be tidied and are left under items worth a look",
+  "autoTidy.relinked": "Re-linked topics that mention each other on {count} page(s)",
   "autoTidy.details": "What was done",
   "autoTidy.undoHint": "To put something back,",
   "autoTidy.showOperations": "undo it from the upkeep history",
