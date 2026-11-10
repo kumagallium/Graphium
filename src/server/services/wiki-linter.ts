@@ -13,6 +13,7 @@
 
 import { estimateTokens } from "../../lib/context-estimate.js";
 import { generationLanguageName } from "../../lib/language.js";
+import { groupSameTitleTopics } from "../../lib/topic-title-key.js";
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant" | "missing-source";
 export type LintSeverity = "info" | "warning" | "error";
@@ -747,23 +748,16 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
     }
   }
 
-  // Redundant チェック（topic）: 正規化タイトルが完全一致する話題（表記ゆれの明確なケースのみ。
-  // LLM 不要でローカルに判定できる）。語順違い・助詞違いなどの近縁話題は LLM lint 側で拾う —
-  // ここでは「同じ文字列としか言えない」ケースだけを機械的に検出する。
-  const topicsByNormalizedTitle = new Map<string, WikiSnapshot[]>();
-  for (const w of wikis) {
-    if (w.kind !== "topic") continue;
-    const key = normalizeForDuplicateCheck(w.title);
-    const list = topicsByNormalizedTitle.get(key) ?? [];
-    list.push(w);
-    topicsByNormalizedTitle.set(key, list);
-  }
-  for (const group of topicsByNormalizedTitle.values()) {
-    if (group.length < 2) continue;
-    // メンバー数が多い方を残す（同点ならより新しい方）
+  // Redundant チェック（topic）: 題が同じと機械的に言い切れる話題（空白・大文字小文字・ハイフン・
+  // 「の」・末尾の括弧書きの違いだけ）。判定は取り込み時の名寄せと同じ topic-title-key に一本化している。
+  // 包含（「X」と「Y の X」）や語順違いなどの近縁話題は LLM lint 側で拾う。
+  const topics = wikis.filter((w) => w.kind === "topic");
+  for (const group of groupSameTitleTopics(topics)) {
+    // 出典の数が多い方を残す（同点ならより新しい方）
+    const sourceCount = (w: WikiSnapshot) => w.derivedFromNotes.length + (w.derivedFromClaims ?? []).length;
     const sorted = [...group].sort((a, b) => {
-      const memberDiff = (b.derivedFromClaims ?? []).length - (a.derivedFromClaims ?? []).length;
-      if (memberDiff !== 0) return memberDiff;
+      const diff = sourceCount(b) - sourceCount(a);
+      if (diff !== 0) return diff;
       return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
     });
     const keep = sorted[0];
@@ -772,21 +766,15 @@ export function detectLocalIssues(wikis: WikiSnapshot[]): LintIssue[] {
         type: "redundant",
         severity: "warning",
         title: `"${keep.title}" and "${absorb.title}" name the same topic`,
-        description: `These two Topic pages have the same normalized title (only whitespace/casing differ), so they should be a single page.`,
+        description: `These two Topic pages have the same title once spacing, casing, hyphens, the particle の and a trailing parenthetical gloss are ignored, so they should be a single page.`,
         affectedWikiIds: [keep.id, absorb.id],
         suggestion: `Merge "${absorb.title}" into "${keep.title}" via "Organize topics" in Settings.`,
-        recommendedAction: { type: "merge", keepId: keep.id, absorbId: absorb.id, reason: `Same normalized title; keeping the one with more members / more recently updated.` },
+        recommendedAction: { type: "merge", keepId: keep.id, absorbId: absorb.id, reason: `Same title after normalization; keeping the one with more sources / more recently updated.` },
       });
     }
   }
 
   return issues;
-}
-
-/** 話題の重複判定専用の正規化（NFKC・空白除去・小文字化）。wiki-service.normalizeTopicTitle と同じ規則を
- *  サーバー側で複製する（client/server のバンドル境界をまたがないため）。 */
-function normalizeForDuplicateCheck(title: string): string {
-  return title.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
 }
 
 /** 機械的に自動アーカイブできる「空になったナレッジ」の候補 */

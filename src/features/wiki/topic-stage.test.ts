@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   planExistingTopicMerges, consolidateExistingTopics, mergeTopicsExplicit, applyTopicMerges,
   type ExistingTopicForMerge, type ConsolidateExistingTopicsDeps,
-  runSourceTopicStage, TOPIC_REVISE_CONCURRENCY, mergeSourceTopicStageResults, type SourceTopicStageDeps, type SourceTopicStageInput,
+  runSourceTopicStage, rerouteSameTitleCreates, TOPIC_REVISE_CONCURRENCY, mergeSourceTopicStageResults, type SourceTopicStageDeps, type SourceTopicStageInput,
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -193,6 +193,65 @@ describe("runSourceTopicStage", () => {
     expect(saved?.wikiMeta?.topicMarkdown).toContain("新本文");
     expect(saved?.wikiMeta?.derivedFromNotes?.sort()).toEqual(["note-0", "note-1"]);
     expect(result.touchedTopicIds).toEqual(["topic-1"]);
+  });
+
+  describe("題の名寄せ（新規作成を既存の改訂に回す）", () => {
+    const mockRoute = (route: Record<string, unknown>) => {
+      (global.fetch as any).mockImplementation(async (url: string) => {
+        if (String(url).includes("/route-topics")) return { ok: true, json: async () => route };
+        if (String(url).includes("/revise-topic")) return { ok: true, json: async () => ({ body: "## 定義\n新本文[[source:note-1]]" }) };
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+    };
+    const sources: SourceTopicStageInput[] = [{ id: "note-1", title: "資料1", text: "本文1" }];
+
+    it("「の」違いの create は既存の update に回る", async () => {
+      const { deps, docs } = makeSourceDeps({ existingTopicRefs: [{ id: "topic-1", title: "生地一次発酵" }] });
+      docs.set("wiki:topic-1", makeSourceTopicDoc("生地一次発酵", "## 定義\n旧本文", ["note-0"]));
+      mockRoute({ update: [], create: ["生地の一次発酵"] });
+      const result = await runSourceTopicStage(sources, deps);
+      expect(result).toMatchObject({ created: 0, updated: 1, reroutedToExisting: 1, failed: 0 });
+      expect(deps.handleCreateWikiFile).not.toHaveBeenCalled();
+      expect(docs.get("wiki:topic-1")?.wikiMeta?.topicMarkdown).toContain("新本文");
+    });
+
+    it("曖昧（括弧書きが別の既存が 2 つ）なら create のまま", async () => {
+      const { deps } = makeSourceDeps({
+        existingTopicRefs: [
+          { id: "t1", title: "BP (Baking Powder)" },
+          { id: "t2", title: "BP（ベーカーズパーセント）" },
+        ],
+      });
+      mockRoute({ update: [], create: ["BP"] });
+      const result = await runSourceTopicStage(sources, deps);
+      expect(result).toMatchObject({ created: 1, reroutedToExisting: 0 });
+    });
+
+    it("answer ページには寄せない", async () => {
+      const { deps } = makeSourceDeps({ existingTopicRefs: [{ id: "a1", title: "生地一次発酵", kind: "answer" }] });
+      mockRoute({ update: [], create: ["生地の一次発酵"] });
+      const result = await runSourceTopicStage(sources, deps);
+      expect(result).toMatchObject({ created: 1, reroutedToExisting: 0 });
+    });
+
+    it("create の中の重複は 1 件になる", async () => {
+      const { deps } = makeSourceDeps();
+      mockRoute({ update: [], create: ["生地の一次発酵", "生地一次発酵"] });
+      const result = await runSourceTopicStage(sources, deps);
+      expect(result).toMatchObject({ created: 1, reroutedToExisting: 0 });
+    });
+  });
+
+  describe("rerouteSameTitleCreates", () => {
+    it("createTypes を未分類の寄せ先の types に流す（種類があれば上書きしない）", () => {
+      const route = { update: [], create: ["生地の一次発酵", "別の話の例"], createTypes: { "生地の一次発酵": "concept" as const }, types: {} };
+      const out = rerouteSameTitleCreates(route, [{ id: "t1", title: "生地一次発酵" }]);
+      expect(out.route.update).toEqual(["t1"]);
+      expect(out.route.create).toEqual(["別の話の例"]);
+      expect(out.route.types).toEqual({ t1: "concept" });
+      const typed = rerouteSameTitleCreates(route, [{ id: "t1", title: "生地一次発酵", topicType: "method" as const }]);
+      expect(typed.route.types).toEqual({});
+    });
   });
 
   it("改訂した本文の言語（deps.locale）を保存言語に記録する（前の保存言語を残さない）", async () => {
@@ -1890,7 +1949,7 @@ describe("applyTopicMerges の groupScope", () => {
 });
 
 describe("mergeSourceTopicStageResults", () => {
-  const base = { created: 0, updated: 0, migrated: 0, migratedSourcesSkipped: 0, failed: 0, createdTopics: [], touchedTopicIds: [] };
+  const base = { created: 0, updated: 0, migrated: 0, migratedSourcesSkipped: 0, failed: 0, reroutedToExisting: 0, createdTopics: [], touchedTopicIds: [] };
 
   it("件数は合計、話題の一覧は順に連結する", () => {
     const merged = mergeSourceTopicStageResults([

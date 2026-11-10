@@ -32,6 +32,7 @@ import {
   type NoteIndex,
 } from "./wiki-service";
 import { splitIntoWindows } from "./source-windows";
+import { findSameTitleTopic, sameTopicTitle } from "../../lib/topic-title-key";
 import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { isAbortError } from "../../lib/abort-error";
 import { aiErrorCodeOf } from "../../lib/ai-error-codes";
@@ -512,6 +513,8 @@ export type SourceTopicStageResult = {
    * （設定のモデル名が見つからないときは NO_MODEL_REGISTERED）。トーストに理由として出す
    */
   failureError?: unknown;
+  /** 新規作成と振り分けられたが、題が既存と同じなので既存の改訂に回した件数 */
+  reroutedToExisting: number;
   /** この実行で新規作成した話題（呼び出し側が並行実行の既存一覧に引き継ぐ） */
   createdTopics: { id: string; title: string }[];
   /** 触れた（作成・改訂・移行の）話題 id（トーストの「出典照合する」導線・未照合件数の対象） */
@@ -625,6 +628,42 @@ export async function collectSourceRefs(
 }
 
 /**
+ * 振り分けの結果のうち「新規作成」の名前が、既存の題と機械的に同じと言い切れるもの
+ * （空白・大文字小文字・ハイフン・「の」・末尾の括弧書きの違いだけ）を既存の改訂に回す。
+ * 振り分け（AI）が 400 件の一覧から見落とした重複を、何も捨てずに拾い直す。
+ * - answer ページには寄せない（回答ページは別物）
+ * - 括弧書きが別の既存が複数あって曖昧なときは寄せない（findSameTitleTopic が null を返す）
+ * - 新規作成どうしでも題が同じなら先頭 1 件だけ残す
+ * - createTypes に種類があり、寄せ先に種類が無ければ types（未分類に種類を付ける経路）へ流す
+ * 入力の route は書き換えず、新しい route を返す。
+ */
+export function rerouteSameTitleCreates(
+  route: TopicRouteResult,
+  existingTopicRefs: ExistingTopicRef[],
+  log?: (...args: unknown[]) => void,
+): { route: TopicRouteResult; rerouted: number } {
+  const candidates = existingTopicRefs.filter((t) => t.kind !== "answer");
+  const update = [...route.update];
+  const types = { ...route.types };
+  const create: string[] = [];
+  let rerouted = 0;
+  for (const name of new Set(route.create)) {
+    const hit = findSameTitleTopic(name, candidates);
+    if (hit) {
+      if (!update.includes(hit.id)) update.push(hit.id);
+      const type = route.createTypes[name];
+      if (type && !hit.topicType && !types[hit.id]) types[hit.id] = type;
+      rerouted++;
+      log?.("新規の題が既存と同じなので改訂に回した:", name, "→", hit.title);
+      continue;
+    }
+    if (create.some((c) => sameTopicTitle(c, name))) continue;
+    create.push(name);
+  }
+  return { route: { ...route, update, create, types }, rerouted };
+}
+
+/**
  * 話題の段（新形式）を実行する。sources は取り込み等で今回処理し終えた資料の一覧
  * （知見の有無に関係なく、資料 1 本につき 1 件渡す）。
  */
@@ -638,6 +677,7 @@ export async function runSourceTopicStage(
     migrated: 0,
     migratedSourcesSkipped: 0,
     failed: 0,
+    reroutedToExisting: 0,
     createdTopics: [],
     touchedTopicIds: [],
   };
@@ -684,6 +724,10 @@ export async function runSourceTopicStage(
         log("資料の振り分け(route-topics)に失敗:", source.id, err);
         continue;
       }
+      // 題が既存と同じと言い切れる新規作成は、既存の改訂に回す
+      const rr = rerouteSameTitleCreates(route, existingTopicRefs, log);
+      route = rr.route;
+      result.reroutedToExisting += rr.rerouted;
 
       // ルーターの結果に加え、今回の資料を既に引用済みの新形式トピックは必ず改訂対象に
       // 含める（和集合。ルーターは資料 1 本ずつしか見ないため、既存の引用が古くなっても
@@ -908,6 +952,10 @@ export async function runSourceTopicStage(
         log("資料の振り分け(route-topics)に失敗:", source.id, "窓", win.index, err);
         continue;
       }
+      // 題が既存（この資料の前の窓で作ったものを含む）と同じと言い切れる新規作成は、既存の改訂に回す
+      const rr = rerouteSameTitleCreates(route, existingTopicRefs, log);
+      route = rr.route;
+      result.reroutedToExisting += rr.rerouted;
 
       const existingIds = new Set(existingTopicRefs.map((t) => t.id));
       for (const [id, type] of Object.entries(route.types)) if (existingIds.has(id) && !typeById.has(id)) typeById.set(id, type);
@@ -1371,6 +1419,7 @@ export function mergeSourceTopicStageResults(results: SourceTopicStageResult[]):
     migrated: 0,
     migratedSourcesSkipped: 0,
     failed: 0,
+    reroutedToExisting: 0,
     createdTopics: [],
     touchedTopicIds: [],
   };
@@ -1381,6 +1430,7 @@ export function mergeSourceTopicStageResults(results: SourceTopicStageResult[]):
     merged.migrated += r.migrated;
     merged.migratedSourcesSkipped += r.migratedSourcesSkipped;
     merged.failed += r.failed;
+    merged.reroutedToExisting += r.reroutedToExisting;
     merged.createdTopics.push(...r.createdTopics);
     merged.touchedTopicIds.push(...r.touchedTopicIds);
     if (r.failureError !== undefined) noteFailure(r.failureError);
