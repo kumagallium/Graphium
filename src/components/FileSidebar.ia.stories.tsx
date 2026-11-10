@@ -1408,10 +1408,15 @@ export const TabsEachTab: Story = {
             <div
               data-variant={key}
               className="border border-sidebar-border rounded-lg overflow-hidden flex"
-              style={{ width: 256, height: 720 }}
+              style={{ width: 256, height: 780 }}
             >
               <FileSidebar
                 {...TABS_COMPARISON_PROPS}
+                // 実アプリの左ナビに出るものをそろえる（マニュアルの図に使うので、行が欠けると図が嘘になる）
+                onShowGlobalGraph={() => {}}
+                onShowWikiLog={() => {}}
+                onShowWikiLint={() => {}}
+                onCollapse={() => {}}
                 layout="tabs"
                 defaultTab={key}
                 chatNav={

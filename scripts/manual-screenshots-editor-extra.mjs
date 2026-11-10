@@ -138,7 +138,24 @@ figures["new-note-menu"] = async () => {
   await page.getByRole("menuitem", { name: "Voice note" }).waitFor({ state: "visible", timeout: 5000 });
   await page.getByRole("menuitem", { name: /From a template/ }).waitFor({ state: "visible", timeout: 5000 });
   await settle(page, 300, 900, 600);
-  await shoot(page, "new-note-menu", { x: 4, y: 84, width: 249, height: 164 });
+  // + Note のボタンと開いたメニューだけが収まる範囲（ボタン行とメニューの外接＋余白）
+  // 撮影の演出: + Note の行とメニュー以外（背後のタブ列・Bring in files・一覧）は見えなくする（旧図と同じく背景色だけにする）。
+  // 行の祖先をたどり、各階層で兄弟要素を visibility:hidden にする（メニューを含む要素は除く）。製品の表示崩れを隠す処理ではない
+  await page.getByRole("button", { name: "Kind of new item" }).evaluate((el) => {
+    const menu = document.querySelector('[role="menu"]');
+    let cur = el.parentElement;
+    while (cur && cur.parentElement && cur.parentElement !== document.body) {
+      for (const sib of cur.parentElement.children) {
+        if (sib === cur || (menu && sib.contains(menu))) continue;
+        sib.style.visibility = "hidden";
+      }
+      cur = cur.parentElement;
+    }
+  });
+  const nb = await page.getByRole("button", { name: "Kind of new item" }).evaluate((el) => { const r = el.parentElement.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom }; });
+  const mb = await page.getByRole("menu").first().evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom }; });
+  const nx = Math.min(nb.x, mb.x) - 4, ny = Math.min(nb.y, mb.y) - 2, nr = Math.max(nb.r, mb.r) + 4, nbm = Math.max(nb.b, mb.b) + 2;
+  await shoot(page, "new-note-menu", { x: nx, y: ny, width: nr - nx, height: nbm - ny });
   await ctx.close();
 };
 
@@ -155,7 +172,24 @@ figures["composer-open-alongside"] = async () => {
   await page.getByText("Recent notes", { exact: false }).first().waitFor({ state: "visible", timeout: 10000 });
   await page.waitForTimeout(1000);
   // ハイライトは行の上のマウスで付く。編集中のノートの次の行（右端に全画面ボタンがある行）に当てる
-  await page.getByText("Trial 3 - 75% hydration, bread flour", { exact: true }).first().hover();
+  // 一覧の下端で行が半分切れない viewport 高さを探す（スクロール領域の下端をまたぐ行が無い高さ）
+  const straddles = () => page.evaluate(() => {
+    const sc = [...document.querySelectorAll("*")].find((e) => {
+      const r = e.getBoundingClientRect();
+      return /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 4 && r.width > 600 && /Recent notes/i.test(e.textContent);
+    });
+    if (!sc) return -1;
+    const b = sc.getBoundingClientRect().bottom;
+    return [...sc.querySelectorAll("*")].filter((e) => { const r = e.getBoundingClientRect(); return r.height > 30 && r.height < 90 && r.top < b - 2 && r.bottom > b + 2; }).length;
+  });
+  for (let h = 800; h <= 900; h += 4) {
+    await page.setViewportSize({ width: 1280, height: h });
+    await page.waitForTimeout(300);
+    if ((await straddles()) === 0) break;
+  }
+  console.log("  composer viewport height", page.viewportSize().height);
+  // 編集中のノートの次の行（最近のノートに Trial 3 は並ばない）
+  await page.getByText("Trial 5 - overnight cold fermentation", { exact: true }).first().hover();
   await page.waitForTimeout(400);
   const box = await input.evaluate((el) => {
     let n = el;

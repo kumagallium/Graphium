@@ -371,7 +371,7 @@ const figures = {
         const y = 400;
         await page.mouse.move(target.x + 3, y);
         await page.mouse.down();
-        await page.mouse.move(target.x - 200, y, { steps: 12 });
+        await page.mouse.move(target.x - 120, y, { steps: 12 });
         await page.mouse.up();
         await page.waitForTimeout(800);
       }

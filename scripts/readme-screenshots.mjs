@@ -42,8 +42,8 @@ function seed() {
   const blocks = [
     para("m1000000-0000-4000-8000-0000000000b0", t("Trying a slightly wetter dough than trial #2. Same flour, same oven.")),
     step(mix, "Mix", [
-      para("m1000000-0000-4000-8000-0000000000b1", t("Combine the flour and water in the stand mixer.")),
-      table(tIn, [["Name", "Amount"], ["bread flour", "300 g"], ["water", "200 g"]]),
+      para("m1000000-0000-4000-8000-0000000000b1", t("Combine the dry ingredients with the water in the stand mixer.")),
+      table(tIn, [["Name", "Amount"], ["bread flour", "300 g"], ["water", "200 g"], ["dry yeast", "3 g"], ["salt", "5 g"]]),
       table(tTool, [["Name"], ["stand mixer"]]),
     ]),
     step(fer, "Ferment", [para("m1000000-0000-4000-8000-0000000000b2", t("Rest the dough 30 min at room temperature, covered."))]),
@@ -85,23 +85,34 @@ async function editorWithGraph(browser, lang) {
   await page.locator(".react-flow__node").first().waitFor({ state: "visible", timeout: 20000 });
   await page.getByRole("button", { name: ja ? /整列/ : /Tidy up/ }).first().click().catch(() => {});
   await page.waitForTimeout(1200);
+  // manual-screenshots-provenance.mjs の editor-with-graph_en と同じ構図: Mix を選び、Steps パネルを 120px 広げて Tidy up → Fit View
   const node = page.locator(".react-flow__node").filter({ hasText: "Mix" }).first();
-  // 全体フィットのボタンはペインのクリック扱いで選択が外れるので使わず、空き地を上へドラッグして位置を寄せる
-  const box = await page.locator(".react-flow__pane").first().boundingBox();
-  const x = box.x + box.width * 0.08;
-  const y = box.y + box.height * 0.8;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x, y - 95, { steps: 8 });
-  await page.mouse.up();
-  await page.waitForTimeout(600);
-  // 選ぶと下の「ノードを選ぶと…」のヒントが消えて、そのステップの表パネルに変わる。効くまで押す
   const hint = page.getByText(ja ? /ノードを選ぶと/ : /Select a node/);
   for (let i = 0; i < 4 && (await hint.isVisible().catch(() => false)); i++) {
     await node.click();
     await page.waitForTimeout(1500);
   }
+  {
+    const handles = page.locator('[role="separator"][data-resize-handle][aria-orientation="vertical"]');
+    let target = null;
+    for (let i = 0; i < (await handles.count()); i++) {
+      const b = await handles.nth(i).boundingBox();
+      if (b && b.x > 700 && (!target || b.x < target.x)) target = b;
+    }
+    if (target) {
+      await page.mouse.move(target.x + 3, 400);
+      await page.mouse.down();
+      await page.mouse.move(target.x - 120, 400, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(800);
+    }
+  }
+  await page.getByRole("button", { name: ja ? /整列/ : /Tidy up/ }).first().click().catch(() => {});
+  await page.waitForTimeout(1200);
+  await page.locator(".react-flow__controls-fitview").first().click().catch(() => {});
+  await page.waitForTimeout(800);
   await page.mouse.move(700, 10);
+  await page.addStyleTag({ content: ".bn-side-menu { visibility: hidden !important; }" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(OUT, `editor-with-graph_${lang}.png`) });
   await ctx.close();

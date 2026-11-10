@@ -146,32 +146,48 @@ function seedNotes() {
       step("e3000000-0000-4000-8000-0000000000a1", "", [para("e3000000-0000-4000-8000-0000000000b1", t(""))]),
     ]),
   );
-  // Mix → Ferment → Bake。ナレッジには追加していない（ヘッダーが "Add to Knowledge" になる）
-  {
-    const [mix, fer, bak] = [1, 2, 3].map((n) => `e4000000-0000-4000-8000-00000000000${n}`);
-    const tOut = "e4000000-0000-4000-8000-0000000000a2";
-    const tPar = "e4000000-0000-4000-8000-0000000000a3";
-    saveNote(
-      ID.chain,
-      mkDoc(
-        "Bread dough trial #10",
-        [
-          para("e4000000-0000-4000-8000-0000000000b0", t("A basic loaf, same flour and oven as before.")),
-          step(mix, "Mix", [
-            para("e4000000-0000-4000-8000-0000000000b1", t("Combine the flour and water in the stand mixer.")),
-          ]),
-          step(fer, "Ferment", [para("e4000000-0000-4000-8000-0000000000b2", t("Rest the dough 30 min at room temperature, covered."))]),
-          step(bak, "Bake", [
-            para("e4000000-0000-4000-8000-0000000000b3", t("Bake at 200 °C for 25 min.")),
-            table(tPar, [["Temperature", "Time"], ["200 °C", "25 min"]]),
-            table(tOut, [["Name"], ["baked loaf"]]),
-          ]),
-        ],
-        { [tPar]: "attribute", [tOut]: "output" },
-        [informedBy(fer, mix), informedBy(bak, fer)],
-      ),
-    );
-  }
+  saveChain(false);
+}
+
+// Mix → Ferment → Bake。ナレッジには追加していない（ヘッダーが "Add to Knowledge" になる）。
+// withInputs=true は step-block 用: Mix の本文の語に素材・道具のインラインラベル（色付き下線）を付ける
+function saveChain(withInputs) {
+  const [mix, fer, bak] = [1, 2, 3].map((n) => `e4000000-0000-4000-8000-00000000000${n}`);
+  const tOut = "e4000000-0000-4000-8000-0000000000a2";
+  const tPar = "e4000000-0000-4000-8000-0000000000a3";
+  const mixBody = withInputs
+    ? [
+        para(
+          "e4000000-0000-4000-8000-0000000000b1",
+          t("Combine "),
+          t("bread flour", { inlineMaterial: "ent-bread-flour" }),
+          t(" 300 g and "),
+          t("water", { inlineMaterial: "ent-water" }),
+          t(" 200 g in the "),
+          t("stand mixer", { inlineTool: "ent-stand-mixer" }),
+          t("."),
+        ),
+      ]
+    : [para("e4000000-0000-4000-8000-0000000000b1", t("Combine the flour and water in the stand mixer."))];
+  const labels = { [tPar]: "attribute", [tOut]: "output" };
+  saveNote(
+    ID.chain,
+    mkDoc(
+      "Bread dough trial #10",
+      [
+        para("e4000000-0000-4000-8000-0000000000b0", t("A basic loaf, same flour and oven as before.")),
+        step(mix, "Mix", mixBody),
+        step(fer, "Ferment", [para("e4000000-0000-4000-8000-0000000000b2", t("Rest the dough 30 min at room temperature, covered."))]),
+        step(bak, "Bake", [
+          para("e4000000-0000-4000-8000-0000000000b3", t("Bake at 200 °C for 25 min.")),
+          table(tPar, [["Temperature", "Time"], ["200 °C", "25 min"]]),
+          table(tOut, [["Name"], ["baked loaf"]]),
+        ]),
+      ],
+      labels,
+      [informedBy(fer, mix), informedBy(bak, fer)],
+    ),
+  );
 }
 
 // ── ブラウザ共通 ──────────────────────────────────────────────────
@@ -231,6 +247,8 @@ const stepCard = (page, title) =>
 
 // ── 1. step-block ────────────────────────────────────────────────
 async function shootStepBlock() {
+  saveChain(true);
+  await new Promise((r) => setTimeout(r, 2500));
   const { ctx, page } = await newSession();
   await openNote(page, ID.chain);
   await waitSaved(page);
@@ -240,8 +258,9 @@ async function shootStepBlock() {
   await page.waitForTimeout(500);
   const a = await cards.nth(0).boundingBox();
   const b = await cards.nth(1).boundingBox();
-  await shotBox(page, "step-block", { x: a.x - 16, y: a.y - 8, width: a.width + 28, height: b.y + 52 - a.y + 8 });
+  await shotBox(page, "step-block", { x: a.x - 16, y: a.y - 8, width: a.width + 28, height: await (async () => { const r = await page.getByText("Rest the dough", { exact: false }).first().boundingBox(); return r.y + r.height + 14 - a.y + 8; })() });
   await ctx.close();
+  saveChain(false); // 他の図のために元の（表の無い）Mix に戻す
 }
 
 // ── 2/3. 過去の手順名ピッカー（1 段目・2 段目）────────────────────
@@ -257,7 +276,10 @@ async function shootStepHistory() {
   await waitSaved(page);
   const card = page.locator('[data-content-type="step"]').first();
   await card.scrollIntoViewIfNeeded();
-  await card.locator('[data-test="step-history-icon"]').click();
+  const histBtn = card.locator('[data-test="step-history-icon"]');
+  const hb1 = await card.getByText("Past steps", { exact: true }).first().boundingBox();
+  const hb0 = { x: hb1.x, width: hb1.width + 4 }; // ボタンの右端（隣のチップを写さない）
+  await histBtn.click();
   await page.waitForTimeout(800);
   const popup = page.getByText("Pick from past steps", { exact: true }).first();
   await popup.waitFor({ state: "visible", timeout: 10000 });
@@ -267,11 +289,11 @@ async function shootStepHistory() {
     const hb = await page.getByText(txt).first().boundingBox();
     return hb.y + hb.height + 16 - c.y;
   };
-  await shotBox(page, "step-history-names", { x: c.x - 4, y: c.y - 4, width: 340, height: await bottomOf("Picking one fills in") });
+  await shotBox(page, "step-history-names", { x: c.x - 4, y: c.y - 4, width: hb0.x + hb0.width - c.x + 2, height: await bottomOf("Picking one fills in") });
   // 2 段目: パラメータと素材・出力の両方を持つ手順（Bake。chain ノートに仕込んである）を選ぶ
   await page.getByText("Bake", { exact: true }).first().click();
   await page.waitForTimeout(800);
-  await shotBox(page, "step-history-picker", { x: c.x - 4, y: c.y - 4, width: 340, height: await bottomOf("Add empty fields") + 14 });
+  await shotBox(page, "step-history-picker", { x: c.x - 4, y: c.y - 4, width: hb0.x + hb0.width - c.x + 2, height: await bottomOf("Add empty fields") + 14 });
   await ctx.close();
 }
 
@@ -300,6 +322,9 @@ async function shootCrossNote() {
   await mix.getByText("Prev step", { exact: true }).click();
   await page.getByText("Choose from another note", { exact: true }).click();
   await page.waitForTimeout(600);
+  // 題名の長いノートを写さないよう、検索語で一覧を 2 件に絞る
+  await page.getByPlaceholder("Search notes").fill("dough");
+  await page.waitForTimeout(600);
   await page.getByText("Sourdough starter", { exact: true }).first().click();
   await page.waitForTimeout(600);
   await page.getByText("Feed the starter", { exact: true }).last().click();
@@ -307,7 +332,7 @@ async function shootCrossNote() {
   await page.getByText("Levain", { exact: true }).last().waitFor({ state: "visible", timeout: 8000 });
   // ピッカーの列が全部写る範囲（ステップヘッダーから右のカラム群まで）
   const m = await mix.boundingBox();
-  await shotBox(page, "cross-note-output-picker", { x: 255, y: m.y - 10, width: 1280 - 255 - 4, height: 200 });
+  await shotBox(page, "cross-note-output-picker", { x: 255, y: m.y - 10, width: 1280 - 255 - 4, height: 290 });
   // 出力を選ぶ
   await page.getByText("Levain", { exact: true }).last().click();
   await page.waitForTimeout(1500);
