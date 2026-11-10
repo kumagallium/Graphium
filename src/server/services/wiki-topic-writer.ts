@@ -19,9 +19,27 @@ import { generationLanguageName } from "../../lib/language.js";
 // 本文は書かない・話題ページの統合（メンバー移動・ゴミ箱送り）は呼び出し側が行う。
 // 件数の上限は設けない（大きすぎて LLM が失敗したら、そのまま失敗として呼び出し側に返す）。
 
-/** 話題名の粒度の目安（Ingester の Topics 節と文面を揃えること） */
-export const TOPIC_GRANULARITY_RULES = `- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names.
+/**
+ * 既存の話題どうしを寄せるとき（Topic Consolidator）の粒度の目安。取り込みの振り分け
+ * （TOPIC_GRANULARITY_RULES）とは分けてある。2026-11-10 の測定で、振り分けと同じ
+ * 「もの自体の名前で」の規則をここに使うと、401 題のうち 117 題（従来は 17 題）を寄せようとし、
+ * そのうち 41 題は、ページとして存在しない題（11 種類）を寄せ先にした。今の統合は寄せ先のページが
+ * 無いと組の先頭を残す側にして題を変えないので、物性の題のページが十数枚を吸収することになる。
+ * 既存の「材料 × 物性」のページは、この規則のまま残す（題の言及のリンクで材料のページとつながる）。
+ */
+export const TOPIC_CONSOLIDATION_GRANULARITY_RULES = `- **Pick the granularity a material/method/phenomenon-level concept sits at — not a per-sample or per-composition slice of it.** Prefer "material × property", "method", "phenomenon", or "model/theory" level names.
 - Do NOT make a separate topic per composition, sample, processing condition, or measurement run (e.g. prefer "Al3V の格子定数" over "Al3V1-xTix の格子定数"). The same concept should live on one page.`;
+
+/**
+ * 取り込みの振り分け（Topic Router）で、新しく作る話題名の粒度の目安。「もの」そのもの
+ * （材料・手法・現象・モデル…）の名前でページを作り、その性質・条件・結果はそのページの節に
+ * 書かせる。以前は「材料 × 物性」の名前を勧めていて、1 つの材料に物性ごとのページが
+ * 10 枚以上できていた。2026-11-10 の測定（資料 6 本 × 2 回）で「X の Y」型の題は 9% → 0%、
+ * 題の総数は −6%。
+ */
+export const TOPIC_GRANULARITY_RULES = `- **Name a topic after one thing itself — a material, a method or instrument, a phenomenon or property, a model or theory, a dataset or tool** (e.g. "Al3V", "spark plasma sintering", "lattice thermal conductivity"). What a source says about that thing's properties, conditions or results belongs in sections of that thing's page.
+- Do NOT name a topic "thing × attribute" (e.g. "Al3V の格子定数", "Al3V の合成条件") just because the source reports that attribute. Use the thing's own page ("Al3V"); when the attribute is discussed as a concept in its own right, also use the attribute's own page ("格子定数").
+- Do NOT make a separate topic per composition, sample, processing condition, or measurement run. The same thing should live on one page.`;
 
 /**
  * Topic Consolidator 用のシステムプロンプトを構築する
@@ -35,7 +53,7 @@ You will be given a list of proposed topic names (just named for Claims that nee
 
 - Merge proposed names that name the same concept despite surface differences: wording variants, presence/absence of particles (助詞), word order, abbreviations vs. spelled-out forms.
 - Prefer an existing topic title as the canonical title when one matches the same concept. Only pick a canonical title from among the proposed names themselves when no existing topic fits — in that case pick the most general/common phrasing among the candidates that name the same concept.
-${TOPIC_GRANULARITY_RULES}
+${TOPIC_CONSOLIDATION_GRANULARITY_RULES}
 - Every proposed name MUST appear as a key in the mapping, even if it maps to itself (no consolidation needed).
 - Do not invent a canonical title that isn't either one of the existing topic titles or one of the proposed names.
 
