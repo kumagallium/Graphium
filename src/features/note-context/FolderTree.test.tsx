@@ -91,3 +91,20 @@ describe("FolderTree の maxTopLevel", () => {
     expect(folderButtons().length).toBeGreaterThan(8);
   });
 });
+
+describe("FolderTree の並び", () => {
+  it("中身のノートが多いフォルダから並ぶ（同数は名前順）", () => {
+    render(
+      <LocaleProvider>
+        <FolderTree
+          folders={[
+            { value: "f01", count: 1 },
+            { value: "f02", count: 5 },
+            { value: "f03", count: 1 },
+          ]}
+        />
+      </LocaleProvider>,
+    );
+    expect(folderButtons().map((b) => b.textContent?.match(/f\d\d/)?.[0])).toEqual(["f02", "f01", "f03"]);
+  });
+});

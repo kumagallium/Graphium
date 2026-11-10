@@ -117,7 +117,8 @@ export function FolderTree({
 }: FolderTreeProps) {
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
-  const tree = useMemo(() => buildFolderTree(folders, emptyFolders ?? []), [folders, emptyFolders]);
+  // サイドバーは中身の多い順（上位 8 件で畳むので、よく使うフォルダを上に出す）
+  const tree = useMemo(() => buildFolderTree(folders, emptyFolders ?? [], "count"), [folders, emptyFolders]);
 
   // ドラッグ中に枠を出しているフォルダ（小文字 path キー）
   const [dropTarget, setDropTarget] = useState<string | null>(null);

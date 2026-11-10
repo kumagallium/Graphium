@@ -104,12 +104,33 @@ describe("buildFolderTree", () => {
     expect(tree[0].children[0].totalCount).toBe(0);
   });
 
-  it("並びは名前昇順（件数順にしない）", () => {
+  it("既定の並びは名前昇順", () => {
     const tree = buildFolderTree([
-      { value: "ブログ", count: 100 },
-      { value: "哲学", count: 1 },
+      { value: "哲学", count: 100 },
+      { value: "ブログ", count: 1 },
     ]);
     expect(tree.map((n) => n.name)).toEqual(["ブログ", "哲学"]);
+  });
+
+  it("order=count は中身の多い順（親は子込みの合計・同数は名前順・空は最後）", () => {
+    const tree = buildFolderTree(
+      [
+        { value: "ブログ", count: 2 },
+        { value: "哲学", count: 1 },
+        { value: "哲学/倫理", count: 4 },
+        { value: "哲学/美学", count: 6 },
+        { value: "料理", count: 2 },
+      ],
+      ["下書き"],
+      "count",
+    );
+    expect(tree.map((n) => [n.name, n.totalCount])).toEqual([
+      ["哲学", 11],
+      ["ブログ", 2],
+      ["料理", 2],
+      ["下書き", 0],
+    ]);
+    expect(tree[0].children.map((c) => c.name)).toEqual(["美学", "倫理"]);
   });
 });
 
