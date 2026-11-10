@@ -33,6 +33,8 @@ await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
 const page = await ctx.newPage();
 await page.goto(`${SB}?id=graph-globalgraphstructure--manual-english&viewMode=story`);
 await page.getByText("Global Graph").first().waitFor({ state: "visible" });
+// 既定は Simple（灰色のみ）。alt が種類の区別を前提にしているので Color を Type にする
+await page.getByRole("button", { name: "Type", exact: true }).click();
 // 力学配置が落ち着くまで待つ
 await page.waitForTimeout(6000);
 const out = resolve(OUTPUT_DIR, "global-graph-islands_en.png");

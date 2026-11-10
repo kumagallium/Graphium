@@ -461,13 +461,13 @@ figures["folder-rename-inline"] = async () => {
   await page.getByText("All Notes", { exact: true }).first().click();
   await page.waitForTimeout(1200);
   // サイドバーの All Notes を開いてフォルダを出す（左端の ›）
-  await page.mouse.click(19, 193);
+  await page.mouse.click(19, 465);
   await page.waitForTimeout(800);
   // 名前の文字の上に乗せると名前のツールチップが出るので、行の右寄り（件数の左）に置く
   const box = await page.getByText("Bread", { exact: true }).first().boundingBox();
   await page.mouse.move(150, box.y + box.height / 2);
   await page.waitForTimeout(250);
-  await shoot(page, "folder-rename-inline", { x: 0, y: 0, width: 256, height: 254 });
+  await shoot(page, "folder-rename-inline", { x: 0, y: 440, width: 256, height: 140 });
   await ctx.close();
 };
 
@@ -491,6 +491,7 @@ figures["memo-gallery"] = async () => {
   const id = await findNoteId("Trial plan and log");
   const { ctx, page } = await openApp(`#note/${id}`);
   await page.waitForTimeout(1500);
+  await page.getByRole("tab", { name: "Materials" }).click(); // 左ナビは下段 3 タブ。Memos は素材タブ
   await page.getByText("Memos", { exact: true }).first().click();
   await page.waitForTimeout(1500);
   // + ボタンと件数の切り替わり（フェード）が終わるまで待つ
@@ -701,6 +702,7 @@ figures["memo-gallery-selection"] = async () => {
   const id = await findNoteId("Trial plan and log");
   const { ctx, page } = await openApp(`#note/${id}`);
   await page.waitForTimeout(1500);
+  await page.getByRole("tab", { name: "Materials" }).click(); // 左ナビは下段 3 タブ。Memos は素材タブ
   await page.getByText("Memos", { exact: true }).first().click();
   await page.waitForTimeout(1500);
   await page.getByRole("checkbox", { name: "Select all" }).first().click({ force: true }).catch(async () => {
@@ -787,14 +789,20 @@ figures["chat-answer"] = async () => {
   ];
   await fetch(`${API}/notes/${id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(doc) });
   try {
-    const { ctx, page } = await openApp(`#note/${id}`, { models: SAMPLE_MODELS, settings: { features: { claims: true, insights: true } } });
+    // 応答の操作列が増えて 800px では末尾が切れるので少し縦に伸ばす
+    const { ctx, page } = await openApp(`#note/${id}`, { viewport: { width: 1280, height: 900 }, models: SAMPLE_MODELS, settings: { features: { claims: true, insights: true } } });
     await page.waitForTimeout(2500);
     await page.mouse.click(1970 * 0.64, 108 * 0.64); // 右レールの先頭（Chat）
     await page.waitForTimeout(1500);
     await page.getByText("How did the crumb change", { exact: false }).first().click();
     await page.waitForTimeout(1500);
+    // 応答の下に操作列が増えて末尾へ自動スクロールされ、質問の吹き出しが上端で切れるので先頭へ戻す
+    await page.getByText("How did the crumb change", { exact: false }).first().evaluate((el) => {
+      for (let n = el; n; n = n.parentElement) if (n.scrollTop > 0) n.scrollTop = 0;
+    });
+    await page.waitForTimeout(500);
     await hideHandles(page);
-    await page.mouse.move(700, 790);
+    await page.mouse.move(700, 890);
     await page.waitForTimeout(800);
     // 左サイドバー下端でスクロール領域に断ち切られた文字が写らないよう、サイドバーを除いて切り抜く
     const vp = page.viewportSize();

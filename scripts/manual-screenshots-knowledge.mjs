@@ -145,7 +145,7 @@ SHOTS.probe = async () => {
 
 /** サイドバーの Knowledge を開いて Claims の一覧へ */
 async function gotoClaims(page) {
-  await page.getByRole("button", { name: /^Knowledge/ }).first().click();
+  await page.getByRole("tab", { name: "Knowledge", exact: true }).first().click();
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: /^Claims/ }).first().click();
   await page.waitForTimeout(1500);
@@ -221,14 +221,16 @@ SHOTS["composer-verbs"] = async () => {
   await page.keyboard.press("Meta+k");
   await page.waitForTimeout(1500);
   // 最近のノートと Recent Knowledge は別見出し。一覧は高さが限られスクロールするので、
-  // Recent Knowledge の見出しが見える位置まで送る
+  // 末尾へ送ると見出しの上に「… Show N more」だけの行が浮くので、一覧は先頭（scrollTop=0）に置く
   const sc = await page.evaluate(() => {
     const h = Array.from(document.querySelectorAll("*")).find(
       (e) => e.children.length === 0 && /^recent knowledge$/i.test((e.textContent || "").trim()),
     );
     if (!h) return "no heading";
-    h.scrollIntoView({ block: "start" });
-    return "scrolled";
+    let box = h.parentElement;
+    while (box && !(box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+    if (box) box.scrollTop = 0;
+    return box ? "top" : "no scroll box";
   });
   console.log(sc);
   await page.mouse.move(1900, 1100);
@@ -392,7 +394,7 @@ SHOTS["chart-dual-axis"] = async () => {
 // ── Upkeep（手入れ）画面の図 ──
 /** サイドバーの Knowledge を開き、下の Upkeep ボタンで手入れ画面へ */
 async function gotoUpkeep(page, tab = null) {
-  await page.getByRole("button", { name: /^Knowledge/ }).first().click();
+  await page.getByRole("tab", { name: "Knowledge", exact: true }).first().click();
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: /^Upkeep/ }).first().click();
   await page.getByText("Knowledge upkeep", { exact: true }).first().waitFor({ state: "visible", timeout: 15000 });

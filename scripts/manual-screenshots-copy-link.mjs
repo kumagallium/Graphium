@@ -45,7 +45,7 @@ const page = await context.newPage();
 for (const shot of SHOTS) {
   await page.goto(`http://localhost:${port}/iframe.html?id=${shot.story}&viewMode=story`, { waitUntil: "load" });
   // 初回はストーリーのコンパイルに時間がかかる
-  const menuButton = page.locator('#storybook-root button[aria-label="Menu"]').last();
+  const menuButton = page.locator('button[aria-label="Menu"]').last();
   await menuButton.waitFor({ state: "visible", timeout: 120000 });
   await menuButton.click();
   const panel = page.locator(shot.panel).last();

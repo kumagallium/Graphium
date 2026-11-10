@@ -358,7 +358,28 @@ const figures = {
     const { ctx, page } = await newSession();
     await openNote(page, ID.trial);
     await selectStepNode(page, "Mix");
-    await panGraphUp(page, 90); // 全ノードが表パネルに隠れないよう上へ寄せる
+    // 入力 5 つが横一列だと全体フィットで極端に縮むので、Tidy up で整えてから Fit View で読める倍率にする
+    // Steps パネルの左端（ResizeHandle）を左へドラッグして幅を広げ、横一列の入力ノードのラベルを読める倍率にする
+    {
+      const handles = page.locator('[role="separator"][data-resize-handle][aria-orientation="vertical"]');
+      let target = null;
+      for (let i = 0; i < (await handles.count()); i++) {
+        const b = await handles.nth(i).boundingBox();
+        if (b && b.x > 700 && (!target || b.x < target.x)) target = b;
+      }
+      if (target) {
+        const y = 400;
+        await page.mouse.move(target.x + 3, y);
+        await page.mouse.down();
+        await page.mouse.move(target.x - 200, y, { steps: 12 });
+        await page.mouse.up();
+        await page.waitForTimeout(800);
+      }
+    }
+    await page.getByRole("button", { name: /Tidy up/ }).first().click().catch(() => {});
+    await page.waitForTimeout(1200);
+    await page.locator(".react-flow__controls-fitview").first().click().catch(() => {});
+    await page.waitForTimeout(800);
     await page.mouse.move(700, 10); // 本文のハンドルが出ないよう、ヘッダーの空きへ
     // マウスを外しても直前に出たハンドル（⠿ と +）が残ることがあるので、撮る間だけ隠す
     await page.addStyleTag({ content: ".bn-side-menu { visibility: hidden !important; }" });
@@ -501,6 +522,7 @@ const figures = {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await dismissWelcome(page);
     await page.waitForTimeout(2000);
+    await page.getByRole("tab", { name: "Materials", exact: true }).click(); // 左ナビは下段 3 タブ（Notes / Knowledge / Materials）
     await page.getByText("Documents", { exact: true }).first().click();
     await page.waitForTimeout(1200);
     await page.locator('input[type="file"][accept="application/pdf"]').first().setInputFiles(files);
@@ -556,6 +578,7 @@ const figures = {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await dismissWelcome(page);
     await page.waitForTimeout(2000);
+    await page.getByRole("tab", { name: "Materials", exact: true }).click();
     await page.getByText("Documents", { exact: true }).first().click();
     await page.waitForTimeout(1500);
     await page.getByText("bread-science.pdf").first().click();

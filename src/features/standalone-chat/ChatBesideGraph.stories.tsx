@@ -13,6 +13,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { FileSidebar } from "../../components/FileSidebar";
 import { LocaleProvider, syncLocale } from "../../i18n";
 import type { ChatMessage } from "../../lib/document-types";
+import type { FolderNode } from "../note-context/folder-tree-model";
 import { SAMPLE_DATA, SAMPLE_DATA_EN } from "../network-graph/global-graph-structure.stories";
 import { seededRandom } from "../network-graph/graph-firing";
 import { StandaloneChatGraph } from "./StandaloneChatGraph";
@@ -314,6 +315,15 @@ function enId(title: string): string | undefined {
   return SAMPLE_DATA_EN.nodes.find((n) => n.title === title)?.id;
 }
 
+/** マニュアル用のフォルダツリー（探すフォルダのチップが選んだ名前を出すために要る） */
+const MANUAL_FOLDERS: FolderNode[] = ["Early spring batch", "Spring batch", "Late spring batch", "Early summer batch"].map((name) => ({
+  name,
+  path: name,
+  directCount: 10,
+  totalCount: 10,
+  children: [],
+}));
+
 function ManualEnglish() {
   const folder = "Spring batch";
   const inScope = useMemo(() => {
@@ -326,26 +336,18 @@ function ManualEnglish() {
     }
     return ids;
   }, []);
-  // 実際の答えと同じく「ある記録と、そこから作られた知見」をまとめて読んだ形にする:
-  // 範囲の中で隣り合うページの多い 1 本を中心に、その隣を読み、中心と隣 2 件を引用する
-  const { reads, used } = useMemo(() => {
-    const neighbors = (id: string) =>
-      SAMPLE_DATA_EN.edges
-        .filter((e) => e.source === id || e.target === id)
-        .map((e) => (e.source === id ? e.target : e.source))
-        .filter((n) => inScope.has(n) && !SAMPLE_DATA_EN.nodes.find((x) => x.id === n)?.external);
-    const center = SAMPLE_DATA_EN.nodes
-      .filter((x) => !x.external && inScope.has(x.id))
-      .sort((a, b) => neighbors(b.id).length - neighbors(a.id).length || a.id.localeCompare(b.id))[0];
-    const around = [...new Set(neighbors(center.id))].slice(0, 6);
-    const titleOf = (id: string) => SAMPLE_DATA_EN.nodes.find((x) => x.id === id)?.title ?? id;
-    const titles = [center.id, ...around].map(titleOf);
-    return { reads: titles, used: titles.slice(0, 3) };
-  }, [inScope]);
-  const question = "What proofing temperature worked best in the spring batch?";
+  // 触れたページ同士が重ならず、題名と緑の線が読めるように、島の中で離れた位置にあって
+  // 互いに線でつながる知見・洞察・話題を選ぶ（見本は乱数の種が固定なので ID も固定）:
+  //   c239 -- a12 -- c596（洞察 a12 を挟んだ知見 2 件）、c239・c596 -- t7（話題）。t7 は読んだだけで引用しない
+  const READ_IDS = ["c239", "a12", "c596", "t7"];
+  const USED_IDS = ["c239", "a12", "c596"];
+  const titleOf = (id: string) => SAMPLE_DATA_EN.nodes.find((x) => x.id === id)?.title ?? id;
+  const reads = READ_IDS.map(titleOf);
+  const used = USED_IDS.map(titleOf);
+  const question = "What stood out in the spring batch?";
   const answer = `From your spring batch notes:\n\n${used
     .slice(0, 2)
-    .map((t) => `- "${t}" points to keeping the dough a little warmer and checking it more often [Source: "${t}"].`)
+    .map((t) => `- "${t}" is worth keeping in mind and checking again next bake [Source: "${t}"].`)
     .join("\n")}\n\n---\n**📓 From your notes**\n${used.map((t) => `  - [Source: "${t}"]`).join("\n")}`;
   const messages: ChatMessage[] = [
     msg("user", question),
@@ -356,7 +358,7 @@ function ManualEnglish() {
   ];
   const chat: StandaloneChat = {
     id: "m1",
-    title: "Proofing temperature in spring",
+    title: "What stood out in the spring batch",
     scope: "internal",
     folder,
     messages,
@@ -407,6 +409,7 @@ function ManualEnglish() {
         onScopeChange={noop}
         now={NOW}
         navInSidebar
+        folders={MANUAL_FOLDERS}
         // 引用をアプリと同じリンク表示にする（題名 → ページ）
         sourceLinks={{
           titleToRef: new Map(reads.map((t) => [t, enId(t) ?? t] as [string, string])),

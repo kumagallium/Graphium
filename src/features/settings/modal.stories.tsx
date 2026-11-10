@@ -107,7 +107,7 @@ function installApiStub(): () => void {
     const json = (body: unknown) =>
       new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
-    if (url.includes("/api/health")) return json({ status: "ok", components: { llm: "ok", storage: "ok" } });
+    if (url.includes("/api/health")) return json({ status: "ok", components: { backend: "ok", auth: "ok" } });
     if (url.includes("/api/tools")) return json({ tools: [] });
     if (url.includes("/api/models")) return json({ models: [], default: "" });
     // /api/usage/recalculate は "/api/usage" も含むので先に判定する

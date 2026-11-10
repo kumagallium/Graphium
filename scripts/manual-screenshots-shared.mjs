@@ -202,12 +202,21 @@ for (const shot of targets) {
     locale: "en-US",
   });
   const page = await ctx.newPage();
-  await page.goto(`${SB}?id=${shot.id}&viewMode=story`, {
-    waitUntil: "load",
-    timeout: 30000,
-  });
-  // ストーリーが描かれるまで待つ（loadEntries は Promise なので描画は 1 tick 遅れる）
-  await page.waitForSelector("#storybook-root *", { timeout: 15000 });
+  // 静的配信は並行アクセスで chunk の取得に失敗することがあるので、描画できるまで数回やり直す
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto(`${SB}?id=${shot.id}&viewMode=story`, {
+        waitUntil: "load",
+        timeout: 30000,
+      });
+      // ストーリーが描かれるまで待つ（loadEntries は Promise なので描画は 1 tick 遅れる）
+      await page.waitForSelector("#storybook-root *", { state: "attached", timeout: 15000 });
+      break;
+    } catch (e) {
+      if (attempt >= 4) throw e;
+      await page.waitForTimeout(2000);
+    }
+  }
   await page.waitForTimeout(shot.settleMs ?? 2500);
 
   if (shot.click) {
@@ -229,7 +238,10 @@ for (const shot of targets) {
 
   if (shot.clip === "root") {
     const path = `${OUTPUT_DIR}/${shot.name}.png`;
-    await page.locator("#storybook-root > div").first().screenshot({ path });
+    // ダイアログは全画面の暗幕（fixed inset-0）で包まれているので、中の箱だけを撮る
+    const dialogBox = page.locator('#storybook-root [role="dialog"] > div');
+    const target = (await dialogBox.count()) > 0 ? dialogBox.first() : page.locator("#storybook-root > div").first();
+    await target.screenshot({ path });
     console.log(`  OK ${shot.name}.png (root)`);
     await page.close();
     await ctx.close();
@@ -256,7 +268,7 @@ for (const shot of targets) {
  * - 到達確認（shared_root_diagnose）の invoke も偽装して「届いている」と答える
  */
 if (!only || only === SETTINGS_SHARED) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 975 }, deviceScaleFactor: 2, locale: "en-US" });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1100 }, deviceScaleFactor: 2, locale: "en-US" });
   await ctx.addInitScript(() => {
     localStorage.setItem("graphium_locale", "en");
     localStorage.setItem("graphium-author-identity", JSON.stringify({ name: "Ken Sato", email: "ken@example.org" }));
@@ -268,23 +280,36 @@ if (!only || only === SETTINGS_SHARED) {
       ]),
     );
   });
+  // 静的ビルドではモジュールを差し替えられないので、ストーリーが偽装 Tauri を置く瞬間に
+  // invoke を包み、共有フォルダの読み書きを「メモリ上の疑似フォルダ」で答える（実在のフォルダは触らない）
+  await ctx.addInitScript(() => {
+    const store = new Map();
+    const blobs = new Map();
+    const wrap = (inner) => async (cmd, a = {}) => {
+      switch (cmd) {
+        case "shared_write": store.set(`${a.entryType}/${a.id}`, a.content); return null;
+        case "shared_read": {
+          const v = store.get(`${a.entryType}/${a.id}`);
+          if (v === undefined) throw new Error("not found");
+          return v;
+        }
+        case "shared_delete": store.set(`${a.entryType}/${a.id}`, a.tombstoneContent); return null;
+        case "shared_list": return [...store.entries()].filter(([k]) => k.startsWith(`${a.entryType}/`)).map(([, v]) => v);
+        case "shared_blob_write": blobs.set(a.hash, a.contentBase64); return null;
+        case "shared_blob_read": return blobs.get(a.hash) ?? "";
+        case "shared_blob_exists": return blobs.has(a.hash);
+        case "shared_blob_delete": blobs.delete(a.hash); return null;
+        default: return inner(cmd, a);
+      }
+    };
+    let internals;
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      get: () => internals,
+      set: (v) => { internals = v && typeof v.invoke === "function" ? { ...v, invoke: wrap(v.invoke) } : v; },
+    });
+  });
   const page = await ctx.newPage();
-  await page.route("**/settings/modal.stories.tsx*", async (route) => {
-    const res = await route.fetch();
-    const body = (await res.text()).replace(
-      'if (cmd === "get_graphium_root")',
-      'if (cmd === "shared_root_diagnose") return { reachable: true, alternatives: [] }; if (cmd === "shared_root_remote") return null; if (cmd === "get_graphium_root")',
-    );
-    await route.fulfill({ response: res, body });
-  });
-  await page.route("**/lib/storage/shared/test-connection.ts*", async (route) => {
-    const res = await route.fetch();
-    const body = (await res.text())
-      .replace("export async function testSharedConnection(", "export async function __origTestSharedConnection(")
-      .replace("export async function testBlobConnection(", "export async function __origTestBlobConnection(")
-      + "\nexport async function testSharedConnection() { return { ok: true, id: \"demo\", hash: \"demo\" }; }\nexport async function testBlobConnection() { return { ok: true, hash: \"demo\" }; }\n";
-    await route.fulfill({ response: res, body });
-  });
   await page.goto(`${SB}?id=organisms-settingsmodal--sharing-desktop&viewMode=story`);
   const portal = page.locator('[data-modal-portal="true"]').first();
   await portal.getByText("Your name").first().waitFor({ state: "visible", timeout: 30000 });
@@ -297,6 +322,9 @@ if (!only || only === SETTINGS_SHARED) {
   await page.getByRole("button", { name: "Check connection" }).first().click();
   await page.getByText(/Read and write work/).first().waitFor({ state: "visible", timeout: 10000 });
   await page.waitForTimeout(800);
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.waitForTimeout(400);
   const path = `${OUTPUT_DIR}/${SETTINGS_SHARED}.png`;
   await page.screenshot({ path });
   console.log(`  OK ${SETTINGS_SHARED}.png`);
