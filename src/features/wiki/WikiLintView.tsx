@@ -35,6 +35,8 @@ import { SourceCheckReviewList, type SourceCheckReviewListProps } from "../sourc
 import { AutoUpkeepPanel } from "./AutoUpkeepPanel";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
 import { countLeftoverIssues } from "./auto-tidy";
+import { ThingGroupsSection, type ThingGroupProgressHooks, type ThingGroupResult } from "./ThingGroupsSection";
+import type { ThingGroup } from "./thing-groups";
 
 type Props = {
   report: LintReport | null;
@@ -103,6 +105,16 @@ type Props = {
    * 未指定なら「次に調べること」欄自体にボタンを出さない。
    */
   onAskLintQuestion?: (question: LintQuestion) => Promise<void> | void;
+  /**
+   * 「もの単位にまとめる」の組（題が「X の Y」の同じ X のページ。機械的な組分けで AI は使わない）。
+   * 0 件のときは節そのものを出さない。手入れの件数・未対応の項目には数えず、おまかせでも扱わない。
+   */
+  thingGroups?: ThingGroup[];
+  /** 組をまとめる（押したときだけ。本文を機械的に連結するので AI は使わない）。無いときは節のボタンを無効にする */
+  onMergeThingGroups?: (
+    groups: ThingGroup[],
+    hooks?: ThingGroupProgressHooks,
+  ) => Promise<ThingGroupResult[]> | ThingGroupResult[];
   /**
    * おまかせで整える（AI が点検 → 手当て → 出典照合 → 手当て を通しで行う）。渡したときは手入れタブの
    * 冒頭に出し、従来の点検（一覧から人が選ぶ）は「手動で点検する」に、出典照合の流れは「手動で照合する」に
@@ -224,6 +236,8 @@ export function WikiLintView({
   legacyTopics,
   onRebuildTopicsFromSources,
   onAskLintQuestion,
+  thingGroups,
+  onMergeThingGroups,
   autoTidy,
 }: Props) {
   const t = useT();
@@ -787,6 +801,10 @@ export function WikiLintView({
                     {manualSourceOpen && <SourceCheckLintSection {...sourceCheckProps} reviewList={undefined} />}
                   </>
                 )}
+                {/* もの単位にまとめる（組が 0 件のときは節ごと出さない） */}
+                {thingGroups && thingGroups.length > 0 && (
+                  <ThingGroupsSection groups={thingGroups} onMerge={onMergeThingGroups} />
+                )}
               </>
             )}
           </>
@@ -801,6 +819,9 @@ export function WikiLintView({
               </>
             )}
             {sourceCheckProps && <SourceCheckLintSection {...sourceCheckProps} />}
+            {thingGroups && thingGroups.length > 0 && (
+              <ThingGroupsSection groups={thingGroups} onMerge={onMergeThingGroups} />
+            )}
           </>
         )}
       </div>

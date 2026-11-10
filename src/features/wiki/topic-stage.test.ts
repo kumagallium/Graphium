@@ -1489,6 +1489,95 @@ describe("mergeTopicsExplicit", () => {
     expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
   });
 
+  it("retitleByTargetId があると、残す側の題とページの題が付け替わり、topicType が外れる（本文の統合にも新しい題を渡す）", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("ライ麦サワー種の発酵時間", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("ライ麦サワー種の酸度", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    docs.get("wiki:t1")!.wikiMeta!.topicType = "concept";
+
+    let mergeCalled: any;
+    (global.fetch as any).mockImplementation(async (url: string, init: any) => {
+      if (String(url).includes("/merge-topics")) {
+        mergeCalled = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文 [[source:s1]][[source:s2]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "ライ麦サワー種の発酵時間", memberClaimIds: [] },
+      { id: "t2", title: "ライ麦サワー種の酸度", memberClaimIds: [] },
+    ];
+    const deps = makeMergeDeps(docs, {
+      resolveSourceTitle: vi.fn((id: string) => `資料${id}`),
+      retitleByTargetId: new Map([["t1", "ライ麦サワー種"]]),
+    });
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
+    expect(JSON.stringify(mergeCalled)).toContain("ライ麦サワー種");
+    const t1 = docs.get("wiki:t1");
+    expect(t1?.title).toBe("ライ麦サワー種");
+    expect(t1?.pages[0].title).toBe("ライ麦サワー種");
+    expect(t1?.wikiMeta?.topicType).toBeUndefined();
+    expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+  });
+
+  it("retitleByTargetId が無ければ、題も topicType も今までどおり", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("ライ麦サワー種の発酵時間", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("ライ麦サワー種の酸度", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    docs.get("wiki:t1")!.wikiMeta!.topicType = "concept";
+
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/merge-topics")) {
+        return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文 [[source:s1]][[source:s2]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "ライ麦サワー種の発酵時間", memberClaimIds: [] },
+      { id: "t2", title: "ライ麦サワー種の酸度", memberClaimIds: [] },
+    ];
+    const deps = makeMergeDeps(docs, { resolveSourceTitle: vi.fn((id: string) => `資料${id}`) });
+    await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    const t1 = docs.get("wiki:t1");
+    expect(t1?.title).toBe("ライ麦サワー種の発酵時間");
+    expect(t1?.wikiMeta?.topicType).toBe("concept");
+  });
+
+  it("composeBodyByTargetId があると、AI を呼ばずその関数で本文を作り、題の付け替えと吸収側のゴミ箱送りは今までどおり", async () => {
+    const docs = new Map<string, GraphiumDocument>();
+    docs.set("wiki:t1", makeSourceTopicDoc("ライ麦サワー種の発酵時間", "## 定義\n本文1 [[source:s1]]", ["s1"]));
+    docs.set("wiki:t2", makeSourceTopicDoc("ライ麦サワー種の酸度", "## 定義\n本文2 [[source:s2]]", ["s2"]));
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const existingTopics: ExistingTopicForMerge[] = [
+      { id: "t1", title: "ライ麦サワー種の発酵時間", memberClaimIds: [] },
+      { id: "t2", title: "ライ麦サワー種の酸度", memberClaimIds: [] },
+    ];
+    const deps = makeMergeDeps(docs, {
+      resolveSourceTitle: vi.fn((id: string) => `資料${id}`),
+      retitleByTargetId: new Map([["t1", "ライ麦サワー種"]]),
+      composeBodyByTargetId: new Map([
+        ["t1", (bodies) => bodies.map((b) => `${b.id}:${b.body}`).join("\n")],
+      ]),
+    });
+    const result = await mergeTopicsExplicit("t1", ["t2"], existingTopics, deps);
+
+    expect(result).toMatchObject({ merged: 1, rebuilt: 1, failed: 0 });
+    expect(global.fetch).not.toHaveBeenCalled();
+    const t1 = docs.get("wiki:t1");
+    expect(t1?.title).toBe("ライ麦サワー種");
+    expect(t1?.wikiMeta?.topicMarkdown).toContain("t2:## 定義\n本文2 [[source:s2]]");
+    expect(t1?.wikiMeta?.derivedFromNotes).toEqual(["s1", "s2"]);
+    expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+  });
+
   it("全員新形式で本文の統合に失敗したら、吸収される側をゴミ箱へ送らず、どちらのページも元のまま残す", async () => {
     const docs = new Map<string, GraphiumDocument>();
     docs.set("wiki:t1", makeSourceTopicDoc("焼結条件と粒成長", "## 定義\n本文1 [[source:s1]]", ["s1"]));

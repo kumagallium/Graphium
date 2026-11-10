@@ -2792,22 +2792,38 @@ export function resolveSourceCitations(body: string, sources: TopicSourceRef[]):
  * markdown の空の `##` 見出し（次の見出しまで本文が無い見出し）を機械的に除去する純関数。
  * 改訂のたびに LLM が「このトピックには食い違いが無い」等の空見出しを残すことがあり、
  * 保存前にここで畳んでおく。見出し以外の本文（前置き）はそのまま残す。
+ *
+ * 「空」は見出しの階層で判定する: 次の「同じ段か上の段の見出し」までに本文が 1 行も無いとき。
+ * 下の段の見出しの中に本文があれば、その見出しは空ではない（`## 発酵時間` の直後に
+ * `### 要点` と本文が続く形 — 手入れの「もの単位にまとめる」が作る節 — を消さないため。
+ * 以前は直後の見出しまでしか見ず、こうした親の見出しを消していた）。
  */
 export function stripEmptyMarkdownSections(markdown: string): string {
   if (!markdown) return markdown;
   const lines = markdown.split("\n");
   const headingIdx: number[] = [];
+  const headingLevel: number[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (/^#{1,6}\s+\S/.test(lines[i])) headingIdx.push(i);
+    const m = /^(#{1,6})\s+\S/.exec(lines[i]);
+    if (m) { headingIdx.push(i); headingLevel.push(m[1].length); }
   }
   if (headingIdx.length === 0) return markdown;
+  const isHeadingLine = new Set(headingIdx);
 
   const removeRanges: [number, number][] = [];
   for (let h = 0; h < headingIdx.length; h++) {
     const start = headingIdx[h];
+    // 取り除く範囲は直後の見出しまで（下の段の見出しは、それ自身が空かどうかで別に判定する）
     const end = h + 1 < headingIdx.length ? headingIdx[h + 1] : lines.length;
-    const body = lines.slice(start + 1, end);
-    const hasContent = body.some((l) => l.trim().length > 0);
+    // 本文の有無は、同じ段か上の段の次の見出しまでを見る
+    let scopeEnd = lines.length;
+    for (let k = h + 1; k < headingIdx.length; k++) {
+      if (headingLevel[k] <= headingLevel[h]) { scopeEnd = headingIdx[k]; break; }
+    }
+    let hasContent = false;
+    for (let i = start + 1; i < scopeEnd; i++) {
+      if (!isHeadingLine.has(i) && lines[i].trim().length > 0) { hasContent = true; break; }
+    }
     if (!hasContent) removeRanges.push([start, end]);
   }
   if (removeRanges.length === 0) return markdown;

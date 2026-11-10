@@ -24,6 +24,8 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Decision |
 |---|---|---|
+| 2026-11-10 | [Merging pages by thing: join, or summarize?](/evaluations/merging-pages-by-thing) | Grouping uses no AI: each page's body is joined as a section. In the 27-page group the AI merge kept about 30% of the source marks and 22 of 54 kinds of numbers with units in the same notation |
+| 2026-11-10 | [Should topics be named after the thing itself?](/evaluations/topic-granularity) | New topics are named after the thing itself, only when a source is ingested; in a library with many "X's Y" pages the effect was not clear. Tidying up existing topics keeps the old rule |
 | 2026-11-07 | [Which AI feature needs which size of model?](/evaluations/model-tiers-by-feature) | Insight, World grounding, and clean copy and summary use the default model when left empty. The default model's description is fixed, and each slot shows a model guide |
 | 2026-11-06 | [Does the plan's grounding check catch planted mistakes?](/evaluations/plan-grounding-check) | Plan notes get a "Where this plan comes from" section. Claude and Copilot's gpt-5.6-luna caught every planted mistake (a small measurement). The hindsight check is on hold until its answer key is rebuilt |
 | 2026-11-06 | [Where is procedure extraction weak? Measured again by meaning, and the links fixed](/evaluations/extraction-accuracy-by-meaning) | Score by meaning; the extraction instructions now ask to name hand-offs (links improve with Claude and Copilot) |
