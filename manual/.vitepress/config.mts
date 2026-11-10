@@ -74,6 +74,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'What reaches the AI', link: '/evaluations/what-reaches-the-ai' },
       { text: 'Topic granularity', link: '/evaluations/topic-granularity' },
       { text: 'Merging pages by thing', link: '/evaluations/merging-pages-by-thing' },
       { text: 'Model size by feature', link: '/evaluations/model-tiers-by-feature' },
@@ -149,6 +150,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'AI に届くもの', link: '/ja/evaluations/what-reaches-the-ai' },
       { text: 'トピックの粒度', link: '/ja/evaluations/topic-granularity' },
       { text: 'もの単位にまとめる', link: '/ja/evaluations/merging-pages-by-thing' },
       { text: 'AI 機能とモデルの大きさ', link: '/ja/evaluations/model-tiers-by-feature' },

@@ -265,6 +265,22 @@ export async function retrieveWikiContext(
   return retrieveWikiContextFallback(userMessage, excludeIds, scope);
 }
 
+/**
+ * Wiki の節を予算に収める。そのまま入ればそのまま、入らなければ MAX_PASSAGE_CHARS で
+ * 切って入れ直す。それでも入らなければ null（呼び出し側はその節を飛ばして次へ進む）。
+ *
+ * 以前は入らない節でループを打ち切っていたので、(1) 融合 1 位が長いトピックの節だと
+ * ナレッジが 1 件も渡らず、(2) それより下位の短い節も道連れで落ちていた（実測は
+ * manual/evaluations/what-reaches-the-ai.md）。そのまま入る節は切らないので、
+ * 以前渡っていた節が渡らなくなることはない。
+ */
+function fitWikiSectionText(text: string, fits: (candidate: string) => boolean): string | null {
+  if (fits(text)) return text;
+  if (text.length <= MAX_PASSAGE_CHARS) return null;
+  const cut = `${text.slice(0, MAX_PASSAGE_CHARS)}…`;
+  return fits(cut) ? cut : null;
+}
+
 /** read_my_page が返す本文の上限（文字数） */
 const MAX_READ_PAGE_CHARS = 6000;
 
@@ -288,8 +304,11 @@ export async function searchKnowledgeForTool(
     const kind = resolveWikiKind(r.sourceId);
     const title = _wikiTitleMap.get(r.sourceId) || _sharedTitleMap.get(r.sourceId) || r.title;
     if (!title) continue;
-    const entry = `[#${n + 1} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${r.text}\n${topicMembersLine(kind, r.sourceId)}\n`;
-    if (wikiChars + entry.length > MAX_CONTEXT_CHARS) break;
+    const render = (text: string) => `[#${n + 1} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${text}\n${topicMembersLine(kind, r.sourceId)}\n`;
+    // 入らない節は切って入れ直し、それでも入らなければ飛ばす（打ち切らない）
+    const text = fitWikiSectionText(r.text, (t) => wikiChars + render(t).length <= MAX_CONTEXT_CHARS);
+    if (text === null) continue;
+    const entry = render(text);
     wikiChars += entry.length;
     n += 1;
     out += entry;
@@ -609,7 +628,7 @@ export function formatRetrievedContext(
   // 採否は下の MAX_CONTEXT_CHARS 予算で頭打ちになるため通常は 3 桁に届かない。万一
   // 届いても NUMBER_OVERHEAD は固定の見積もりなので budget 計算が実出力より大きめに
   // 出るだけで、MAX_CONTEXT_CHARS 超過という実害は生じない（安全側）
-  type Resolved = { r: RetrievedPassage; kind: WikiKind; title: string };
+  type Resolved = { r: RetrievedPassage; kind: WikiKind; title: string; text: string };
   const NUMBER_OVERHEAD = "##".length; // 番号表示の見込み幅（実際は 1〜2 桁）
   const selected: Resolved[] = [];
   const seenKinds = new Set<WikiKind>();
@@ -624,11 +643,14 @@ export function formatRetrievedContext(
     const title = _wikiTitleMap.get(r.sourceId) || _sharedTitleMap.get(r.sourceId) || r.title;
     if (!title) continue;
     const heading = seenKinds.has(kind) ? "" : `--- ${WIKI_KIND_HEADING[kind]} ---\n`;
-    const entry = `[#${"#".repeat(NUMBER_OVERHEAD)} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${r.text}\n${topicMembersLine(kind, r.sourceId)}\n`;
-    if (budget + heading.length + entry.length > MAX_CONTEXT_CHARS) break;
-    budget += heading.length + entry.length;
+    const render = (text: string) => `[#${"#".repeat(NUMBER_OVERHEAD)} | ${WIKI_KIND_LABEL[kind]} | "${title}"]\n${text}\n${topicMembersLine(kind, r.sourceId)}\n`;
+    // 入らない節は切って入れ直し、それでも入らなければ飛ばす（打ち切らない）。
+    // 長い節 1 つのために、それより下位の短い節まで落とさない
+    const text = fitWikiSectionText(r.text, (t) => budget + heading.length + render(t).length <= MAX_CONTEXT_CHARS);
+    if (text === null) continue;
+    budget += heading.length + render(text).length;
     seenKinds.add(kind);
-    selected.push({ r, kind, title });
+    selected.push({ r, kind, title, text });
   }
 
   // 2nd pass: 採否済みの断片だけを WIKI_KIND_ORDER で束ねて描画する（見せ方の変更のみ。
@@ -641,7 +663,7 @@ export function formatRetrievedContext(
     knowledge += `--- ${WIKI_KIND_HEADING[kind]} ---\n`;
     for (const s of bucket) {
       n += 1;
-      knowledge += `[#${n} | ${WIKI_KIND_LABEL[kind]} | "${s.title}"]\n${s.r.text}\n${topicMembersLine(kind, s.r.sourceId)}\n`;
+      knowledge += `[#${n} | ${WIKI_KIND_LABEL[kind]} | "${s.title}"]\n${s.text}\n${topicMembersLine(kind, s.r.sourceId)}\n`;
       if (kind === "synthesis") hasSynthesisHit = true;
     }
   }
