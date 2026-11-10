@@ -139,7 +139,7 @@ On a wide window the chat screen shows your [Global Graph](/labels-and-provenanc
 | Dark green, large | A page the latest answer cited |
 | Mid green | A page an earlier answer in this conversation cited |
 | Pale green with a rim | A page the AI read — in the context it was given, or with its tools when it [searches again](#letting-the-ai-search-again) — but did not cite |
-| Green line | A link between two pages the AI touched — how its sources connect |
+| Green line | A link between two pages the AI touched — how its sources connect. Claims that came from the same record are joined through that record, even though the AI didn't open it; its title stays visible |
 | Thick dark green line | A link the AI actually followed with its provenance tools when it [searches again](#letting-the-ai-search-again) (for example from a record to the record it was built from); the header counts them (**Links followed**) |
 | Grey | A page the AI did not touch |
 

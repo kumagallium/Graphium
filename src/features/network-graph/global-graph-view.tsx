@@ -20,6 +20,7 @@ import { openExternalUrl } from "../../lib/external-link";
 import { classifyNodeTap } from "./external-source";
 import { applyIslandEdgeBundling, clearIslandEdgeBundling } from "./island-edge-bundling";
 import { startGraphFiring, type GraphFiringMode } from "./graph-firing";
+import { evidenceRelays, isEvidenceLink } from "./evidence-links";
 import { SIDE_PEEK_INLINE_MIN_WIDTH } from "../../hooks/use-resizable-width";
 
 /** 来歴パネル（graph-lineage-side-panel.tsx）の幅と、ピークを並べるときに残すキャンバスの幅 */
@@ -1859,13 +1860,25 @@ export function GlobalGraphCanvas({
       }
       // 根拠のつながり: 両端とも AI が触れた（使った・読んだ）ページの線
       const touched = (id: string) => (usageWeights?.get(id) ?? 0) > 0 || !!read?.has(id);
+      // 中継: AI は触れていないが、触れたページ 2 つ以上とつながるページ（同じ出典から出た知見どうしを
+      // 結ぶ出典など）。決め方は evidence-links.ts。重心などの見えない点は数えない
+      const realNodes = cy.nodes().not(".cluster-hub");
+      const relays = evidenceRelays(
+        realNodes.map((n) => n.id()),
+        (id) => cy.getElementById(id).neighborhood("node").not(".cluster-hub").map((m) => m.id()),
+        touched,
+      );
+      for (const id of relays) {
+        // 中継の題名は出す（どの出典で知見がつながっているかが分かるように）。範囲の外でも薄くしない
+        cy.getElementById(id).removeClass("label-muted scope-out");
+      }
       // AI が来歴の道具でたどった線（向きは問わない）
       const walkedKeys = new Set((usageScope!.walked ?? []).map(([a, b]) => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`)));
       cy.edges().forEach((e) => {
         if (e.hasClass("cluster-edge")) return;
         const s = e.source().id();
         const t = e.target().id();
-        if (touched(s) && touched(t)) e.addClass("ai-link");
+        if (isEvidenceLink(s, t, touched, relays)) e.addClass("ai-link");
         if (walkedKeys.size > 0 && walkedKeys.has(s < t ? `${s}\u0000${t}` : `${t}\u0000${s}`)) e.addClass("ai-walked");
       });
     });

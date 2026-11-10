@@ -479,3 +479,33 @@ export const WalkedEdges: Story = {
   name: "6. じっくり調べたとき（来歴の道具でたどった線）",
   args: { initial: walkedSample() },
 };
+
+// ── 知見を集めて答えたとき: 知見どうしは直接つながらず、同じ出典（中継）ごしに緑の線で結ばれる ──
+
+/** 同じノートから出た知見を 3 件以上持つノートを 1 つ選び、その知見だけを読んで答えた見本 */
+function sharedSourceSample(): ChatMessage[] {
+  const isWiki = (id: string) => !!SAMPLE_DATA.nodes.find((x) => x.id === id)?.isWiki;
+  const wikiNeighbors = (id: string) =>
+    SAMPLE_DATA.edges
+      .filter((e) => e.source === id || e.target === id)
+      .map((e) => (e.source === id ? e.target : e.source))
+      .filter(isWiki);
+  const source = SAMPLE_DATA.nodes
+    .filter((x) => !x.external && !x.isWiki)
+    .sort((a, b) => wikiNeighbors(b.id).length - wikiNeighbors(a.id).length || a.id.localeCompare(b.id))[0];
+  const claims = [...new Set(wikiNeighbors(source.id))].slice(0, 3);
+  const titleOf = (id: string) => SAMPLE_DATA.nodes.find((x) => x.id === id)?.title ?? id;
+  const used = claims.slice(0, 2).map(titleOf);
+  const answer = `ナレッジから分かることをまとめます。\n\n${used
+    .map((t) => `- 「${t}」によると、条件を少しずつ振って確かめるのがよさそうです [Source: "${t}"]。`)
+    .join("\n")}\n\n---\n**📓 ノート内の知識**\n${used.map((t) => `  - [Source: "${t}"]`).join("\n")}`;
+  return [
+    msg("user", "ナレッジから、効いた工夫を教えて"),
+    { ...msg("assistant", answer, null), readRefs: claims.map((id) => `wiki:${id}`) },
+  ];
+}
+
+export const SharedSource: Story = {
+  name: "7. 知見を集めて答えたとき（同じ出典ごしの線）",
+  args: { initial: sharedSourceSample() },
+};
