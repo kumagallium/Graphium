@@ -190,6 +190,11 @@ class LexicalSearchService {
       this.index = idx ?? new LexicalIndex();
       this.loadPromise = null;
       this.setStatus({ state: "ready" });
+      // 旧形式の保存から復元したときは、今の形式で一度書き直す（次の起動から軽くなる）
+      if (this.index.needsResave) {
+        this.index.needsResave = false;
+        this.markDirty();
+      }
       return this.index;
     })();
     this.loadPromise.catch(() => {

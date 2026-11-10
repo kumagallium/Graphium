@@ -155,8 +155,8 @@ describe("LexicalIndex", () => {
     const idx = sampleIndex();
     const snap = idx.toSnapshot();
     expect(snap.formatVersion).toBe(LEXICAL_FORMAT_VERSION);
-    // JSON 化して戻す（IndexedDB の structuredClone 相当）
-    const restored = await LexicalIndex.fromSnapshot(JSON.parse(JSON.stringify(snap)));
+    // 構造化複製して戻す（IndexedDB と同じ。保存形は型付き配列を含むので JSON では往復できない）
+    const restored = await LexicalIndex.fromSnapshot(structuredClone(snap));
     expect(restored).not.toBeNull();
     expect(restored!.documentCount).toBe(5);
     expect(restored!.isFresh("n1", "v1")).toBe(true);
@@ -200,7 +200,7 @@ describe("LexicalIndex — listSources", () => {
     const list = idx.listSources();
     expect(list.find((s) => s.sourceId === "n1")).toMatchObject({ kind: "note", title: "試薬 X の保管", chunkCount: 2 });
     expect(list.find((s) => s.sourceId === "empty")).toMatchObject({ kind: "note", title: "空のノート", chunkCount: 0 });
-    const restored = await LexicalIndex.fromSnapshot(JSON.parse(JSON.stringify(idx.toSnapshot())));
+    const restored = await LexicalIndex.fromSnapshot(structuredClone(idx.toSnapshot()));
     expect(restored!.listSources().find((s) => s.sourceId === "empty")?.title).toBe("空のノート");
     expect(restored!.listSources().find((s) => s.sourceId === "a1")?.title).toBe("ppms-manual.pdf");
   });

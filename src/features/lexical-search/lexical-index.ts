@@ -10,6 +10,7 @@
 
 import MiniSearch, { type SearchResult as MiniSearchResult } from "minisearch";
 import { tokenize } from "./tokenizer";
+import { fromCompact, termDocumentFrequencies, toCompact, type CompactIndex } from "./compact-snapshot";
 
 /**
  * 索引ソースの種類。
@@ -132,16 +133,27 @@ export function miniSearchOptions() {
 
 /** 永続化用のスナップショット */
 export type LexicalIndexSnapshot = {
-  /** 形式バージョン。tokenizer / options を変えたら上げる（不一致なら再構築） */
+  /** 形式バージョン（下の LEXICAL_FORMAT_VERSION を参照） */
   formatVersion: number;
-  /** MiniSearch.toJSON() の結果 */
-  index: unknown;
+  /** 詰めた形の索引（形式 2 以降）。compact-snapshot.ts を参照 */
+  compact?: CompactIndex;
+  /** 形式 1 の索引（MiniSearch.toJSON() の結果）。読むだけで、もう書かない */
+  index?: unknown;
   /** sourceId → { fingerprint, chunkIds, title } */
   sources: Record<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[]; title?: string }>;
 };
 
-/** tokenizer / options を変えたら上げる */
-export const LEXICAL_FORMAT_VERSION = 1;
+/**
+ * 保存形のバージョン。
+ * - 1: MiniSearch.toJSON() をそのまま保存（復元で GB 単位の使い捨て割り当てが出る）
+ * - 2: 詰めた形（型付き配列）。索引の中身は 1 と同じなので、1 の保存は一度だけ
+ *   読み込んで 2 で書き直す（PDF の本文抽出からやり直させない）
+ * tokenizer / options を変えて索引の中身が変わるときは、上げたうえで
+ * 下の READABLE_LEGACY_FORMAT_VERSION を外す（古い保存を捨てて作り直す）
+ */
+export const LEXICAL_FORMAT_VERSION = 2;
+/** 中身が今と同じで、読み込んで書き直せる旧形式 */
+const READABLE_LEGACY_FORMAT_VERSION = 1;
 
 // 掃除に踏み切るしきい値（MiniSearch の自動 vacuum の既定値と同じ）。
 // 「削除済みが 20 件以上」かつ「索引の 1 割以上が削除済み」で掃除する
@@ -151,6 +163,8 @@ const VACUUM_MIN_DIRT_FACTOR = 0.1;
 export class LexicalIndex {
   private ms: MiniSearch<LexicalDoc>;
   private sources = new Map<string, { kind: LexicalSourceKind; fingerprint: string; chunkIds: string[]; title?: string }>();
+  /** 旧形式の保存から復元した（＝今の形式で書き直す必要がある） */
+  needsResave = false;
 
   constructor(ms?: MiniSearch<LexicalDoc>) {
     this.ms = ms ?? new MiniSearch<LexicalDoc>(miniSearchOptions());
@@ -203,19 +217,9 @@ export class LexicalIndex {
 
   /** 語彙（索引に入っている語と、それを含む断片数）。df の多い順 */
   vocabulary(): LexicalTermStat[] {
-    // MiniSearch の直列化形（[term, { fieldId: { shortDocId: tf } }]）から数える。
-    // discard 済みの文書は documentIds から消えているので、それだけを数える
-    const json = this.ms.toJSON() as unknown as {
-      documentIds: Record<string, string>;
-      index: [string, Record<string, Record<string, number>>][];
-    };
-    const live = new Set(Object.keys(json.documentIds ?? {}));
-    const out: LexicalTermStat[] = [];
-    for (const [term, byField] of json.index ?? []) {
-      const ids = new Set<string>();
-      for (const postings of Object.values(byField)) for (const id of Object.keys(postings)) if (live.has(id)) ids.add(id);
-      if (ids.size > 0) out.push({ term, df: ids.size });
-    }
+    // discard 済みの文書は数えない。toJSON() を経由すると索引全体の写しができるので、
+    // 内部の Map を直接たどる（compact-snapshot.ts）
+    const out: LexicalTermStat[] = termDocumentFrequencies(this.ms);
     out.sort((a, b) => b.df - a.df || a.term.localeCompare(b.term));
     return out;
   }
@@ -358,15 +362,26 @@ export class LexicalIndex {
   toSnapshot(): LexicalIndexSnapshot {
     const sources: LexicalIndexSnapshot["sources"] = {};
     for (const [id, meta] of this.sources) sources[id] = { ...meta, chunkIds: [...meta.chunkIds] };
-    return { formatVersion: LEXICAL_FORMAT_VERSION, index: this.ms.toJSON(), sources };
+    return { formatVersion: LEXICAL_FORMAT_VERSION, compact: toCompact(this.ms), sources };
   }
 
   /** スナップショットから復元（形式が違えば null） */
   static async fromSnapshot(snap: LexicalIndexSnapshot | null | undefined): Promise<LexicalIndex | null> {
-    if (!snap || snap.formatVersion !== LEXICAL_FORMAT_VERSION || !snap.index) return null;
+    if (!snap) return null;
     try {
-      const ms = await MiniSearch.loadJSAsync<LexicalDoc>(snap.index as any, miniSearchOptions());
+      let ms: MiniSearch<LexicalDoc>;
+      let legacy = false;
+      if (snap.formatVersion === LEXICAL_FORMAT_VERSION && snap.compact) {
+        ms = await fromCompact<LexicalDoc>(snap.compact, miniSearchOptions());
+      } else if (snap.formatVersion === READABLE_LEGACY_FORMAT_VERSION && snap.index) {
+        // 旧形式は一度だけ読む（重い）。呼び出し側が needsResave を見て今の形式で書き直す
+        ms = await MiniSearch.loadJSAsync<LexicalDoc>(snap.index as any, miniSearchOptions());
+        legacy = true;
+      } else {
+        return null;
+      }
       const idx = new LexicalIndex(ms);
+      idx.needsResave = legacy;
       for (const [id, meta] of Object.entries(snap.sources ?? {})) {
         idx.sources.set(id, { kind: meta.kind, fingerprint: meta.fingerprint, chunkIds: [...(meta.chunkIds ?? [])], title: meta.title });
       }
