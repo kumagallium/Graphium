@@ -232,7 +232,7 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 - **Translate into a note** <Badge type="tip" text="Added in v0.14.0 (2026-06-05)" /> — translates the full PDF or web page into your display language, page by page, keeping the original structure. A glossary is extracted first so terminology stays consistent, and embedded figures are placed back near their captions in the translated note.
 - **Add to Knowledge** — distills the source into your [Knowledge layer](/knowledge-layer).
 
-Notes made by extracting steps or translating go into a **Procedures** or **Translations** folder. If the source material is in a folder (including through a note in that folder that uses it), the note goes there too. So converting a material you never filed doesn't leave the note in **Unfiled**. Afterwards you can add or remove folders like on any other note. The run notes of a plan made from a chat answer also go into **Procedures**.
+<Badge type="tip" text="Added in v0.129.6 (2026-11-10)" /> Notes made by extracting steps or translating go into a **Procedures** or **Translations** folder. If the source material is in a folder (including through a note in that folder that uses it), the note goes there too. So converting a material you never filed doesn't leave the note in **Unfiled**. Afterwards you can add or remove folders like on any other note. The run notes of a plan made from a chat answer also go into **Procedures**.
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
 
