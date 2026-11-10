@@ -59,6 +59,8 @@ Japanese has no spaces between words, so Graphium splits it with the word breake
 
 You can see what is in the index in [Settings → Storage → Search index](/settings).
 
+How much memory this index takes on a large vault is in [the evaluations](/evaluations/search-index-memory).
+
 ## By meaning: embeddings
 
 An **embedding** turns a piece of text into a list of numbers, placed so that texts with similar meaning end up close together. Graphium embeds each section of your knowledge pages and, when you ask the AI something, embeds the question too, then picks the closest sections.
