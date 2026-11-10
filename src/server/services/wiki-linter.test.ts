@@ -97,6 +97,31 @@ describe("detectLocalIssues - redundant topic（正規化タイトル完全一�
     expect(redundant?.recommendedAction).toMatchObject({ keepId: "topic-b", absorbId: "topic-a" });
   });
 
+  it("「の」の有無だけが違う話題を redundant として検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "生地の一次発酵", derivedFromNotes: ["n1"] }),
+      base({ id: "topic-b", title: "生地一次発酵", derivedFromNotes: ["n1", "n2"] }),
+    ]);
+    expect(issues.find((i) => i.type === "redundant")?.recommendedAction).toMatchObject({ keepId: "topic-b", absorbId: "topic-a" });
+  });
+
+  it("末尾の括弧書きの別名だけが違う話題を redundant として検出する", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "低温長時間発酵", derivedFromNotes: ["n1"] }),
+      base({ id: "topic-b", title: "低温長時間発酵 (オーバーナイト法)", derivedFromNotes: ["n2"], modifiedAt: "2000-01-01T00:00:00.000Z" }),
+    ]);
+    const redundant = issues.find((i) => i.type === "redundant");
+    expect(redundant?.affectedWikiIds).toEqual(["topic-a", "topic-b"]);
+  });
+
+  it("同じ略語で括弧書きが別の話題（BP）は redundant にしない", () => {
+    const issues = detectLocalIssues([
+      base({ id: "topic-a", title: "BP (Baking Powder)", derivedFromNotes: ["n1"] }),
+      base({ id: "topic-b", title: "BP（ベーカーズパーセント）", derivedFromNotes: ["n2"] }),
+    ]);
+    expect(issues.some((i) => i.type === "redundant")).toBe(false);
+  });
+
   it("タイトルが異なる話題は redundant にしない", () => {
     const issues = detectLocalIssues([
       base({ id: "topic-a", title: "話題A", derivedFromClaims: ["c1"] }),

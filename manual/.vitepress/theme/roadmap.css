@@ -347,3 +347,120 @@ html[lang^='ja'] .roadmap-page .vp-doc h2[id^='chapter-']::before {
     height: 140px;
   }
 }
+
+/* ── 早見（機能名とバージョンの札） ─────────────────── */
+.rm-quick {
+  margin: 12px 0 8px;
+}
+.vp-doc .rm-quick__tools {
+  margin: 0 0 4px;
+  text-align: right;
+}
+.rm-quick__toggle {
+  font-size: 13px;
+  color: var(--vp-c-brand-1);
+}
+.rm-quick__toggle:hover {
+  text-decoration: underline;
+}
+.rm-quick__chapter {
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.vp-doc a.rm-quick__title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+}
+.vp-doc a.rm-quick__title:hover {
+  color: var(--vp-c-brand-1);
+}
+.rm-quick__n {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vp-c-brand-1);
+}
+.vp-doc .rm-quick dl {
+  display: grid;
+  grid-template-columns: 6.5em minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 8px 0 0;
+}
+.vp-doc .rm-quick dt {
+  margin: 0;
+  padding-top: 3px;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.vp-doc .rm-quick dt a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+}
+.vp-doc .rm-quick dt a:hover {
+  color: var(--vp-c-brand-1);
+}
+.vp-doc .rm-quick dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.vp-doc .rm-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: var(--vp-c-bg);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.vp-doc .rm-chip:hover {
+  border-color: var(--vp-c-brand-1);
+}
+/* 目玉は色付き、畳んだ残りは白 */
+.vp-doc .rm-chip.is-top {
+  border-color: color-mix(in srgb, var(--vp-c-brand-1) 35%, transparent);
+  background: color-mix(in srgb, var(--vp-c-brand-1) 12%, transparent);
+}
+.rm-chip__v {
+  flex: none;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--vp-c-text-3);
+}
+.rm-chip.is-top .rm-chip__v {
+  color: var(--vp-c-text-2);
+}
+.vp-doc .rm-chip--more {
+  border-style: dashed;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+}
+/* 札から飛んできた行を、しばらく色で示す */
+.roadmap-page .vp-doc table tr.rm-row--found {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vp-c-brand-1) 12%, transparent);
+  transition: background-color 0.4s;
+}
+@media (max-width: 640px) {
+  .vp-doc .rm-quick dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .vp-doc .rm-quick dt {
+    padding-top: 8px;
+  }
+}

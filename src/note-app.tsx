@@ -12576,7 +12576,7 @@ export function NoteApp() {
           created: 0, updated: 0, migrated: 0, migratedSourcesSkipped: 0,
           failed: aborted ? 0 : 1,
           ...(aborted ? {} : { failureError: err }),
-          createdTopics: [], touchedTopicIds: [],
+          reroutedToExisting: 0, createdTopics: [], touchedTopicIds: [],
         };
       });
       topicRuns.push(run);
