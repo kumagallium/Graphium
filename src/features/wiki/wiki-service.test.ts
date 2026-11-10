@@ -640,6 +640,26 @@ describe("stripEmptyMarkdownSections - 空の見出しを機械的に除去す�
     expect(stripEmptyMarkdownSections(md)).toBe(md);
   });
 
+  it("下の段の見出しに本文があれば、親の見出しは残す", () => {
+    const md = "## 発酵時間\n\n### 要点\n一次発酵は 3 時間。\n\n## 酸度\n\n### 要点\npH は 3.8。";
+    expect(stripEmptyMarkdownSections(md)).toBe(md);
+  });
+
+  it("下の段の見出しも空なら、親ごと除去する", () => {
+    const md = "## 発酵時間\n\n### 要点\n\n## 酸度\n本文";
+    const result = stripEmptyMarkdownSections(md);
+    expect(result).not.toContain("発酵時間");
+    expect(result).not.toContain("### 要点");
+    expect(result).toContain("## 酸度");
+  });
+
+  it("同じ段の見出しが続くときは、本文の無い方だけ除去する", () => {
+    const md = "## 定義\n## 要点\n本文";
+    const result = stripEmptyMarkdownSections(md);
+    expect(result).not.toContain("定義");
+    expect(result).toContain("## 要点");
+  });
+
   it("末尾の見出しが空でも除去する", () => {
     const md = "## 定義\n本文A\n\n## 食い違い・未解決";
     const result = stripEmptyMarkdownSections(md);

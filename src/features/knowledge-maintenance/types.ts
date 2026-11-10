@@ -14,6 +14,8 @@ export const MAINTENANCE_PURGE_MAX_PER_RUN = 200;
 export type MaintenanceTrigger =
   | "merge_topics"
   | "organize_topics"
+  /** 「もの単位にまとめる」（題が「X の Y」の組を 1 ページにまとめる） */
+  | "group_by_thing"
   | "auto_tidy"
   | "auto_source_check"
   | "merge_atoms"

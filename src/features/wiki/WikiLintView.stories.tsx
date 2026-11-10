@@ -554,3 +554,67 @@ export const AutoTidyNothing: Story = {
   name: "おまかせ — 整えるところなし",
   render: () => <TidyView result={{ tidy: [], sourceCheck: [], checkedCount: 0, finishedAt: "2026-11-04T07:30:00Z" }} />,
 };
+
+// 「もの単位にまとめる」の節つき（「手動で照合する」の次。開いた状態。押すまで何も変わらない）
+export const ThingGroupsOpen: Story = {
+  name: "手入れタブ — もの単位にまとめる（3 組を開く）",
+  render: () => {
+    function Opened() {
+      const ref = useRef<HTMLDivElement>(null);
+      useAutoClickSequence(ref, ["もの単位にまとめる（3 組）"]);
+      return (
+        <div ref={ref} style={{ height: "100%" }}>
+          <WikiLintView
+            report={null}
+            loading={false}
+            onRunLint={() => console.info("[story] run lint")}
+            onOpenWiki={(id) => console.info("[story] open wiki", id)}
+            onBack={() => console.info("[story] back")}
+            maintenance={demoMaintenance}
+            autoTidy={{ progress: null, result: null, reportIsLeftover: false, onRun: () => console.info("[story] auto tidy") }}
+            thingGroups={[
+              {
+                thing: "ライ麦サワー種",
+                keepId: "k-rye",
+                retitle: true,
+                absorbIds: ["a-rye-1", "a-rye-2", "a-rye-3"],
+                sections: [{ id: "k-rye", heading: "発酵時間" }, { id: "a-rye-1", heading: "酸度" }, { id: "a-rye-2", heading: "加水率" }, { id: "a-rye-3", heading: "保存温度" }],
+                memberTitles: ["ライ麦サワー種の発酵時間", "ライ麦サワー種の酸度", "ライ麦サワー種の加水率", "ライ麦サワー種の保存温度"],
+              },
+              {
+                thing: "石窯オーブン",
+                keepId: "k-oven",
+                retitle: true,
+                absorbIds: ["a-oven-1"],
+                sections: [{ id: "k-oven", heading: "予熱時間" }, { id: "a-oven-1", heading: "蓄熱" }],
+                memberTitles: ["石窯オーブンの予熱時間", "石窯オーブンの蓄熱"],
+              },
+              {
+                thing: "全粒粉",
+                keepId: "k-whole",
+                retitle: false,
+                absorbIds: Array.from({ length: 12 }, (_, i) => `a-whole-${i}`),
+                sections: [{ id: "k-whole", heading: null }, ...Array.from({ length: 12 }, (_, i) => ({ id: `a-whole-${i}`, heading: `性質${i + 1}` }))],
+                memberTitles: [
+                  "全粒粉の吸水", "全粒粉の灰分", "全粒粉の酵素活性", "全粒粉の保存", "全粒粉の挽き方", "全粒粉の香り",
+                  "全粒粉の配合比", "全粒粉の産地", "全粒粉の色", "全粒粉のふすまの量", "全粒粉の粒度", "全粒粉の価格",
+                ],
+              },
+            ]}
+            onMergeThingGroups={async (target, hooks) => {
+              const results = [];
+              for (const g of target) {
+                hooks?.onGroupStart?.(g.keepId);
+                await new Promise((r) => setTimeout(r, 800));
+                hooks?.onGroupDone?.(g.keepId, true);
+                results.push({ keepId: g.keepId, ok: true });
+              }
+              return results;
+            }}
+          />
+        </div>
+      );
+    }
+    return <Opened />;
+  },
+};

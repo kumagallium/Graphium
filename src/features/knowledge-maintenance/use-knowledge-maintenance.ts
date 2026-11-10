@@ -102,7 +102,8 @@ export type KnowledgeMaintenanceApi = {
   /** 実行を始める。end すると一覧を読み直す */
   beginRun: (trigger: MaintenanceRun["trigger"]) => Promise<MaintenanceRunHandle>;
   /** applyTopicMerges の groupScope に渡す。組ごとに操作を作り、記録された操作を覚える */
-  topicMergeScope: (run: MaintenanceRunHandle) => TopicMergeGroupScope;
+  /** subjectTitle: 残す側の題をこの操作で付け替えるとき、履歴に出す題（付け替えた後の題）を渡す */
+  topicMergeScope: (run: MaintenanceRunHandle, options?: { subjectTitle?: string }) => TopicMergeGroupScope;
   /** この実行で記録された操作（トーストの「取り消す」用）。topicMergeScope の end で貯まり、取り出すと空になる */
   recordedOperationsOf: (run: MaintenanceRunHandle) => UndoTarget[];
   requestUndo: (target: UndoTarget) => Promise<RequestUndoResult>;
@@ -444,12 +445,13 @@ export function useKnowledgeMaintenance(deps: KnowledgeMaintenanceDeps): Knowled
   );
 
   const topicMergeScope = useCallback(
-    (run: MaintenanceRunHandle): TopicMergeGroupScope =>
+    (run: MaintenanceRunHandle, options?: { subjectTitle?: string }): TopicMergeGroupScope =>
       async (targetId, sourceIds) => {
         const titleOf = (id: string) => depsRef.current.fm.wikiMetas.get(id)?.title ?? id;
         const op = await run.beginOperation({
           kind: "merge_topics",
-          subject: { wikiId: targetId, title: titleOf(targetId) },
+          // 題を付け替える統合では、履歴には付け替えた後の題を出す（「X の Y に統合」ではなく「X に統合」）
+          subject: { wikiId: targetId, title: options?.subjectTitle ?? titleOf(targetId) },
           related: sourceIds.map((id) => ({ wikiId: id, title: titleOf(id), role: "absorbed" as const })),
         });
         return {
