@@ -835,35 +835,92 @@ function placeIslandGeometry(
     if (list) list.push(node.id);
     else byParent.set(parentId, [node.id]);
   }
-  const RING_CAPACITY = 12;
-  for (const [parentId, satelliteIds] of byParent) {
-    const parent = cy.getElementById(parentId);
-    if (parent.empty()) continue;
-    const ppos = parent.position();
-    const parentSize = Number(parent.data("size")) || KIND_SIZE.note;
-    satelliteIds.forEach((satId, index) => {
-      const ring = Math.floor(index / RING_CAPACITY);
-      const indexInRing = index % RING_CAPACITY;
-      const radius = parentSize / 2 + 14 + ring * 12;
-      const angle = (indexInRing / RING_CAPACITY) * 2 * Math.PI;
-      const sat = cy.getElementById(satId);
-      if (!sat.empty()) {
-        sat.position({ x: ppos.x + radius * Math.cos(angle), y: ppos.y + radius * Math.sin(angle) });
-      }
-    });
-  }
+  placeSatelliteRings(cy, byParent);
 
   // ── 後始末: まだ位置が決まっていない実ノードを最寄りに置く ──
   const positionedIds = new Set<string>(focusIds);
   for (const id of positions.keys()) positionedIds.add(id);
-  for (const node of foldedOutNodes) positionedIds.add(node.id);
+  finishIslandPlacement(cy, {
+    shownNodes,
+    shownEdges,
+    foldedOutNodes,
+    foldedInto,
+    positionedIds,
+    pinnedIds: opts.pinnedIds,
+    communities: opts.communities,
+  });
+}
+
+/** 衛星（葉の知見）を親のまわりのリングに置く。1 周 12 個、外側の周ほど半径を広げる */
+function placeSatelliteRings(cy: cytoscape.Core, byParent: Map<string, string[]>): void {
+  const RING_CAPACITY = 12;
+  for (const [parentId, ids] of byParent) {
+    const parent = cy.getElementById(parentId);
+    if (parent.empty()) continue;
+    const ppos = parent.position();
+    const parentSize = Number(parent.data("size")) || KIND_SIZE.note;
+    ids.forEach((id, index) => {
+      const ring = Math.floor(index / RING_CAPACITY);
+      const indexInRing = index % RING_CAPACITY;
+      const radius = parentSize / 2 + 14 + ring * 12;
+      const angle = (indexInRing / RING_CAPACITY) * 2 * Math.PI;
+      const el = cy.getElementById(id);
+      if (!el.empty()) {
+        el.position({ x: ppos.x + radius * Math.cos(angle), y: ppos.y + radius * Math.sin(angle) });
+      }
+    });
+  }
+}
+
+/**
+ * 島の幾何配置の後始末（placeIslandGeometry / placeCrystalIslandGeometry が最後に呼ぶ）。
+ * 位置の決まっていない実ノードを最寄りに置き（runOrphanCleanupPass）、残りを島の下に
+ * 並べ（placeLeftoverComponents）、重なりをほぐす。島の下に並べたノードの成分番号を返す。
+ *
+ * 親がまだ置かれていない衛星は、親が後始末か島の下の並びで置かれてから、親の新しい
+ * 位置のまわりに置き直す。衛星のリングは親の位置で先に置かれるので、親が島の下に回る
+ * ときは前回の配置のまま（前回の島の下）にいる。それを「置き済み」として島の下の並べ場所の
+ * 箱に入れると、並べ場所が前回の島の下よりさらに下になり、組み直すたびに島の下の並びと
+ * その衛星が下へ離れていった（ナレッジ生成中などノードが増えるたびに組み直すと、
+ * 全体の広がりが数倍になる。2026-11-10 実データで再現）。
+ */
+/** @internal テスト用に公開 */
+export function finishIslandPlacement(
+  cy: cytoscape.Core,
+  opts: {
+    shownNodes: NoteNode[];
+    shownEdges: NoteEdge[];
+    foldedOutNodes: NoteNode[];
+    foldedInto: Map<string, string>;
+    /** ここまでに置いたノード。後始末で置いたものも足していく */
+    positionedIds: Set<string>;
+    pinnedIds?: Set<string>;
+    communities?: Map<string, string>;
+  },
+): Map<string, number> {
+  const { shownNodes, shownEdges, foldedOutNodes, foldedInto, positionedIds } = opts;
+  const pinnedIds = opts.pinnedIds ?? new Set<string>();
+  const lateSatellites = new Map<string, string[]>();
+  for (const n of foldedOutNodes) {
+    const parentId = foldedInto.get(n.id);
+    if (parentId && !positionedIds.has(parentId) && !pinnedIds.has(parentId)) {
+      const list = lateSatellites.get(parentId);
+      if (list) list.push(n.id);
+      else lateSatellites.set(parentId, [n.id]);
+      continue;
+    }
+    positionedIds.add(n.id);
+  }
   for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
-  const leftover = placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
+  const leftover = placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, pinnedIds);
+  placeSatelliteRings(cy, lateSatellites);
+  for (const ids of lateSatellites.values()) for (const id of ids) positionedIds.add(id);
   spreadOverlappingNodes(
     cy,
-    opts.pinnedIds ?? new Set(),
-    opts.communities ? { communities: opts.communities, leftover } : undefined,
+    pinnedIds,
+    opts.communities ? { communities: opts.communities, leftover, foldedInto } : undefined,
   );
+  return leftover;
 }
 
 /**
@@ -979,7 +1036,12 @@ function runOrphanCleanupPass(
 function spreadOverlappingNodes(
   cy: cytoscape.Core,
   fixedIds: Set<string>,
-  islands?: { communities: Map<string, string>; leftover: Map<string, number> },
+  islands?: {
+    communities: Map<string, string>;
+    leftover: Map<string, number>;
+    /** 衛星 → 親。衛星は親と同じ島に入れる（位置で最寄りの島を選ぶと、親と別の島として押し離される） */
+    foldedInto?: Map<string, string>;
+  },
 ): void {
   const items: OverlapItem[] = [];
   cy.nodes().forEach((n: any) => {
@@ -998,6 +1060,9 @@ function spreadOverlappingNodes(
     const anchors = items.filter((it) => islands.communities.has(it.id));
     const groupOfId = new Map<string, string>();
     for (const it of items) {
+      // 衛星は親の島に入れる（下でまとめて決める）。親が島の下の並びにいると、衛星は
+      // 位置で最寄りの島に割り当てられ、島どうしを離すときに親から数千 px 引き離された
+      if (islands.foldedInto?.has(it.id)) continue;
       const left = islands.leftover.get(it.id);
       if (left !== undefined) {
         groupOfId.set(it.id, `leftover:${left}`);
@@ -1018,6 +1083,10 @@ function spreadOverlappingNodes(
         }
       }
       if (best) groupOfId.set(it.id, islands.communities.get(best.id)!);
+    }
+    for (const [satId, parentId] of islands.foldedInto ?? []) {
+      const group = groupOfId.get(parentId);
+      if (group !== undefined) groupOfId.set(satId, group);
     }
     moved = resolveGroupedOverlaps(items, (id) => groupOfId.get(id), { gap: 6, islandGap: 40 });
   } else {
@@ -1181,25 +1250,7 @@ function placeCrystalIslandGeometry(
       if (!el.empty()) el.position(p);
     }
   };
-  const placeRings = (byParent: Map<string, string[]>) => {
-    const RING_CAPACITY = 12;
-    for (const [parentId, ids] of byParent) {
-      const parent = cy.getElementById(parentId);
-      if (parent.empty()) continue;
-      const ppos = parent.position();
-      const parentSize = Number(parent.data("size")) || KIND_SIZE.note;
-      ids.forEach((id, index) => {
-        const ring = Math.floor(index / RING_CAPACITY);
-        const indexInRing = index % RING_CAPACITY;
-        const radius = parentSize / 2 + 14 + ring * 12;
-        const angle = (indexInRing / RING_CAPACITY) * 2 * Math.PI;
-        const el = cy.getElementById(id);
-        if (!el.empty()) {
-          el.position({ x: ppos.x + radius * Math.cos(angle), y: ppos.y + radius * Math.sin(angle) });
-        }
-      });
-    }
-  };
+  const placeRings = (byParent: Map<string, string[]>) => placeSatelliteRings(cy, byParent);
   // 無向・実辺のみの隣接（ノート↔共有知見、原料↔ノートの平均位置に使う）
   const adjacency = new Map<string, string[]>();
   for (const n of shownNodes) adjacency.set(n.id, []);
@@ -1268,7 +1319,12 @@ function placeCrystalIslandGeometry(
   const externalIds = shownNodes.filter((n) => kindOf(n) === "external").map((n) => n.id);
   const externalPositions = averageOfReference(externalIds, positionedKnowledge);
   const externalsWithoutKnowledge = externalIds.filter((id) => !externalPositions.has(id));
-  for (const [id, p] of averageOfReference(externalsWithoutKnowledge, new Set(noteIds))) externalPositions.set(id, p);
+  // 参照するのは (2) で置いたノートだけ。まだ置いていないノート（島の下に回るもの）の
+  // 座標は前回の配置のままなので、それを引くと原料とその知見が前回の島の下に置かれ、
+  // 島の下の並べ場所がそのぶん下へずれていく（組み直すたびに離れていく）
+  for (const [id, p] of averageOfReference(externalsWithoutKnowledge, new Set(notePositions.keys()))) {
+    externalPositions.set(id, p);
+  }
   dedupeSpiral(externalPositions);
   applyPositions(externalPositions);
 
@@ -1326,14 +1382,15 @@ function placeCrystalIslandGeometry(
     ...externalPositions.keys(),
     ...sourceOnlyPositions.keys(),
   ]);
-  for (const n of foldedOutNodes) positionedIds.add(n.id);
-  for (const id of runOrphanCleanupPass(cy, shownNodes, shownEdges, positionedIds)) positionedIds.add(id);
-  const leftover = placeLeftoverComponents(cy, shownNodes, shownEdges, positionedIds, opts.pinnedIds);
-  spreadOverlappingNodes(
-    cy,
-    opts.pinnedIds ?? new Set(),
-    opts.communities ? { communities: opts.communities, leftover } : undefined,
-  );
+  const leftover = finishIslandPlacement(cy, {
+    shownNodes,
+    shownEdges,
+    foldedOutNodes,
+    foldedInto,
+    positionedIds,
+    pinnedIds: opts.pinnedIds,
+    communities: opts.communities,
+  });
   // 島の下に並べたノード（話題の届かない資料とその知見など）。島の名前の
   // 「トピック未作成の資料」の見出しに使う
   return new Set(leftover.keys());
