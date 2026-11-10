@@ -2062,7 +2062,7 @@ export const en: Record<string, string> = {
   "wikiLint.analyzingLong": "Analyzing Knowledge health...",
   "wikiLint.noIssues": "No issues found",
   "wikiLint.issuesFound": "{count} issue(s) found",
-  "autoTidy.intro": "AI checks your Knowledge against itself and against its sources, then takes care of what it finds — merging duplicates, writing the newer view into outdated pages, archiving claims no source backs. Where sources disagree, it writes both sides with their sources instead of picking one. Anything you marked as confirmed is left alone. Anything it does can be undone later.",
+  "autoTidy.intro": "AI checks your Knowledge against itself and against its sources, then takes care of what it finds — merging topics with similar titles and other duplicates, writing the newer view into outdated pages, archiving claims no source backs. Where sources disagree, it writes both sides with their sources instead of picking one. Anything you marked as confirmed is left alone. Anything it does can be undone later.",
   "autoTidy.run": "Tidy up for me",
   "autoTidy.runAgain": "Tidy up again",
   "autoTidy.checking": "Checking your Knowledge…",
