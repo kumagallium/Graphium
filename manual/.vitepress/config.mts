@@ -74,6 +74,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Topic granularity', link: '/evaluations/topic-granularity' },
       { text: 'Model size by feature', link: '/evaluations/model-tiers-by-feature' },
       { text: 'Checking where a plan comes from', link: '/evaluations/plan-grounding-check' },
       { text: 'Extraction accuracy by meaning', link: '/evaluations/extraction-accuracy-by-meaning' },
@@ -147,6 +148,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'トピックの粒度', link: '/ja/evaluations/topic-granularity' },
       { text: 'AI 機能とモデルの大きさ', link: '/ja/evaluations/model-tiers-by-feature' },
       { text: '計画の根拠の照合', link: '/ja/evaluations/plan-grounding-check' },
       { text: '意味で測り直した抽出の精度', link: '/ja/evaluations/extraction-accuracy-by-meaning' },
