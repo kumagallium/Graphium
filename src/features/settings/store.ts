@@ -421,8 +421,12 @@ export type Settings = {
   preciseTierEnabled?: boolean;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
-  /** 旧: AI チャットだけを別のモデルにする上書き。v0.125.1 で選択欄を外し、読まない
-   *  （チャットはデフォルトモデル、「じっくり調べてから答える」は精密な処理の段）。キー名は旧 Chat & Synthesis */
+  /** AI チャットの回答に使うモデル名（空文字 = デフォルトモデル。設定 → AI → チャット）。
+   *  選ぶと、ふつうの回答も「じっくり調べてから答える」の回答もこのモデルになる。
+   *  題付けは軽い処理のまま（デフォルトモデル）。未保存（undefined）は空と同じ */
+  chatModel?: string;
+  /** 旧: AI チャットだけを別のモデルにする上書き。v0.125.1 で選択欄を外し、読まない。
+   *  今の上書きは `chatModel`（古い値が黙って生き返らないよう、キーを分けた）。キー名は旧 Chat & Synthesis */
   chatSynthesisModel: string;
   /** 旧: 世界照合用モデル名。v0.125 で選択欄を外し、世界照合はいつもデフォルトモデルを使う（読まない）。
    *  以下は当時の説明: 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
@@ -532,6 +536,7 @@ const DEFAULT_SETTINGS: Settings = {
   meetingMaskTerms: "",
   model: "",
   embeddingModel: "",
+  chatModel: "",
   chatSynthesisModel: "",
   groundingModel: "",
   insightModel: "",
@@ -937,11 +942,12 @@ export const SETTINGS_SAVED_EVENT = "graphium:settings-saved";
 // モデルが消えたりすると古い名前が残り、デスクトップ版はサーバーに断られ、Web 版は
 // 黙って先頭のモデルに置き換わっていた。設定画面での改名・削除のときに、ここで追従させる。
 
-/** モデルを表示名で覚えている設定の項目（この 5 つだけ） */
+/** モデルを表示名で覚えている設定の項目（ここに挙げたものだけ） */
 export const MODEL_NAME_SETTING_KEYS = [
   "model",
   "standardModel",
   "preciseModel",
+  "chatModel",
   "chatSynthesisModel",
   "embeddingModel",
   "groundingModel",
@@ -1086,30 +1092,41 @@ export function getEmbeddingModel(): string {
   return loadSettings().embeddingModel;
 }
 
+/** AI チャットの回答に選んだモデル名（空文字 = デフォルトモデルと同じ。設定 → AI → チャット） */
+export function getChatModel(): string {
+  return loadSettings().chatModel ?? "";
+}
+
 /**
- * AI チャット（回答・題付け・回答の書き直し）の LLMModelConfig。デフォルトモデル（軽い処理）の段。
- * v0.125.1 で「機能ごとに変える」のチャットモデルを外した（2026-11-07 の測定で、ふつうの回答は
- * 10B 級でも 10/10）。古い設定に `chatSynthesisModel` が残っていても読まない。
- * 「じっくり調べてから答える」の回答だけは精密な処理の段（getAgenticSearchLLMModel）を使う
+ * AI チャット（回答・回答の書き直し）の LLMModelConfig。チャットのモデルを選んでいればそれ、
+ * 空ならデフォルトモデル（軽い処理の段）。
+ * v0.125.1 で「機能ごとに変える」のチャットモデルを外した（2026-11-07 の測定で、ノートから答える
+ * 回答は 10B 級でも 10/10）が、一緒に考える会話には賢いモデルを使いたいので、選べる欄を戻した。
+ * 古い設定に `chatSynthesisModel` が残っていても読まない（今の欄は `chatModel`）。
+ * 名前があるのに一覧に見つからない（改名・削除後の古い名前）ときは、黙って回さず undefined。
+ * 題付けはこの関数を使わない（軽い処理のまま、デフォルトモデル）
  */
 export function getChatSynthesisLLMModel(): LLMModelConfig | undefined {
-  return getDefaultLLMModel();
+  const name = getChatModel();
+  if (!name) return getDefaultLLMModel();
+  return getLLMModels().find((m) => m.name === name);
 }
 
-/** AI チャットのモデル名（body.model 用）。デフォルトモデル名 */
+/** AI チャットのモデル名（body.model 用）。チャットのモデル → デフォルトモデル名 */
 export function getChatSynthesisModelName(): string {
-  return getSelectedModel() || "";
+  return getChatModel() || getSelectedModel() || "";
 }
 
-/** 「じっくり調べてから答える」で答えるモデル名。精密な処理の段（→ 標準 → デフォルト）。
+/** 「じっくり調べてから答える」で答えるモデル名。チャットのモデルを選んでいればそれ
+ *  （「チャットはこのモデルで答える」を 1 つの決まりにする）。空なら精密な処理の段（→ 標準 → デフォルト）。
  *  測定で、強いモデルほど伸び（Opus 5 は 20→28/30）、gpt-oss-120b ではかえって下がったため */
 export function getAgenticSearchModelName(): string {
-  return getPreciseModelName();
+  return getChatModel() || getPreciseModelName();
 }
 
 /** 「じっくり調べてから答える」の LLMModelConfig（Web 版のヘッダー用） */
 export function getAgenticSearchLLMModel(): LLMModelConfig | undefined {
-  return getPreciseLLMModel();
+  return getChatModel() ? getChatSynthesisLLMModel() : getPreciseLLMModel();
 }
 
 /** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名（空文字 = デフォルトと同じ） */

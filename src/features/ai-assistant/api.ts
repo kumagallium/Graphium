@@ -5,7 +5,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
-import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName, getAgenticSearchLLMModel, getAgenticSearchModelName, setMcpServerSkipApproval } from "../settings/store";
+import { getEnabledMcpServers, getDefaultLLMModel, getSelectedModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getAgenticSearchModelName, setMcpServerSkipApproval } from "../settings/store";
 import { requestToolApproval, type ToolApprovalAnswer, type ToolApprovalRequest } from "./tool-approval";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { migrateToLatest } from "../../lib/document-migration";
@@ -13,7 +13,7 @@ import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
 
 /**
  * Registry URL・LLM API キーが設定されている場合はヘッダーに含める。
- * mode="chat" のとき、AI チャット用のモデル（Chat & Synthesis モデル、未設定なら default）の
+ * mode="chat" のとき、AI チャット用のモデル（設定 → AI → チャットで選んだモデル、未設定なら default）の
  * 認証情報を送る。インフラ系（fetchModels / fetchProfiles）は default のみで十分。
  */
 // 注意: ここで送るカスタムヘッダーを追加・変更したら、server/app.ts の cors
@@ -169,10 +169,11 @@ export async function generateTitle(
 ): Promise<string> {
   const res = await fetch(`${apiBase()}/agent/sessions/title`, {
     method: "POST",
-    headers: apiHeaders("chat"),
+    // 題付けは軽い処理。チャットのモデルを選んでいても、デフォルトモデルで付ける
+    headers: apiHeaders(),
     body: JSON.stringify({
       first_message: firstMessage,
-      ...(getChatSynthesisModelName() ? { model: getChatSynthesisModelName() } : {}),
+      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
   });
 
@@ -211,10 +212,10 @@ export async function generateNoteTitle(
 ): Promise<string> {
   const res = await fetch(`${apiBase()}/agent/notes/title`, {
     method: "POST",
-    headers: apiHeaders("chat"),
+    headers: apiHeaders(),
     body: JSON.stringify({
       text: bodyText.slice(0, NOTE_TITLE_MAX_INPUT),
-      ...(getChatSynthesisModelName() ? { model: getChatSynthesisModelName() } : {}),
+      ...(getSelectedModel() ? { model: getSelectedModel() } : {}),
     }),
     signal,
   });
@@ -243,8 +244,9 @@ export async function runAgent(
     return migrateToLatest(await provider.loadSkillFile(id), id);
   });
   const clientTools = options?.clientTools;
-  // 「じっくり調べてから答える」（道具をブラウザで実行する）ときだけ、精密な処理の段のモデルで答える。
-  // ふつうのチャットはデフォルトモデル（呼び出し元が req.options.model に入れた名前）のまま
+  // 「じっくり調べてから答える」（道具をブラウザで実行する）ときは、チャットのモデルを選んでいれば
+  // それ、空なら精密な処理の段のモデルで答える。ふつうのチャットは呼び出し元が req.options.model に
+  // 入れた名前（チャットのモデル → デフォルトモデル）のまま
   const agentic = !!clientTools && clientTools.names.length > 0;
   const agenticModel = agentic ? getAgenticSearchModelName() : "";
   const runReq: AgentRunRequest = agentic && agenticModel

@@ -16,8 +16,8 @@ import { useEffect, useState } from "react";
 import { fetchModels } from "../ai-assistant/api";
 import {
   getEnabledMcpServers,
-  getSelectedModel,
-  getDefaultLLMModel,
+  getChatSynthesisModelName,
+  getChatSynthesisLLMModel,
 } from "../settings/store";
 import { isTauri } from "../../lib/platform";
 import { hasBuiltinWebSearch } from "../../lib/subscription-providers";
@@ -44,20 +44,21 @@ export function hasSearchCapableMcpServer(): boolean {
 
 /**
  * チャットで実際に使われるモデルの provider を解決する。
- * チャット送信は body.options.model = getSelectedModel()（空 = サーバー default）なので
+ * チャット送信は body.options.model = getChatSynthesisModelName()（チャットのモデル → デフォルト。
+ * 空 = サーバー default）なので
  * その解決順を再現する。desktop はサーバー models.json が唯一のレジストリ
  * （localStorage は空）のため /models API で引く。web は localStorage が実体。
  * モデルが 1 件も無い・API 不達なら null（= 判定不能）。
  */
 async function resolveChatModelProvider(): Promise<string | null> {
   if (!isTauri()) {
-    const local = getDefaultLLMModel();
+    const local = getChatSynthesisLLMModel();
     if (local) return local.provider;
     // web でも localStorage が空ならサーバー models.json に倒す（セルフホスト構成）
   }
   const res = await fetchModels();
   if (res.models.length === 0) return null;
-  const name = getSelectedModel();
+  const name = getChatSynthesisModelName();
   const model =
     (name && res.models.find((m) => m.name === name)) ||
     (res.default && res.models.find((m) => m.name === res.default)) ||
@@ -81,7 +82,7 @@ export function useWebSearchAvailability(active: boolean): WebSearchAvailability
   // 「設定を開く」から MCP 追加やモデル切り替えをして戻ると、設定モーダル close に
   // 伴う再レンダでここが変わり、警告が即追従する（イベント購読なしで主要導線を拾う）。
   const mcpAvailable = active && hasSearchCapableMcpServer();
-  const selectedModelName = active ? getSelectedModel() : "";
+  const selectedModelName = active ? getChatSynthesisModelName() : "";
   useEffect(() => {
     if (!active || mcpAvailable) return;
     let cancelled = false;

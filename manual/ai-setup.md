@@ -119,10 +119,12 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Assignment | Used for |
 |---|---|
-| **Light work model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty. A fast model, or a local one (LM Studio or similar), is enough |
+| **Light work model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty (AI Chat can be set separately with **Chat model**). A fast model, or a local one (LM Studio or similar), is enough |
 | **Standard work model** | Adding to Knowledge, translation, topic routing and revision, and topic-type tagging. Left empty, it uses the light work model |
-| **Advanced work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on. Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
+| **Advanced work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on (unless you picked a chat model). Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
+
+**Chat model** sits apart from the tiers, in the **Chat** group under Settings → AI. Left empty, ordinary answers use the light work model, and answers while **Research before answering** is on use the advanced work model. When you pick a model, chat answers come from it, including while Research before answering is on. Chat and note titles still use the light work model whichever you pick. It is not one of the difficulty tiers because the choice runs the other way: bulk jobs suit a cheap model, while a conversation you read and think through suits a smart one.
 
 ### Turning a tier on or off <Badge type="tip" text="Added in v0.125.6 (2026-11-09)" /> {#turning-a-tier-on-or-off}
 
@@ -136,6 +138,7 @@ Assignments remember a model by its display name. Rename a model and the assignm
 - Turning a tier off does not delete anything. The pages, notes and clean copies you made stay readable, and the entry points come back when you turn the tier on again.
 - The model you chose for that tier is kept.
 - **Light work model** has no switch. If you use AI at all, this tier always runs.
+- The **Chat model** field shows even when advanced work is off (only the **Research before answering** switch disappears then).
 - The [Graphium MCP](/mcp-server) tools that create claims and insights are not affected: the connected assistant makes them with its own model.
 
 Under each tier, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
