@@ -141,6 +141,44 @@ describe("formatRetrievedContext", () => {
     expect(out).toContain(`${"あ".repeat(700)}…`);
   });
 
+  it("予算に入らない長い節は 700 字に切って渡し、下位の短い節も落とさない", () => {
+    setWikiTitleMap(new Map([["t1", "長いトピック"], ["c1", "短い知見"]]));
+    const wiki: RetrievedPassage[] = [
+      // 融合 1 位が 2,000 字を超える節。以前はここで打ち切り、ナレッジが 1 件も渡らなかった
+      { kind: "wiki", sourceId: "t1", chunkId: "s1", title: "", text: "長".repeat(3000), score: 1 },
+      { kind: "wiki", sourceId: "c1", chunkId: "lead", title: "", text: "SPS 800℃", score: 0.9 },
+    ];
+    const out = formatRetrievedContext(wiki, [], undefined);
+    expect(out).toContain('"長いトピック"]');
+    expect(out).toContain(`${"長".repeat(700)}…`);
+    expect(out).not.toContain("長".repeat(701));
+    expect(out).toContain('"短い知見"]\nSPS 800℃');
+  });
+
+  it("そのまま入る節は 700 字を超えていても切らない", () => {
+    setWikiTitleMap(new Map([["t1", "中くらいのトピック"]]));
+    const body = "中".repeat(1500);
+    const out = formatRetrievedContext(
+      [{ kind: "wiki", sourceId: "t1", chunkId: "s1", title: "", text: body, score: 1 }], [], undefined,
+    );
+    expect(out).toContain(body);
+    expect(out).not.toContain("…\n");
+  });
+
+  it("切っても入らない節は飛ばし、その後ろの入る節を渡す", () => {
+    setWikiTitleMap(new Map([["a", "一"], ["b", "二"], ["c", "三"]]));
+    const wiki: RetrievedPassage[] = [
+      { kind: "wiki", sourceId: "a", chunkId: "s1", title: "", text: "あ".repeat(1500), score: 1 },
+      // 残りは 500 字弱。切った 700 字も入らないので飛ばす
+      { kind: "wiki", sourceId: "b", chunkId: "s1", title: "", text: "い".repeat(900), score: 0.9 },
+      { kind: "wiki", sourceId: "c", chunkId: "s1", title: "", text: "う".repeat(100), score: 0.8 },
+    ];
+    const out = formatRetrievedContext(wiki, [], undefined);
+    expect(out).toContain('[#1 | Claim | "一"]');
+    expect(out).not.toContain('"二"]');
+    expect(out).toContain('[#2 | Claim | "三"]');
+  });
+
   it("何も無ければ null 相当を返す", () => {
     setWikiTitleMap(new Map());
     expect(formatRetrievedContext([], [], undefined)).toBeNull();

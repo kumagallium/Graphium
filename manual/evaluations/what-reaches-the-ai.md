@@ -2,7 +2,7 @@
 
 **Question.** Chat answers seemed to cite claims every time. Are topics and insights dropped at the search step? Do they reach the AI and go uncited? Or does it depend on how the question is asked?
 
-**Short answer.** In these measurements it depended on which page the question names. When a question contained a topic's title, the body of that topic reached the AI in 32 to 36 of 40 questions. When it contained a claim's title, the AI received 7.5 to 8.0 claims and 0.4 to 0.5 topics per question. When it contained an insight's title, that insight ranked first in all 40 questions. Asking "What is X?" or "Is it true that X?" made little difference. In the questions where the target page arrived, the answer cited it almost every time (citations were checked on a subset of the questions). I did not change the search or citation rules. The measurement turned up two small gaps, which are not fixed yet.
+**Short answer.** In these measurements it depended on which page the question names. When a question contained a topic's title, the body of that topic reached the AI in 32 to 36 of 40 questions. When it contained a claim's title, the AI received 7.5 to 8.0 claims and 0.4 to 0.5 topics per question. When it contained an insight's title, that insight ranked first in all 40 questions. Asking "What is X?" or "Is it true that X?" made little difference. In the questions where the target page arrived, the answer cited it almost every time (citations were checked on a subset of the questions). I did not change the search or citation rules. The measurement turned up two small gaps, and one of them was fixed after this measurement.
 
 ## How I measured it
 
@@ -65,10 +65,10 @@ A target topic that arrives is nearly always cited. Counted by section, 50 to 70
 
 **The effect of length.** The "Key points" section of a topic had a median of 566 characters, and 69 of 437 (16%) were longer than 2,000. When a passage does not fit into the 2,000 characters, the current code stops packing at that point. That is why the target topic did not arrive in 2 questions of A and 3 of B.
 
-**Gaps found (not fixed yet).**
+**Gaps found.**
 
-- **Stopping at a long section.** Recomputing with each passage cut at 700 characters, and with passages that do not fit skipped instead of ending the packing, the body of the target topic arrived in 38 questions of A instead of 36, and 37 of B instead of 33.
-- **A topic's References section gets matched.** That section is only a list of source names. It matched the search and arrived in place of the body of the target topic in 1 question of A and 3 of B.
+- **Stopping at a long section (fixed).** When a section did not fit into the 2,000 characters, packing stopped there. If the section ranked first after fusion was long, no knowledge reached the AI at all. That happened in 6 of the 240 questions.
+- **A topic's References section gets matched (not fixed).** That section is only a list of source names. It matched the search and arrived in place of the body of the target topic in 1 question of A and 3 of B.
 
 **The size of the context.** The input for one answer had a median of 64,074 tokens (`gpt-oss-120b`) and 84,749 tokens (Opus 5). Besides the passages chosen by search (up to 2,000 characters), the AI also receives a list of the titles of every knowledge page. For 2,624 pages that list was 88,577 characters, which was most of the context. Opus 5 often cited claims from that list by title alone (59 claims over 32 questions; `gpt-oss-120b` cited only 2 topic titles that way over 80 questions).
 
@@ -76,7 +76,21 @@ A target topic that arrives is nearly always cited. Counted by section, 50 to 70
 
 - **The search and citation rules stay as they are.** No per-type quota, and no priority for topics. With the current rules, the type that fits the question already ranks at the top.
 - **To have a topic cited, ask by the topic's name.** When the question had the words of a topic's title in it, that topic arrived whatever the form. Asking with a sentence that states one fact brings the claims close to that sentence. [AI chat & ask](/ai-chat-and-ask) now links to this record.
-- **The two gaps and the size of the title list are handled separately.** They were not fixed in this measurement.
+- **Stopping at a long section gets fixed.** See "Fixed afterwards" below.
+- **The References section and the size of the title list are handled separately.** Just dropping References sections from the search results did not bring the body of the target topic in more questions, and in the questions where that section was the only match, the topic's title stopped arriving. A fix would start from how the index is built.
+
+## Fixed afterwards
+
+A section that does not fit is now cut at 700 characters and tried again, and if it still does not fit it is skipped and packing goes on to the next section. A section that fits as it is does not get cut. These are the same 240 questions packed with the code before and after the fix.
+
+| | Before | After |
+|---|---|---|
+| Questions where the body of the target topic arrived (A / B / F, 40 each) | 37 / 33 / 32 | 39 / 37 / 36 |
+| Questions where no knowledge arrived at all (of 240) | 6 | 0 |
+| Passages handed over per question (range of the means of A to F) | 5.1 to 8.7 | 6.6 to 9.6 |
+| Sections that arrived before the fix and no longer arrive | — | 0 of 1,596 |
+
+This table counts by matching titles, so "Before" for A is one question higher than in the table above (36, counted by ID). 46 sections were cut across the 240 questions. The rest of a cut section does not arrive. When you need it, let the AI read the whole page with "research before answering", or cite the page with `@`. The citation step was not measured again with the fixed code.
 
 ## Limits
 
