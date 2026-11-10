@@ -225,15 +225,18 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
    * 対象（claim/topic/both）と範囲（unchecked/stale/all）から、実行前の確認ダイアログ用の
    * 計画を組み立てる（WikiLintView 用）。対象ドキュメントを実際に読み込む（推定係数を
    * 使わない実測値にするため）。
+   * excludeIds: 対象から外すページ。おまかせで整える が、同じ回の手当てで手放したページ
+   * （統合で吸収・アーカイブ。この hook が持つ一覧の写しにはまだ残っている）を渡す。
    */
   const planForLint = useCallback(
-    async (target: SourceCheckTargetKind, scope: SourceCheckScope): Promise<LintPlanResult> => {
+    async (target: SourceCheckTargetKind, scope: SourceCheckScope, excludeIds?: ReadonlySet<string>): Promise<LintPlanResult> => {
       // answer（回答ページ）は topic と同じ枠で数える（UI に専用の選択肢は増やさない）。
       const wantedKinds =
         target === "both" ? ["claim", "topic", "answer"]
         : target === "topic" ? ["topic", "answer"]
         : [target];
       const candidates = deps.wikiFiles.filter((f) => {
+        if (excludeIds?.has(f.id)) return false;
         const meta = deps.wikiMetas.get(f.id);
         return meta && wantedKinds.includes(meta.kind);
       });

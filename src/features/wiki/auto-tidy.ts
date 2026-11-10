@@ -72,6 +72,8 @@ export function planAutoTidy(
   const archives: AutoTidyStep[] = [];
   // 何らかの手当てで触るページ（統合の両側を含む）
   const touched = new Set<string>();
+  // 統合で吸収されたページ（もう無い）
+  const absorbedIds = new Set<string>();
   const handled = new Set<number>();
   const suggested = new Set<number>();
 
@@ -80,11 +82,16 @@ export function planAutoTidy(
     const kind = mergeKindOf(issue, deps);
     const rec = issue.recommendedAction;
     if (!kind || rec?.type !== "merge") return;
-    // A←B のあとの B←C は、B がもう無いので推奨の前提が崩れている（手入れ画面の一括統合と同じ扱い）
-    if (touched.has(rec.keepId) || touched.has(rec.absorbId)) return;
+    // 同じ残す側への複数の吸収（A←B のあとの A←C）は拾う。弾くのは次の 2 つ
+    // - 残す側がすでに吸収された（A←B のあとの B←C は、B がもう無い）
+    // - 吸収する側がすでに触られている（A←B のあとの C←A は、残す側として触った A を消すことになる）
+    // 手入れ画面の一括統合（WikiLintView の handleBulkMerge）は「吸収済みのページを含む組」だけを飛ばすので、
+    // こちらは C←A も弾く分だけ厳しい（後段の併記・作り直しが見る touched を安定させるため）
+    if (absorbedIds.has(rec.keepId) || touched.has(rec.absorbId)) return;
     merges.push({ kind: "merge", mergeKind: kind, keepId: rec.keepId, absorbId: rec.absorbId });
     touched.add(rec.keepId);
     touched.add(rec.absorbId);
+    absorbedIds.add(rec.absorbId);
     handled.add(idx);
   });
 
@@ -191,6 +198,43 @@ function mergeKindOf(
   if (keepKind === "topic" && deps.canMergeTopics !== false) return "topic";
   if (keepKind === "atom" && deps.canMergeAtoms !== false) return "atom";
   return null;
+}
+
+/**
+ * 「題の一覧を AI が見て同じトピックと判断した」統合（吸収される id → 残す id）を、
+ * 点検の redundant issue の形にする。おまかせの統合（planAutoTidy）にそのまま流すため。
+ * すでに同じ 2 ページの組（向きは問わない）を merge で勧める redundant があれば作らない。
+ */
+export function topicConsolidationIssues(
+  targetByTopicId: Map<string, string>,
+  deps: { titleById: Map<string, string>; existingIssues: LintIssue[] },
+): LintIssue[] {
+  const pairKey = (a: string, b: string) => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+  const seen = new Set<string>();
+  for (const i of deps.existingIssues) {
+    const rec = i.recommendedAction;
+    if (i.type === "redundant" && rec?.type === "merge") seen.add(pairKey(rec.keepId, rec.absorbId));
+  }
+  const titleOf = (id: string) => deps.titleById.get(id) ?? id;
+  const out: LintIssue[] = [];
+  for (const [absorbId, keepId] of targetByTopicId) {
+    if (keepId === absorbId) continue;
+    const key = pairKey(keepId, absorbId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const keep = titleOf(keepId);
+    const absorb = titleOf(absorbId);
+    out.push({
+      type: "redundant",
+      severity: "warning",
+      title: `"${keep}" and "${absorb}" name the same topic`,
+      description: `Looking at the list of topic titles, the AI judged these two Topic pages to be the same topic written in different words.`,
+      affectedWikiIds: [keepId, absorbId],
+      suggestion: `Merge "${absorb}" into "${keep}" via "Organize topics" in Settings.`,
+      recommendedAction: { type: "merge", keepId, absorbId, reason: `Judged to be the same topic from the title list; keeping the title chosen as the canonical name.` },
+    });
+  }
+  return out;
 }
 
 /** 手当て 1 件の結果（画面の「実行内容」の 1 行） */

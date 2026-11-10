@@ -395,7 +395,7 @@ import { sniffMimeType, extensionForMime } from "./features/sharing/materialize-
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
-import type { LintReport, WikiSnapshot } from "./server/services/wiki-linter";
+import type { LintIssue, LintReport, WikiSnapshot } from "./server/services/wiki-linter";
 import type { LintProgress } from "./features/wiki/wiki-service";
 import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
@@ -410,7 +410,7 @@ import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteCo
 import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import {
-  planAutoTidy, leftoverReport,
+  planAutoTidy, leftoverReport, topicConsolidationIssues,
   type AutoTidyDone,
 } from "./features/wiki/auto-tidy";
 import {
@@ -461,6 +461,7 @@ import {
   extractTopicOneLiner,
   type ExistingTopicRef,
   consolidateExistingTopics, type ExistingTopicForMerge,
+  consolidateTopics, planExistingTopicMerges,
   mergeTopicsExplicit, normalizeTopicTitle,
   mergeAtomsExplicit,
   runSourceTopicStage, mergeSourceTopicStageResults, type SourceTopicStageInput, type SourceTopicStageResult,
@@ -15056,6 +15057,52 @@ export function NoteApp() {
         if (meta?.kind) kindById.set(id, meta.kind);
         if (meta?.title) titleById.set(id, meta.title);
       }
+      // 既存トピックどうしの名寄せ（設定「トピックを整理」と同じ判断）を最初に 1 回走らせ、
+      // 同じトピックと判断した組を点検の redundant（統合）として足す。題の一覧を渡す LLM 呼び出しは 1 回だけ。
+      // 失敗・空の対応表でもおまかせは止めない（足さずに続ける）
+      let extraIssues: LintIssue[] = [];
+      const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
+        .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic")
+        .map((wf) => ({
+          id: wf.id,
+          title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
+          memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
+        }));
+      if (existingTopics.length >= 2) {
+        // 点検の窓は終わっている。名寄せの 1 回（題が多いと 1 分ほど）の間は窓の数を出さない
+        setAutoUpkeepProgress({ phase: "checking", startedAt: checkStartedAt });
+        try {
+          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
+          const mapping = await consolidateTopics(
+            existingTopics.map((t) => t.title),
+            [],
+            getGenerationLanguage(),
+            getSelectedModel() || undefined,
+            knowledgeSchema,
+            (err) => console.warn("[auto-upkeep] トピックの名寄せに失敗:", err),
+          );
+          if (Object.keys(mapping).length > 0) {
+            extraIssues = topicConsolidationIssues(planExistingTopicMerges(existingTopics, mapping), {
+              titleById,
+              existingIssues: report.issues,
+            });
+          }
+        } catch (err) {
+          console.warn("[auto-upkeep] トピックの名寄せに失敗:", err);
+        }
+      }
+      if (signal.aborted) {
+        // 名寄せのあとで止められた: 点検のあとで止められたときと同じ扱い
+        interrupted = true;
+        sourceCheck.resetBatchResult();
+        setAutoUpkeepResult({
+          tidy, sourceCheck: sourceDone, checkedCount, finishedAt: new Date().toISOString(),
+          ...(lintFailed ? { lintFailed: true } : {}), interrupted: true,
+        });
+        return;
+      }
+      // planAutoTidy の leftoverIssueIndices は issues の添字。leftoverReport にも同じ配列を渡す
+      const fullReport = { ...report, issues: [...report.issues, ...extraIssues] };
       // 矛盾・古いページの組で、相手の見方を書き終えているか（reconciledWith は索引に無いのでページを読む）
       const reconciledWith = new Map<string, Set<string>>();
       for (const issue of report.issues) {
@@ -15066,7 +15113,7 @@ export function NoteApp() {
           reconciledWith.set(id, new Set(doc?.wikiMeta?.reconciledWith ?? []));
         }
       }
-      const plan = planAutoTidy(report, {
+      const plan = planAutoTidy(fullReport, {
         kindById,
         titleById,
         legacyTopicIds: legacyTopicList.map((x) => x.id),
@@ -15101,7 +15148,7 @@ export function NoteApp() {
           tidy.push({ step, title: titleOf(step.kind === "merge" ? step.keepId : step.wikiId), ok: false });
         }
       }
-      const left = leftoverReport(report, plan.leftoverIssueIndices, plan.suggestedIssueIndices);
+      const left = leftoverReport(fullReport, plan.leftoverIssueIndices, plan.suggestedIssueIndices);
       setLintReport(left);
       setLintReportIsLeftover(true);
       applyLintBadgeFromReport(left);
@@ -15145,8 +15192,16 @@ export function NoteApp() {
       // 2) 出典照合 → 手当て（点検側の手当てで止められたときは入らない）
       if (!interrupted) setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
       // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
-      const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
-      const scPlan = interrupted ? null : await sourceCheck.planForLint("both", "unchecked-or-stale");
+      // この回の手当てで手放したページ（統合で吸収・アーカイブ）は state の写しに残っているので自分で除く。
+      // 除かないと、ゴミ箱へ移した吸収側の本文まで直しに行き、統合の取り消しがその手当ての取り消し待ちになる
+      const releasedIds = new Set<string>();
+      for (const d of tidy) {
+        if (!d.ok) continue;
+        if (d.step.kind === "merge") releasedIds.add(d.step.absorbId);
+        else if (d.step.kind === "archive") releasedIds.add(d.step.wikiId);
+      }
+      const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas).filter((e) => !releasedIds.has(e.id));
+      const scPlan = interrupted ? null : await sourceCheck.planForLint("both", "unchecked-or-stale", releasedIds);
       const checked = scPlan && scPlan.targetCount > 0
         ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total, startedAt: p.startedAt }))
         : { profiles: new Map<string, SourceCheckProfile>(), interrupted: false };
@@ -15163,7 +15218,8 @@ export function NoteApp() {
           if (profile) beforeProfiles.set(e.id, profile);
         }
         const profileOf = (id: string) => checked.profiles.get(id) ?? beforeProfiles.get(id);
-        const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id), (id) => beforeProfiles.get(id));
+        const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id), (id) => beforeProfiles.get(id))
+          .filter((t) => !releasedIds.has(t.id));
         const steps = planSourceCheckFixes(targets);
         const { resolveSourceTitle } = buildTopicSourceResolvers();
         for (const [i, step] of steps.entries()) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LintIssue, LintReport } from "../../server/services/wiki-linter";
-import { countLeftoverIssues, leftoverReport, planAutoTidy } from "./auto-tidy";
+import { countLeftoverIssues, leftoverReport, planAutoTidy, topicConsolidationIssues } from "./auto-tidy";
 
 function issue(partial: Partial<LintIssue> & Pick<LintIssue, "type" | "affectedWikiIds">): LintIssue {
   return { severity: "warning", title: "t", description: "d", suggestion: "s", ...partial };
@@ -153,6 +153,39 @@ describe("planAutoTidy", () => {
     expect(plan.leftoverIssueIndices).toEqual([1]);
   });
 
+  it("同じ残す側への複数の吸収は両方拾う（A←B と A←C）", () => {
+    const r = report([
+      issue({ type: "redundant", affectedWikiIds: ["t1", "t2"], recommendedAction: { type: "merge", keepId: "t1", absorbId: "t2" } }),
+      issue({ type: "redundant", affectedWikiIds: ["t1", "t3"], recommendedAction: { type: "merge", keepId: "t1", absorbId: "t3" } }),
+    ]);
+    const plan = planAutoTidy(r, { kindById: kinds });
+    expect(plan.steps).toEqual([
+      { kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t2" },
+      { kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t3" },
+    ]);
+    expect(plan.leftoverIssueIndices).toEqual([]);
+  });
+
+  it("吸収した側を残す側にした 2 件目は弾く（A←B のあとの B←C）", () => {
+    const r = report([
+      issue({ type: "redundant", affectedWikiIds: ["t1", "t2"], recommendedAction: { type: "merge", keepId: "t1", absorbId: "t2" } }),
+      issue({ type: "redundant", affectedWikiIds: ["t2", "t3"], recommendedAction: { type: "merge", keepId: "t2", absorbId: "t3" } }),
+    ]);
+    const plan = planAutoTidy(r, { kindById: kinds });
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.leftoverIssueIndices).toEqual([1]);
+  });
+
+  it("残す側として触ったページを吸収する 2 件目は弾く（A←B のあとの C←A）", () => {
+    const r = report([
+      issue({ type: "redundant", affectedWikiIds: ["t1", "t2"], recommendedAction: { type: "merge", keepId: "t1", absorbId: "t2" } }),
+      issue({ type: "redundant", affectedWikiIds: ["t3", "t1"], recommendedAction: { type: "merge", keepId: "t3", absorbId: "t1" } }),
+    ]);
+    const plan = planAutoTidy(r, { kindById: kinds });
+    expect(plan.steps).toEqual([{ kind: "merge", mergeKind: "topic", keepId: "t1", absorbId: "t2" }]);
+    expect(plan.leftoverIssueIndices).toEqual([1]);
+  });
+
   it("旧形式トピックは作り直しに入れ、同じトピックの資料の欠けは重ねない", () => {
     const r = report([issue({ type: "missing-source", affectedWikiIds: ["t3"] })]);
     const plan = planAutoTidy(r, { kindById: kinds, legacyTopicIds: ["t3", "t1"] });
@@ -192,5 +225,32 @@ describe("leftoverReport", () => {
     const left = leftoverReport(r, [0, 2]);
     expect(left.issues.map((i) => i.type)).toEqual(["contradiction", "orphan"]);
     expect(left.summary).toMatchObject({ total: 2, contradictions: 1, orphans: 1, stale: 0 });
+  });
+});
+
+describe("topicConsolidationIssues", () => {
+  const titles = new Map([["t1", "熱電材料"], ["t2", "熱電材料について"]]);
+
+  it("吸収される id → 残す id ごとに redundant の統合 issue を作る（順を保つ・keep===absorb は捨てる・題が無ければ id）", () => {
+    const out = topicConsolidationIssues(
+      new Map([["t2", "t1"], ["t3", "t3"], ["x9", "t1"]]),
+      { titleById: titles, existingIssues: [] },
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({
+      type: "redundant",
+      severity: "warning",
+      affectedWikiIds: ["t1", "t2"],
+      recommendedAction: { type: "merge", keepId: "t1", absorbId: "t2" },
+    });
+    expect(out[0].title).toContain("熱電材料");
+    expect(out[1].affectedWikiIds).toEqual(["t1", "x9"]);
+    expect(out[1].title).toContain("x9");
+  });
+
+  it("同じ 2 ページの組を merge で勧める既存の redundant があれば（向きは問わず）作らない", () => {
+    const existing = issue({ type: "redundant", affectedWikiIds: ["t2", "t1"], recommendedAction: { type: "merge", keepId: "t2", absorbId: "t1" } });
+    const out = topicConsolidationIssues(new Map([["t2", "t1"], ["t3", "t1"]]), { titleById: titles, existingIssues: [existing] });
+    expect(out.map((i) => i.affectedWikiIds)).toEqual([["t1", "t3"]]);
   });
 });
