@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.129.8](https://github.com/kumagallium/Graphium/compare/v0.129.7...v0.129.8) - 2026-11-10
+
+- Let chat use its own model, picked under Settings > AI > Chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1630
+- [fix] Keep packing chat knowledge past a section that does not fit (with the evaluation record) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1629
+
 ## [v0.129.7](https://github.com/kumagallium/Graphium/compare/v0.129.6...v0.129.7) - 2026-11-10
 
 - [docs] Add the v0.129.5 badge to Finding memos in the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1625
