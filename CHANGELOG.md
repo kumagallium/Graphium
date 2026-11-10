@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.129.4](https://github.com/kumagallium/Graphium/compare/v0.129.3...v0.129.4) - 2026-11-10
+
+- [docs] Add the v0.129.3 badge to Group pages by thing in the manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1619
+- [fix] Editor colors that only worked on the dev server (note text, code block text, step-flow selection box) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1616
+- [docs] Retake manual, landing and README screenshots for the current UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/1618
+
 ## [v0.129.3](https://github.com/kumagallium/Graphium/compare/v0.129.2...v0.129.3) - 2026-11-10
 
 - [feat] Group topic pages by the thing they are about (Upkeep) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1613
