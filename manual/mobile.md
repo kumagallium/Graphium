@@ -56,7 +56,7 @@ Captures live in *that phone's* queue until they are sent — they do not reach 
 
 ## The memo gallery
 
-On the desktop, click **Memos** in the sidebar's **Materials** tab (the count next to it shows how many you have). Memos are shown as a wall of sticky-note cards; toggle between **Gallery** and **List** views, and search as you type.
+On the desktop, click **Memos** in the sidebar's **Materials** tab (the count next to it shows how many you have). Memos are shown as a wall of sticky-note cards; toggle between **Gallery** and **List** views.
 
 ![The memo gallery as a wall of sticky-note cards](/screenshots/memo-gallery.png)
 

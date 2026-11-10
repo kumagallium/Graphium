@@ -25,6 +25,8 @@ The desktop app writes ordinary files you can see in your file manager. Inside t
 
 On the desktop app you can move the whole data folder: open **Settings** → **Storage** → **Where your notes are saved** and press **Change…**. The current and default paths are shown, and **Reset to default** takes you back to the Documents folder.
 
+![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup, then the Send from your phone or browser and Advanced groups](/screenshots/settings-storage.png)
+
 Two things to know before you switch:
 
 - Existing notes are not moved automatically. Copy the contents of the old folder into the new one before you continue working.
@@ -67,19 +69,17 @@ Media has the same protection: deleting a file from the [material library](/mate
 
 Sharing publishes a copy of a note into a folder your whole team can reach — a lab NAS, a Dropbox-synced folder, any shared drive. It is desktop-only for now; the browser version cannot read or write local folders.
 
-![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup, then the Send from your phone or browser and Advanced groups](/screenshots/settings-storage.png)
-
 ### Set up the shared folders
 
 Open **Settings** → **Sharing**, then go to **Shared folder**:
 
 1. Press **Choose folder** (or **Add a shared folder**) and pick the team-visible folder where published notes go. A name field appears in its row, filled in with the folder's name — keep it or type what the folder is for, then press Enter.
-2. There is nothing more to set up. Images, PDFs, and other media in what you share go into a `_blobs` folder that Graphium creates inside the shared folder the first time it needs one, so the same people can read them. To keep them somewhere else, click the row to open its details and use **Choose another place** under **Large files folder (images, PDFs, etc.)**; **Use the shared folder** puts it back. <Badge type="tip" text="Changed in v0.123.1 (2026-11-06)" />
+2. There is nothing more to set up. Images, PDFs, and other media in what you share go into a `_blobs` folder that Graphium creates inside the shared folder the first time it needs one, so the same people can read them. To keep them somewhere else, click the row to open its details and use **Choose another place** under **Large files folder (images, PDFs, etc.)**; **Use the shared folder** puts it back. Once a place is set, the same button reads **Change**. <Badge type="tip" text="Changed in v0.123.1 (2026-11-06)" />
 3. Press **Check connection** to run a full round trip (write → read → verify → delete) against the folder.
 
 Each folder takes one row: a dot for its state (green when Graphium can see the folder, amber when it can't), its name, its location, and how many notes, knowledge pages, templates, and assets it holds. The `⋯` menu at the end of the row has **Rename**, **Make default**, **Check connection**, and **Remove**.
 
-![The Sharing tab of Settings showing Your name (Ken Sato) with Display name, Email and Save your name, then Shared folder with two rows: "Whole bakery" (/Volumes/Bakery/Shared, Default) opened to show its Location and Large files folder with Change, Check connection and Clear, and "Sourdough team" (/Volumes/Bakery/Sourdough) closed; Add a shared folder sits below, followed by the toggle that includes the shared folder in ⌘K and AI chat.](/screenshots/settings-shared-folders.png)
+![The Sharing tab of Settings showing Your name (Ken Sato) with Display name, Email and Save your name, then Shared folder with two rows: "Whole bakery" (/Volumes/Bakery/Shared, Default) opened to show its Location with Change and Check connection and its Large files folder with Change, Check connection and Use the shared folder, and "Sourdough team" (/Volumes/Bakery/Sourdough) closed; Add a shared folder sits below, followed by the toggle that includes the shared folder in ⌘K and AI chat.](/screenshots/settings-shared-folders.png)
 
 You must save your identity first — shared entries carry their author's name and email.
 
@@ -133,9 +133,9 @@ Each share of a page as a template creates a brand-new entry rather than updatin
 
 ### Browse and fork
 
-Once a shared folder is configured, a **Shared folder** entry appears in the sidebar's Notes, Knowledge and Materials tabs (near the top of the Notes tab, at the bottom of the Knowledge and Materials tabs), and it opens the shared items of the same kind as the tab you pressed (notes, knowledge or materials). It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
+Once a shared folder is configured, a **Shared folder** entry appears in the sidebar's Notes, Knowledge and Materials tabs (near the top of the Notes tab, at the bottom of the Knowledge and Materials tabs), and it opens the shared items of the same kind as the tab you pressed (notes, knowledge or materials). It lists what everyone on the team has shared — notes, knowledge pages, references, and data files — on a tab each. Entries from others are read-only — press **Fork to my notes** to copy one into your own storage, where you can edit it freely. Any media it carries is materialized into your local library automatically, and the fork records where it came from.
 
-Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **History**, **Process**, and **Backlinks** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Shared › Shared folder › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
+Clicking a row opens it in the detail panel beside the table, the same as a click in your own note list. Double-click a row — or press **Open in full view** at the top of the detail panel — to read it full-page instead, in the same place and at the same width as your own notes. A right-hand rail lets you switch between **Comments**, **Version**, **Steps**, **Backlinks**, and **Graph** without leaving the page; **Comments** is open by default. The breadcrumb at the top (**Shared › Shared folder › title**) takes you back to the table. <Badge type="tip" text="Added in v0.58.0 (2026-09-07)" />
 
 When an AI model is set up, the rail carries one more tab — **Ask AI** — for asking about the entry you are reading, with the shared text itself as the grounding. The conversation stays on your own device; nothing about it is written to the shared folder. See [Asking about a shared note](/ai-chat-and-ask#asking-about-a-shared-note). <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
 
@@ -155,7 +155,7 @@ Two more tabs mirror your own left-hand navigation: **Labels** and **Processes**
 
 ![The Processes tab of the shared folder, with a shared procedure and its flow](/screenshots/shared-library-process.png)
 
-The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
+The **Templates** tab lists pages shared as templates (see above), with a **Description** column in place of the folder column you see on the Notes tab. There is no **Fork to my notes** here — a template is a blank starting point, not a record to copy — but its detail panel has **New note from template**, available on any entry including your own. It reads the template, rebuilds its blocks and labels into a new note, materializes any embedded media into your own library, and opens the result. The new note records which template it came from, separately from a fork's "derived from" — a template does not hand you any facts, only a shape to start from. The same template list also appears inside the editor's `/template` picker, so you can insert a shared template into a note you already have open instead of starting a new one — see [Notes & the editor](/notes-and-editor#templates). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
 ![The Templates tab of the shared folder, with a Description column in place of Folder](/screenshots/shared-library-templates.png)
 
@@ -218,7 +218,7 @@ A note you forked from the shared folder can be offered back as a **proposal**: 
 
 Proposing takes three steps:
 
-1. In the shared folder, open the note and press **Fork** to get your own copy
+1. In the shared folder, open the note and press **Fork to my notes** to get your own copy
 2. Edit the copy as usual — fill in values, fix a step, add a table
 3. From the note's `⋯` menu, choose **Propose changes to the original**
 

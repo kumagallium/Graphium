@@ -195,7 +195,7 @@ Every AI reply has action buttons underneath:
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
 | **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
 
-![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Keep as knowledge, Make Knowledge, regenerate and fork, beside the note body.](/screenshots/chat-answer.png)
+![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Make an experiment plan, Keep as knowledge, Make Knowledge, regenerate and fork, beside the note body.](/screenshots/chat-answer.png)
 
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
@@ -291,7 +291,7 @@ An optional text field ("Add a note to steer the AI (optional)") lets you add on
 
 ## Skills: saved prompt templates
 
-A skill is a reusable instruction document — for example a writing-voice guide or a domain glossary — that Graphium can apply automatically. Open **Skill** at the bottom of the sidebar to see them. Graphium ships with built-in system skills, which cannot be deleted but can be edited and restored with **Reset to default**.
+A skill is a reusable instruction document — for example a writing-voice guide or a domain glossary — that Graphium can apply automatically. Open **Skill** in the bottom section of the left nav, under the tabs (it sits in the same place in every tab, and appears once an AI model is registered), to see them. Graphium ships with built-in system skills, which cannot be deleted but can be edited and restored with **Reset to default**.
 
 Each skill's **Edit** dialog controls:
 

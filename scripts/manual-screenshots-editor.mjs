@@ -300,7 +300,8 @@ figures["template-picker"] = async () => {
 // ------------------------------------------------------------------ at-mention
 figures["at-mention"] = async () => {
   await deleteNotesByTitle(["Sourdough starter log"]);
-  const { ctx, page } = await openApp();
+  // @ メニューは縦に長い（ノート・AI ナレッジ・新規作成）。標準の高さ 800 だと末尾の「Create a new note…」が切れるので、背の高い窓で開く
+  const { ctx, page } = await openApp("", { viewport: { width: 1280, height: 1100 } });
   await newNote(page, "Sourdough starter log");
   await typeLines(page, ["Day 5: doubled in 6 hours after feeding. Smells mildly sour."]);
   await save(page);
@@ -319,7 +320,10 @@ figures["at-mention"] = async () => {
     }
   });
   await settle(page, 600, 900, 22);
-  await shoot(page, "at-mention");
+  // 窓の下の余白は写さない。メニューの下端（新規作成の項目まで）＋余白で切る
+  const menuBox = await page.locator(".bn-suggestion-menu").first().boundingBox();
+  const clipH = Math.min(1100, Math.ceil(menuBox.y + menuBox.height) + 24);
+  await shoot(page, "at-mention", { x: 0, y: 0, width: 1280, height: clipH });
   await ctx.close();
 };
 

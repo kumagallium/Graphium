@@ -4,13 +4,14 @@
  * editor-with-graph_ja（日本語 UI）と editor-with-graph_en を撮る（--langs ja,en）。構図は manual-screenshots-provenance.mjs の
  * editor-with-graph_en と同じ（Bread dough trial #3 の Mix を選び、右に Steps パネル）。
  * ノートの中身は英語のまま（README.ja の文脈でも、UI 文言だけ日本語であればよい）。
- * history / network-graph は manual/public/screenshots/ の図を cp して揃える（撮影はマニュアル側）。
+ * network-graph は見本の Trial 4（Trial 3・5・計画ノート・読書ノートとつながる）を開き、Neighbors を拡大表示（Expand）で撮る（--only network-graph で単独）。
+ * history は manual/public/screenshots/ の図を cp して揃える（撮影はマニュアル側）。
  *
  * 使い方（隔離データの API + vite を起動したうえで。見本データは bread）:
  *   node scripts/readme-screenshots.mjs --port <vite> --data <DATA_DIR> [--out docs/screenshots]
  */
 import { chromium } from "playwright";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -118,8 +119,44 @@ async function editorWithGraph(browser, lang) {
   await ctx.close();
 }
 
-seed();
+// ノート同士のつながりが見える図（README の "Note network graph"）
+async function networkGraph(browser) {
+  const notesDir = join(dataDir, "notes");
+  const id = readdirSync(notesDir).map((f) => f.replace(/\.json$/, "")).find((i) => {
+    try { return JSON.parse(readFileSync(join(notesDir, `${i}.json`), "utf8")).title.startsWith("Trial 4 - "); } catch { return false; }
+  });
+  if (!id) throw new Error("Trial 3 のノートが無い（見本データ bread が要る）");
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US", serviceWorkers: "block" });
+  await ctx.addInitScript(() => {
+    localStorage.setItem("graphium_locale", "en");
+    localStorage.setItem("graphium-zoom-hint-dismissed", "1");
+    localStorage.setItem("graphium:graphSelectionLearned", "1");
+  });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}#note/${id}`, { waitUntil: "domcontentloaded" });
+  const welcome = page.getByRole("button", { name: "Open Graphium", exact: true });
+  await welcome.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  if (await welcome.count()) { await welcome.click(); await page.waitForTimeout(1200); }
+  await page.locator(".bn-editor").first().waitFor({ state: "visible", timeout: 20000 });
+  await page.waitForTimeout(3000);
+  await page.getByRole("button", { name: "Graph", exact: true }).first().click();
+  await page.getByRole("button", { name: "Neighbors", exact: true }).click();
+  await page.waitForTimeout(3500);
+  // 右パネルは狭くラベルが重なるので、拡大表示（Expand）で撮る
+  await page.getByRole("button", { name: "Expand", exact: true }).first().click();
+  await page.waitForTimeout(3500);
+  await page.mouse.move(700, 10);
+  await page.screenshot({ path: join(OUT, "network-graph.png") });
+  await ctx.close();
+}
+
 const browser = await chromium.launch({ headless: true });
-for (const l of opt("--langs", "ja,en").split(",")) await editorWithGraph(browser, l);
+if (opt("--only", "") === "network-graph") {
+  await networkGraph(browser);
+} else {
+  seed();
+  for (const l of opt("--langs", "ja,en").split(",")) await editorWithGraph(browser, l);
+  await networkGraph(browser);
+}
 await browser.close();
 console.log("done");

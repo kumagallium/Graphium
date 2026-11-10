@@ -40,7 +40,7 @@ World grounding asks whether a claim holds up against outside knowledge. **Sourc
 
 Only **Claims** and **Topics** are checked. A Claim is checked as a whole (its title and body against every note in its **Derived from** list). A Topic is checked sentence by sentence: every sentence in its body that cites a member Claim (before the **References** section) is checked against that Claim's own text, whether the citation is a link or the claim's title written out as plain text right after the sentence — a Topic's plain definition sentences, which cite nothing, are skipped. **Insights are never checked**, because an Insight generalizes across several Claims rather than restating one source, so there's no single source text to hold it against.
 
-Run it from the **Check sources** button in a Claim's or Topic's banner (next to **Check world**, when the AI is available), or from a dedicated **Check sources** tab in the **Upkeep** view (see below). It doesn't run on its own by default — not at ingest, not on startup — so a result only appears because you asked for it, unless you've turned on **Auto-check sources** in Settings (off by default; see [Automatic source check](#automatic-source-check) below). Turning the AI off hides the button, but a result already recorded stays visible.
+Run it from the **Check sources** button in a Claim's or Topic's banner (next to **Check world**, when the AI is available), or from **Check against sources yourself** in the **Upkeep** tab of the Upkeep view (see below). It doesn't run on its own by default — not at ingest, not on startup — so a result only appears because you asked for it, unless you've turned on **Auto-check sources** in Settings (off by default; see [Automatic source check](#automatic-source-check) below). Turning the AI off hides the button, but a result already recorded stays visible.
 
 **Reading the badge.** The badge next to the source-check button shows one of five judgments:
 
@@ -90,7 +90,7 @@ The model reports how many sources it will need to judge before it decides, but 
 
 ## Automatic source check <Badge type="tip" text="Added in v0.77.0 (2026-09-17)" />
 
-By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-check sources** — it sits below **Auto-ground new knowledge** (off by default).
+By default, source check only runs when you ask for it. To have new and edited knowledge checked as it appears, open **Settings** → **AI**, open the collapsed **Preview features** group, find the **Source check** section (right below **World grounding**), and switch on **Auto-check sources** (off by default).
 
 With the toggle on, newly created or updated Claims and Topics are checked against their sources one at a time in the background, calling the AI once per source. It also works its way through anything not yet checked. It never runs at the same time as a manual single check or batch run. An ingest that rewrites a page's body — a merge, a rewrite, or a topic being restructured — clears that page's stored result, so it becomes eligible for automatic checking again.
 
@@ -107,7 +107,7 @@ The verdict stored on a note and the KB cache are separate: clearing a verdict f
 
 ## Auto-grounding <Badge type="tip" text="Added in v0.13.3 (2026-06-02)" />
 
-By default, grounding only runs when you ask for it. If you want new knowledge checked as it appears, open **Settings** → **AI**, find the **World grounding** section, and switch on **Auto-ground new knowledge** (off by default).
+By default, grounding only runs when you ask for it. If you want new knowledge checked as it appears, open **Settings** → **AI**, open the collapsed **Preview features** group, find the **World grounding** section, and switch on **Auto-ground new knowledge** (off by default). This toggle only appears while **Use world grounding** is on.
 
 With the toggle on, newly created claims and insights are checked one at a time in the background — silently, with no toasts. Only items that have never been checked are picked up, and because the KB is consulted first, the model is only called for claims not yet known.
 
@@ -132,7 +132,7 @@ A related control with the same name appears when you ask the AI a question: the
 
 ## Managing grounding data
 
-**Settings** → **Grounding data** is where you inspect and prune the knowledge base that world grounding checks against. It starts empty and grows as you run checks.
+**Settings** → **Grounding data** (this tab only appears while **Use world grounding** is on) is where you inspect and prune the knowledge base that world grounding checks against. It starts empty and grows as you run checks.
 
 ![The Grounding data tab in Settings, listing cached KB entries with verdict filters](/screenshots/grounding-data-tab.png)
 

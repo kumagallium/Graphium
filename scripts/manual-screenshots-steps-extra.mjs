@@ -349,7 +349,8 @@ async function shootChip() {
   const { ctx, page } = await newSession();
   await openNote(page, ID.chain);
   await waitSaved(page);
-  await shotBox(page, "add-to-knowledge-chip", { x: 634, y: 0, width: 646, height: 72 });
+  // ヘッダー（高さ 44px）だけを切り抜く。これより下は Steps の見出しとロボットのアイコンが写り込む
+  await shotBox(page, "add-to-knowledge-chip", { x: 634, y: 0, width: 646, height: 44 });
   await ctx.close();
 }
 

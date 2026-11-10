@@ -15,16 +15,16 @@ Inside the gallery you can:
 | **Gallery** / **List** | Switch between thumbnail cards and a table with **Name**, **Used in**, and **Date** columns (in **Documents**, a **Pages** column as well) |
 | Search box | Filter materials by name (typing an extension such as `.m4a` works too) |
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
-| **Upload** | Upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
-| **Add URL** | Register a web page as a URL bookmark |
-| **Add PDF** / **Add Word** | Add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
+| **Upload** | In **Images**, **Data**, **Videos** and **Audio**: upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
+| **Add URL** | In **URLs**: register a web page as a URL bookmark |
+| **Add PDF** / **Add Word** | In **Documents**, under the **⋯** menu at the top right: add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
 Checkboxes work in both views: in **Gallery** they sit in the top-left corner of each tile (hover a tile to reveal one; once anything is selected they stay visible on every tile), and the checkbox next to the sort buttons selects or clears everything currently listed. Either way the same selection bar appears above the materials, carrying the bulk actions — folder, download, delete, the AI actions, and **Share with team** where a [shared folder](/storage-and-sync) is set up. The selected count appears once at the left of the bar; the most used actions sit on the bar, the rest are under **More**, and delete is the trash button at the right end. <Badge type="tip" text="Added in v0.59.0 (2026-09-07)" />
 
 The **Used in** count tracks which notes reference each material. When you try to delete a material that notes still use, Graphium recommends **Archive (recommended)** instead — archiving hides it from the library while keeping existing references working.
 
-![The material gallery showing documents](/screenshots/material-gallery.png)
+![The Documents screen in list view: 6 items with a search box, All / PDF / Word / Excel / PowerPoint filters and a Folders button, and a table of Name, Pages, Used in and Date for PDF, Word, Excel and PowerPoint files, some with folder labels](/screenshots/material-gallery.png)
 
 ### Seeing what is inside a data file <Badge type="tip" text="Added in v0.103.0 (2026-10-29)" /> {#data-file-contents}
 
@@ -75,13 +75,13 @@ There are several routes, all ending in the same library:
 | Paste a URL | Pasting a URL into a note opens a small menu: **Link** ("Paste as inline text") or **Bookmark** ("Display as a card with preview"). Either way the URL is registered in the **URLs** gallery |
 | Links already in a note | Clicking a link that is not registered yet — for example one written into the note by an AI chat answer — opens the side peek with an **Add to materials** button in the header. Review the page first, then register it: the URL joins the **URLs** gallery and appears in graphs. Nothing is registered automatically |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
-| Gallery buttons | **Upload**, **Add URL**, **Add PDF**, **Add Word** — add materials without touching any note |
+| Gallery buttons | **Upload** (Images, Data, Videos, Audio), **Add URL** (URLs), and **Add PDF** / **Add Word** under the **⋯** menu in Documents — add materials without touching any note |
 | Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
 
-PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" /> A `.pptx` or `.xlsx` already sitting in your library that hasn't been expanded yet — for example, one added through **Upload** in the gallery — can still be expanded later from the material menu (**Extract slides and images** / **Turn sheets into tables**). <Badge type="tip" text="Added in v0.66.0 (2026-09-08)" />
+PowerPoint and Excel files brought in through the intake sheet (below) get their own treatment too: a `.pptx` keeps its slide text searchable and pulls its embedded pictures out as image materials, and a `.xlsx` turns each sheet into its own CSV data material (named `<workbook> / <sheet>.csv`) so it flows through the same table import as any other delimited data. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" /> A `.pptx` or `.xlsx` already sitting in your library that hasn't been expanded yet can still be expanded later from the material menu (**Extract slides and images** / **Turn sheets into tables**). <Badge type="tip" text="Added in v0.66.0 (2026-09-08)" />
 
 ## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 
@@ -259,7 +259,7 @@ Three ways in:
 
 Once extracted, the text works for you in several places: note search matches it (results show an **image text** badge), the [Composer finds the image itself](/ai-chat-and-ask#finding-images) by the words inside it <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />, and you can view and **Copy** the raw text from the image toolbar.
 
-![Reading text from an image block](/screenshots/image-ocr.png)
+![The drag-handle menu of an image block after reading, with Text extracted (48 chars) among its items](/screenshots/image-ocr.png)
 
 ## Citing knowledge in a note <Badge type="tip" text="Added in v0.12.3 (2026-05-29)" />
 
