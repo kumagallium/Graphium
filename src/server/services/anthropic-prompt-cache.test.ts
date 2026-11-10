@@ -114,6 +114,46 @@ describe("anthropic-prompt-cache", () => {
     expect(body.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
+  it("ナレッジの題の一覧までを別のブロックに分け、質問ごとに変わる部分と別々に目印を置く（文面は変えない）", async () => {
+    const { model, bodies } = capture(true);
+    const stable = "指示文\n\n<wiki-index>\n- **題 A**\n</wiki-index>";
+    const variable = "\n\n<knowledge>\n[#1 | Topic | \"題 A\"]\n本文\n</knowledge>\n\n末尾の指示";
+    await generateText({ model, system: stable + variable, messages: [{ role: "user", content: "質問" }] });
+    const system = bodies[0].system ?? [];
+    expect(system.map((b) => b.text)).toEqual([stable, variable]);
+    expect(system.map((b) => b.cache_control)).toEqual([{ type: "ephemeral" }, { type: "ephemeral" }]);
+    expect(bodies[0].cache_control).toBeUndefined();
+  });
+
+  it("質問が変わっても、分けた前半のブロックは同じ内容のまま送られる", async () => {
+    const { model, bodies } = capture(true);
+    const stable = "指示文\n\n<wiki-index>\n- **題 A**\n</wiki-index>";
+    for (const k of ["本文 1", "本文 2"]) {
+      await generateText({ model, system: `${stable}\n\n<knowledge>\n${k}\n</knowledge>`, messages: [{ role: "user", content: "質問" }] });
+    }
+    expect(bodies[0].system?.[0]).toEqual(bodies[1].system?.[0]);
+    expect(bodies[0].system?.[1].text).not.toBe(bodies[1].system?.[1].text);
+  });
+
+  it("題の一覧の後ろに何も無ければ分けない", async () => {
+    const { model, bodies } = capture(true);
+    await generateText({ model, system: "指示文\n\n<wiki-index>\n- **題 A**\n</wiki-index>\n", messages: [{ role: "user", content: "質問" }] });
+    expect(bodies[0].system).toHaveLength(1);
+    expect(lastSystem(bodies[0])?.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("分けたブロックと自動キャッシュを合わせても目印は 3 つ（上限 4 つ以内）", async () => {
+    const { model, bodies } = capture(true);
+    await generateText({
+      model,
+      system: "指示文\n\n<wiki-index>\n- **題 A**\n</wiki-index>\n\n<knowledge>\n本文\n</knowledge>",
+      messages: [{ role: "user", content: "質問" }],
+      tools: { echo },
+      stopWhen: stepCountIs(1),
+    });
+    expect(JSON.stringify(bodies[0]).match(/cache_control/g)).toHaveLength(3);
+  });
+
   it("公式 API かどうかをホスト名で見分ける", () => {
     expect(isOfficialAnthropicBase("https://api.anthropic.com/v1")).toBe(true);
     expect(isOfficialAnthropicBase("https://proxy.example.com/v1")).toBe(false);
