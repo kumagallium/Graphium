@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.128.4](https://github.com/kumagallium/Graphium/compare/v0.128.3...v0.128.4) - 2026-11-10
+
+- fix: drop the Crucible Registry check from /api/health by @kumagallium in https://github.com/kumagallium/Graphium/pull/1601
+
 ## [v0.128.3](https://github.com/kumagallium/Graphium/compare/v0.128.2...v0.128.3) - 2026-11-10
 
 - fix: draw evidence links through a shared source beside the chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1597
