@@ -153,7 +153,7 @@ The checks that run on their own (after ingest, and on startup if it's been over
 
 Since most issues don't get a toast, the **Upkeep** button in the sidebar shows a small count whenever the last check found something that still needs a look; opening Upkeep clears it, and it only reappears once a later check finds something new.
 
-### Group pages by thing
+### Group pages by thing <Badge type="tip" text="Added in v0.129.3 (2026-11-10)" />
 
 At the bottom of the Upkeep tab, after **Check against sources yourself**, a folded section **Group pages by thing (N)** appears when pages about the same thing have been split up by property — for example "Rye sourdough starter fermentation time" and "Rye sourdough starter acidity" as separate topics. It is not shown when there is nothing to group.
 
