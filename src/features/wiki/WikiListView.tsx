@@ -23,6 +23,7 @@ import { sourceCheckVerdictPalette } from "../source-check/ui/SourceCheckBadge";
 import { isNeedsReviewVerdict } from "../source-check/needs-review";
 import { FileSearch } from "lucide-react";
 import { TOPIC_TYPES, type GraphiumFile, type TopicType } from "../../lib/document-types";
+import { compareKindLabels, kindSortLabel } from "./wiki-list-kind-sort";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useLocale, useT } from "../../i18n";
@@ -579,20 +580,19 @@ export function WikiListView({
     if (sourceCheckNeedsReviewOnly && (wikiKind === "claim" || wikiKind === "topic")) {
       result = result.filter((e) => isNeedsReviewVerdict(e.sourceCheck));
     }
+    // 種別はセルに出しているラベルで比べる（wiki-list-kind-sort.ts）。種類の無い行は向きに関係なく最後
+    if (sortKey === "kind") {
+      const tr = t as unknown as (key: string) => string;
+      const labels = new Map(result.map((e) => [e.id, kindSortLabel(e, e.kind, tr)]));
+      return [...result].sort((a, b) =>
+        compareKindLabels(labels.get(a.id), labels.get(b.id), sortDir, collation),
+      );
+    }
     const sorted = [...result].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case "title":
           cmp = a.title.localeCompare(b.title, collation);
-          break;
-        case "kind":
-          // 種別の sort は意味的な順序ではなく単純に文字列比較（atomType / synthesisMode の
-          // 中の細目で並ぶ）。kindLabel の i18n まで巻き込むと一覧の挙動が i18n に依存する
-          // ことになるので、保存値の atomType / synthesisMode を直接比較する。
-          cmp = (a.atomType ?? a.synthesisMode ?? "").localeCompare(
-            b.atomType ?? b.synthesisMode ?? "",
-            "en",
-          );
           break;
         case "modifiedAt":
           cmp = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
@@ -622,7 +622,7 @@ export function WikiListView({
       return sortDir === "desc" ? -cmp : cmp;
     });
     return sorted;
-  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly, collation]);
+  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind, sourceCheckNeedsReviewOnly, collation, t]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
