@@ -3,6 +3,7 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
 import RoadmapPace from './components/RoadmapPace.vue'
+import RoadmapQuick from './components/RoadmapQuick.vue'
 import './custom.css'
 import './roadmap.css'
 
@@ -10,5 +11,6 @@ export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('RoadmapPace', RoadmapPace)
+    app.component('RoadmapQuick', RoadmapQuick)
   },
 } satisfies Theme
