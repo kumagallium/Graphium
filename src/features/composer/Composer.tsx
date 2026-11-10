@@ -13,6 +13,11 @@
 //   - デスクトップ + 共有ルート設定済み + 設定の「AI と検索の対象に含める」が ON のときだけ
 //   - 選ぶと Library の該当エントリを開く。エディタが出ていれば引用カードも挿せる
 //
+// メモ:
+//   - captureIndex のメモを本文とフォルダ名で検索（索引は通さず、その場で照合）
+//   - ナレッジの下に「メモ」セクションとして並べ、選ぶとメモのピークが開く
+//   - 空入力・`#ラベル` / `@作者` 付きのクエリでは出さない
+//
 // 画像:
 //   - fm.mediaIndex に対して、ファイル名 + OCR で読み取った画像内の文字で検索
 //   - ノートの下に「画像」セクションとして並べ、選ぶと素材サイドピークが開く
@@ -33,7 +38,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, LayoutGrid, Maximize2, Quote, Search } from "lucide-react";
+import { Bot, Image as ImageIcon, LayoutGrid, Maximize2, Quote, Search, StickyNote } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -47,11 +52,14 @@ import {
   searchNotes,
   searchMedia,
   searchShared,
+  searchMemos,
   sharedEntryTitle,
   type SearchHit,
   type MediaHit,
   type SharedHit,
+  type MemoHit,
 } from "./search";
+import type { CaptureEntry } from "../mobile-capture/capture-store";
 import { collectLexicalHits } from "./lexical-hits";
 import {
   SECTION_LIMITS,
@@ -94,6 +102,10 @@ type ComposerProps = {
   /** 素材行を今のノートの横の素材サイドピークで開くハンドラ。
    *  指定すると素材行の既定（Enter・クリック）がこれになり、onMediaSelect は右端のボタンと ⇧+Enter に移る */
   onMediaOpenInPeek?: (entry: MediaIndexEntry) => void;
+  /** メモ一覧（メモ検索のソース）。本文とフォルダ名で探す。アーカイブ・ゴミ箱は検索側で除く */
+  captures?: readonly CaptureEntry[] | null;
+  /** メモ行を選んだときのハンドラ（メモのピークを開く）。未指定時はメモセクションを出さない */
+  onMemoSelect?: (entry: CaptureEntry) => void;
   /** 共有エントリ行を選んだときのハンドラ（Library の該当エントリを開く）。
    *  未指定時は共有セクションを出さない */
   onSharedSelect?: (entry: SharedEntry) => void;
@@ -126,6 +138,7 @@ type ResultRow =
   | { kind: "note"; hit: SearchHit }
   | { kind: "knowledge"; hit: SearchHit }
   | { kind: "more"; section: SectionKey; count: number }
+  | { kind: "memo"; hit: MemoHit }
   | { kind: "shared"; hit: SharedHit }
   | { kind: "media"; hit: MediaHit }
   | { kind: "ask-ai" }
@@ -149,6 +162,8 @@ export function Composer(props: ComposerProps) {
     mediaIndex,
     onMediaSelect,
     onMediaOpenInPeek,
+    captures,
+    onMemoSelect,
     onSharedSelect,
     onSharedInsertCitation,
     canInsertCitation = false,
@@ -253,6 +268,12 @@ export function Composer(props: ComposerProps) {
     return searchMedia(prompt, mediaIndex.media, { limit: SEARCH_FETCH_LIMIT, assetHits });
   }, [prompt, mediaIndex, onMediaSelect, assetHits]);
 
+  // メモ（本文 + フォルダ名）。短い文なので索引は通さず、その場で照合する
+  const allMemoHits = useMemo(() => {
+    if (!captures || !onMemoSelect) return [];
+    return searchMemos(prompt, captures, { limit: SEARCH_FETCH_LIMIT });
+  }, [prompt, captures, onMemoSelect]);
+
   const trimmed = prompt.trim();
   const isEmptyQuery = trimmed.length === 0;
 
@@ -266,6 +287,10 @@ export function Composer(props: ComposerProps) {
     () => sliceSection(allKnowledgeHits, limits.knowledge, expanded.has("knowledge")),
     [allKnowledgeHits, limits, expanded],
   );
+  const memoSlice = useMemo(
+    () => sliceSection(allMemoHits, limits.memos, expanded.has("memos")),
+    [allMemoHits, limits, expanded],
+  );
   const sharedSlice = useMemo(
     () => sliceSection(allSharedHits, limits.shared, expanded.has("shared")),
     [allSharedHits, limits, expanded],
@@ -276,6 +301,7 @@ export function Composer(props: ComposerProps) {
   );
   const hits = noteSlice.visible;
   const knowledgeHits = knowledgeSlice.visible;
+  const memoHits = memoSlice.visible;
   const sharedHits = sharedSlice.visible;
   const mediaHits = mediaSlice.visible;
 
@@ -296,13 +322,18 @@ export function Composer(props: ComposerProps) {
   // 結果行を組み立てる: ノート一覧 + 画像 + 末尾 AI アクション + 発見カード
   // 発見カードもキーボードで選べるように同じ rows 配列にまとめる
   const rows = useMemo<ResultRow[]>(() => {
-    // 並び順は描画順と一致させる: ノート → ナレッジ → 共有 → 素材（各段の末尾に「さらに」）
+    // 並び順は描画順と一致させる: ノート → ナレッジ → メモ → 共有 → 素材（各段の末尾に「さらに」）
     const list: ResultRow[] = hits.map((hit) => ({ kind: "note", hit }));
     if (noteSlice.more > 0) list.push({ kind: "more", section: "notes", count: noteSlice.more });
     for (const hit of knowledgeHits) {
       list.push({ kind: "knowledge", hit });
     }
     if (knowledgeSlice.more > 0) list.push({ kind: "more", section: "knowledge", count: knowledgeSlice.more });
+    // メモは自分で書いたものなので、共有物・素材より先に見せる
+    for (const hit of memoHits) {
+      list.push({ kind: "memo", hit });
+    }
+    if (memoSlice.more > 0) list.push({ kind: "more", section: "memos", count: memoSlice.more });
     // 手元のノート・ナレッジの後、素材の前（他人の共有物より自分のノートを先に見せる）
     for (const hit of sharedHits) {
       list.push({ kind: "shared", hit });
@@ -323,8 +354,8 @@ export function Composer(props: ComposerProps) {
     }
     return list;
   }, [
-    hits, knowledgeHits, sharedHits, mediaHits,
-    noteSlice.more, knowledgeSlice.more, sharedSlice.more, mediaSlice.more,
+    hits, knowledgeHits, memoHits, sharedHits, mediaHits,
+    noteSlice.more, knowledgeSlice.more, memoSlice.more, sharedSlice.more, mediaSlice.more,
     isEmptyQuery, showCards, cards, canAskAi,
   ]);
 
@@ -420,6 +451,10 @@ export function Composer(props: ComposerProps) {
       // その段だけ展開する（activeIndex はそのまま = 新しく見えた先頭の行に移る）
       scrollToActiveRef.current = true;
       setExpanded((prev) => new Set(prev).add(row.section));
+      return;
+    }
+    if (row.kind === "memo") {
+      onMemoSelect?.(row.hit.entry);
       return;
     }
     if (row.kind === "shared") {
@@ -701,6 +736,25 @@ export function Composer(props: ComposerProps) {
             {renderMoreRow("knowledge")}
             {knowledgeSlice.hidden && expanded.has("knowledge") && <MoreHiddenNote />}
 
+            {/* 「メモ」セクション — 本文とフォルダ名で当たる。選ぶとメモのピークが開く */}
+            {memoHits.length > 0 && (
+              <SectionHeading>{t("composer.search.memosHeading")}</SectionHeading>
+            )}
+            {rows.map((row, i) => {
+              if (row.kind !== "memo") return null;
+              return (
+                <MemoRow
+                  key={row.hit.entry.id}
+                  hit={row.hit}
+                  active={i === activeIndex}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => activateRow(row)}
+                />
+              );
+            })}
+            {renderMoreRow("memos")}
+            {memoSlice.hidden && expanded.has("memos") && <MoreHiddenNote />}
+
             {/* 「共有」セクション — 共有ルートに置かれたままのエントリ（fork 不要で開ける） */}
             {sharedHits.length > 0 && (
               <SectionHeading>{t("composer.search.sharedHeading")}</SectionHeading>
@@ -746,7 +800,7 @@ export function Composer(props: ComposerProps) {
             {mediaSlice.hidden && expanded.has("media") && <MoreHiddenNote />}
 
             {/* 一致 0 件 */}
-            {!isEmptyQuery && hits.length === 0 && knowledgeHits.length === 0 && sharedHits.length === 0 && mediaHits.length === 0 && (
+            {!isEmptyQuery && hits.length === 0 && knowledgeHits.length === 0 && memoHits.length === 0 && sharedHits.length === 0 && mediaHits.length === 0 && (
               <div
                 style={{
                   padding: "10px 16px",
@@ -1242,6 +1296,59 @@ function SharedRow({ hit, active, onMouseEnter, onClick, onInsertCitation }: Sha
         </button>
       )}
     </div>
+  );
+}
+
+type MemoRowProps = {
+  hit: MemoHit;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+};
+
+/**
+ * メモ 1 件の行。メモは題名を持たないので、当たった箇所の抜粋をそのまま 1 行で出す。
+ * 選ぶとメモのピークが開く（エディタが出ていればノートの横、そうでなければ一覧側のピーク）
+ */
+function MemoRow({ hit, active, onMouseEnter, onClick }: MemoRowProps) {
+  const { snippet, reasons } = hit;
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      data-composer-active={active ? "true" : undefined}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        color: "var(--ink)",
+      }}
+    >
+      <StickyNote size={14} aria-hidden style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          lineHeight: 1.4,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <HighlightedTitle title={snippet.text} ranges={snippet.ranges} />
+      </span>
+      {reasons.includes("folder") && <FolderReasonBadge />}
+    </button>
   );
 }
 

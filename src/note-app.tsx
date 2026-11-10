@@ -11733,6 +11733,17 @@ export function NoteApp() {
     }
   }, [capture.captureIndex, closeAllViews, router]);
 
+  // Cmd+K のメモ欄からメモを選んだとき。memo: ソースを開くのと同じピークに出す
+  // （エディタ表示中はノートの横、それ以外は一覧側の素材ピーク）。
+  const handleComposerMemoSelect = useCallback(
+    (entry: { id: string }) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      handleOpenMemoSource(entry.id);
+    },
+    [composer, handleOpenMemoSource],
+  );
+
   // 出典照合（Source check, v1.1）— 出典を開く（SourceCheckDetailSection の onOpenSource）。
   // parseClaimSourceId を先に判定してから parseExternalSource に進む（"claim:" は
   // network-graph/external-source.ts のプレフィックス一覧に無い、出典照合専用の合成 ID のため）。
@@ -17934,6 +17945,8 @@ export function NoteApp() {
         mediaIndex={fm.mediaIndex ?? null}
         onMediaSelect={handleComposerMediaSelect}
         onMediaOpenInPeek={composerCanOpenInPeek ? handleComposerMediaOpenInPeek : undefined}
+        captures={capture.captureIndex?.captures ?? null}
+        onMemoSelect={handleComposerMemoSelect}
         onSharedSelect={handleComposerSharedSelect}
         onSharedInsertCitation={handleComposerSharedInsertCitation}
         canInsertCitation={composerCanInsertCitation}

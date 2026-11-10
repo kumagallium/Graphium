@@ -3074,6 +3074,7 @@ export const en: Record<string, string> = {
   "composer.search.assetsHeading": "Assets",
   "composer.search.actionsHeading": "Actions",
   "composer.search.sharedHeading": "Shared",
+  "composer.search.memosHeading": "Memos",
   "composer.search.knowledgeHeading": "Knowledge",
   "composer.search.recentKnowledgeHeading": "Recent Knowledge",
   "composer.search.showMore": "Show {count} more",

@@ -3073,6 +3073,7 @@ export const ja: Record<string, string> = {
   "composer.search.assetsHeading": "素材",
   "composer.search.actionsHeading": "アクション",
   "composer.search.sharedHeading": "共有",
+  "composer.search.memosHeading": "メモ",
   "composer.search.knowledgeHeading": "ナレッジ",
   "composer.search.recentKnowledgeHeading": "最近のナレッジ",
   "composer.search.showMore": "さらに {count} 件を表示",

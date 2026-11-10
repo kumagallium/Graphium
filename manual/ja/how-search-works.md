@@ -41,7 +41,7 @@ Graphium は、`⌘K` の Composer、ノート一覧、AI チャットなど、�
 
 | 場所 | 何に当たるか | 探し方 |
 |---|---|---|
-| [`⌘K` の Composer](/ja/ai-chat-and-ask#composerk) | まずタイトル・見出し・ラベル・作者。続いてノート本文と素材の文字（画像から読み取った文字、PDF、Web ページ） | 言葉 |
+| [`⌘K` の Composer](/ja/ai-chat-and-ask#composerk) | まずタイトル・見出し・ラベル・作者。続いてノート本文と素材の文字（画像から読み取った文字、PDF、Web ページ）、メモの本文 | 言葉 |
 | [ノート一覧](/ja/notes-and-editor)の検索欄 | タイトル、画像から読み取った文字、ノート本文 | 言葉 |
 | [AI チャット](/ja/ai-chat-and-ask#choosing-what-grounds-the-answer)の最初の検索（**内部参照**・**外部参照**） | ナレッジページと、ノート・素材の短い断片 | 言葉＋意味を混ぜる |
 | [AI チャットでじっくり調べてから答える](/ja/ai-chat-and-ask#letting-the-ai-search-again) | 最初の検索と同じ。言葉は AI が選ぶ | 言葉＋意味 |

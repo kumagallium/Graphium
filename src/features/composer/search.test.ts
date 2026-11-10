@@ -4,10 +4,13 @@ import {
   searchNotes,
   searchMedia,
   searchShared,
+  searchMemos,
+  buildMemoSnippet,
   sharedEntryTitle,
   buildOcrSnippet,
   type TextHit,
 } from "./search";
+import type { CaptureEntry } from "../mobile-capture/capture-store";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { SharedEntry, SharedEntryType } from "../../lib/storage/shared";
@@ -513,5 +516,99 @@ describe("フォルダ名でのヒット（reason: folder）", () => {
 
   it("共有: noteContextsOf を渡さなければフォルダでは当たらない", () => {
     expect(searchShared("卒論", sharedEntries)).toEqual([]);
+  });
+});
+
+function memo(partial: Partial<CaptureEntry> & { id: string; text: string }): CaptureEntry {
+  return {
+    createdAt: "2026-04-20T00:00:00.000Z",
+    ...partial,
+  };
+}
+
+describe("searchMemos()", () => {
+  const memos: CaptureEntry[] = [
+    memo({ id: "m1", text: "発酵は 28 度で 90 分。\n生地がふくらむまで待つ" }),
+    memo({ id: "m2", text: "オーブンは 230 度に予熱しておく", noteContexts: ["パン/焼成"] }),
+    memo({ id: "m3", text: "発酵の温度を記録する", archivedAt: "2026-04-21T00:00:00.000Z" }),
+    memo({ id: "m4", text: "発酵かごを洗う", deletedAt: "2026-04-21T00:00:00.000Z" }),
+    memo({ id: "m5", text: "Proofing at 28 C works well" }),
+  ];
+
+  it("本文に含まれる語で当たる", () => {
+    expect(searchMemos("発酵", memos).map((h) => h.entry.id)).toEqual(["m1"]);
+    expect(searchMemos("proofing", memos).map((h) => h.entry.id)).toEqual(["m5"]);
+  });
+
+  it("アーカイブ・ゴミ箱のメモは出さない", () => {
+    const ids = searchMemos("発酵", memos).map((h) => h.entry.id);
+    expect(ids).not.toContain("m3");
+    expect(ids).not.toContain("m4");
+  });
+
+  it("空白で区切った語がすべて含まれれば当たる（順不同・改行をまたいでよい）", () => {
+    expect(searchMemos("待つ 発酵", memos).map((h) => h.entry.id)).toEqual(["m1"]);
+    expect(searchMemos("発酵 焼成", memos)).toEqual([]);
+  });
+
+  it("フォルダ名でも当たり、理由に folder を残す", () => {
+    const [hit] = searchMemos("焼成", memos);
+    expect(hit.entry.id).toBe("m2");
+    expect(hit.reasons).toEqual(["folder"]);
+  });
+
+  it("句がそのまま本文にあるほうを、語がばらばらなものより上にする", () => {
+    const list = [
+      memo({ id: "a", text: "発酵 する 温度" }),
+      memo({ id: "b", text: "発酵温度" }),
+    ];
+    expect(searchMemos("発酵温度", list).map((h) => h.entry.id)).toEqual(["b"]);
+    const both = [
+      memo({ id: "scatter", text: "温度 ... 発酵" }),
+      memo({ id: "phrase", text: "発酵 温度 の記録" }),
+    ];
+    expect(searchMemos("発酵 温度", both).map((h) => h.entry.id)).toEqual(["phrase", "scatter"]);
+  });
+
+  it("空クエリ・#ラベル・@作者 では何も返さない", () => {
+    expect(searchMemos("  ", memos)).toEqual([]);
+    expect(searchMemos("発酵 #手順", memos)).toEqual([]);
+    expect(searchMemos("@tanaka", memos)).toEqual([]);
+  });
+
+  it("limit で切る・入力が無ければ空", () => {
+    const many = Array.from({ length: 6 }, (_, i) => memo({ id: `x${i}`, text: `発酵 ${i}` }));
+    expect(searchMemos("発酵", many)).toHaveLength(4);
+    expect(searchMemos("発酵", many, { limit: 200 })).toHaveLength(6);
+    expect(searchMemos("発酵", null)).toEqual([]);
+    expect(searchMemos("発酵", [])).toEqual([]);
+  });
+});
+
+describe("buildMemoSnippet()", () => {
+  it("改行を潰し、当たった語をすべて強調する", () => {
+    const s = buildMemoSnippet("発酵は 28 度。\n発酵後に成形", ["発酵"]);
+    expect(s.text).toBe("発酵は 28 度。 発酵後に成形");
+    expect(s.ranges.map((r) => s.text.slice(r.start, r.end))).toEqual(["発酵", "発酵"]);
+  });
+
+  it("長い本文は当たった語の少し前から切り出し、前後に … を付ける", () => {
+    const text = `${"あ".repeat(100)}発酵${"い".repeat(200)}`;
+    const s = buildMemoSnippet(text, ["発酵"]);
+    expect(s.text.startsWith("…")).toBe(true);
+    expect(s.text.endsWith("…")).toBe(true);
+    expect(s.ranges).toHaveLength(1);
+    expect(s.text.slice(s.ranges[0].start, s.ranges[0].end)).toBe("発酵");
+  });
+
+  it("重なる語の範囲は 1 つにまとめる", () => {
+    const s = buildMemoSnippet("発酵温度", ["発酵", "酵温"]);
+    expect(s.ranges).toEqual([{ start: 0, end: 3 }]);
+  });
+
+  it("語が無ければ先頭を返し、強調しない", () => {
+    const s = buildMemoSnippet("オーブンを予熱", ["焼成"]);
+    expect(s.text).toBe("オーブンを予熱");
+    expect(s.ranges).toEqual([]);
   });
 });

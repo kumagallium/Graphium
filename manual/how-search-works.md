@@ -41,7 +41,7 @@ Everything here runs on your device or through the AI model you set up. The inde
 
 | Where | What it matches | How it looks |
 |---|---|---|
-| [`⌘K` Composer](/ai-chat-and-ask#the-composer-k) | Titles, headings, labels and authors first; then the words in note bodies and in materials (text read from images, PDFs, web pages) | Words |
+| [`⌘K` Composer](/ai-chat-and-ask#the-composer-k) | Titles, headings, labels and authors first; then the words in note bodies and in materials (text read from images, PDFs, web pages), and the text of your memos | Words |
 | [Note list](/notes-and-editor) search box | Titles, text read from images, and note bodies | Words |
 | [AI chat](/ai-chat-and-ask#choosing-what-grounds-the-answer) — the first search (**Internal** / **External**) | Knowledge pages, plus short passages from notes and materials | Words + meaning, merged |
 | [AI chat — the AI searches again](/ai-chat-and-ask#letting-the-ai-search-again) | The same as the first search, with words the AI picks | Words + meaning |
