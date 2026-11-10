@@ -264,7 +264,7 @@ Your own notes and the AI's Knowledge pages (Topics, Claims, Summaries, and so o
 
 ![The Composer opened from a note: the highlighted row opens alongside on Enter, and the button at the right end of each row opens it full screen](/screenshots/composer-open-alongside.png)
 
-### Finding memos {#finding-memos}
+### Finding memos <Badge type="tip" text="Added in v0.129.5 (2026-11-10)" /> {#finding-memos}
 
 [Memos](/mobile#the-memo-gallery) are searched too, and listed under **Memos**, between Knowledge and shared entries. A memo matches when every word you type appears somewhere in its text — in any order, even across line breaks — or when its folder name matches. A memo containing your words exactly as typed ranks above one where they are scattered. Memos have no title, so each row shows a line of the memo itself, starting a little before the first match, with the matched words highlighted.
 
