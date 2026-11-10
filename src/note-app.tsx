@@ -15155,8 +15155,16 @@ export function NoteApp() {
       // 2) 出典照合 → 手当て（点検側の手当てで止められたときは入らない）
       if (!interrupted) setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
       // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
-      const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas);
-      const scPlan = interrupted ? null : await sourceCheck.planForLint("both", "unchecked-or-stale");
+      // この回の手当てで手放したページ（統合で吸収・アーカイブ）は state の写しに残っているので自分で除く。
+      // 除かないと、ゴミ箱へ移した吸収側の本文まで直しに行き、統合の取り消しがその手当ての取り消し待ちになる
+      const releasedIds = new Set<string>();
+      for (const d of tidy) {
+        if (!d.ok) continue;
+        if (d.step.kind === "merge") releasedIds.add(d.step.absorbId);
+        else if (d.step.kind === "archive") releasedIds.add(d.step.wikiId);
+      }
+      const before = buildNeedsReviewList(fm.wikiFiles, fm.wikiMetas).filter((e) => !releasedIds.has(e.id));
+      const scPlan = interrupted ? null : await sourceCheck.planForLint("both", "unchecked-or-stale", releasedIds);
       const checked = scPlan && scPlan.targetCount > 0
         ? await sourceCheck.runLintPlan(scPlan, (p) => setAutoUpkeepProgress({ phase: "sourceChecking", index: p.index, total: p.total, startedAt: p.startedAt }))
         : { profiles: new Map<string, SourceCheckProfile>(), interrupted: false };
@@ -15173,7 +15181,8 @@ export function NoteApp() {
           if (profile) beforeProfiles.set(e.id, profile);
         }
         const profileOf = (id: string) => checked.profiles.get(id) ?? beforeProfiles.get(id);
-        const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id), (id) => beforeProfiles.get(id));
+        const targets = collectSourceCheckFixTargets(before, checked.profiles, (id) => fm.wikiMetas.get(id), (id) => beforeProfiles.get(id))
+          .filter((t) => !releasedIds.has(t.id));
         const steps = planSourceCheckFixes(targets);
         const { resolveSourceTitle } = buildTopicSourceResolvers();
         for (const [i, step] of steps.entries()) {
