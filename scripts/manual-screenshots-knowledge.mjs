@@ -145,7 +145,7 @@ SHOTS.probe = async () => {
 
 /** サイドバーの Knowledge を開いて Claims の一覧へ */
 async function gotoClaims(page) {
-  await page.getByRole("button", { name: /^Knowledge/ }).first().click();
+  await page.getByRole("tab", { name: "Knowledge", exact: true }).first().click();
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: /^Claims/ }).first().click();
   await page.waitForTimeout(1500);
@@ -216,25 +216,43 @@ SHOTS.chat = async () => {
 };
 
 SHOTS["composer-verbs"] = async () => {
-  const { ctx, page } = await newPage();
+  // Suggestions の「Tell me about …」は直近 7 日に更新されたノートだけを拾う（discovery-cards.ts の
+  // recentNoteCards。日時は索引の modifiedAt = ノート JSON の modifiedAt）。見本ノートは古いので、
+  // 撮る間だけ 3 件の modifiedAt を今日付近へ書き換え、撮り終えたら元の JSON に戻す
+  const bumped = [];
+  const hoursAgo = [3, 30, 55];
+  ["Trial 2 - 70% hydration", "Trial 1 - basic loaf at 65% hydration", "Trial 6 - replacing 30% with whole wheat"].forEach((title, i) => {
+    const { path, json } = findJson("notes", title);
+    bumped.push({ path, raw: readFileSync(path, "utf8") });
+    json.modifiedAt = new Date(Date.now() - hoursAgo[i] * 3600 * 1000).toISOString();
+    writeFileSync(path, JSON.stringify(json));
+  });
+  // パネルは max-height 70vh。高さ 800 だと一覧の 3 行目が数 px だけのぞくので、行の境目で切れる 790 にする
+  const { ctx, page } = await newPage({ viewport: { width: 1280, height: 790 } });
+  try {
   await openNote(page, NOTE_TITLE);
   await page.keyboard.press("Meta+k");
   await page.waitForTimeout(1500);
   // 最近のノートと Recent Knowledge は別見出し。一覧は高さが限られスクロールするので、
-  // Recent Knowledge の見出しが見える位置まで送る
+  // 末尾へ送ると見出しの上に「… Show N more」だけの行が浮くので、一覧は先頭（scrollTop=0）に置く
   const sc = await page.evaluate(() => {
     const h = Array.from(document.querySelectorAll("*")).find(
       (e) => e.children.length === 0 && /^recent knowledge$/i.test((e.textContent || "").trim()),
     );
     if (!h) return "no heading";
-    h.scrollIntoView({ block: "start" });
-    return "scrolled";
+    let box = h.parentElement;
+    while (box && !(box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+    if (box) box.scrollTop = 0;
+    return box ? "top" : "no scroll box";
   });
   console.log(sc);
   await page.mouse.move(1900, 1100);
   await page.waitForTimeout(400);
   await shot(page, "composer-verbs");
-  await ctx.close();
+  } finally {
+    await ctx.close();
+    for (const b of bumped) writeFileSync(b.path, b.raw);
+  }
 };
 
 // ── 測定データの取り込み（.dat は前処理 6 行 + ヘッダー + 31 行） ──
@@ -392,7 +410,7 @@ SHOTS["chart-dual-axis"] = async () => {
 // ── Upkeep（手入れ）画面の図 ──
 /** サイドバーの Knowledge を開き、下の Upkeep ボタンで手入れ画面へ */
 async function gotoUpkeep(page, tab = null) {
-  await page.getByRole("button", { name: /^Knowledge/ }).first().click();
+  await page.getByRole("tab", { name: "Knowledge", exact: true }).first().click();
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: /^Upkeep/ }).first().click();
   await page.getByText("Knowledge upkeep", { exact: true }).first().waitFor({ state: "visible", timeout: 15000 });

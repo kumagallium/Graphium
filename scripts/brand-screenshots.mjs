@@ -34,7 +34,8 @@ try {
   if (await welcome.isVisible()) await welcome.click();
   await page.getByRole('button', { name: 'Close the walkthrough', exact: true }).click();
   if (!only) {
-    await page.getByRole('button', { name: 'Steps', exact: true }).click();
+    // Steps パネルは既定で開く場合があるため、閉じているときだけ押す（トグルで閉じてしまうのを防ぐ）。
+    if (!(await page.getByText(/\d+ nodes/).first().isVisible())) await page.getByRole('button', { name: 'Steps', exact: true }).click();
     await page.mouse.move(1100, 50);
     await page.waitForTimeout(1200);
     await page.screenshot({ path: resolve('public/landing/screen-editor.png') });

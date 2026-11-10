@@ -58,8 +58,8 @@ if (!KEY) { console.error("SAKURA_AI_ENGINE_KEY が環境に無い"); process.ex
 mkdirSync(OUT, { recursive: true });
 
 const L = LOCALE === "ja"
-  ? { intake: "ファイル取り込み", done: "取り込みました", selectAll: "すべて選択", ingest: /件をナレッジ化/, newChat: "新しいチャット", ask: "気になることを聞いてみましょう", stop: "停止" }
-  : { intake: "Bring in files", done: "Brought in", selectAll: "Select all", ingest: /to Knowledge/, newChat: "New chat", ask: "Ask something", stop: "Stop" };
+  ? { intake: "ファイル取り込み", done: "取り込みました", selectAll: "すべて選択", ingest: /^ナレッジ化$/, newChat: "新しいチャット", ask: "気になることを聞いてみましょう", stop: "停止" }
+  : { intake: "Bring in files", done: "Brought in", selectAll: "Select all", ingest: /^Add to Knowledge$/, newChat: "New chat", ask: "Ask something", stop: "Stop" };
 
 const files = readdirSync(NOTES_DIR).filter((f) => /\.md$/i.test(f)).sort().map((f) => resolve(NOTES_DIR, f));
 const readUsage = () => {
@@ -205,13 +205,17 @@ if (wants("2-knowledge")) {
   mark("question-typed");
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Control+Enter");
   mark("question-sent");
+  // マウスを入力欄の位置に置いたままだと、流れてきた答えの引用の上に来てツールチップが出続ける。
+  // 何も無いヘッダーの余白へ逃がす
+  await page.mouse.move(520, 14);
   // 答えが終わったかは、画面の文言でなく保存された会話（appdata の standalone-chat:<id>）で見る。
   // 停止ボタンは「考え中…」のあいだ出ないことがあり、画面だけ見ると途中で切ってしまう
   const chatSaved = () => {
     const dir = resolve(DATA_DIR, "appdata");
     if (!existsSync(dir)) return false;
     return readdirSync(dir).some((f) => {
-      if (!f.startsWith("standalone-chat:")) return false;
+      // サーバーは appdata のキーの ":" を %3A に符号化して保存する（古い版は ":" のまま）
+      if (!f.startsWith("standalone-chat:") && !f.startsWith("standalone-chat%3A")) return false;
       try { const c = JSON.parse(readFileSync(resolve(dir, f), "utf8")); return (c.messages ?? []).filter((m) => m.role === "assistant").length >= 1; } catch { return false; }
     });
   };

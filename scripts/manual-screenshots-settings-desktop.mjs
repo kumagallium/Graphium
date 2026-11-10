@@ -43,6 +43,8 @@ const version =
 const onlyIdx = args.indexOf("--only");
 const only = onlyIdx !== -1 ? args[onlyIdx + 1] : null;
 const want = (n) => !only || only === n;
+// dev（settings/modal.stories.tsx）と静的ビルド（assets/modal.stories-<hash>.js・minify 済み）の両方を捕まえる
+const STORY_ROUTE = /(settings\/modal\.stories\.tsx|assets\/modal\.stories-[^/]+\.js)/;
 const URL = `http://localhost:${port}/iframe.html?id=organisms-settingsmodal--storage-desktop&viewMode=story`;
 
 const browser = await chromium.launch({ headless: true });
@@ -51,12 +53,19 @@ async function open() {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
   await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
   const page = await ctx.newPage();
-  await page.route("**/settings/modal.stories.tsx*", async (route) => {
+  await page.route(STORY_ROUTE, async (route) => {
     const res = await route.fetch();
-    const body = (await res.text()).replace(
-      'if (cmd === "get_graphium_root")',
-      `if (cmd === "plugin:app|version") return ${JSON.stringify(version)}; if (cmd === "get_graphium_root")`,
-    );
+    const text = await res.text();
+    // dev: `if (cmd === "get_graphium_root")` / 静的ビルド: `async b=>b==="get_graphium_root"?`
+    const body = text
+      .replace(
+        'if (cmd === "get_graphium_root")',
+        `if (cmd === "plugin:app|version") return ${JSON.stringify(version)}; if (cmd === "get_graphium_root")`,
+      )
+      .replace(
+        /async (\w+)=>\1==="get_graphium_root"\?/,
+        (_, v) => `async ${v}=>${v}==="plugin:app|version"?${JSON.stringify(version)}:${v}==="get_graphium_root"?`,
+      );
     await route.fulfill({ response: res, body });
   });
   await page.goto(URL);
@@ -73,6 +82,13 @@ if (want("mobile-upload-settings")) {
   await page.getByText("Send from your phone or browser").first().click();
   await page.waitForTimeout(500);
   await page.getByText("Send from your phone", { exact: true }).first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await page.waitForTimeout(600);
+  // Advanced の下に次の項目（Search index）の切れ端が出ないよう、見出しを上端から少し下げる
+  await page.getByText("Send from your phone", { exact: true }).first().evaluate((el) => {
+    let n = el.parentElement;
+    while (n && n.scrollHeight <= n.clientHeight + 1) n = n.parentElement;
+    if (n) n.scrollTop -= 6;
+  });
   await page.waitForTimeout(600);
   const out = resolve(OUTPUT_DIR, "mobile-upload-settings.png");
   await page.screenshot({ path: out });
@@ -101,7 +117,7 @@ if (want("settings-usage-tab")) {
   // （以前は月末の日付で月がずれてラベルが重複していたので中ほどにした。#1424 で直っている）。
   // さらに月次サマリを直近 11 か月ぶんに伸ばして、空の月が並ばないようにする
   await page.clock.install({ time: new Date("2026-10-15T12:00:00Z") });
-  await page.route("**/settings/modal.stories.tsx*", async (route) => {
+  await page.route(STORY_ROUTE, async (route) => {
     const res = await route.fetch();
     // 置換先が見つからなければ止める（ストーリーの stub を変えると黙って空振りし、図が変わるため）
     const mustReplace = (body, from, to) => {
@@ -114,13 +130,20 @@ if (want("settings-usage-tab")) {
     // 1〜8 か月前 = 6 月〜前年 11 月（今日から数えて 4〜11 か月前）。古い月は少しずつ増え、
     // 月ごとに揺らす（同じ高さの棒が並ばないように）。atomize にも費用を足して「—」を出さない
     let body = await res.text();
-    body = mustReplace(body, "[1, 2, 3].map(monthsBefore => {", "[1, 2, 3, 4, 5, 6, 7, 8].map((monthsBefore) => { const monthsAgo = monthsBefore + 3; const k = (0.25 + (0.75 * (11 - monthsAgo)) / 7) * (1 + (((monthsAgo * 5) % 7) - 3) / 10);");
-    body = mustReplace(body, "callCount: 120", "callCount: Math.round(120 * k)");
-    body = mustReplace(body, "inputTokens: 9e5", "inputTokens: Math.round(9e5 * k)");
-    body = mustReplace(body, "outputTokens: 22e4", "outputTokens: Math.round(22e4 * k)");
-    body = mustReplace(body, "totalTokens: 112e4", "totalTokens: Math.round(112e4 * k)");
-    body = mustReplace(body, /usd: 6\n/, "usd: 6 * k\n");
-    body = mustReplace(body, /tokens: 26e3\n/, "tokens: 26e3, cost: 0.04\n");
+    // 静的ビルドでは別チャンクも同じ URL パターンに当たる。スタブの無いチャンクはそのまま返す
+    if (!body.includes("callCount")) return route.fulfill({ response: res, body });
+    // dev は `.map(monthsBefore => {`・静的ビルドは minify 済みで `.map(i=>{`。引数名の違いは正規表現で吸収する
+    body = mustReplace(
+      body,
+      /\[1,\s*2,\s*3\]\.map\(\(?(\w+)\)?\s*=>\s*\{/,
+      (_, v) => `[1, 2, 3, 4, 5, 6, 7, 8].map((${v}) => { const monthsAgo = ${v} + 3; const k = (0.25 + (0.75 * (11 - monthsAgo)) / 7) * (1 + (((monthsAgo * 5) % 7) - 3) / 10);`,
+    );
+    body = mustReplace(body, /callCount:\s*120/, "callCount: Math.round(120 * k)");
+    body = mustReplace(body, /inputTokens:\s*9e5/, "inputTokens: Math.round(9e5 * k)");
+    body = mustReplace(body, /outputTokens:\s*22e4/, "outputTokens: Math.round(22e4 * k)");
+    body = mustReplace(body, /totalTokens:\s*112e4/, "totalTokens: Math.round(112e4 * k)");
+    body = mustReplace(body, /usd:\s*6(?=[\s}])/, "usd: 6 * k");
+    body = mustReplace(body, /tokens:\s*26e3(?=[\s},])/, "tokens: 26e3, cost: 0.04");
     await route.fulfill({ response: res, body });
   });
   await page.goto(`http://localhost:${port}/iframe.html?id=organisms-settingsmodal--usage&viewMode=story`);

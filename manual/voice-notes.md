@@ -58,9 +58,9 @@ If the microphone cannot be used, Graphium keeps recording the other side, and w
 
 ## The transcript block {#transcript-block}
 
-![A finished voice note block: the Transcript, Clean copy and Summary tabs, Play and Write out](/screenshots/voice-note-block.png)
+![A finished voice note block with the Summary tab open: Take notes, Play and Write out in the header, the Hide names and contact details checkbox, the Transcript, Clean copy and Summary tabs, and Decisions, To-dos and Open questions with a time on each item](/screenshots/voice-note-block.png)
 
-While you record, lines appear in the block with a delay of about **20 seconds**: Graphium transcribes the audio in windows as they fill, cutting each one at a pause in the conversation, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and the block settles to **Transcript** when it is done.
+While you record, lines appear in the block with a delay of about **20 seconds**: Graphium transcribes the audio in windows as they fill, cutting each one at a pause in the conversation, and finishes the rest after you stop. The header shows **Transcribing · N utterances** while it works and when it is done a block with tabs returns to the **Voice note** heading (a block without tabs, for example when no AI model is set up, settles to **Transcript**).
 
 - **Others / Me.** Each line starts with its time and **Others** (the people on the other side) or **Me** (your microphone). The two sides are kept apart from the start, so the labels are not a guess.
 - **Play, and click a time.** **Play** plays the recording. Once the recording can be played, each time is a small button with a ▶ mark — in the Transcript, Clean copy and Summary tabs alike — and clicking it plays from that line (**Play from this line**). The audio loads the first time you press play. Playback mixes both sides to the center.
@@ -123,9 +123,9 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 
 ## Models and settings {#settings}
 
-![Settings → AI → Voice notes: model, language, frequent terms, transcribe while recording, AI model for clean-up and summaries](/screenshots/voice-note-settings.png)
+![Settings → AI → Voice notes: model, language, frequent terms, transcribe while recording, AI model for clean-up and summaries, always-hide words](/screenshots/voice-note-settings.png)
 
-Open [Settings](/settings) → **AI** → **Voice notes** (desktop app only).
+Open [Settings](/settings) → **AI** → **Voice notes** (desktop app only); click the heading to open it.
 
 | Setting | What it does |
 |---|---|

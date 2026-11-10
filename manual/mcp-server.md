@@ -123,7 +123,7 @@ Where you put that differs by client, and these settings move around between ver
 
 Two limits worth knowing: the server runs as a **local process** (there is no hosted URL to point at — remote HTTP transport is not supported), and it needs **Node.js 20.16+** on the machine running the client. Since your notes stay on your disk, the client has to be on the same machine as your vault.
 
-By default the server reads `~/Documents/Graphium`. If you changed the Graphium folder in **⚙ Settings → General**, the server follows that setting automatically. To point it somewhere else explicitly, add an `env` block:
+By default the server reads `~/Documents/Graphium`. If you changed the Graphium folder in **⚙ Settings → Storage**, the server follows that setting automatically. To point it somewhere else explicitly, add an `env` block:
 
 ```json
 {
@@ -290,14 +290,14 @@ The assistant can look after the knowledge layer the way you would from **Upkeep
 How this stays safe:
 
 - **Every change is recorded and can be undone.** Operations appear in Graphium under **Upkeep → Upkeep history** as **MCP (client name)**, next to the ones you started in the app, and you can undo them from there too (see [Upkeep operations can be undone](/knowledge-layer#undo-maintenance)). An undo done through MCP is itself recorded and can be undone.
-- **No version is made.** The History panel does not get a version for a change made through MCP. To go back, use the Operations record (the copies it keeps last one year).
+- **No version is made.** The History panel does not get a version for a change made through MCP. To go back, use the Upkeep history (the copies it keeps last one year).
 - **`restore_page` is not recorded**, the same as un-archiving in the app.
 - **Quit Graphium first.** While the app is running these tools answer `APP_RUNNING:` and change nothing.
 - **Two MCP clients writing at once** — the second one answers `BUSY:` until the first finishes.
 - **A vault Graphium has never opened** has no `note-index.json`, and these tools answer `NO_INDEX:`. Start Graphium once, quit it, and try again.
 - **An old-format topic** (one built from claims) answers `OLD_FORMAT:`. Open it in Graphium and use **Rebuild from sources** to bring it to the new format first.
 
-![The Upkeep history tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
+![The Upkeep history tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), an undo of an earlier operation, and an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
 
 The changes show up the next time you start Graphium. Two things catch up only later: the "used in notes" list on a source, and semantic search (embeddings) for that page, which update the next time you save or re-embed the page in the app.
 
@@ -505,7 +505,7 @@ What *is* recorded automatically is the write itself. A note created through MCP
 
 **Tools answer "vault not found".** The server could not find your notes folder. Set `GRAPHIUM_ROOT` in the `env` block to the folder that contains `notes/`.
 
-**Search finds nothing in a vault that has notes.** The server builds its own search index on first use, which takes about a second on a large vault. If it stays empty, check that the folder you pointed at is the one Graphium actually saves into — **⚙ Settings → General** shows the current path.
+**Search finds nothing in a vault that has notes.** The server builds its own search index on first use, which takes about a second on a large vault. If it stays empty, check that the folder you pointed at is the one Graphium actually saves into — **⚙ Settings → Storage** shows the current path.
 
 ## See also
 

@@ -123,11 +123,10 @@ const TWO_MODELS = [
 ];
 
 const SHOTS = [
-  // Display は既定の表示だと Reading colors の選択欄が下端で切れる。モーダルの高さは
-  // viewport を伸ばしても増えないので、中身を最下部までスクロールして入れる
-  // モーダルの高さは 48rem で頭打ちなので、タブ全体は 1 画面に入らない。最下部までスクロールして
-  // 拡大縮小のショートカット〜読みやすさ（色）〜来歴ラベル名を写す（Language は画面外。alt はそれに合わせてある）
-  { tab: "Display & Language", name: "settings-display-tab", scrollModal: "end" },
+  // Display はスクロールなしの先頭表示で撮る。上端は Language で、Language・Zoom・Note width・
+  // Reading font・Reading colors（見出しまで。選択欄は下端で切れる）が並ぶ。
+  // Provenance label names は写らない。alt はこの先頭表示に合わせる
+  { tab: "Display & Language", name: "settings-display-tab" },
   { tab: "Storage", name: "settings-storage" },
   // AI は既定の高さだと一番下の「Advanced」が切れる
   { tab: "AI", name: "settings-ai-tab", viewport: { width: 1280, height: 900 } },
@@ -148,7 +147,7 @@ const SHOTS = [
   {
     tab: "AI",
     name: "settings-experimental",
-    viewport: { width: 1280, height: 1500 },
+    viewport: { width: 1280, height: 1535 },
     prepare: async (page) => {
       await page.getByText("Preview features", { exact: true }).first().click();
       await page.waitForTimeout(800);

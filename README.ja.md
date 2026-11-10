@@ -46,7 +46,7 @@ Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E
 <p align="center"><img src="public/landing/screen-editor.png" alt="他のノートへの @ 参照を含むノートを開いた Graphium エディタ" width="760" /></p>
 
 ### 2. AI と広げる
-あなたの AI（Claude のサブスクや API キー）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
+あなたの AI（API キーや GitHub Copilot のサブスク）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
 
 <p align="center"><img src="public/landing/screen-knowledge.png" alt="パン作りのノートから作られたナレッジのトピック一覧" width="760" /></p>
 
@@ -163,7 +163,7 @@ Zettelkasten との対応は意図的なものです。**洞察** が permanent 
 
 ## 読みやすさ
 
-ディスレクシア（識字障害）に配慮した字形のほうが読みやすい人がいます。Graphium には **[Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/)** と **[Lexend](https://www.lexend.com/)** が Inter と並ぶ標準選択肢として組み込まれており、**⚙ 設定 → 一般** から切り替えられます。エディタの他の挙動は変わらないので、自分の目に合うものを選んでください。
+ディスレクシア（識字障害）に配慮した字形のほうが読みやすい人がいます。Graphium には **[Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/)** と **[Lexend](https://www.lexend.com/)** が Inter と並ぶ標準選択肢として組み込まれており、**⚙ 設定 → 表示・言語** から切り替えられます。エディタの他の挙動は変わらないので、自分の目に合うものを選んでください。
 
 ## 相互運用性
 
@@ -208,12 +208,12 @@ docker compose up -d
 #### AI モデルの設定
 
 1. **http://localhost:5174/Graphium/** を開く
-2. **⚙ 設定 → AI セットアップ** から LLM モデルと API キーを追加
+2. **⚙ 設定 → AI** から LLM モデルと API キーを追加
 3. AI アシスタント機能を利用開始
 
 #### MCP ツールの追加（オプション）
 
-Graphium は MCP サーバーに直接接続します — レジストリは不要です。**⚙ 設定 → AI セットアップ → MCP サーバー** を開いてソースを追加してください。すべてのエントリが 1 つのリストに並び、それぞれ有効/無効の切り替え・編集・削除ができます:
+Graphium は MCP サーバーに直接接続します — レジストリは不要です。**⚙ 設定 → AI → MCP サーバー** を開いてソースを追加してください。すべてのエントリが 1 つのリストに並び、それぞれ有効/無効の切り替え・編集・削除ができます:
 
 - **ローカル** — Claude Desktop と同じ方式で、Graphium がサーバーを起動・管理します。コマンドと引数（例: `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`）を入力すると、Graphium が stdio 経由でプロセスを起動します。プロセスを自分で起動・停止する必要はありません。デスクトップアプリまたはセルフホストのバックエンドが必要です（ブラウザはローカルプロセスを起動できません）。
 - **リモート** — 稼働中のサーバーにエンドポイント URL（例: `http://localhost:8100/sse`）で接続します。必要に応じて API キーも指定できます。
@@ -227,7 +227,7 @@ Graphium は MCP サーバーに直接接続します — レジストリは不�
 > Docker（または任意の Node.js バックエンド）で動かすと、ノートはサーバーのファイルシステム `/app/data` に保存され、同じ URL に接続するすべてのブラウザ・端末で共有されます。フロントエンドが起動時に自動検知します。
 > - **クラウドバックアップ**: `volumes: - "~/Google Drive/Graphium:/app/data"` のように同期フォルダを `/app/data` にマウントすれば、OS が複製を担当します。
 > - **リモート VPS**: [rclone](https://rclone.org/) などで `/app/data` を S3 / B2 等にバックアップ。
-> - **認証**: `GRAPHIUM_AUTH_TOKEN=<secret>` を設定すると、すべてのストレージリクエストに `X-Graphium-Token` ヘッダーが必要になります。同じ値を **⚙ 設定 → サーバーストレージ** で入力してください。未設定だと URL に到達できる人が誰でも読み書きできます — `localhost` 限定なら問題ありませんが、公開デプロイでは必須です。
+> - **認証**: `GRAPHIUM_AUTH_TOKEN=<secret>` を設定すると、すべてのストレージリクエストに `X-Graphium-Token` ヘッダーが必要になります。同じ値を **⚙ 設定 → ストレージ** で入力してください。未設定だと URL に到達できる人が誰でも読み書きできます — `localhost` 限定なら問題ありませんが、公開デプロイでは必須です。
 
 > **注意:** Docker モードでは、すべてのサービスが API キー認証なしで動作し、ローカルマシン（`localhost`）からのみアクセス可能です。
 
@@ -254,7 +254,7 @@ pnpm install
 pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 ```
 
-ノートはブラウザの IndexedDB に保存されます。AI 機能を使うにはバックエンドサーバーが必要です。`pnpm dev` でフロントエンドとバックエンドが同時に起動します。**⚙ 設定 → AI セットアップ** から LLM モデルを追加してください。
+ノートはブラウザの IndexedDB に保存されます。AI 機能を使うにはバックエンドサーバーが必要です。`pnpm dev` でフロントエンドとバックエンドが同時に起動します。**⚙ 設定 → AI** から LLM モデルを追加してください。
 
 ## 機能一覧
 
@@ -382,7 +382,7 @@ Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScrip
 
 ### MCP ツール
 
-AI アシスタントは [MCP](https://modelcontextprotocol.io/) ツールを呼び出せます。**⚙ 設定 → AI セットアップ → MCP サーバー** の 1 つのリストでまとめて管理します。**ローカル** サーバー（Claude Desktop 方式で Graphium が stdio 経由で起動。デスクトップアプリまたはセルフホストのバックエンドが必要）と **リモート** サーバー（URL で接続）を追加でき、追加方法は README の JSON 貼り付け・フォーム入力・[Crucible Registry](https://github.com/kumagallium/Crucible) を閲覧してサーバーを選ぶ、のいずれでも構いません。Crucible はあくまで発見用のソースで、依存関係ではありません。
+AI アシスタントは [MCP](https://modelcontextprotocol.io/) ツールを呼び出せます。**⚙ 設定 → AI → MCP サーバー** の 1 つのリストでまとめて管理します。**ローカル** サーバー（Claude Desktop 方式で Graphium が stdio 経由で起動。デスクトップアプリまたはセルフホストのバックエンドが必要）と **リモート** サーバー（URL で接続）を追加でき、追加方法は README の JSON 貼り付け・フォーム入力・[Crucible Registry](https://github.com/kumagallium/Crucible) を閲覧してサーバーを選ぶ、のいずれでも構いません。Crucible はあくまで発見用のソースで、依存関係ではありません。
 
 ## エディタの外から書く
 

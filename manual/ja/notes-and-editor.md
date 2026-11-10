@@ -29,9 +29,9 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 
 <Badge type="tip" text="v0.126.0 (2026-11-09) で追加" /> 左のナビは、上が操作、下が 4 つのタブという形です。上には **検索**（`⌘K` と同じ Composer が開きます）、**+ ノート**、**ファイル取り込み** が並び、スクロールしても動きません。その下の **ノート** / **ナレッジ** / **素材** / **チャット** のタブは、左のナビの中身だけを切り替えます（右の画面は変わりません）。**チャット** タブには[ノートについてではない会話](/ja/ai-chat-and-ask#ノートを開かずに話す)が並びます。開いた画面に合わせてタブは自動で切り替わり、選んだタブは覚えられます。**ノート** タブには、**テンプレート**、**プロセス**、**共有フォルダ**、**ラベル** が並び、その下に **すべてのノート** とフォルダが続きます。増えていくフォルダの一覧を最後に置いているので、短い項目が下へ押し出されません。共有フォルダを設定していると、**ノート** タブでは **テンプレート**・**プロセス** の次に、**ナレッジ** と **素材** のタブでは一番下に、**共有フォルダ** が出て、同じ種類の共有分が開きます。
 
-![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in files。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights・Summaries と、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
+![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in files。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights（どちらも Preview の印付き）・Summaries、続けて Log と Upkeep、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill・Global Graph・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
 
-**すべてのノート** は、全ノートを検索ボックス（「ノートを検索...」）と件数表示（「12 / 40 件」）付きの表で見せます。検索ボックスはタイトル、画像から読み取った文字、そしてノート本文に当たります <Badge type="tip" text="v0.39.0 (2026-08-17) で追加" />。本文だけで当たった行には **本文** バッジが付き、カーソルを乗せると当たった箇所が見えます。サイドバーには **最近のノート** のセクションもあり、直前に開いたものへすぐ戻れます。**すべて表示** で一覧全体へ移動します。
+**すべてのノート** は、全ノートを検索ボックス（「検索...」）と件数表示（「12 / 40 件」）付きの表で見せます。検索ボックスはタイトル、画像から読み取った文字、そしてノート本文に当たります <Badge type="tip" text="v0.39.0 (2026-08-17) で追加" />。本文だけで当たった行には **本文** バッジが付き、カーソルを乗せると当たった箇所が見えます。最近手を入れたものへ戻るには、**検索**（`⌘K`）を押して入力を空のままにします。最近更新したノートとナレッジが、**最近のノート** と **最近のナレッジ** として並びます。
 
 | 操作 | できること |
 |---|---|
@@ -421,11 +421,11 @@ m  = n0 * col("配合", "比率")
 
 特別な種類の表ではなく、行ごとにノートを持てるふるまいがオンになった、ふつうのテーブルです。既存のテーブルも、いつでもこの形にしたり、やめたりできます。
 
+![列ハンドルのメニュー。「列」「並べ替え」「計算」「列の属性」の見出しがあり、「ノートにリンク」にチェックが付き、日時の自動入力は薄く表示されている](/screenshots/table-column-attributes.png)
+
 [計画ノート](#folders)<Badge type="tip" text="v0.74.0 (2026-09-15) で追加" />では、表の行から作ったノートが **工程ノート** になり、右パネルの「ステップ」タブに工程のつながりとして表示されます（[ステップブロック](/ja/labels-and-provenance#step-blocks)を参照）。表の行の並び順は入力した順であって、つながりそのものではありません。つながりは、各工程ノートの手順（step）が別の工程の出力をインプットとして選ぶことから生まれます。計画の表には **入力元** 列も持てます。行のセルに他の行の名前を「、」区切りで書くと、その工程グラフに予定の線が引かれます（[来歴グラフパネル](/ja/labels-and-provenance#来歴グラフパネル)を参照）。
 
-![名前と条件の列が並んだ、行ごとのノートを持つ表](/screenshots/index-table.png)
-
-![列ハンドルのメニュー。「列」「並べ替え」「計算」「列の属性」の見出しがあり、「ノートにリンク」にチェックが付き、日時の自動入力は薄く表示されている](/screenshots/table-column-attributes.png)
+![Batch と Condition の列が並んだ、行ごとのノートを持つ表](/screenshots/index-table.png)
 
 ## 列を保護する <Badge type="tip" text="v0.106.0 (2026-10-30) で追加" /> {#protecting-columns}
 
@@ -627,7 +627,7 @@ Graphium は、編集の手が止まってから 3 秒後に自動保存しま�
 3. 固定すると、時刻の証明が 2 つ付きます。1 つはすぐに付きます。もう 1 つ（Bitcoin を使うもの）は確定まで数時間かかり、アプリを次に開いたときに裏で取りに行きます。待っている間も、使い方は変わりません。
 4. 固定の直後に、**証拠を書き出しますか** と促されます。「あとで」を選んでも、履歴の行から書き出せます。
 
-![履歴の 2 行。上の v2「First rise 60 min」には Sealed の印、「Proven to exist before 2026-11-05 16:22 · 1 pending」、確かめるボタンと書き出しボタン。下の v1「Starter test」には名前の変更・鍵（Seal as evidence）・削除のボタン。](/screenshots/history-seal.png)
+![履歴の 2 行。上の v2「First rise…」（名前は途中で切れている）には Sealed の印、「Proven to exist before 2026-11-05 16:22 · 1 pending」、確かめるボタンと書き出しボタン。下の v1「Starter test」には名前の変更・鍵（Seal as evidence）・削除のボタン。](/screenshots/history-seal.png)
 
 **行に出る表示**
 

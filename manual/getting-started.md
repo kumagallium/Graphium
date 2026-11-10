@@ -41,11 +41,11 @@ Two hours later the oven timer rings and you think *"crumb looks better when the
 
 ![The quick memo dialog — capture first, file never](/screenshots/quick-memo.png)
 
-The memo lands in **Memos**, out of your way, until you want it: insert it into a note with `/memo`, or leave it as raw material. On your phone the same capture-first idea goes further — photos, voice, links — see [Mobile capture](/mobile).
+The memo lands in **Memos** (under the sidebar's **Materials** tab), out of your way, until you want it: insert it into a note with `/memo`, or leave it as raw material. On your phone the same capture-first idea goes further — photos, voice, links — see [Mobile capture](/mobile).
 
 ## 4. Link it to what you already know
 
-Back in the note, type `@` and start typing another note's name — pick it, and the two notes are linked. The menu also offers your memos, materials, AI-generated knowledge, and a **Create new note** escape hatch, so a link is never more than a few keystrokes away.
+Back in the note, type `@` and start typing another note's name — pick it, and the two notes are linked. The menu also offers your memos, materials, AI-generated knowledge, and a **Create a new note…** escape hatch, so a link is never more than a few keystrokes away.
 
 ![The @ menu linking to other notes and knowledge](/screenshots/at-mention.png)
 

@@ -29,9 +29,9 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 <Badge type="tip" text="Added in v0.126.0 (2026-11-09)" /> The left nav has the actions on top and four tabs below. At the top are **Search** (it opens the same Composer as `⌘K`), **+ Note** and **Bring in files**; these do not scroll away. Under them, **Notes**, **Knowledge**, **Materials** and **Chat** switch only what the left nav lists — the screen on the right stays as it is. The **Chat** tab lists your [conversations that are not about a note](/ai-chat-and-ask#chat-without-a-note-open). The tab follows the screen you open, and Graphium remembers the one you chose. The **Notes** tab holds **Templates**, **Processes**, **Shared folder** and **Labels**, then **All Notes** with your folders — the list that grows comes last, so the short ones are not pushed out of view. If you have set up a shared folder, a **Shared folder** entry opens what your team shares of the same kind: in the **Notes** tab it follows **Templates** and **Processes**, and in the **Knowledge** and **Materials** tabs it sits at the bottom.
 
-![The left nav shown four times, once per tab. The top is the same in all four: Search with ⌘K, + Note, and Bring in files with a phone icon and 3. Notes lists Templates, Processes and Shared folder, then Labels with Input, Result, Step, Parameter and Tool, then All Notes. Knowledge lists Topics, Q&A, Claims, Insights and Summaries, then a thin line and Shared folder. Materials lists Memos, Images, Documents, Data, Videos, Audio and URLs, then a thin line and Shared folder. Chat lists + New chat, then conversations grouped by Today, Yesterday, Previous 7 days and Older. Skill, Settings, Trash & Archive and Release Notes stay at the bottom.](/screenshots/sidebar-tabs.png)
+![The left nav shown four times, once per tab. The top is the same in all four: Search with ⌘K, + Note, and Bring in files with a phone icon and 3. Notes lists Templates, Processes and Shared folder, then Labels with Input, Result, Step, Parameter and Tool, then All Notes. Knowledge lists Topics, Q&A, Claims and Insights (both with a Preview badge) and Summaries, then Log and Upkeep, then a thin line and Shared folder. Materials lists Memos, Images, Documents, Data, Videos, Audio and URLs, then a thin line and Shared folder. Chat lists + New chat, then conversations grouped by Today, Yesterday, Previous 7 days and Older. Skill, Global Graph, Settings, Trash & Archive and Release Notes stay at the bottom.](/screenshots/sidebar-tabs.png)
 
-**All Notes** shows every note as a table with a search box ("Search notes...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. The sidebar also keeps a **Recent Notes** section for quick jumps back to what you last opened, with **Show all** leading to the full list.
+**All Notes** shows every note as a table with a search box ("Search...") and a live count ("12 / 40 notes"). The box matches titles, text read from images, and the note body itself <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — a body-only match is marked with an **in body** badge, and hovering it shows the passage that matched. To get back to what you worked on lately, press **Search** (`⌘K`) and leave the box empty: the most recently updated notes and Knowledge are listed there as **Recent notes** and **Recent Knowledge**.
 
 | Control | What it does |
 |---|---|
@@ -426,7 +426,7 @@ Such a table is an ordinary table with the row-to-note behavior switched on, so 
 
 In a [Plan note](#folders) <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />, the notes created from a table's rows are **Operation notes**, and they show up as a chain of operations in the right panel's Steps tab — see [Step blocks](/labels-and-provenance#step-blocks). The row order in the table is just the order you typed them in, not the chain: the connections come from each operation note's own steps choosing another operation's output as an input. A plan's table can also carry an **Input from** column: writing other rows' names into a row's cell (comma-separated) declares planned lines in that Operations graph — see [The provenance graph panel](/labels-and-provenance#the-provenance-graph-panel).
 
-![A table with a note per row, with Name and condition columns](/screenshots/index-table.png)
+![A table with a note per row, with Batch and Condition columns](/screenshots/index-table.png)
 
 ## Protecting columns <Badge type="tip" text="Added in v0.106.0 (2026-10-30)" /> {#protecting-columns}
 
@@ -628,7 +628,7 @@ Sometimes you need to show someone later that "this content already existed befo
 3. Two timestamps are then requested. One arrives immediately. The other (the one that uses Bitcoin) takes a few hours to confirm; Graphium collects it in the background the next time the app is open. Nothing changes in how you work while it waits.
 4. Right after sealing you are asked whether to export the evidence. If you choose later, you can still export it from the row in History.
 
-![Two rows in History. The top row, v2 "First rise 60 min", has the Sealed badge, "Proven to exist before 2026-11-05 16:22 · 1 pending", and the check and export buttons. The bottom row, v1 "Starter test", has the rename, lock (Seal as evidence) and delete buttons.](/screenshots/history-seal.png)
+![Two rows in History. The top row, v2 "First rise…" (the name is cut short), has the Sealed badge, "Proven to exist before 2026-11-05 16:22 · 1 pending", and the check and export buttons. The bottom row, v1 "Starter test", has the rename, lock (Seal as evidence) and delete buttons.](/screenshots/history-seal.png)
 
 **What the row shows**
 

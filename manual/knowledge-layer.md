@@ -86,16 +86,17 @@ Claims also show an evidence status: **?candidate** (used in only 1 note) or **�
 
 ## Knowledge pages are editable notes
 
-A knowledge page opens like any other note, and you can edit it like one. What makes it special is the banner at the top:
+A knowledge page opens like any other note, and you can edit it like one. What makes it special is the banner at the top, and the **Derived from** panel below the body:
 
-- **Regenerate** — rebuild the page from its current sources with your configured model
-- **Derived from** — the page's provenance: source **Notes**, **Source claims** (for insights), and **Related insights**
-- **Check world** — locate the statement against external knowledge (see [World grounding](/ai-grounding))
-- **Epistemic status** — how firmly the statement is grounded, from speculation to established
+- **Regenerate** (banner) — rebuild the page from its current sources with your configured model
+- **Check world** (banner) — locate the statement against external knowledge (see [World grounding](/ai-grounding))
+- **Check sources** (banner) — check the page against its sources (see [World grounding](/ai-grounding#source-check-does-the-source-actually-say-it))
+- **Epistemic status** (banner) — how firmly the statement is grounded, from speculation to established
+- **Derived from** (panel under **References**) — the page's provenance: source **Notes**, **Source claims** (for insights), and **Related insights**
 
 The body ends with a **References** section linking back to sources. Keep in mind that **Regenerate** rewrites the body from the sources — so make lasting corrections in the source notes where you can, and treat hand-edits to knowledge pages as provisional.
 
-![A knowledge page with the banner showing Derived from and Regenerate](/screenshots/knowledge-page-banner.png)
+![A knowledge page with the banner showing Check world, Check sources and Regenerate, and the Derived from panel under References](/screenshots/knowledge-page-banner.png)
 
 <Badge type="tip" text="Added in v0.89.14 (2026-10-20)" /> On a Topic, a Q&A page or a Summary, the banner also lists **Pages citing the same sources**: the other Topics, Q&A pages and Summaries that cite at least one of the same documents, most shared first (up to eight, then a "+N more" count). This is worked out from the citations alone — no AI call, nothing to tune — so it is always there and always consistent with the References section; press a chip to open that page. Pages that cite no sources (topics from before the source-reading format, legacy per-note summaries) are not linked this way.
 
@@ -185,7 +186,7 @@ When you start an upkeep operation yourself, Graphium keeps a copy of each page 
 - **The Upkeep view's Upkeep history tab.** The **Upkeep history** tab of the **Upkeep** view lists recent operations, newest first, each with **Undo**. Use **Load more** for older ones.
 - **The page's history panel.** On a knowledge page, the **Upkeep operations** section lists the operations that involved that page.
 
-![The Upkeep history tab of Knowledge upkeep listing, newest first, a merge of topics, a regeneration and a claims creation tagged MCP (claude-desktop), plus an archive marked Undone, with Undo buttons on the applied rows.](/screenshots/upkeep-operations.png)
+![The Upkeep history tab of Knowledge upkeep listing, newest first: a merge of topics, a regeneration and a claims creation (both tagged MCP (claude-desktop)), a row recording that an operation was undone, and an archive marked Undone. The merge, regeneration, claims creation and undo rows each have an Undo button.](/screenshots/upkeep-operations.png)
 
 Operations started from an outside AI (Claude Desktop and the like, through [MCP](/mcp-server)) appear in the same **Upkeep history** list, with the route shown as **MCP (client name)**, and you can undo them here. Undos done through MCP appear there too. They do not appear in the **Log**, which is a record kept inside Graphium.
 

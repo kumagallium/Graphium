@@ -11,7 +11,7 @@ The philosophy fits in two lines:
 
 A step block is the editor's only container: it holds the text, tables, and images that belong to one action, and each step becomes an *Activity* in the graph. Insert one from the slash menu (**Step**, in the **Advanced** group). New steps are titled **Step 1**, **Step 2**, … automatically, and the title is the activity's name.
 
-![A step block with Prev step and Next step chips in its header](/screenshots/step-block.png)
+![Two linked step blocks: the first has a Prev step chip and a chip naming the next step (Ferment →); the second shows ← Mix and Bake →](/screenshots/step-block.png)
 
 - The **Prev step** chip in the header links this step to the one it follows. It lists **Steps** first; selecting a step with outputs opens its **Outputs** in a column to the right. **Choose from another note** <Badge type="tip" text="Added in v0.42.0 (2026-08-24)" /> works the same way: search for a note, then each selection adds the next **Note → Step → Output** column on the right so the item's location stays visible. Picking an output **adds a row to the step's input table** (creating the table if the step has none). The row's name becomes a **blue link** — the same look as @-note links — and opens the source note alongside the current one (it turns red if the reference breaks). The source output's attributes (temperature, etc.) are **copied as columns at the moment of picking**; you can edit them freely in this note without touching the source. The source's **current** values stay visible read-only in the step flow's table panel, labelled "From source". The step flow also shows the source step as a one-level **Other note** node connected to the current input by a dashed edge. Choose **Without a specific output** when you only mean "this came after that". Loops are refused ("Blocked: this would create a cycle").
 
@@ -152,7 +152,7 @@ A parameter table's rows are **stages** <Badge type="tip" text="Added in v0.60.0
 
 A connection in the **Steps** graph, or in the **Operations** graph of a plan note, can carry memos — "let it dry for 12 hours before firing", "cool it before the hand-over". Click a line and a small window opens right away: read the memos on that connection, and write a new one right there. A line that has memos shows a sticky-note mark with the count; click the mark to open the same window. The line's own actions sit as small icons at the right of the window's title — name the line (or rename it, or remove the name) and delete the connection (**Remove planned line** on a planned line). Delete asks twice: the first click turns the icon into "Delete?", and a second click within a few seconds does it. A window opened on a screen that is read-only shows no icons. Lines that can't carry memos (see below) keep the small menu they always had.
 
-![The Steps graph with two steps, Mix dough and First rise, joined by a line that carries a sticky-note mark with 1, and the window opened from the line: the heading Mix dough to First rise, a box to write a memo, and one memo.](/screenshots/connection-memo.png)
+![The Steps graph with the step Mix dough, and the next step hidden behind the window, joined by a line that carries a sticky-note mark with 1, and the window opened from the line: the heading Mix dough to First rise, a box to write a memo, and one memo.](/screenshots/connection-memo.png)
 
 - **In the Steps graph, a memo belongs to the pair of steps**, not to one drawn line. The dashed order-only line between two steps, and the two lines through a material that one step made and the next one uses, are the same connection, so they share their memos. Lines for materials and tools that no step in the note made can't carry memos. If several steps use the same material, memo the line that goes into the step you mean.
 - **In the Operations graph, a memo belongs to the pair of operations.** A planned line and the actual hand-off between the same two operations share their memos. An operation that has no note yet (a row with no note) can carry memos too, and they stay on the line when you later create that row's note, rename the row or reorder the rows. Recreating the row (a different row) detaches them.
@@ -195,7 +195,7 @@ Two habits keep the imported labels tidy. Step titles hold the **operation only*
 
 Labels and links also feed graphs that span your whole workspace:
 
-![The network graph view](/screenshots/network-graph.png)
+![The right Graph panel on its Neighbors sub-tab: the current note in the center with the topic and claims linked to it, and the 1 hop / 2 hops switch in the header](/screenshots/network-graph.png)
 
 ![The right Graph panel on its Genealogy sub-tab, with the Neighbors and Lineage sub-tabs beside it. The plan note Trial series plan sits in a highlighted card labelled You are viewing on a vertical line; under its Hide diagram link are a Show steps button (off) and a diagram of two operations, Baseline loaf and Cold ferment, joined by an arrow, each with an Open note button. Below the card, Made from this reads See the diagram above.](/screenshots/genealogy.png)
 
@@ -248,7 +248,7 @@ Labels and links also feed graphs that span your whole workspace:
 
 Every graph lays itself out automatically — and until this version, kept doing so. Now the arrangement is yours to keep. This works the same way in every graph in the app: the **Steps** panel, the **Graph** tab, the **Global Graph**, and a material's graph.
 
-![Two steps and their entities box-selected in the steps view, enclosed by a dashed rectangle](/screenshots/graph-arrange_en.png)
+![The steps view with Mix and Ferment box-selected, enclosed by a dashed rectangle; Bake stays outside the selection](/screenshots/graph-arrange_en.png)
 
 - **Drag a node to move it.** The arrangement is saved per graph and comes back when you return — on your other devices too, since it is stored with your workspace data. Notes themselves are untouched.
 - **Shift-drag the background to select a group.** A dashed rectangle stays around the selection, and dragging any node inside it moves the whole subgraph together. A one-line hint under the graph teaches the gesture until the first time you use it.

@@ -31,7 +31,7 @@ const SHOTS = [
     story: "molecules-sourcecheck--manual-quote-location",
     // 詳細欄は折りたたまれて出るので開いてから撮る（見出しのテキストを押す）
     prepare: async (page) => {
-      await page.getByText("Source check details", { exact: false }).first().click();
+      await page.locator("button[aria-expanded='false']").first().click();
       await page.waitForTimeout(500);
     },
   },
@@ -44,15 +44,15 @@ const SHOTS = [
     // 残すと「(1/1)」なのに行が 2 つ並んで食い違う。完了済みの行は外し、進捗行だけにする
     // （見出しは件数でなく項目名になり、行と一致する）
     beforeGoto: async (page) => {
-      await page.route("**/IngestToast.stories.tsx*", async (route) => {
+      await page.route("**/IngestToast.stories*", async (route) => {
         const res = await route.fetch();
         let body = await res.text();
         const at = body.indexOf("Manual (English, window progress)");
         const head = body.slice(0, at);
         let tail = body.slice(at);
         tail = tail
-          .replace(/items: \[\{\s*id: "1",\s*status: "success",\s*noteTitle: "Sourdough starter — week 1",\s*result: "2 claims"\s*\}, \{/, "items: [{")
-          .replace(/(detail: "Source 2\/6 · window 5\/32")/, "$1, startedAt: Date.now() - 83000");
+          .replace(/items:\s*\[\{\s*id:\s*"1",\s*status:\s*"success",\s*noteTitle:\s*"Sourdough starter — week 1",\s*result:\s*"2 claims",?\s*\},\s*\{/, "items: [{")
+          .replace(/(detail:\s*"Source 2\/6 · window 5\/32")/, "$1, startedAt: Date.now() - 83000");
         body = head + tail;
         await route.fulfill({ response: res, body });
       });
@@ -72,7 +72,7 @@ for (const shot of SHOTS) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
   const page = await context.newPage();
   if (shot.beforeGoto) await shot.beforeGoto(page);
-  await page.goto(`http://localhost:${port}/iframe.html?id=${shot.story}&viewMode=story`, { waitUntil: "load" });
+  await page.goto(`http://127.0.0.1:${port}/iframe.html?id=${shot.story}&viewMode=story`, { waitUntil: "load" });
   await page.waitForSelector("#storybook-root", { state: "attached" });
   await shot.prepare(page);
 

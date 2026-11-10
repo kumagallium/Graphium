@@ -324,7 +324,9 @@ try {
   await page.waitForTimeout(600);
   await page.waitForTimeout(1500);
   await saveNote(page);
-  // 元のメモを書き直す（サイドバー Memos → 詳細）
+  // 元のメモを書き直す（左ナビの Materials タブ → Memos → 詳細）
+  await page.getByRole("tab", { name: "Materials", exact: true }).click();
+  await page.waitForTimeout(500);
   await page.getByRole("button", { name: /^Memos/ }).first().click();
   await page.waitForTimeout(1500);
   await page.getByText("Fold every 30 minutes").first().click();

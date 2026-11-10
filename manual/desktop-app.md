@@ -65,6 +65,8 @@ Graphium checks for updates automatically on launch and every 24 hours. When a n
 
 You can also check manually: open Settings → **About** and click **Check for updates**. If you're current, it reports "You're on the latest version". If a new version is found, a **Restart to update** button appears right there, so you can install without leaving Settings — it works the same way as the banner, showing download progress on the button and any error below it. The browser version shows that update checks are only available in the desktop app.
 
+To stop the automatic checks, turn off **Check for updates automatically** in Settings → **About**. Graphium then never connects to the update server on its own, so you will not be notified of security updates either — check manually with **Check for updates**.
+
 ![The About tab shows the app version; on the desktop app the Updates section offers a manual check](/screenshots/settings-about-updates.png)
 
 Updates never touch your notes — your data lives in `Documents/Graphium`, separate from the app itself. If a new version changes an internal index format, Graphium rebuilds the index automatically on the next launch. To see what changed in each release, check the [release history](/release-history) or the **Help** → **Release Notes** menu.
