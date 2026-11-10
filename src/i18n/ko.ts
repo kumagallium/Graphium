@@ -2048,6 +2048,7 @@ export const ko: Record<string, string> = {
   "autoTidy.nothingToDo": "정리할 곳이 없었습니다",
   "autoTidy.lintFailed": "AI 점검을 실행하지 못해, 빠른 점검(로컬)에서 찾은 것만 정리했습니다",
   "autoTidy.failedCount": "{count}건은 정리하지 못해 살펴볼 만한 항목에 남겨 두었습니다",
+  "autoTidy.relinked": "서로 언급하는 토픽 사이의 링크를 {count}개 페이지에서 다시 연결했습니다",
   "autoTidy.details": "처리한 내용",
   "autoTidy.undoHint": "되돌리고 싶은 항목은",
   "autoTidy.showOperations": "유지관리 기록에서 되돌릴 수 있습니다",

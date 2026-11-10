@@ -57,6 +57,12 @@ export type BlockLink = {
   targetEntityCount?: number;
   /** false の場合、identity は表の行位置由来で安定しない */
   targetEntityStable?: boolean;
+  /**
+   * 機械的に張った参照の目印。"title-mention" = トピックの本文に別のトピックの題が
+   * 出てくることから、文字列の一致だけで張ったリンク記録（AI は使わない）。
+   * 索引の outgoingLinks の via（"noteLink" など）とは別物。
+   */
+  via?: "title-mention";
   /** 参照元を投影した時点の更新日時。不安定な表行 identity の再利用防止に使う */
   targetSourceModifiedAt?: string;
   /** 現在ノート側に作った material span の entityId */

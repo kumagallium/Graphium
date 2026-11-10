@@ -422,6 +422,7 @@ import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
 import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
 import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage } from "./features/wiki/wiki-service";
+import { relinkTopicMentions } from "./features/wiki/topic-mention-links";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
@@ -15152,6 +15153,42 @@ export function NoteApp() {
       setLintReportIsLeftover(true);
       applyLintBadgeFromReport(left);
 
+      // 1.5) トピック同士のリンクを張り直す（本文に別のトピックの題が出てくるものを、文字列の一致だけで
+      // 記録する。AI は使わない。既存ページ・後からできたトピックへの張り漏れ用。変わらないページは保存しない）
+      let relinkedTopics = 0;
+      if (!interrupted) {
+        // 統合・アーカイブで手放したページは state の写しに残っていることがあるので自分で除く
+        const goneIds = new Set<string>();
+        for (const d of tidy) {
+          if (d.step.kind === "merge") goneIds.add(d.step.absorbId);
+          else if (d.step.kind === "archive") goneIds.add(d.step.wikiId);
+        }
+        const topicList: { id: string; title: string }[] = [];
+        for (const wf of fm.wikiFiles) {
+          const meta = fm.wikiMetas.get(wf.id);
+          if (meta?.kind === "topic" && !goneIds.has(wf.id)) topicList.push({ id: wf.id, title: meta.title ?? wf.id });
+        }
+        const relinkedIds: string[] = [];
+        for (const t of topicList) {
+          if (signal.aborted) { interrupted = true; break; }
+          try {
+            const doc = fm.getCachedDoc(`wiki:${t.id}`) ?? (await fm.loadDoc(`wiki:${t.id}`));
+            if (!doc) continue;
+            const next = relinkTopicMentions(doc, topicList, t.id);
+            if (!next) continue;
+            await fm.handleSaveWikiFile(t.id, next, { activityType: "wiki_cross_update" });
+            relinkedIds.push(t.id);
+          } catch (err) {
+            // 1 件の失敗で止めない
+            console.error("[auto-upkeep] トピック同士のリンクの張り直しに失敗:", t.id, err);
+          }
+        }
+        relinkedTopics = relinkedIds.length;
+        if (relinkedTopics > 0) {
+          wikiLog.append("cross-update", relinkedIds, `Linked topic mentions on ${relinkedTopics} topic(s)`).catch(() => {});
+        }
+      }
+
       // 2) 出典照合 → 手当て（点検側の手当てで止められたときは入らない）
       if (!interrupted) setAutoUpkeepProgress({ phase: "sourceChecking", index: 0, total: 0 });
       // 照合する前の要確認（前に照合して、まだ直していないもの）。タイトルと種類もこの写しから引く
@@ -15238,6 +15275,7 @@ export function NoteApp() {
         finishedAt: new Date().toISOString(),
         ...(lintFailed ? { lintFailed: true } : {}),
         ...(interrupted ? { interrupted: true } : {}),
+        ...(relinkedTopics > 0 ? { relinkedTopics } : {}),
       });
     } catch (err) {
       console.error("[auto-upkeep] 失敗:", err);

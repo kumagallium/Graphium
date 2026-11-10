@@ -2074,6 +2074,7 @@ export const ja: Record<string, string> = {
   "autoTidy.nothingToDo": "整えるところはありませんでした",
   "autoTidy.lintFailed": "AI の点検ができなかったため、機械で見つけた分だけ整えました",
   "autoTidy.failedCount": "{count} 件は整えられず、未対応の項目に残しています",
+  "autoTidy.relinked": "トピック同士のリンクを {count} ページで張り直しました",
   "autoTidy.details": "実行内容",
   "autoTidy.undoHint": "戻したいものは",
   "autoTidy.showOperations": "手入れの履歴から取り消せます",

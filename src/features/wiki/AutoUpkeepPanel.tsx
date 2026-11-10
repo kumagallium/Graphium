@@ -146,6 +146,12 @@ export function AutoUpkeepPanel({ progress, result, onRun, disabled = false, onC
         </p>
       )}
 
+      {(result.relinkedTopics ?? 0) > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {t("autoTidy.relinked", { count: String(result.relinkedTopics) })}
+        </p>
+      )}
+
       {tried > 0 && (
         <div>
           <button

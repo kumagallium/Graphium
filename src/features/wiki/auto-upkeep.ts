@@ -31,6 +31,8 @@ export type AutoUpkeepResult = {
   lintFailed?: boolean;
   /** 出典照合を途中で止めた（照合側の手当ては行っていない） */
   interrupted?: boolean;
+  /** 題の言及でトピック同士のリンクを張り直したページの数（AI は使わない） */
+  relinkedTopics?: number;
 };
 
 /** 済んだ手当ての数（作り直し・併記のあとの照合でまだ合わないものは数えない） */

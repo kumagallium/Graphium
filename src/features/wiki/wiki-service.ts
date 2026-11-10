@@ -29,6 +29,7 @@ import type { ReconcileInput, ReconcileOutput } from "./reconcile-types";
 
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
+import { buildTopicMentionLinks, findTopicMentions } from "./topic-mention-links";
 
 /** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
 const API_BASE = `${apiBase()}/wiki`;
@@ -42,7 +43,25 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
     id: n.noteId,
     title: n.title,
     isWiki: n.source === "ai",
+    ...(n.wikiKind ? { kind: n.wikiKind } : {}),
   }));
+}
+
+/**
+ * トピックのページに、本文に出てくる別のトピックの題へのリンク記録（via: "title-mention"）を作る。
+ * 組み立てるページがトピックで noteIndex が渡されているときだけ。自分自身は題が同じ候補を除く。
+ */
+function buildTitleMentionLinks(
+  kind: string,
+  stripped: string,
+  blocks: any[],
+  title: string,
+  noteIndex?: NoteIndex,
+): any[] {
+  if (kind !== "topic" || !noteIndex) return [];
+  const candidates = noteIndex.filter((n) => n.kind === "topic").map((n) => ({ id: n.id, title: n.title }));
+  const ids = findTopicMentions(stripped, "", candidates, { selfTitle: title });
+  return buildTopicMentionLinks(blocks, ids, candidates);
 }
 
 /**
@@ -757,7 +776,7 @@ export function extractSectionsFromBlocks(
 /**
  * ノート/Wiki のタイトル → ID を解決するための情報
  */
-export type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
+export type NoteIndex = { id: string; title: string; isWiki?: boolean; kind?: string }[];
 
 type ConvertResult = {
   blocks: any[];
@@ -2878,6 +2897,7 @@ export function buildSourceBackedWikiDocument(
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
   const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
   const refs = buildSourceReferenceBlocks(sources);
+  const mentionLinks = buildTitleMentionLinks(kind, stripped, converted.blocks, title, noteIndex);
 
   const wikiMeta: WikiMeta = {
     kind,
@@ -2903,7 +2923,7 @@ export function buildSourceBackedWikiDocument(
       blocks: [...converted.blocks, ...refs.blocks],
       labels: {},
       provLinks: [],
-      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks, ...mentionLinks],
     }],
     source: "ai",
     wikiMeta,
@@ -2961,13 +2981,20 @@ export function rebuildSourceBackedWikiDocument(
   );
   const refs = buildSourceReferenceBlocks(sources);
   const page = existingDoc.pages[0];
+  const mentionLinks = buildTitleMentionLinks(
+    kind ?? existingDoc.wikiMeta?.kind ?? "topic",
+    stripped,
+    converted.blocks,
+    existingDoc.title,
+    noteIndex,
+  );
 
   return attachSourceCheck({
     ...existingDoc,
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
       blocks: [...converted.blocks, ...refs.blocks],
-      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks],
+      knowledgeLinks: [...converted.knowledgeLinks, ...refs.knowledgeLinks, ...mentionLinks],
     }],
     wikiMeta: {
       ...existingDoc.wikiMeta!,
