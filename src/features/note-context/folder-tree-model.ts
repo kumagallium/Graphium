@@ -5,8 +5,9 @@
 // - 階層は 2 段まで: 最初の "/" だけを区切りとして扱い、2 個目以降は子の名前の一部にする
 //   （既存タグに "A/B/C" があっても壊さない — 「A」の子「B/C」として表示するだけ）
 // - 空フォルダ（ノート 0 件・appdata 由来の定義リスト）をマージして表示できる
-// - 並びは名前昇順。件数順にしないのは、エクスプローラーの「フォルダは名前順」という
-//   メンタルモデルに合わせるため（文脈タグのサジェスト＝件数順とは目的が違う）
+// - 並びは既定で名前昇順（MCP の list_folders など、一覧として読む呼び出し向け）。
+//   サイドバーは order: "count" で中身の多い順にする — 上位 8 件で畳むので、
+//   よく使うフォルダが「残りを表示」の奥に沈まないようにするため。同数は名前順
 
 import { aggregateNoteContexts } from "./context-tags";
 
@@ -15,6 +16,9 @@ import { aggregateNoteContexts } from "./context-tags";
  * 実フォルダ名と衝突しないよう予約する。フィルタ側はこの値を見たら「文脈なし」を意味として扱う。
  */
 export const UNFILED_PATH = "__unfiled__";
+
+/** フォルダの並び順。name = 名前昇順 / count = 中身のノートが多い順（同数は名前順） */
+export type FolderOrder = "name" | "count";
 
 export type FolderNode = {
   /** 表示名（パスの末尾セグメント） */
@@ -123,6 +127,7 @@ type MutableNode = {
 export function buildFolderTree(
   used: readonly { value: string; count: number }[],
   emptyFolders: readonly string[] = [],
+  order: FolderOrder = "name",
 ): FolderNode[] {
   const roots = new Map<string, MutableNode>();
 
@@ -165,8 +170,11 @@ export function buildFolderTree(
   // 空フォルダは件数 0 として同じ経路でマージする（既存フォルダと小文字名寄せで重複しない）
   for (const path of emptyFolders) add(path, 0);
 
-  const sortByName = (a: { name: string }, b: { name: string }) =>
+  const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name, "ja");
+  // 件数順は totalCount の降順（親は子を含めた合計）。同数は名前順で決まった並びにする
+  const sortNodes = (a: FolderNode, b: FolderNode) =>
+    order === "count" ? b.totalCount - a.totalCount || byName(a, b) : byName(a, b);
 
   const result: FolderNode[] = [];
   for (const node of roots.values()) {
@@ -178,7 +186,7 @@ export function buildFolderTree(
         totalCount: c.count,
         children: [] as FolderNode[],
       }))
-      .sort(sortByName);
+      .sort(sortNodes);
     const childTotal = children.reduce((sum, c) => sum + c.totalCount, 0);
     result.push({
       name: node.name,
@@ -188,6 +196,6 @@ export function buildFolderTree(
       children,
     });
   }
-  result.sort(sortByName);
+  result.sort(sortNodes);
   return result;
 }
