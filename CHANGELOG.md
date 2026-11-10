@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.129.6](https://github.com/kumagallium/Graphium/compare/v0.129.5...v0.129.6) - 2026-11-10
+
+- [feat] Sort sidebar folders by how many notes they hold by @kumagallium in https://github.com/kumagallium/Graphium/pull/1624
+- [feat] File translated and extracted notes into folders by @kumagallium in https://github.com/kumagallium/Graphium/pull/1623
+
 ## [v0.129.5](https://github.com/kumagallium/Graphium/compare/v0.129.4...v0.129.5) - 2026-11-10
 
 - [feat] Find memos from the Cmd+K Composer by @kumagallium in https://github.com/kumagallium/Graphium/pull/1621
