@@ -119,6 +119,13 @@ type GraphiumDocument = {
   // wikiMeta.theme (a Synthesis-only lens). Used for note-list display /
   // filtering; mirrored to NoteIndexEntry.noteContexts (index v21) and
   // intended to later scope AI context to a chosen context.
+  // Notes Graphium generates are pre-filed at creation (the user may change
+  // them afterwards): Translate / Extract steps put the note in a per-kind
+  // folder (localised "Translations" / "Procedures") plus the source
+  // material's folders; a plan made from a chat answer goes to the reserved
+  // "Plan" folder and its run notes to "Procedures" (the Plan folder is never
+  // inherited); web clips go to "Web clips". See
+  // `src/features/note-context/generated-folders.ts`.
   noteContexts?: string[];
 
   // ── authorship / agent ──────────────────────────────
