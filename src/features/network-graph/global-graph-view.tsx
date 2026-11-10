@@ -65,6 +65,7 @@ import {
   attachCytoscapeLayoutPersistence,
   attachSelectionBoundsOverlay,
   seedUnplacedNodes,
+  seedNearPlacedNeighbors,
   stopLayoutOnGrab,
   useGraphCarryOver,
   useGraphLayout,
@@ -1826,6 +1827,9 @@ export function GlobalGraphCanvas({
   const [selectedIslandId, setSelectedIslandId] = useState<string | null>(null);
   const selectedIsland = islandSummaries.find((s) => s.id === selectedIslandId) ?? null;
 
+  // 構築 effect の依存に入れない（切り替えは下の effect が掛け外しする）
+  const bundleCrossIslandEdgesRef = useRef(bundleCrossIslandEdges);
+  bundleCrossIslandEdgesRef.current = bundleCrossIslandEdges;
   // 島をまたぐ線を束ねる。配置が終わった cy に掛け、ノードを手で動かし終えたら掛け直す
   // （制御点は線の向きに対する相対値なので、端が動くと束から外れて見えるため）
   useEffect(() => {
@@ -1855,28 +1859,40 @@ export function GlobalGraphCanvas({
   // 最近 AI に使われたところを灯し、線に沿って発火させる（シンプル表示のときだけ）。
   // 束ねた後の線の形を読むので、配置が終わった cy に掛ける。OS の「視差効果を減らす」
   // が有効なら灯すだけで動かさない
+  // 一度だけ光らせる（once）を最後に走らせた使われ方。組み直しで cy が替わっただけでは
+  // 光らせ直さない（知識の生成中はページが増えるたびに組み直すので、同じ火花が何度も走っていた）
+  const firedOnceRef = useRef<ReadonlyMap<string, number> | null>(null);
   useEffect(() => {
     const cy = settledCy;
     if (!cy || cy.destroyed()) return;
     const on = colorMode === "simple" && !!usageWeights && usageWeights.size > 0;
+    if (!on) {
+      firedOnceRef.current = null;
+      return;
+    }
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    if (usageFiring === "once") {
+      if (firedOnceRef.current === usageWeights) return;
+      firedOnceRef.current = usageWeights!;
+    }
+    // チャットの横では、光は根拠のつながりの線（ai-link。印の関数が付ける）だけを走る
+    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring, chatMode ? { edgeClass: "ai-link" } : {});
+  }, [settledCy, colorMode, usageWeights, usageFiring, chatMode]);
+
+  // 使われ方の灯り（act）と、AI が探せる範囲・読んだ・使ったの印（クラスの付け外しだけ。配置は動かさない）。
+  // 組み直しで作った cy には構築 effect がその場で掛ける（配置が終わるまで待つと、その間
+  // 隠していた題名が全部出て緑の線も消え、組み直しのたびにちらついていた）。
+  // ここでは今の値を ref に入れておき、値が変わったら今の cy に掛け直す
+  const applyUsageMarks = (cy: cytoscape.Core) => {
+    const actOn = colorMode === "simple" && !!usageWeights && usageWeights.size > 0;
     cy.batch(() => {
       cy.nodes("[act > 0]").removeData("act");
-      if (on) for (const [id, w] of usageWeights!) {
+      if (actOn) for (const [id, w] of usageWeights!) {
         const n = cy.getElementById(id);
         if (n.nonempty() && n.isNode()) n.data("act", w);
       }
     });
-    if (!on) return;
-    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    // チャットの横では、光は根拠のつながりの線（ai-link。下の範囲の effect が付ける）だけを走る
-    return startGraphFiring(cy, usageWeights!, Math.random, usageFiring, chatMode ? { edgeClass: "ai-link" } : {});
-  }, [settledCy, colorMode, usageWeights, usageFiring, chatMode]);
-
-  // AI が探せる範囲を印す（クラスの付け外しだけ。配置は動かさない）
-  useEffect(() => {
-    const cy = settledCy;
-    if (!cy || cy.destroyed()) return;
     const on = colorMode === "simple" && !!usageScope;
     const inScope = on ? usageScope!.inScope : null;
     const attached = on ? usageScope!.attached : undefined;
@@ -1939,7 +1955,14 @@ export function GlobalGraphCanvas({
         if (walkedKeys.size > 0 && walkedKeys.has(s < t ? `${s}\u0000${t}` : `${t}\u0000${s}`)) e.addClass("ai-walked");
       });
     });
-  }, [settledCy, colorMode, usageScope, usageWeights]);
+  };
+  const applyUsageMarksRef = useRef(applyUsageMarks);
+  applyUsageMarksRef.current = applyUsageMarks;
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || cy.destroyed()) return;
+    applyUsageMarksRef.current(cy);
+  }, [colorMode, usageScope, usageWeights]);
 
   // AI が新しく読んだページを、その瞬間に一度だけ光らせる（線には走らせない）。
   // 色は上の ai-read で残る。読んでいる途中の集合が増えた分だけを光らせる
@@ -2315,15 +2338,33 @@ export function GlobalGraphCanvas({
     // 引き継いだ座標を持つノードが 1 つも無いときは最初から並べる（原点に重なったまま
     // 続きを並べると一直線に潰れる）
     const islands = layoutMode === "islands";
-    // islands は切替のたびに並べ直す（前回座標からの「続き」はしない）。
-    // 引き継いだ座標に混じって、ノート以外（今回は幾何で置く）の古い位置が
-    // 残っていると土台が歪むため、常に randomize で 1 段目を走らせる。
+    // islands は切替のたびに並べ直す（randomize で 1 段目を走らせる）。
     const gentle = !islands && !modeChanged && !!carried && placedCount > 0;
     if (gentle) seedUnplacedNodes(cy, unplacedIds);
+    // ただし切り替えの無い組み直しで、新しいノードが少しだけのときは 1 段目（物理）を回さず、
+    // 前回の座標のまま 2 段目（幾何）だけで置き直す。知識の生成中はページが 1 枚増えるたびに
+    // 組み直すので、毎回 1 段目を回すと島の並びがそのたびに入れ替わっていた（実データで 1 枚
+    // 足すと、ノードが中央値で約 700px 動いた。randomize を止めて続きから回しても約 860px）。
+    // 2 段目は 1 段目が置いた話題・重心の位置から決まるので、話題が動かなければ島も動かない。
+    // 新しい話題・重心は、すでに座標のある隣の平均に置く
+    const keepIslands =
+      islands &&
+      !modeChanged &&
+      !!carried &&
+      placedCount > 0 &&
+      unplacedIds.length <= Math.max(5, Math.floor(shownNodes.length * 0.05));
+    if (keepIslands) seedNearPlacedNeighbors(cy, unplacedIds);
     // 留め置きノードは配置の間ロックする。Cytoscape はロック中のノードへの
     // position() 書き込みと layoutPositions を無視するので、2 段目の幾何配置
     // （平均位置・衛星リング・後始末）も素通りする。終わったら外す（掴めるように）。
-    const pinnedEles = cy.nodes().filter((n: any) => pinnedIds.has(n.id()));
+    // 島を保つ組み直しでは、前回の座標を持つノードも全部同じようにロックし、新しいノードだけを
+    // 2 段目で置く。幾何で置き直すと、重なりをほぐす処理（島どうしを円盤として離す）が前回ほぐした
+    // 位置からもう一度押し離すので、島の塊ごと数百 px ずつ動いていた。つながりが変わったページの
+    // 置き直しは、次に最初から並べるとき（アプリを開き直す・配置を切り替える・自動配置に戻す）に回す
+    const unplacedSet = keepIslands ? new Set(unplacedIds) : null;
+    const pinnedEles = cy
+      .nodes()
+      .filter((n: any) => pinnedIds.has(n.id()) || (!!unplacedSet && !unplacedSet.has(n.id())));
     pinnedEles.lock();
     // 「島の配置」(layoutMode==="islands"): 2 段階で組む。
     //   1 段目（物理・fcose）: フォーカス種類のノード + 重心ダミー + それらの
@@ -2378,7 +2419,10 @@ export function GlobalGraphCanvas({
       .nodes()
       .filter((n: any) => pinnedIds.has(n.id()))
       .map((n: any) => ({ nodeId: n.id(), position: { x: n.position("x"), y: n.position("y") } }));
-    const lay = physicsEles.layout({
+    // 島を保つ組み直しは、座標を変えない preset で 1 段目を素通りさせる（layoutstop の 2 段目は同じに走る）
+    const lay = keepIslands
+      ? physicsEles.layout({ name: "preset", fit: false, animate: false } as any)
+      : physicsEles.layout({
       name: "fcose",
       ...(fixedNodeConstraint.length > 0 ? { fixedNodeConstraint } : {}),
       // 大きなグラフでは配置のアニメーションを切る。数百ノードを 700ms 動かすと
@@ -2553,6 +2597,14 @@ export function GlobalGraphCanvas({
     // cy を作り直した直後も、選択中のノードに見た目を戻す
     const pickedId = selectedNodeIdRef.current;
     if (pickedId) cy.getElementById(pickedId).addClass("lineage-picked");
+    // 読んだ・使ったの印と範囲も、作ったその場で掛ける（配置が終わるのを待たない）
+    applyUsageMarksRef.current(cy);
+    // 島をまたぐ線の束ねも、前回の座標を引き継いだ組み直しならその座標で先に掛けておく
+    // （配置が終わるまで直線で描かれ、組み直しのたびに束がほどけて見えていた）。
+    // 配置が終わったら下の束ねの effect が今の座標で掛け直す
+    if (carried && !keepCurrent && bundleCrossIslandEdgesRef.current && layoutMode === "islands" && islandCommunities) {
+      applyIslandEdgeBundling(cy, islandCommunities);
+    }
 
     cyRef.current = cy;
     // 並べ直さないときは座標が確定しているので、すぐ島の名前を出せる

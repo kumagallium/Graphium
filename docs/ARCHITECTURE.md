@@ -444,6 +444,19 @@ talks to LLM and embedding backends.
   because resolving everything at once spreads the crowded islands into
   their neighbours until the whole graph melts into one blob. Only pinned
   nodes stay put; everything else moves just far enough to clear.
+  A rebuild that only adds a few nodes (knowledge generation adds pages
+  one at a time, and each one rebuilds the graph) keeps the islands where
+  they are: the physics stage is skipped, every node that already has a
+  position from the previous build is held like a pin, and only the new
+  nodes are placed by the geometric pass (a new topic starts at the
+  average of its already-placed neighbours). Running the full layout on
+  every rebuild reshuffled the islands, and running the overlap pass on
+  positions it had already spread pushed the islands apart again each
+  time. The full layout still runs on a mode switch, a reset, or when the
+  app is reopened.
+  The usage marks beside the chat (read / used pages, the scope fence,
+  evidence links) are applied to a rebuilt graph as soon as it is
+  created, not after the layout settles, so they do not blink off and on.
   An optional, experimental "pull by meaning" step runs before that pass
   when claims are focused: claims whose section embeddings (the same
   vectors the retriever and the duplicate check use) are close are
