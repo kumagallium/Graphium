@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.129.1](https://github.com/kumagallium/Graphium/compare/v0.129.0...v0.129.1) - 2026-11-10
+
+- docs: describe show_note and the in-conversation note preview in the MCP manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1607
+- [feat] Route a new topic to the existing page when the titles are the same by @kumagallium in https://github.com/kumagallium/Graphium/pull/1599
+- fix: stop the Global Graph islands drifting apart on every rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/1609
+- [feat] Merge same-topic pages as the first step of Tidy up for me by @kumagallium in https://github.com/kumagallium/Graphium/pull/1602
+
 ## [v0.129.0](https://github.com/kumagallium/Graphium/compare/v0.128.4...v0.129.0) - 2026-11-10
 
 - docs: at-a-glance chips on the manual's feature roadmap by @kumagallium in https://github.com/kumagallium/Graphium/pull/1604
