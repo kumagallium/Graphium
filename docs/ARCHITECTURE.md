@@ -3821,6 +3821,46 @@ Tools:
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
+| `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `structuredContent.preview` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
+
+**Previews inside the conversation (MCP Apps).** `src/mcp/app-tools.ts` registers
+one UI resource, `ui://graphium/note-preview.html` (MIME `text/html;profile=mcp-app`,
+via `@modelcontextprotocol/ext-apps` 1.x, which sits on the same
+`@modelcontextprotocol/sdk` 1.x as the rest of the server). `show_note` and
+`create_note` point to it through `_meta.ui.resourceUri`, and return
+`structuredContent: { preview }` — a `NotePreview` built by
+`src/mcp/note-preview.ts` from the note JSON (headings, steps as cards that
+hold their children, lists, tables, media, block-level PROV labels and the
+inline-range labels stored as `inlineMaterial` / `inlineTool` /
+`inlineAttribute` / `inlineOutput` text styles; at most 200 blocks, the same
+block walk as `blocksToMarkdown`). Math is rendered on the server with KaTeX
+to MathML (`src/mcp/math-mathml.ts`, `trust: false`), which the browser
+typesets without KaTeX's CSS or fonts. Images that live in the vault
+(`media-server://` and the other local schemes of
+`asset-browser/local-media-ref.ts`, plus the Drive-era `lh3.googleusercontent.com/d/<id>`
+form when that id exists in `media/`) are sent as data URLs in the result's
+`_meta["graphium/previewImages"]` (blockId → data URL; PNG / JPEG / GIF / WebP /
+AVIF, 2 MiB each, 8 MiB and 20 images per note, no SVG). `structuredContent` and
+`_meta` go to the view only, not into the model's context. Remote images are
+never fetched: the preview keeps only their host name, never the URL. A host
+that supports MCP Apps (Claude Desktop) renders the resource in a sandboxed
+iframe and hands it the tool result; other clients ignore `_meta` and see the
+unchanged text result. The view (`src/mcp/apps/note-preview-view.ts`) builds
+the DOM with `textContent`; the only markup it parses is the MathML, which is
+re-created from an allow-list of MathML elements and attributes. It follows
+the host's locale (Japanese / English label names, copied from the i18n
+dictionaries in `src/mcp/apps/label-style.ts`; a test keeps them in step) but
+not its theme: like the app, it draws on Graphium's paper colours (the scene
+tokens of `src/app.css`), with Inter and JetBrains Mono embedded from
+`public/fonts/`, 16px / 1.7 body text, the app's narrow-window heading sizes,
+the step card of `blocks/step`, and the inline-label colours of
+`features/inline-label/colors.ts` (shared with the editor). The page is one
+self-contained HTML file with the script, CSS and fonts inlined and an empty
+CSP (no network), so it stays inside the machine like the rest of the stdio
+server. `scripts/build-mcp-app-html.mjs`
+assembles it; `bundle-mcp.mjs` embeds it with `--define`
+(`__GRAPHIUM_NOTE_PREVIEW_HTML__`), and a dev run (`tsx`) builds it on the
+first read instead.
 
 Knowledge-page maintenance applies to `wikiMeta.kind` of `topic` / `answer`
 only. Read tools are `readOnlyHint` (`get_note` / `get_topic` append to their
