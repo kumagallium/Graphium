@@ -689,10 +689,12 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 }
 /* BlockNote 0.48 からテーマ変数は .bn-root に掛かる（エディタの div は .bn-root と .bn-container の
    両方を持ち、body へ出すメニューの入れ物は .bn-root だけを持つ） */
-.bn-root {
+/* クラスを重ねて詳細度を上げている。本番ビルドでは BlockNote の CSS がこのファイルより後に
+   読み込まれるので（開発サーバーとは順序が逆）、同じ詳細度だと既定の #3f3f3f に負ける。 */
+.bn-root.bn-root {
   --bn-colors-editor-text: var(--ink);
 }
-.bn-editor {
+.bn-editor.bn-editor {
   color: var(--ink);
 }
 
