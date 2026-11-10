@@ -112,12 +112,15 @@ function durationOf(file) {
   await piece(s.file, Math.max(0, list - 0.5), normalUntil, 1, [{ text: T.ingest, from: list, to: normalUntil }]);
   const fastLen = Math.max(1, idone - 2 - normalUntil);
   await piece(s.file, normalUntil, idone - 2, Math.max(1, fastLen / FAST_TARGET), [{ text: T.fast }]);
-  await piece(s.file, idone - 2, d, 1, [
+  // 答えが出てから引用を押すまでに長い間が空いた録画（答えの終わりを検出しそこねた回）は、間を切る
+  const idleCut = cite - adone > 8;
+  await piece(s.file, idone - 2, idleCut ? adone + 3 : d, 1, [
     { text: T.topics, from: topics, to: topic },
     { text: T.topic, from: topic, to: chatOpen },
     { text: T.chat, from: chatOpen, to: adone + 1 },
-    { text: T.cite, from: cite, to: d },
+    ...(idleCut ? [] : [{ text: T.cite, from: cite, to: d }]),
   ]);
+  if (idleCut) await piece(s.file, cite - 2, d, 1, [{ text: T.cite, from: cite, to: d }]);
 }
 // ── 場面 3 ──
 {
