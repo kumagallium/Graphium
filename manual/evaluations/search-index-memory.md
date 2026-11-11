@@ -47,7 +47,7 @@ The restore took 141 ms after the change (not timed before).
 | 16 KB blocks | 3.6 GB (220,394) | not measured | 1.5 GB (90,617) |
 | Recorded peak | 7.1 GB | 6.4 GB | 4.6 GB |
 
-On the second launch memory rose to 4.2 GB at 35 seconds and came down; from one minute on it moved between 1.0 and 2.6 GB (above 2 GB in 5 of the 26 readings). The rewrite on the first launch finished about five minutes after start, and the stored index went from 92.7 MB to 81.4 MB.
+On the second launch memory rose to 4.2 GB at 35 seconds and came down; from one minute on it moved between 1.0 and 2.6 GB (above 2 GB in 3 of the 23 readings after the first minute). The rewrite on the first launch finished about five minutes after start, and the stored index went from 92.7 MB to 81.4 MB.
 
 **Other candidates.** Live size when held alone in the same shell.
 
