@@ -3867,14 +3867,14 @@ Tools:
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
-| `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `structuredContent.preview` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
+| `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `_meta["graphium/preview"]` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
 
 **Previews inside the conversation (MCP Apps).** `src/mcp/app-tools.ts` registers
 one UI resource, `ui://graphium/note-preview.html` (MIME `text/html;profile=mcp-app`,
 via `@modelcontextprotocol/ext-apps` 1.x, which sits on the same
 `@modelcontextprotocol/sdk` 1.x as the rest of the server). `show_note` and
 `create_note` point to it through `_meta.ui.resourceUri`, and return
-`structuredContent: { preview }` — a `NotePreview` built by
+`_meta["graphium/preview"]` — a `NotePreview` built by
 `src/mcp/note-preview.ts` from the note JSON (headings, steps as cards that
 hold their children, lists, tables, media, block-level PROV labels and the
 inline-range labels stored as `inlineMaterial` / `inlineTool` /
@@ -3886,8 +3886,12 @@ typesets without KaTeX's CSS or fonts. Images that live in the vault
 `asset-browser/local-media-ref.ts`, plus the Drive-era `lh3.googleusercontent.com/d/<id>`
 form when that id exists in `media/`) are sent as data URLs in the result's
 `_meta["graphium/previewImages"]` (blockId → data URL; PNG / JPEG / GIF / WebP /
-AVIF, 2 MiB each, 8 MiB and 20 images per note, no SVG). `structuredContent` and
-`_meta` go to the view only, not into the model's context. Remote images are
+AVIF, 2 MiB each, 8 MiB and 20 images per note, no SVG). The preview is kept
+out of `structuredContent` on purpose: a client that does not draw MCP Apps
+(Claude Code) hands `structuredContent` to the model in place of the text
+result, which would put the whole note into the context. `_meta` goes to the
+view only. (v0.129.0 sent `structuredContent: { preview }`; the view still
+reads it as a fallback.) Remote images are
 never fetched: the preview keeps only their host name, never the URL. A host
 that supports MCP Apps (Claude Desktop) renders the resource in a sandboxed
 iframe and hands it the tool result; other clients ignore `_meta` and see the

@@ -1,7 +1,9 @@
 // MCP Apps（会話の中に画面を描く拡張）の道具と画面の登録。
 //
 // 対応しているホスト（Claude Desktop など）は、道具の _meta.ui.resourceUri を見て
-// ui:// の HTML を iframe に描き、道具の結果（structuredContent）をその画面に渡す。
+// ui:// の HTML を iframe に描き、道具の結果をその画面に渡す。
+// 画面向けのデータは結果の _meta に載せる。structuredContent に入れると、Claude Code のように
+// 画面を描かないクライアントがそれを文字の結果の代わりにモデルへ渡し、ノート全体が文脈に入るため。
 // 対応していないホスト（Claude Code・Codex など）には今までどおり文字の結果だけが届く。
 // 画面は Mac の中で完結する — HTML は stdio で渡し、画面から外のサイトへは何も読みに行かない。
 
@@ -38,6 +40,9 @@ export function notePreviewFor(noteId: string): NotePreview | null {
   if (!doc) return null;
   return buildNotePreview({ noteId, doc: doc as any, modifiedAt: getEntry(noteId)?.modifiedAt });
 }
+
+/** 結果の _meta にプレビューを載せるキー（画面だけが読む。モデルの文脈には入らない） */
+export const PREVIEW_META_KEY = "graphium/preview";
 
 /** 結果の _meta に画像を載せるキー（画面だけが読む。モデルの文脈には入らない） */
 export const PREVIEW_IMAGES_META_KEY = "graphium/previewImages";
@@ -145,8 +150,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
               "本文の中身が必要なら get_note で読んでください。",
           },
         ],
-        structuredContent: { preview },
-        _meta: { [PREVIEW_IMAGES_META_KEY]: resolvePreviewImages(preview) },
+        _meta: { [PREVIEW_META_KEY]: preview, [PREVIEW_IMAGES_META_KEY]: resolvePreviewImages(preview) },
       };
     },
   );

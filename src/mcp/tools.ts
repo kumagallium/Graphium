@@ -13,7 +13,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { buildIndexEntry } from "../features/navigation/index-file";
 import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
-import { NOTE_PREVIEW_TOOL_META } from "./app-tools";
+import { NOTE_PREVIEW_TOOL_META, PREVIEW_META_KEY } from "./app-tools";
 import { createNote } from "./create-note";
 import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
@@ -41,9 +41,12 @@ function text(body: string) {
   return { content: [{ type: "text" as const, text: body }] };
 }
 
-/** 文字の結果に、画面（MCP Apps）向けの structuredContent を添える */
-function withStructured<T extends object>(result: T, structuredContent: Record<string, unknown>) {
-  return { ...result, structuredContent };
+/**
+ * 文字の結果に、画面（MCP Apps）向けのプレビューを _meta で添える。
+ * structuredContent には入れない（画面を描かないクライアントがモデルへ渡してしまう）
+ */
+function withPreview<T extends object>(result: T, preview: unknown) {
+  return { ...result, _meta: { [PREVIEW_META_KEY]: preview } };
 }
 
 /** vault が無いときの共通エラー。設定の直し方まで書く */
@@ -655,7 +658,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           doc: result.doc as any,
           modifiedAt: (result.doc as { modifiedAt?: string }).modifiedAt,
         });
-        return withStructured(text(
+        return withPreview(text(
           [
             `ノートを作成しました。`,
             `  タイトル: ${result.title}`,
@@ -665,7 +668,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,
           ].join("\n"),
-        ), { preview });
+        ), preview);
       } catch (err) {
         return text(`ノートの作成に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
