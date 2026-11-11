@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.10](https://github.com/kumagallium/Graphium/compare/v0.129.9...v0.129.10) - 2026-11-11
+
+- [fix] Store the search index packed so restoring it no longer takes gigabytes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1634
+
 ## [v0.129.9](https://github.com/kumagallium/Graphium/compare/v0.129.8...v0.129.9) - 2026-11-11
 
 - [fix] Let the knowledge title list be read from the prompt cache across chat questions by @kumagallium in https://github.com/kumagallium/Graphium/pull/1633
