@@ -2218,7 +2218,12 @@ Notes:
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
   a long reconcile the snapshot is still written at least once a minute, so
-  a reload mid-way resumes instead of starting over. Progress notifications
+  a reload mid-way resumes instead of starting over. The snapshot is a
+  packed form (typed arrays for postings, the term tree written out in
+  pre-order — `compact-snapshot.ts`) rather than MiniSearch's own JSON, so
+  restoring it builds the final maps directly: replaying a 39k-chunk vault
+  in a JavaScriptCore shell, the restore went from ~4 GB of process memory
+  to ~0.7 GB. Progress notifications
   are coalesced to at most one per 250 ms, and the app shell subscribes to
   the rebuild generation only, so indexing thousands of sources does not
   re-render the whole app per source.

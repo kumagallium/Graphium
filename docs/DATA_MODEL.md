@@ -3859,7 +3859,13 @@ Store: embeddings (keyPath: "id" = `${documentId}:${sectionId}`)
 DB:    graphium-lexical-index   (src/features/lexical-search/index-store.ts)
 Vers:  1
 Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
-       — { scopeKey, snapshot: { formatVersion, index: MiniSearch JSON, sources }, updatedAt }
+       — { scopeKey, snapshot: { formatVersion, compact, sources }, updatedAt }
+       — `compact` (formatVersion 2, `compact-snapshot.ts`) packs the MiniSearch index into typed
+         arrays: postings as two `Uint32Array`s (internal doc id, term frequency), the term radix
+         tree written out in pre-order (child counts + edge keys), and per-document ids / field
+         lengths / stored fields as parallel arrays. formatVersion 1 stored `index: MiniSearch JSON`
+         instead; restoring that expanded millions of object properties and re-inserted every term,
+         which left several GB of heap in use on a large vault
        — one row per storage scope; `sources` maps sourceId → { kind, fingerprint, chunkIds }
        — chunk ids: note = first block id of the chunk, wiki = H2 section id (same as embeddings), asset = c0, c1, …
        — a fourth kind, `shared`, indexes entries left in place in the shared library (desktop
@@ -3873,7 +3879,10 @@ Settings → Knowledge, and the lexical index is rebuilt from `noteIndex`
 and `mediaIndex` on the next start (or from Settings → Storage → Rebuild
 index). A `formatVersion` mismatch in the lexical snapshot (tokenizer or
 index options changed) is treated the same way — the stored snapshot is
-ignored and the index is rebuilt.
+ignored and the index is rebuilt. The one exception is a formatVersion 1
+snapshot: its contents are the same as version 2, so it is read once and
+written back in the packed form instead of re-extracting every PDF. A packed
+snapshot whose arrays do not line up is ignored and the index is rebuilt.
 
 ### 6.3 Filesystem layout (`filesystem` / `server-fs`)
 

@@ -9,6 +9,8 @@ import { IDBFactory } from "fake-indexeddb";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { lexicalIndexStore } from "./index-store";
 import { lexicalSearch, type DesiredSource } from "./service";
+import MiniSearch from "minisearch";
+import { LEXICAL_FORMAT_VERSION, miniSearchOptions, type LexicalDoc } from "./lexical-index";
 
 const noteDoc = (title: string, text: string): GraphiumDocument =>
   ({ title, pages: [{ blocks: [{ id: "b1", type: "paragraph", content: [{ type: "text", text }] }] }] }) as unknown as GraphiumDocument;
@@ -192,6 +194,34 @@ describe("lexicalSearch service", () => {
 
   // デバウンスだけだと、変更が 4 秒以内に続く間は一度も保存されなかった。
   // 索引づくりの途中で再読み込み・タブが落ちると、次の起動でまた最初から作り直していた
+  it("旧形式の保存は一度読み込んだあと、変更が無くても今の形式で書き直す", async () => {
+    // 形式 1 の保存（MiniSearch 標準の保存形）を仕込む
+    const ms = new MiniSearch<LexicalDoc>(miniSearchOptions());
+    ms.add({ id: "wiki:w1:lead", kind: "wiki", sourceId: "w1", chunkId: "lead", title: "デシケーター", text: "乾燥剤は 2 週間で交換" });
+    const legacy = {
+      formatVersion: 1,
+      index: JSON.parse(JSON.stringify(ms)),
+      sources: { w1: { kind: "wiki" as const, fingerprint: "v1", chunkIds: ["lead"], title: "デシケーター" } },
+    };
+    await lexicalIndexStore.save(legacy, "local:test");
+
+    await lexicalSearch.ensureLoaded("local:test");
+    // 作り直しにならず、そのまま検索できる
+    expect(lexicalSearch.search("乾燥剤")[0]?.sourceId).toBe("w1");
+    expect(lexicalSearch.isFresh("w1", "v1")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    const stored = await lexicalIndexStore.load("local:test");
+    expect(stored?.snapshot.formatVersion).toBe(LEXICAL_FORMAT_VERSION);
+    expect(stored?.snapshot.compact).toBeDefined();
+    expect(stored?.snapshot.index).toBeUndefined();
+
+    // 次の起動は今の形式から復元する
+    lexicalSearch.__resetForTest();
+    await lexicalSearch.ensureLoaded("local:test");
+    expect(lexicalSearch.search("乾燥剤")[0]?.sourceId).toBe("w1");
+  });
+
   it("変更が途切れなくても 60 秒ごとに一度は保存する", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
     await lexicalSearch.ensureLoaded("local:test");
