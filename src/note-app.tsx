@@ -10838,8 +10838,15 @@ export function NoteApp() {
   // ノート内チャット（NoteEditorInner）と違い、ここは「本文を開いていない」トップレベルの
   // 画面なので、setSidePeekNoteId ではなく一覧用ピーク／素材ピークを使う。
   const handleStandaloneChatOpenNote = useCallback((noteId: string) => {
+    // 素材ピークを開いていたら畳んでから（チャット横グラフのノードと同じ扱い）
+    setListMaterialPeekEntry(null);
     openListPeek(noteId);
   }, [openListPeek]);
+  // トピック（ナレッジ）の引用と「保存した答えを開く」。ノートと同じくチャットを離れず
+  // ピークで開く（全画面はピーク内の最大化から）。ノート内チャットとも揃う。
+  const handleStandaloneChatOpenWiki = useCallback((wikiId: string) => {
+    handleStandaloneChatOpenNote(`wiki:${wikiId}`);
+  }, [handleStandaloneChatOpenNote]);
   // チャットの回答（次の実験の提案）から、計画ノート（「計画」フォルダ・振る条件の表）と
   // 行ごとの工程ノートを作る。ノート内チャット・ノートなしチャットの両方から呼ぶ。
   // 共通手順は論文と同じ手順抽出と名寄せを通すので、名前が論文のノートと揃う。
@@ -10955,18 +10962,6 @@ export function NoteApp() {
     },
     [fm, navigateToNote, generatedNoteFolders],
   );
-  const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
-    const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
-    if (target) setListMaterialPeekEntry(target);
-  }, [fm.mediaIndex]);
-  const standaloneChatSourceLinks = useSourceLinks(
-    fm.noteIndex,
-    activeStandaloneChat?.messages.length ?? 0,
-    (wikiId: string) => navigateToNote(`wiki:${wikiId}`),
-    handleStandaloneChatOpenNote,
-    handleStandaloneChatOpenAsset,
-  );
-
   // 別のピーク（素材・メモ）や全体グラフへ移るためにノートピークを畳むとき用。
   // ユーザーが「閉じた」訳ではないので履歴は積まず、URL からピークだけ落とす。
   const dropPeekFromUrl = useCallback(() => {
@@ -10974,6 +10969,22 @@ export function NoteApp() {
     if (!current.peek) return;
     router.replace({ ...current, peek: undefined });
   }, [router]);
+
+  const handleStandaloneChatOpenAsset = useCallback((fileId: string) => {
+    const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+    if (!target) return;
+    // ノートのピークを開いていたら畳んでから（チャット横グラフの素材ノードと同じ扱い）
+    setListSidePeekNoteId(null);
+    dropPeekFromUrl();
+    setListMaterialPeekEntry(target);
+  }, [fm.mediaIndex, dropPeekFromUrl]);
+  const standaloneChatSourceLinks = useSourceLinks(
+    fm.noteIndex,
+    activeStandaloneChat?.messages.length ?? 0,
+    handleStandaloneChatOpenWiki,
+    handleStandaloneChatOpenNote,
+    handleStandaloneChatOpenAsset,
+  );
 
   // ノート一覧を表示する。サイドバーの「ノート」見出しと、投入口の復元レポート
   // （取り込んだノートが見える場所へ）の両方から使う共通関数。
@@ -16996,7 +17007,7 @@ export function NoteApp() {
             onRemoveAttachedNote={handleRemoveStandaloneChatAttachedNote}
             onSaveAsAnswer={standardUiEnabled ? handleSaveStandaloneChatAsAnswer : undefined}
             onCreatePlanNote={preciseUiEnabled ? handleCreatePlanFromChat : undefined}
-            onOpenWiki={(wikiId) => navigateToNote(`wiki:${wikiId}`)}
+            onOpenWiki={handleStandaloneChatOpenWiki}
             onResend={handleStandaloneChatResend}
             onFork={handleForkStandaloneChat}
             sourceLinks={standaloneChatSourceLinks}
