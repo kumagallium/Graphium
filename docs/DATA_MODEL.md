@@ -2182,8 +2182,10 @@ Claims can be qualified along two axes:
 - **`level`** (abstraction):
   - `principle` — a general principle the note actually relied on in its
     reasoning, even if textbook-known.
-  - `finding` — a transferable proposition that emerged from the user's
-    experience.
+  - `finding` — a point the user's own record supports (something
+    observed, decided, or tested), rewritten so it reads without the
+    note and scoped to what the note supports. Widening it into a rule
+    that holds across cases is the Insight layer's job, not the Claim's.
   - `bridge` — an abstraction across multiple findings. Legacy: was
     produced by the cross-updater, which was removed 2026-09-17;
     nothing generates `bridge` today.

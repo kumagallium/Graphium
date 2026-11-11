@@ -473,3 +473,36 @@ describe("parseFrameValue - 状態の語幹化", () => {
     expect(r.value?.comparator).toBeUndefined();
   });
 });
+
+describe("parseIngesterOutput - 壊れた JSON の救済", () => {
+  const wiki = (title: string) =>
+    `{"kind":"claim","level":"finding","title":"${title}","sections":[{"heading":"","content":"本文"}]}`;
+
+  it("末尾の小数点だけの数値（1.）で全件を失わない", () => {
+    const text = `{"wikis":[${wiki("一つ目").replace('"level"', '"confidence": 1., "level"')},${wiki("二つ目")}]}`;
+    expect(() => JSON.parse(text)).toThrow();
+    expect(parseIngesterOutput(text).map((w) => w.title)).toEqual(["一つ目", "二つ目"]);
+  });
+
+  it("途中で切れた出力は、完全な知見だけ残す", () => {
+    const text = `{"wikis":[${wiki("一つ目")},{"kind":"claim","title":"切れた`;
+    expect(parseIngesterOutput(text).map((w) => w.title)).toEqual(["一つ目"]);
+  });
+
+  it("JSON でない文章は空で返す", () => {
+    expect(parseIngesterOutput("すみません、出力できません。")).toEqual([]);
+  });
+});
+
+describe("buildIngesterSystemPrompt - 知見は範囲を広げない", () => {
+  it("通常ノートと外部資料には範囲の規則が入り、メモには入らない", () => {
+    const marker = "do not generalise here";
+    expect(buildIngesterSystemPrompt("ja", [])).toContain(marker);
+    expect(buildIngesterSystemPrompt("ja", [], undefined, { isDocument: true })).toContain(marker);
+    expect(buildIngesterSystemPrompt("ja", [], undefined, { isMemo: true })).not.toContain(marker);
+  });
+
+  it("引用は枠だけで、題と本文は書き直すと明記する", () => {
+    expect(buildIngesterSystemPrompt("en", [])).toContain("Title and body are rewritten; frames are quoted.");
+  });
+});

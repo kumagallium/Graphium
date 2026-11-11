@@ -74,6 +74,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Claims within the note', link: '/evaluations/claim-scope' },
       { text: 'Memory of the search index', link: '/evaluations/search-index-memory' },
       { text: 'What reaches the AI', link: '/evaluations/what-reaches-the-ai' },
       { text: 'Topic granularity', link: '/evaluations/topic-granularity' },
@@ -151,6 +152,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '知見の範囲', link: '/ja/evaluations/claim-scope' },
       { text: '検索インデックスのメモリ', link: '/ja/evaluations/search-index-memory' },
       { text: 'AI に届くもの', link: '/ja/evaluations/what-reaches-the-ai' },
       { text: 'トピックの粒度', link: '/ja/evaluations/topic-granularity' },

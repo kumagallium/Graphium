@@ -2041,7 +2041,7 @@ Notes:
   `detectMissingSourceIssues`) so a person can decide whether to rebuild it
   from the remaining sources.
 - **Note mode vs document mode.** For a short personal note the ingester
-  harvests every distinct transferable insight the note carries as its own
+  harvests every distinct point the note establishes as its own
   Claim, with no fixed cap — each tagged with proposed Topics. When the
   source is an **imported external document** — its
   `noteId` carries a `pdf:` / `document:` / `url:` / `chat:` prefix (the
@@ -2054,7 +2054,17 @@ Notes:
   Claim even from a quote or anecdote — while still emitting zero Claims when
   the memo genuinely carries nothing transferable. All three modes are decided
   in `src/server/routes/wiki.ts` and change only the Claim guidance inside
-  `buildIngesterSystemPrompt`. (A fourth wiki kind, Summary, used to be generated
+  `buildIngesterSystemPrompt`. In note mode and document mode the prompt also
+  carries a *scope rule*: a Claim is rewritten to read without its source
+  (title and body in the model's own sentences; only the frame fields quote
+  verbatim), but it must stay inside what the source supports — a single
+  trial is worded as a single trial, values and conditions are kept, and the
+  body opens with the point and then cites what the source recorded.
+  Widening a point into a rule across cases is left to the Atomizer. Memo
+  mode does not carry the scope rule, because a memo's one spark is
+  abstracted by design. If the model's JSON is malformed, the parser tries
+  `jsonrepair` before giving up, so one broken character no longer drops
+  every Claim of that source. (A fourth wiki kind, Summary, used to be generated
   as a private per-note recap; generation stopped when Topics arrived, since
   Topics now carry that grouping role — existing Summary files remain
   readable, listed, searchable, and deletable, see
