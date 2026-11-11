@@ -38,7 +38,7 @@ export {
   atomizeConcepts, buildAtomDocument, buildContradictingAtomDocument, linkExistingAtomConflict, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出（候補探し）+ LLM 判定（同じ/矛盾/別物）
   dedupCandidatesByEmbedding, partitionCandidatesByEmbedding,
-  judgeAtomDuplicates, resolveAtomDuplicates,
+  judgeAtomDuplicates, resolveAtomDuplicates, judgeAtomReinforcements,
   type AtomDuplicateVerdict, type AtomDuplicateJudgeVerdict, type AtomDuplicateResolution,
   // インライン引用リンク
   buildNoteIndex,

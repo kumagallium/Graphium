@@ -1,7 +1,7 @@
 // Wiki サービス（フロントエンド側）
 // Ingest フロー・Wiki ドキュメント構築・Embedding 保存のオーケストレーション
 
-import { isTopicType, type ClaimLevel, type ClaimRole, type EpistemicStatus, type FrameValue, type GraphiumDocument, type StatementForm, type TopicType, type WikiKind, type WikiMeta, type WikiMetaSummary } from "../../lib/document-types";
+import { isTopicType, lowestEpistemicStatus, type ClaimLevel, type ClaimRole, type EpistemicStatus, type FrameValue, type GraphiumDocument, type StatementForm, type TopicType, type WikiKind, type WikiMeta, type WikiMetaSummary } from "../../lib/document-types";
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import { extractWikiSections, flattenColumns } from "./section-extract";
@@ -2344,7 +2344,18 @@ export type AtomCandidate = {
   // Toulmin の backing / modalQualifier も Atom には持たない（Claim 層のみ）
 };
 
-export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
+/**
+ * 既存の洞察への補強の申し出（atomizer が「この知見は既存の洞察の規則の事例だ」と名指ししたもの）。
+ * まだ審査していない — judgeAtomReinforcements を通してから reinforceAtomWithClaims に渡すこと。
+ */
+export type AtomReinforcementProposal = { atomId: string; claimIds: string[] };
+
+export type AtomizeResult = {
+  atoms: AtomCandidate[];
+  /** 既存の洞察への補強の申し出。existingAtoms を渡した呼び出しでだけ返る */
+  reinforcements?: AtomReinforcementProposal[];
+  model?: string;
+};
 
 /**
  * 複数の Concept を入力し、Concept をまたいで現れる共通抽象（Atom）の候補を 0〜N 件返す。
@@ -2354,7 +2365,17 @@ export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
 export async function atomizeConcepts(
   concepts: ClaimSnapshot[],
   language: string,
-  options?: { existingAtomTitles?: string[]; model?: string; signal?: AbortSignal },
+  options?: {
+    existingAtomTitles?: string[];
+    /**
+     * 既存の洞察（id と題）。渡すと、束の中の知見が既存の洞察と同じ規則を言っているとき、
+     * 新しい洞察にせず「補強の申し出」（AtomizeResult.reinforcements）として返る。
+     * 発見（discovery）の呼び出しはこちらを使う。再生成のように補強を受け取らない呼び出しは渡さない
+     */
+    existingAtoms?: { id: string; title: string }[];
+    model?: string;
+    signal?: AbortSignal;
+  },
 ): Promise<AtomizeResult> {
   // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
   // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
@@ -2369,6 +2390,7 @@ export async function atomizeConcepts(
     body: JSON.stringify({
       concepts,
       ...(options?.existingAtomTitles ? { existingAtomTitles: options.existingAtomTitles } : {}),
+      ...(options?.existingAtoms ? { existingAtoms: options.existingAtoms } : {}),
       language,
       ...modelBody,
     }),
@@ -2389,6 +2411,46 @@ export async function atomizeConcepts(
     throw err;
   }
   return data;
+}
+
+/**
+ * 補強の申し出を審査にかける（サーバー /judge-atom-reinforcements と対応）。
+ * 既存の洞察の題・形・本文と、足そうとしている知見を並べて、その洞察の規則の事例だと
+ * 確かめられた知見だけを返す。
+ *
+ * fail-closed: API の失敗・壊れた出力・答えの無い申し出は返さない（＝足さない）。
+ * 既存の洞察に、確かめていない支持を書き足さないため。
+ */
+export async function judgeAtomReinforcements(
+  items: {
+    atomId: string;
+    title: string;
+    shape?: string;
+    body: string;
+    claims: { id: string; title: string; preview: string }[];
+  }[],
+  language: string,
+  options?: { model?: string; signal?: AbortSignal },
+): Promise<AtomReinforcementProposal[]> {
+  if (items.length === 0) return [];
+  try {
+    const { headers, body: modelBody } = wikiModelRequest("precise", options?.model);
+    const res = await fetch(`${API_BASE}/judge-atom-reinforcements`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ items, language, ...modelBody }),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+    if (!res.ok) {
+      console.warn("judgeAtomReinforcements failed (fail-closed: 足さない):", res.status);
+      return [];
+    }
+    const data = (await res.json()) as { reinforcements?: AtomReinforcementProposal[] };
+    return data.reinforcements ?? [];
+  } catch (err) {
+    console.warn("judgeAtomReinforcements failed (fail-closed: 足さない):", err);
+    return [];
+  }
 }
 
 /**
@@ -2536,7 +2598,12 @@ export function buildAtomDocument(
  */
 export function reinforceAtomWithClaims(
   existingDoc: GraphiumDocument,
-  candidate: Pick<AtomCandidate, "derivedFromClaims">,
+  /**
+   * epistemicStatus は足す知見の最低の確からしさ（分かるときだけ渡す）。洞察の確からしさは
+   * 依拠する知見の最低値を継ぐ決まりなので、足す知見のほうが低ければ洞察も下げる（上げはしない）。
+   * 既存の洞察に確からしさが無い（旧データ）ときは付けない。
+   */
+  candidate: Pick<AtomCandidate, "derivedFromClaims"> & { epistemicStatus?: EpistemicStatus },
 ): { doc: GraphiumDocument; addedClaimIds: string[] } | null {
   if (existingDoc.wikiMeta?.kind !== "atom") return null;
   const known = new Set(existingDoc.wikiMeta.derivedFromClaims ?? []);
@@ -2546,12 +2613,18 @@ export function reinforceAtomWithClaims(
   ];
   if (fresh.length === 0) return null;
   const now = new Date().toISOString();
+  const currentStatus = existingDoc.wikiMeta.epistemicStatus;
+  const epistemicStatus =
+    currentStatus && candidate.epistemicStatus
+      ? lowestEpistemicStatus([currentStatus, candidate.epistemicStatus])
+      : currentStatus;
   return {
     doc: {
       ...existingDoc,
       wikiMeta: {
         ...existingDoc.wikiMeta,
         derivedFromClaims: [...(existingDoc.wikiMeta.derivedFromClaims ?? []), ...fresh],
+        ...(epistemicStatus ? { epistemicStatus } : {}),
         lastIngestedAt: now,
       },
       modifiedAt: now,

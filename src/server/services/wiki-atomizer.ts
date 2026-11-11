@@ -243,8 +243,23 @@ Respond with valid JSON only:
         }
       ]
     }
+  ],
+  "reinforcements": [                                                                      // OPTIONAL. See "Existing Atoms: reinforce, don't duplicate and don't drop" below. Empty array when nothing fits.
+    { "atomRef": "a12", "sourceConceptIds": ["concept-id-3"] }                             // atomRef = the bracketed ref of an entry in "Existing Atoms"; sourceConceptIds = Claims in THIS batch that are further instances of that Atom's rule.
   ]
 }
+
+## Existing Atoms: reinforce, don't duplicate and don't drop
+
+The user message may end with an "Existing Atoms" list. Each entry carries a ref such as \`[a12]\` followed by the Atom's title (the rule it states).
+
+For each Claim in this batch, check whether it is one more instance of the rule of an existing Atom — the same control → outcome relationship, with roles that fit that Atom's rule **as it is written**. When it is:
+- do NOT write a new Atom for that rule, and do NOT silently skip the Claim;
+- add an entry to \`reinforcements\` naming the Atom's ref and the Claim id(s). This is how an existing Atom gains support from another source.
+
+Be strict. A Claim on the same topic but with a different relationship, a different kind of controlling factor, or the opposite direction is NOT an instance of that Atom — keep it out of \`reinforcements\` (give it its own Atom if it carries a real shape; if it contradicts an existing Atom, write the new Atom and relate it with \`contradicts\`). A later judge re-checks every reinforcement and discards the ones that do not fit, so name only the ones you can defend.
+
+A Claim may appear both in a new Atom and in a reinforcement when it instances two different rules. If the list carries no refs, or there is no list, return \`"reinforcements": []\`.
 
 ## What Atom does NOT carry: procedureContext
 
@@ -358,7 +373,7 @@ This section is the structural backbone for analogical-mode Synthesis. **Honest 
 ## Rules (strict)
 - **Every Atom MUST carry a \`shapeFamily\` (axis) and a \`shape\` (form)** from the fixed vocabulary (step 2), and the form must belong to the family you named. If the relationship genuinely fits no axis, use \`"other"\` / \`"other"\` — but most real Claims fit one of the named shapes.
 - **Each Atom must cite every Claim its rule covers** in \`sourceConceptIds\` (one or more — a single Claim that instances a real shape is valid). Use the EXACT id from the Claim list. More sources = stronger support, not a gate.
-- **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
+- **Do not duplicate existing Atoms — reinforce them.** If an Atom in "Existing Atoms" already states the rule, do NOT propose it again as a new Atom; list the Claims that instance it under \`reinforcements\` instead (see "Existing Atoms: reinforce, don't duplicate and don't drop"). Propose new Atoms only for genuinely new rules.
 - **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. Emit each distinct structural pattern as its own Atom. If the Claims carry no relationship you can abstract into a real shape (e.g. a one-off fact with no X→Y), **return an empty list** — an empty list beats a forced Atom.
 - Set \`confidence\` honestly — it is **recorded and shown, not used to silently drop**.
 - The \`transfer\` is optional: include it only when a genuine cross-domain instance of the SAME shape exists. A downstream judge will discard transfers that are merely topical; a forced transfer wastes that step. Never invent citations, URLs, or author names.
@@ -376,9 +391,22 @@ ${ja ? `- 日本語で書くときは **常体（である調 / だ調）で統�
 Output in: ${generationLanguageName(language)}`;
 }
 
+/** プロンプトに載せる既存の洞察（id と題）。並び順がそのまま ref（a1, a2, …）になる */
+export type ExistingAtomRef = { id: string; title: string };
+
+/** 既存の洞察の ref（a1 始まり。buildAtomizerUserMessage の並びと parseAtomizerReinforcements で共用） */
+export function existingAtomRefOf(index: number): string {
+  return `a${index + 1}`;
+}
+
 export function buildAtomizerUserMessage(
   concepts: ClaimSnapshot[],
-  existingAtomTitles: string[],
+  /**
+   * 既存の洞察。{ id, title } で渡すと ref つきで載せ、同じ規則の知見を「補強」として
+   * 名指しで返せるようにする。題だけ（string[]）で渡すと従来どおり重複を避けるための一覧になる
+   * （名指しはできないので補強は返らない）。
+   */
+  existingAtoms: readonly string[] | readonly ExistingAtomRef[],
 ): string {
   // 最小件数ゲートは置かない。単一 Claim でも「An Atom may cover one Claim or several」
   // （下のプロンプト本文）の通り構造抽象できる。route が concepts >= 1 を保証する。
@@ -396,9 +424,12 @@ export function buildAtomizerUserMessage(
     return `### ${c.title}${levelTag}${epistemicTag} (id: ${c.id})${preview ? "\n" + preview : ""}${rebuttalSection}`;
   });
 
-  const existingNote = existingAtomTitles.length > 0
-    ? `\n\n## Existing Atoms (do NOT duplicate these)\n${existingAtomTitles.map((t) => `- ${t}`).join("\n")}`
-    : "";
+  const withRefs = existingAtoms.length > 0 && typeof existingAtoms[0] !== "string";
+  const existingNote = existingAtoms.length === 0
+    ? ""
+    : withRefs
+      ? `\n\n## Existing Atoms (do NOT duplicate these — if a Claim above is one more instance of an Atom's rule, name that Atom's ref in \`reinforcements\`)\n${(existingAtoms as readonly ExistingAtomRef[]).map((a, i) => `- [${existingAtomRefOf(i)}] ${a.title}`).join("\n")}`
+      : `\n\n## Existing Atoms (do NOT duplicate these)\n${(existingAtoms as readonly string[]).map((t) => `- ${t}`).join("\n")}`;
 
   const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._\n_Each Claim may also list \`Rebuttals:\` — Toulmin Rebuttal conditions extracted by the Ingester. Use them to decide whether to propagate a common rebuttal to the Atom (see "Shared rebuttal propagation")._`;
 
@@ -623,6 +654,100 @@ export function parseAtomizerOutput(
     }
     return out;
   }
+}
+
+// ============================================================
+// 補強（reinforcement）— 既存の洞察と同じ規則を言う知見を、新しい洞察にせず既存の洞察に足す
+// ------------------------------------------------------------
+// atomizer は「Existing Atoms」を ref つきで受け取り、束の中の知見が既存の洞察の規則の
+// もう 1 つの事例なら、新しい洞察を作る代わりに reinforcements に { atomRef, sourceConceptIds } を返す。
+// 以前は「既存と重なるものは出すな」とだけ指示していたため、別の資料の知見が既存の洞察に届く道は
+// 「新しい候補が出る → 埋め込みの近さで既存に当たる → 同じと判定される」しか無く、
+// 言い回しが違うと入口で落ちていた（検証の記録: insight-reinforcement）。
+//
+// ここで読むのは「申し出」まで。本当にその洞察の規則の事例かは、別の呼び出しの審査
+// （buildReinforceJudgeSystemPrompt）が懐疑的に選び直す。審査が取れない申し出は足さない
+// （fail-closed。既存の洞察に、確かめていない支持を書き足さないため。fold が fail-open なのと逆）。
+// ============================================================
+
+/** atomizer が申し出た補強 1 件（まだ審査していない） */
+export type AtomReinforcementProposal = {
+  /** 補強する既存の洞察の id（ref から引き直したもの） */
+  atomId: string;
+  /** その洞察の規則の事例だと申し出た知見の id（配った束の中のものだけ） */
+  claimIds: string[];
+};
+
+/**
+ * atomizer の出力から reinforcements を読む。壊れた出力・キーが無い出力は空（補強なし）として扱う
+ * — atoms の解析失敗は parseAtomizerOutput が投げるので、ここでは投げない。
+ * 配っていない知見の id・一覧に無い ref は落とす（名乗らせない）。同じ洞察への申し出は 1 件にまとめる。
+ */
+export function parseAtomizerReinforcements(
+  text: string,
+  conceptIds: ReadonlySet<string>,
+  existingAtoms: readonly ExistingAtomRef[],
+): AtomReinforcementProposal[] {
+  if (existingAtoms.length === 0) return [];
+  let parsed: unknown;
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      parsed = JSON.parse(jsonrepair(jsonText));
+    }
+  } catch {
+    return [];
+  }
+  const raw = (parsed as { reinforcements?: unknown } | null)?.reinforcements;
+  if (!Array.isArray(raw)) return [];
+  const refToId = new Map(existingAtoms.map((a, i) => [existingAtomRefOf(i), a.id]));
+  const byAtom = new Map<string, Set<string>>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const ref = typeof (r as any).atomRef === "string" ? (r as any).atomRef.trim().replace(/^\[|\]$/g, "") : "";
+    const atomId = refToId.get(ref);
+    if (!atomId) continue;
+    const ids = Array.isArray((r as any).sourceConceptIds) ? (r as any).sourceConceptIds.map(String) : [];
+    const valid = ids.filter((id: string) => conceptIds.has(id));
+    if (valid.length === 0) continue;
+    const set = byAtom.get(atomId) ?? new Set<string>();
+    for (const id of valid) set.add(id);
+    byAtom.set(atomId, set);
+  }
+  return [...byAtom.entries()].map(([atomId, set]) => ({ atomId, claimIds: [...set] }));
+}
+
+/** 補強の審査に渡す 1 件 = 既存の洞察 1 つ（題・形・本文）と、足そうとしている知見 */
+export type ReinforceJudgeInput = { title: string; shape?: string; body: string; claims: FoldJudgeClaim[] };
+
+export function buildReinforceJudgeSystemPrompt(language: string): string {
+  return `You are a skeptical reviewer of Atom "reinforcements". An existing Atom states a general rule. A discovery pass proposed that some Claims — usually from a different source — are further instances of that same rule, so they should be recorded as supporting it. Your job is to check each proposal, one Atom at a time.
+
+Each item gives an existing Atom (its title, relationship-shape, and body) and the Claims proposed as support (each with an id, title, and a short preview).
+
+For each item, return \`coherentClaimIds\`: the subset of the given Claim ids that GENUINELY instance the Atom's rule **as it is written**.
+- Include a Claim ONLY when its own control → outcome relationship is the Atom's rule: the same kind of thing varying, the same kind of thing changing, the same direction. A reader who accepts the Claim should count it as one more case of this Atom, without the Atom having to be reworded.
+- **Exclude a Claim when** it is about the same *topic* but a different *relationship*; when its controlling factor is a different kind of thing than the Atom names (the Claim would fit only if the Atom were rewritten more generally); when the direction is the opposite (that is a contradiction, not support); when the preview shows no X→Y relationship at all; or when you cannot tell.
+- Be strict. A Claim wrongly added makes the Atom claim support it does not have — worse than a missing one. An empty list is a fine answer.
+- \`coherentClaimIds\` MUST be a subset of the ids given for that item. Use the ids verbatim.
+- \`reason\`: one short line — which Claims you kept or excluded and why.
+
+Return JSON only: {"items":[{"index":<the index given>,"coherentClaimIds":["id",...],"reason":"..."}]}.
+Output language: ${generationLanguageName(language)}.`;
+}
+
+export function buildReinforceJudgeUserMessage(items: ReinforceJudgeInput[]): string {
+  const blocks = items.map((it, i) => {
+    const claimLines = it.claims
+      .map((c) => `    - (id: ${c.id}) "${c.title}"${c.preview ? ` — ${c.preview}` : ""}`)
+      .join("\n");
+    return `[${i + 1}] existing Atom: "${it.title}" | shape: ${it.shape ?? "(none)"}\n  body: ${it.body}\n  Claims proposed as further instances:\n${claimLines}`;
+  });
+  return `For each existing Atom, decide which of the proposed Claims genuinely instance the Atom's rule as written (return their ids):\n\n${blocks.join("\n\n")}`;
 }
 
 // ============================================================

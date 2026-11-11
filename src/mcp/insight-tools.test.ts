@@ -216,8 +216,10 @@ describe("start_insight_task の課題", () => {
     expect(reply).toContain("(id: c1)");
     expect(reply).toContain("(id: c3)");
     // 既存の洞察のタイトル一覧
-    expect(reply).toContain("Existing Atoms (do NOT duplicate these)");
-    expect(reply).toContain("- 既にある洞察");
+    // 既存の洞察は ref つきで載る（補強の名指し用）
+    expect(reply).toContain("Existing Atoms (do NOT duplicate these");
+    expect(reply).toContain("- [a1] 既にある洞察");
+    expect(reply).toContain("reinforcements");
     // 作業指示（SYSTEM PROMPT の外）
     const [instructions] = reply.split("=== SYSTEM PROMPT ===");
     expect(instructions).toContain("JSON だけ");
@@ -686,5 +688,128 @@ describe("審査の答えの検証と来歴", () => {
     const reply = await submitInsightReview({ taskId: reviewTaskId, output: ALL_EMPTY }, ctx, root);
     expect(reply).toContain("保存しなかった候補:");
     expect(reply).toContain("「冷えを速くすると乱れる」");
+  });
+});
+
+describe("既存の洞察への補強（reinforcements）", () => {
+  const EXISTING = {
+    id: "atom-r",
+    title: "構成要素が均質なほど流れが妨げられにくい",
+    body: "構成要素の性質が均質なほど、内部の流れが妨げられにくい。",
+    claims: ["c1"],
+  };
+  const reinforceOut = (...rs: { atomRef: string; sourceConceptIds: string[] }[]) =>
+    JSON.stringify({ atoms: [], reinforcements: rs });
+  const verdict = (...items: { index: number; coherentClaimIds: string[] }[]) => ({
+    items: items.map((i) => ({ ...i, reason: "事例" })),
+  });
+
+  beforeEach(() => seedVault(CLAIMS, [EXISTING]));
+
+  async function toReinforceReview(output = reinforceOut({ atomRef: "a1", sourceConceptIds: ["c1", "c2"] })) {
+    const start = await startInsightTask({}, ctx, root);
+    const review = await submitInsights({ taskId: taskIdOf(start), output, model: "author-model" }, ctx, root);
+    return { start, review, reviewTaskId: reviewTaskIdOf(review) };
+  }
+
+  it("start_insight_task は既存の洞察を ref つきで載せ、課題に id と題を控える", async () => {
+    const start = await startInsightTask({}, ctx, root);
+    expect(start).toContain("- [a1] 構成要素が均質なほど流れが妨げられにくい");
+    const task = Object.values(readTaskLedger(root).tasks)[0];
+    expect(task.insights!.existingAtoms).toEqual([{ id: "atom-r", title: EXISTING.title }]);
+  });
+
+  it("atoms が空でも reinforcements があれば審査に進む。すでに依拠している知見は出さない", async () => {
+    const { review } = await toReinforceReview();
+    expect(review).toContain("補強の申し出を 1 件");
+    expect(review).toContain('"reinforce"');
+    // c1 はすでに依拠 → 審査には c2 だけ
+    expect(review).toContain("(id: c2)");
+    expect(review).not.toContain("(id: c1)");
+    const rt = Object.values(readTaskLedger(root).tasks).find((t) => t.insightReview !== undefined)!;
+    expect(rt.insightReview!.reinforcements).toEqual([
+      { atomId: "atom-r", existingHash: expect.any(String), claimIds: ["c2"] },
+    ]);
+    // まだ保存していない
+    expect(wikiDoc("atom-r").wikiMeta.derivedFromClaims).toEqual(["c1"]);
+  });
+
+  it("atoms も reinforcements も実質 0 なら従来どおり（知らない ref だけの {atoms:[]} は 0 件で完了、atoms に有効な洞察が無ければ INVALID_OUTPUT）", async () => {
+    const taskId = taskIdOf(await startInsightTask({}, ctx, root));
+    expect(
+      await submitInsights({ taskId, output: atomsOutput({ ...B, sourceConceptIds: ["unknown"] }) }, ctx, root),
+    ).toMatch(/^INVALID_OUTPUT:/);
+    expect(
+      await submitInsights({ taskId, output: reinforceOut({ atomRef: "a9", sourceConceptIds: ["c2"] }) }, ctx, root),
+    ).toContain("洞察は 0 件でした");
+  });
+
+  it("reinforce の答えのキーが無ければ INVALID_OUTPUT（課題は消費しない）", async () => {
+    const { reviewTaskId } = await toReinforceReview();
+    const reply = await submitInsightReview({ taskId: reviewTaskId, output: "{}" }, ctx, root);
+    expect(reply).toMatch(/^INVALID_OUTPUT:/);
+    expect(reply).toContain("reinforce");
+  });
+
+  it("確かめられた知見だけを既存の洞察に足す（本文は変えず、操作の記録から取り消せる）", async () => {
+    const { reviewTaskId } = await toReinforceReview(
+      reinforceOut({ atomRef: "a1", sourceConceptIds: ["c2", "c3"] }),
+    );
+    const before = wikiDoc("atom-r");
+    const reply = await submitInsightReview(
+      { taskId: reviewTaskId, output: JSON.stringify({ reinforce: verdict({ index: 1, coherentClaimIds: ["c2"] }) }) },
+      ctx,
+      root,
+    );
+    expect(reply).toContain("支持追加");
+    expect(reply).toContain("知見 1 件を足した");
+    expect(reply).toContain("審査で足さなかった補強の知見: 1 件");
+    const after = wikiDoc("atom-r");
+    expect(after.wikiMeta.derivedFromClaims).toEqual(["c1", "c2"]);
+    expect(JSON.stringify(after.pages)).toBe(JSON.stringify(before.pages));
+    expect(after.title).toBe(before.title);
+    const acts = after.documentProvenance.activities;
+    expect(acts[acts.length - 1].type).toBe("wiki_reinforce");
+    expect(acts[acts.length - 1].used).toEqual(["c2"]);
+    expect(atomIds()).toEqual(["atom-r"]);
+
+    const undone = await undoOperation(opIds(reply), ctx, root);
+    expect(undone).toContain("取り消しました");
+    expect(wikiDoc("atom-r").wikiMeta.derivedFromClaims).toEqual(["c1"]);
+  });
+
+  it("答えが空配列なら足さない（答えのなかった審査と足さなかった知見を返事に出す）", async () => {
+    const { reviewTaskId } = await toReinforceReview();
+    const reply = await submitInsightReview({ taskId: reviewTaskId, output: JSON.stringify({ reinforce: [] }) }, ctx, root);
+    expect(reply).toContain("答えのなかった審査");
+    expect(reply).toContain("審査で足さなかった補強の知見: 1 件");
+    expect(wikiDoc("atom-r").wikiMeta.derivedFromClaims).toEqual(["c1"]);
+  });
+
+  it("審査のあとに既存の洞察の本文が変わっていたら足さない", async () => {
+    const { reviewTaskId } = await toReinforceReview();
+    const doc = wikiDoc("atom-r");
+    doc.pages[0].blocks = [para("b1", "あとから書き換えられた本文。")];
+    writeJson(p("wiki", "atom-r.json"), doc);
+    const reply = await submitInsightReview(
+      { taskId: reviewTaskId, output: JSON.stringify({ reinforce: verdict({ index: 1, coherentClaimIds: ["c2"] }) }) },
+      ctx,
+      root,
+    );
+    expect(reply).toContain("審査で足さなかった補強の知見: 1 件");
+    expect(wikiDoc("atom-r").wikiMeta.derivedFromClaims).toEqual(["c1"]);
+  });
+
+  it("足す知見の epistemicStatus が洞察より低ければ洞察も下がる（c2 は speculation）", async () => {
+    const doc = wikiDoc("atom-r");
+    doc.wikiMeta.epistemicStatus = "observation";
+    writeJson(p("wiki", "atom-r.json"), doc);
+    const { reviewTaskId } = await toReinforceReview();
+    await submitInsightReview(
+      { taskId: reviewTaskId, output: JSON.stringify({ reinforce: verdict({ index: 1, coherentClaimIds: ["c2"] }) }) },
+      ctx,
+      root,
+    );
+    expect(wikiDoc("atom-r").wikiMeta.epistemicStatus).toBe("speculation");
   });
 });

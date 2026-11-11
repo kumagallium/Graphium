@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyFoldVerdicts,
+  applyReinforceVerdicts,
+  buildReinforceJudgeMessage,
+  parseAtomizeReinforcements,
+  planReinforceJudge,
   applyReliftRewrites,
   applyTransferVerdicts,
   buildAtomizePrompt,
@@ -99,5 +103,104 @@ describe("transfer / fold / relift の計画と適用", () => {
     expect(out[1].title).toBe("Sr3Al2Ge2 の性質");
     // title か body が空の答えは差し替えない
     expect(applyReliftRewrites(atoms, hinted, [{ index: 1, title: "", body: "x" }])[0].title).toBe("ふつうの題");
+  });
+});
+
+describe("buildAtomizePrompt — 既存の洞察の 2 つの形", () => {
+  it("題だけなら従来の一覧、{id,title} なら ref つきの一覧", () => {
+    expect(buildAtomizePrompt(concepts, ["既存の題"], "ja").userMessage).toContain("- 既存の題");
+    const withRef = buildAtomizePrompt(concepts, [{ id: "x1", title: "既存の題" }], "ja");
+    expect(withRef.userMessage).toContain("- [a1] 既存の題");
+    expect(withRef.systemPrompt).toContain("reinforcements");
+  });
+});
+
+describe("parseAtomizeReinforcements / planReinforceJudge / applyReinforceVerdicts — 補強", () => {
+  const existing = [
+    { id: "x1", title: "洞察1" },
+    { id: "x2", title: "洞察2" },
+  ];
+  const text = JSON.stringify({
+    atoms: [],
+    reinforcements: [
+      { atomRef: "a1", sourceConceptIds: ["c1", "c2"] },
+      { atomRef: "a2", sourceConceptIds: ["c3", "nope"] },
+    ],
+  });
+  const load = (id: string) => ({ id, title: `題-${id}`, shape: "s", body: `本文-${id}` });
+
+  it("配った束の知見 id だけを通して申し出を読む", () => {
+    expect(parseAtomizeReinforcements(text, concepts, existing)).toEqual([
+      { atomId: "x1", claimIds: ["c1", "c2"] },
+      { atomId: "x2", claimIds: ["c3"] },
+    ]);
+  });
+
+  it("読めない洞察（null）・束に無い知見だけの申し出は審査に出さない", () => {
+    const plan = planReinforceJudge(
+      [
+        { atomId: "x1", claimIds: ["c1", "ghost"] },
+        { atomId: "gone", claimIds: ["c2"] },
+        { atomId: "x2", claimIds: ["ghost"] },
+      ],
+      (id) => (id === "gone" ? null : load(id)),
+      concepts,
+    );
+    expect(plan.targets).toEqual([{ atomId: "x1", claimIds: ["c1"] }]);
+    expect(plan.items).toHaveLength(1);
+    expect(plan.items[0]).toMatchObject({ title: "題-x1", shape: "s", body: "本文-x1" });
+    expect(plan.items[0].claims).toEqual([{ id: "c1", title: "知見1", preview: "本文1" }]);
+  });
+
+  it("buildReinforceJudgeMessage は審査の本文を組む", () => {
+    const plan = planReinforceJudge([{ atomId: "x1", claimIds: ["c1"] }], load, concepts);
+    const msg = buildReinforceJudgeMessage(plan);
+    expect(msg).toContain('[1] existing Atom: "題-x1"');
+    expect(msg).toContain("(id: c1)");
+  });
+
+  const plan2 = () =>
+    planReinforceJudge(
+      [
+        { atomId: "x1", claimIds: ["c1", "c2"] },
+        { atomId: "x2", claimIds: ["c3"] },
+      ],
+      load,
+      concepts,
+    );
+
+  it("審査が確かめた id のうち、出した id の部分集合だけ残す（出していない id は無視）", () => {
+    const r = applyReinforceVerdicts(plan2(), [
+      { index: 1, coherentClaimIds: ["c2", "other"], reason: "" },
+      { index: 2, coherentClaimIds: ["c3"], reason: "" },
+    ]);
+    expect(r).toEqual([
+      { atomId: "x1", claimIds: ["c2"] },
+      { atomId: "x2", claimIds: ["c3"] },
+    ]);
+  });
+
+  it("答えが無い申し出・空の答え・verdicts が null は捨てる（fail-closed。先頭 1 件への縮退はしない）", () => {
+    expect(applyReinforceVerdicts(plan2(), null)).toEqual([]);
+    expect(applyReinforceVerdicts(plan2(), [{ index: 2, coherentClaimIds: ["c3"], reason: "" }])).toEqual([
+      { atomId: "x2", claimIds: ["c3"] },
+    ]);
+    expect(applyReinforceVerdicts(plan2(), [{ index: 1, coherentClaimIds: [], reason: "" }])).toEqual([]);
+  });
+
+  it("確認 0 件（targets が空）は空", () => {
+    const empty = planReinforceJudge([], load, concepts);
+    expect(applyReinforceVerdicts(empty, [{ index: 1, coherentClaimIds: ["c1"], reason: "" }])).toEqual([]);
+  });
+
+  it("index が合わないときは位置で対応する", () => {
+    const r = applyReinforceVerdicts(plan2(), [
+      { index: 0, coherentClaimIds: ["c1"], reason: "" },
+      { index: 0, coherentClaimIds: ["c3"], reason: "" },
+    ]);
+    expect(r).toEqual([
+      { atomId: "x1", claimIds: ["c1"] },
+      { atomId: "x2", claimIds: ["c3"] },
+    ]);
   });
 });

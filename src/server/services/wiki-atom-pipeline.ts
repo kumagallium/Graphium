@@ -9,19 +9,25 @@
 //   fold     … 答えが無い → そのまま（fail-open）
 //   relift   … 答えが無い → 元の文
 //   重複     … 答えが無い → 別（新規）
+//   補強     … 答えが無い → 足さない（fail-closed。既存の洞察に確かめていない支持を書かない）
 
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   buildFoldJudgeUserMessage,
+  buildReinforceJudgeUserMessage,
   buildReliftUserMessage,
   buildTransferJudgeUserMessage,
   detectRung1Tokens,
   parseAtomizerOutput,
+  parseAtomizerReinforcements,
   resolveFoldVerdict,
   type AtomCandidate,
+  type AtomReinforcementProposal,
+  type ExistingAtomRef,
   type FoldJudgeInput,
   type FoldJudgeResult,
+  type ReinforceJudgeInput,
   type ReliftInput,
   type ReliftResult,
   type TransferJudgeInput,
@@ -33,15 +39,19 @@ import type { ClaimSnapshot } from "./wiki-types.js";
 
 export type AtomizePrompt = { systemPrompt: string; userMessage: string };
 
-/** atomizer のシステムプロンプトとユーザーメッセージを組む（/atomize ルートと MCP 共通） */
+/**
+ * atomizer のシステムプロンプトとユーザーメッセージを組む（/atomize ルートと MCP 共通）。
+ * existingAtoms を { id, title } で渡すと、既存の洞察を ref つきで載せ、同じ規則の知見を
+ * 補強として名指しで返せるようにする（parseAtomizeReinforcements で読む）。題だけなら重複回避の一覧になる
+ */
 export function buildAtomizePrompt(
   concepts: ClaimSnapshot[],
-  existingAtomTitles: string[],
+  existingAtoms: readonly string[] | readonly ExistingAtomRef[],
   language: string,
 ): AtomizePrompt {
   return {
     systemPrompt: buildAtomizerSystemPrompt(language || "en"),
-    userMessage: buildAtomizerUserMessage(concepts, existingAtomTitles),
+    userMessage: buildAtomizerUserMessage(concepts, existingAtoms),
   };
 }
 
@@ -164,6 +174,83 @@ export function applyFoldVerdicts(
       derivedFromConceptTitles: titles,
       foldDroppedClaims: dropped > 0 ? dropped : undefined,
     };
+  });
+  return out;
+}
+
+// ── 補強（既存の洞察と同じ規則を言う知見を、既存の洞察に足す）────────────
+
+/**
+ * atomizer の出力から補強の申し出を読む。配った知見の id と、プロンプトに載せた既存の洞察だけを通す。
+ * まだ審査していない — planReinforceJudge / applyReinforceVerdicts を通してから保存に使うこと
+ */
+export function parseAtomizeReinforcements(
+  text: string,
+  concepts: ClaimSnapshot[],
+  existingAtoms: readonly ExistingAtomRef[],
+): AtomReinforcementProposal[] {
+  return parseAtomizerReinforcements(text, new Set(concepts.map((c) => c.id)), existingAtoms);
+}
+
+/** 補強の審査に要る、既存の洞察の中身（呼び出し側が読んで渡す） */
+export type ReinforceTargetAtom = { id: string; title: string; shape?: string; body: string };
+
+export type ReinforceJudgePlan = {
+  /** 審査に出す申し出（並びがジャッジの index に対応。1 始まり） */
+  targets: AtomReinforcementProposal[];
+  items: ReinforceJudgeInput[];
+};
+
+/**
+ * 補強の審査の入力を組む。中身を読めなかった既存の洞察への申し出は審査に出さない（＝足さない）。
+ * すでにその洞察が依拠している知見は、呼び出し側（reinforceAtomWithClaims）が重ねて足さない
+ */
+export function planReinforceJudge(
+  proposals: AtomReinforcementProposal[],
+  loadAtom: (atomId: string) => ReinforceTargetAtom | null | undefined,
+  concepts: ClaimSnapshot[],
+): ReinforceJudgePlan {
+  const idToSnapshot = new Map<string, ClaimSnapshot>(concepts.map((c) => [c.id, c]));
+  const targets: AtomReinforcementProposal[] = [];
+  const items: ReinforceJudgeInput[] = [];
+  for (const p of proposals) {
+    const atom = loadAtom(p.atomId);
+    const claimIds = p.claimIds.filter((id) => idToSnapshot.has(id));
+    if (!atom || claimIds.length === 0) continue;
+    targets.push({ atomId: p.atomId, claimIds });
+    items.push({
+      title: atom.title,
+      shape: atom.shape,
+      body: atom.body,
+      claims: claimIds.map((id) => {
+        const snap = idToSnapshot.get(id)!;
+        return { id, title: snap.title, preview: snap.bodyPreview ?? "" };
+      }),
+    });
+  }
+  return { targets, items };
+}
+
+export function buildReinforceJudgeMessage(plan: ReinforceJudgePlan): string {
+  return buildReinforceJudgeUserMessage(plan.items);
+}
+
+/**
+ * 補強の審査の答えを反映する。審査が「その洞察の規則の事例だ」と確かめた知見だけを残す。
+ * 答えが無い・読めない申し出は捨てる（fail-closed）。fold と違い「最有力の 1 件に縮める」もしない
+ * — 既存の洞察に足すのは、確かめられた知見だけ
+ */
+export function applyReinforceVerdicts(
+  plan: ReinforceJudgePlan,
+  verdicts: FoldJudgeResult[] | null,
+): AtomReinforcementProposal[] {
+  if (plan.targets.length === 0 || verdicts === null) return [];
+  const out: AtomReinforcementProposal[] = [];
+  plan.targets.forEach((t, k) => {
+    const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
+    if (!v) return;
+    const confirmed = t.claimIds.filter((id) => v.coherentClaimIds.includes(id));
+    if (confirmed.length > 0) out.push({ atomId: t.atomId, claimIds: confirmed });
   });
   return out;
 }
