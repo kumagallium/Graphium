@@ -82,7 +82,9 @@ I ran the current instruction (the second version plus one sentence that asks to
 - **The one empty output of gpt-oss-120b was broken JSON.** Even with the mechanical repair in place, some breakage cannot be rescued.
 - **gemma-4-31B-it writes readable claims, but stretches them.** It passed "readable alone" on 19 outputs, more than gpt-5.6-luna (14), with "not a copy" at 19 against 20 and "faithful" at 17 against 20. But 37% of its claims wrote a single trial as a general rule, and only 6 outputs passed "scope". It also produced fewer claims (3.7 per note on average).
 - **Kimi-K2.7-Code was about level with gpt-oss-120b.** In addition, 2 of its 20 notes did not return within 10 minutes and are counted as failures.
-- **Outputs that passed every criterion: 12 for gpt-5.6-luna, and 1 or 2 for each of the other three.**
+- **Outputs that passed every criterion: 12 for gpt-5.6-luna, and 1 or 2 for each of the other three.** The size of this gap depends heavily on the "scope" criterion. Counted again without "scope": 13 for gpt-5.6-luna, 12 for gemma-4-31B-it, 5 for gpt-oss-120b, 5 for Kimi-K2.7-Code.
+- **"Scope" is a criterion that is strict about wording.** Writing one trial as "frying for 65 minutes brings out sweetness" fails; "after frying for 65 minutes the sweetness remained" passes. I have not measured how much this difference in wording matters to a reader or to later steps (insights, retrieval). The gap between gemma-4-31B-it and gpt-5.6-luna is almost entirely this one criterion.
+- **Some differences do not depend on that criterion.** Statements not in the note were more frequent with gpt-oss-120b and Kimi-K2.7-Code (0.10 and 0.14 per claim, against 0.00 for gpt-5.6-luna), and they passed "faithful" on 9 and 11 outputs.
 
 ## What I decided
 
