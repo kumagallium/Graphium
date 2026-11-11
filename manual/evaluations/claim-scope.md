@@ -60,6 +60,30 @@ What I read from it.
 - **"Not readable alone" did not improve** (12% to 13% with gpt-5.6-luna). Phrasing such as "in this prototype" or "this time" in the second version was judged to lean on the note in some cases.
 - At the start I had assumed gpt-oss-120b packs everything into one claim, but that was a hasty conclusion from a single trial. Over three old-condition runs the average was around 6 claims per note, and packed-together claims were 6%.
 
+## Follow-up measurement (2026-11-12): the added sentence, and two more models
+
+I ran the current instruction (the second version plus one sentence that asks to name the situation) on the same 20 notes with four models. gpt-5.6-luna and gpt-oss-120b were run again as the baseline, and Kimi-K2.7-Code and gemma-4-31B-it were added. Each model ran once, graded the same way. A separate grader re-graded 10 outputs of the second version, and the pass/fail calls agreed on 67 of 70.
+
+| Current instruction / model | Empty or failed | Faithful | Scope | Readable alone | One claim each | Not a copy | Point | States kept apart | All criteria |
+|---|---|---|---|---|---|---|---|---|---|
+| gpt-5.6-luna | 0 | 20 | 19 | 14 | 18 | 20 | 19 | 20 | 12 |
+| gpt-oss-120b | 1 | 9 | 5 | 13 | 17 | 11 | 17 | 16 | 2 |
+| Kimi-K2.7-Code | 2 | 11 | 7 | 13 | 15 | 12 | 18 | 14 | 1 |
+| gemma-4-31B-it | 0 | 17 | 6 | 19 | 17 | 19 | 19 | 19 | 1 |
+
+| Current instruction / model | Claims in total | Statements not in the note (per claim) | Stretched beyond the note | Not readable alone | Packed together | Copies |
+|---|---|---|---|---|---|---|
+| gpt-5.6-luna | 106 | 0.00 | 1% | 8% | 3% | 0% |
+| gpt-oss-120b | 125 | 0.10 | 21% | 9% | 2% | 17% |
+| Kimi-K2.7-Code | 105 | 0.14 | 19% | 10% | 4% | 10% |
+| gemma-4-31B-it | 73 | 0.05 | 37% | 1% | 4% | 1% |
+
+- **The added sentence helped a little with gpt-5.6-luna.** "Not readable alone" went from 13% of claims to 8%, and the passing outputs from 13 to 14. With gpt-5.6-luna no criterion got worse. With gpt-oss-120b the rate stayed the same (8% to 9%), and the passing outputs fell on "scope" (8 to 5) and "not a copy" (14 to 11). With one run each, I cannot tell this apart from run-to-run variation.
+- **The one empty output of gpt-oss-120b was broken JSON.** Even with the mechanical repair in place, some breakage cannot be rescued.
+- **gemma-4-31B-it writes readable claims, but stretches them.** It passed "readable alone" on 19 outputs, more than gpt-5.6-luna (14), with "not a copy" at 19 against 20 and "faithful" at 17 against 20. But 37% of its claims wrote a single trial as a general rule, and only 6 outputs passed "scope". It also produced fewer claims (3.7 per note on average).
+- **Kimi-K2.7-Code was about level with gpt-oss-120b.** In addition, 2 of its 20 notes did not return within 10 minutes and are counted as failures.
+- **Outputs that passed every criterion: 12 for gpt-5.6-luna, and 1 or 2 for each of the other three.**
+
 ## What I decided
 
 - **Claims go as far as splitting them apart and making them readable without the note.** Generalizing across situations is the job of insights.
@@ -70,7 +94,7 @@ What I read from it.
 ## Fixed afterwards
 
 - **Broken JSON in the AI's reply.** When one place in the reply broke, every claim for that note was thrown away. The empty results from gpt-oss-120b came from this. It now tries a mechanical repair. In the second run of the second version, it rescued 1 and failed to rescue 2.
-- **Phrasing like "in this prototype".** Since it was judged to lean on the note, I added one sentence to the instruction that names the situation. **I have not measured this.**
+- **Phrasing like "in this prototype".** Since it was judged to lean on the note, I added one sentence to the instruction that names the situation. I measured it the next day, and it helped a little with gpt-5.6-luna ([follow-up measurement](#follow-up-measurement-2026-11-12-the-added-sentence-and-two-more-models)).
 
 ## Limits
 
@@ -79,4 +103,5 @@ What I read from it.
 - One line of graders. The packets for the second version were graded in a separate round (by a separate agent) from the old and first-version packets. Agreement on the 10 re-graded outputs was low for "not a copy" (7 of 10), so the copy rates are a rough guide.
 - The old-condition gpt-5.6-luna outputs came from another measurement taken at a different time (same server-side code, same input).
 - Memos (scribbled notes) and ingesting outside sources were not measured. The scope rule is not applied to memos.
-- The one sentence added after the measurement (naming the situation) has not been measured.
+- The follow-up ran once per model. It was run in a separate round from the second version and graded by separate graders. The gap between 12 and 10 passing outputs supports no more than "the same or slightly better".
+- I did not separate whether the 2 timeouts of Kimi-K2.7-Code came from a busy service or from a slow model.
