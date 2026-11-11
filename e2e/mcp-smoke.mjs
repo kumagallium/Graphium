@@ -422,11 +422,16 @@ try {
   );
   check("プレビュー画面が外のサイトを読み込まない", !/<(script|link|img)[^>]+(src|href)=["']https?:/i.test(uiHtml));
   const shown = await client.callTool({ name: "show_note", arguments: { noteId: NOTE_A } });
-  const shownPreview = shown.structuredContent?.preview;
+  const shownPreview = shown._meta?.["graphium/preview"];
   check(
     "show_note が本文の要約とプレビューのデータを返す",
     (shown.content?.[0]?.text ?? "").includes(NOTE_A) && shownPreview?.noteId === NOTE_A && shownPreview.blocks.some((b) => b.kind === "step"),
     JSON.stringify(shown).slice(0, 300),
+  );
+  check(
+    "show_note はプレビューを structuredContent に入れない（画面を描かないクライアントがモデルへ渡すため）",
+    shown.structuredContent === undefined,
+    JSON.stringify(shown.structuredContent ?? null).slice(0, 200),
   );
   const shownMissing = await call("show_note", { noteId: "no-such-note" });
   check("show_note が存在しない id でノートが無い旨を返す", shownMissing.includes("見つかりません"), shownMissing);
@@ -504,9 +509,10 @@ try {
   });
   check(
     "create_note がプレビューのデータを添える",
-    createdRaw.structuredContent?.preview?.title === "プレビュー付きで作ったノート" &&
-      createdRaw.structuredContent.preview.blocks.some((b) => b.kind === "heading"),
-    JSON.stringify(createdRaw.structuredContent ?? null).slice(0, 300),
+    createdRaw._meta?.["graphium/preview"]?.title === "プレビュー付きで作ったノート" &&
+      createdRaw._meta["graphium/preview"].blocks.some((b) => b.kind === "heading") &&
+      createdRaw.structuredContent === undefined,
+    JSON.stringify(createdRaw._meta ?? null).slice(0, 300),
   );
 
   const after = readdirSync(join(root, "notes"));

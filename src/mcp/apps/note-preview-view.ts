@@ -1,7 +1,8 @@
 // 会話の中に描くノートプレビューの画面（MCP Apps の View）。
 //
 // Claude Desktop などのホストが iframe に読み込み、postMessage でホストとやり取りする。
-// 道具の結果の structuredContent.preview（note-preview.ts の NotePreview）を受け取って描く。
+// 道具の結果の _meta["graphium/preview"]（note-preview.ts の NotePreview）を受け取って描く。
+// v0.129.0 のサーバーは structuredContent.preview に入れていたので、そちらも読む。
 // 画像は結果の _meta["graphium/previewImages"]（blockId → data URL）で別に届く。
 //
 // 見た目はアプリのノートに寄せる（紙と墨の色・Inter・本文 16px / 行間 1.7・見出しの大きさ）。
@@ -328,7 +329,9 @@ let current: NotePreview | null = null;
 
 // 結果の通知は connect の直後に来ることがあるので、connect より先に受け口を付ける
 app.ontoolresult = (result) => {
-  const preview = (result.structuredContent as { preview?: unknown } | undefined)?.preview;
+  const preview =
+    (result._meta as Record<string, unknown> | undefined)?.["graphium/preview"] ??
+    (result.structuredContent as { preview?: unknown } | undefined)?.preview;
   if (isPreview(preview)) {
     current = preview;
     images = imagesOf(result._meta);
