@@ -77,7 +77,7 @@ A target topic that arrives is nearly always cited. Counted by section, 50 to 70
 - **The search and citation rules stay as they are.** No per-type quota, and no priority for topics. With the current rules, the type that fits the question already ranks at the top.
 - **To have a topic cited, ask by the topic's name.** When the question had the words of a topic's title in it, that topic arrived whatever the form. Asking with a sentence that states one fact brings the claims close to that sentence. [AI chat & ask](/ai-chat-and-ask) now links to this record.
 - **Stopping at a long section gets fixed.** See "Fixed afterwards" below.
-- **The References section and the size of the title list are handled separately.** Just dropping References sections from the search results did not bring the body of the target topic in more questions, and in the questions where that section was the only match, the topic's title stopped arriving. A fix would start from how the index is built.
+- **The References section and the size of the title list were measured again separately.** Just dropping References sections from the search results did not bring the body of the target topic in more questions, and in the questions where that section was the only match, the topic's title stopped arriving. The follow-up is in "The two items left open, measured again" below.
 
 ## Fixed afterwards
 
@@ -91,6 +91,41 @@ A section that does not fit is now cut at 700 characters and tried again, and if
 | Sections that arrived before the fix and no longer arrive | — | 0 of 1,596 |
 
 This table counts by matching titles, so "Before" for A is one question higher than in the table above (36, counted by ID). 46 sections were cut across the 240 questions. The rest of a cut section does not arrive. When you need it, let the AI read the whole page with "research before answering", or cite the page with `@`. The citation step was not measured again with the fixed code.
+
+## The two items left open, measured again
+
+On 2026-11-11 I measured the two open items again with the same 240 questions. The search rules and the list itself stay as they are. Only the way the list is sent changed.
+
+**The References section.** Today 123 References sections arrive over the 240 questions. I repacked with two other ways of handling them.
+
+| | Today | Drop it when the same topic's body is among the candidates | Drop it, or swap it for the body |
+|---|---|---|---|
+| Questions where the body of the target topic arrived (120 questions in A, B and F) | 111 | 111 | 113 |
+| Sections that newly arrive | — | 92 | 92 |
+| Body sections that arrive today and would stop arriving | — | 44 | 47 |
+| Pages whose title would stop arriving altogether | — | 46 | 50 |
+| Passages per question (A) | 6.7 | 6.0 | 6.0 |
+
+A short References section gets replaced by a long body, so fewer passages fit and other sections are pushed out. The passages are reshuffled, and the target body barely arrives more often. The handling of this section stays as it is.
+
+**The title list.** Of the roughly 89,000 characters in the list, claim titles take 74,000 (1,885 claims). The rest is topics at 9,000 (442), insights at 6,000 (183) and source summaries (14). Going back over the 32 Opus 5 questions, 57 pages were cited from the list by title alone (in 13 questions, 55 of them claims). That is the "59 claims" above with repeats inside one answer removed. Another 9 citations named a title that is not in the library. Of those 57, only 8 were in the top 20 sections of the semantic search, and 37 even when widened to the top 200. Opus 5 was finding claims in the list that search had not picked up. `gpt-oss-120b` did that twice, both in 1 of its 80 questions. I did not measure how answers change with a shorter list, but most of the pages Opus 5 cited from the list were not among the search candidates, so I expect those citations to drop. The list is not shrunk.
+
+**How the list is sent.** For Claude models, the part that does not change (the instructions through the title list) and the passages that change with each question were sent as one block. When the question changed, the whole block became different, so a request almost always wrote to the cache without reading from it (31 of the 32 questions above: about 84,000 tokens written, 0 read. The remaining one got the same passages as the question before it, and the whole prompt was read). The block is now split in two right after the title list. Not one character of the text sent has changed. With the fixed code I sent four different questions in a row to Opus 5.
+
+| Question | Input tokens | Of which read from cache | Of which written to cache |
+|---|---|---|---|
+| 1st | 83,234 | 0 | 83,213 |
+| 2nd | 83,241 | 83,213 | 0 |
+| 3rd | 84,902 | 80,204 | 4,649 |
+| 4th | 84,889 | 80,204 | 4,645 |
+
+The 2nd question happened to get the same passages as the 1st, so the whole prompt was read (this also happens without the fix). In the 3rd and 4th, everything through the title list (80,204 tokens) was read and only the per-question part was written. Counting a read at 0.1 times the normal price and a write at 1.25 times, the input cost of the 3rd and 4th questions is about 13% of what it was before. The 1st question costs the same as before.
+
+- The cache expires after 5 minutes. A question asked more than 5 minutes after the previous one costs the same as before. When knowledge pages are added, removed or updated the list changes, and the next question is a write. A question that brings in a legacy Idea page is also a write, because one line of explanation is added (no Idea page was in the contexts used here).
+- The four questions were measured by sending prepared contexts straight to the API. Questions asked from the app screen were not measured.
+- Only the way prompts are sent to Claude models changed. How prompts are sent to other models is unchanged (`gpt-oss-120b` read 0 over its 80 questions before the fix).
+- The size of the list itself has not changed. More pages mean more input. For a model with a small context, the list will eventually stop fitting, and that is still open.
+- That answers do not change was checked by the text sent being identical (a test). I did not run a measurement comparing answers.
 
 ## Limits
 

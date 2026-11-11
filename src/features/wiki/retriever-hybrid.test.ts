@@ -179,6 +179,23 @@ describe("formatRetrievedContext", () => {
     expect(out).toContain('[#2 | Claim | "三"]');
   });
 
+  it("選ばれた断片が違っても、題の一覧の終わりまでは同じ文面になる（プロンプトキャッシュの読み出しはここが変わらないことに頼る）", () => {
+    setWikiTitleMap(wikiTitles);
+    const index = "## Wiki Index (2 pages)\n\n- **デシケーター運用**\n- **焼結条件**\n";
+    const one = formatRetrievedContext([{ kind: "wiki", sourceId: "w1", chunkId: "lead", title: "", text: "乾燥剤は 2 週間で交換", score: 1 }], [], index);
+    const other = formatRetrievedContext(
+      [{ kind: "wiki", sourceId: "w2", chunkId: "s1", title: "", text: "SPS 800℃", score: 1 }],
+      [{ kind: "note", sourceId: "n1", chunkId: "b1", title: "試薬 X の保管", text: "湿度 60% 以上で劣化", score: 5 }],
+      index,
+    );
+    const stable = (out: string) => out.slice(0, out.indexOf("</wiki-index>") + "</wiki-index>".length);
+    expect(one).not.toBe(other);
+    expect(stable(one)).toContain(index);
+    expect(stable(one)).toBe(stable(other));
+    // 断片は必ず一覧より後ろに出る
+    expect(one.indexOf("<knowledge>")).toBeGreaterThan(one.indexOf("</wiki-index>"));
+  });
+
   it("何も無ければ null 相当を返す", () => {
     setWikiTitleMap(new Map());
     expect(formatRetrievedContext([], [], undefined)).toBeNull();
