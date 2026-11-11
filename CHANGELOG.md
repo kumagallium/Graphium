@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.9](https://github.com/kumagallium/Graphium/compare/v0.129.8...v0.129.9) - 2026-11-11
+
+- [fix] Let the knowledge title list be read from the prompt cache across chat questions by @kumagallium in https://github.com/kumagallium/Graphium/pull/1633
+
 ## [v0.129.8](https://github.com/kumagallium/Graphium/compare/v0.129.7...v0.129.8) - 2026-11-10
 
 - Let chat use its own model, picked under Settings > AI > Chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/1630
