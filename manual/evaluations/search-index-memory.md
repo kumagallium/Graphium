@@ -2,7 +2,7 @@
 
 **Question.** On a vault with about 2,700 knowledge pages and 627 PDFs, the process that draws the window (the web view) was using about 5 GB some twenty minutes after the desktop app started. What was holding it, and can it be reduced?
 
-**Short answer.** The strongest suspect was restoring the full-text index at startup. Restoring an index of the same size in the same JavaScript engine took the process from 0.6 GB to about 4 GB by itself, and the memory did not come back. The live index is about 0.5 GB; the rest is throwaway allocation made while restoring. With a storage format that avoids the throwaway work, the same replay sits at about 0.7 GB right after the restore and about 1.4 GB after 200 searches (about 4.6 GB before). Round-trip tests check that the index contents and search results come out the same as before. The real app has not been measured after the fix yet.
+**Short answer.** The strongest suspect was restoring the full-text index at startup. Restoring an index of the same size in the same JavaScript engine took the process from 0.6 GB to about 4 GB by itself, and the memory did not come back. The live index is about 0.5 GB; the rest is throwaway allocation made while restoring. With a storage format that avoids the throwaway work, the same replay sits at about 0.7 GB right after the restore and about 1.4 GB after 200 searches (about 4.6 GB before). Round-trip tests check that the index contents and search results come out the same as before. A build with the fix, started on the same vault, kept the web view at 1.0–2.6 GB from one minute after launch (5.0–5.6 GB before).
 
 ## How I measured it
 
@@ -13,6 +13,7 @@
 | Replay | The JavaScriptCore shell that ships with macOS (the same engine as the web view), running the app's own word breaker and the same index library. Input: 39,358 passages built read-only from the vault (1,296 from notes, 4,246 from knowledge pages, 33,816 from materials; PDF text taken with `pdftotext` as an approximation) |
 | Compared | Before: restore from the index library's own storage format. After: restore from a format packed into typed arrays. Both: restore → save three times → search 200 times |
 | Recorded | After each step, two garbage collections, a 10-second wait, then the process's memory |
+| Real app after the fix | A debug build of the fix branch, started twice on the same vault and the same browser storage. The first launch reads the old format and writes it back; the second restores from the packed format. Left running without being used; the second launch was read 26 times, 14 seconds apart. The storage was put back afterwards |
 
 ## Results
 
@@ -38,6 +39,16 @@ There was no single large buffer (the largest was 17 MB). This is many small obj
 
 The restore took 141 ms after the change (not timed before).
 
+**Real app after the fix.** Memory of the web view process.
+
+| | Before (v0.129.8) | After, first launch (rewrites) | After, second launch |
+|---|---|---|---|
+| From one minute after launch | 5.0–5.6 GB (from 22 minutes) | 5.0–6.4 GB (from 5 minutes) | 1.0–2.6 GB |
+| 16 KB blocks | 3.6 GB (220,394) | not measured | 1.5 GB (90,617) |
+| Recorded peak | 7.1 GB | 6.4 GB | 4.6 GB |
+
+On the second launch memory rose to 4.2 GB at 35 seconds and came down; from one minute on it moved between 1.0 and 2.6 GB (above 2 GB in 5 of the 26 readings). The rewrite on the first launch finished about five minutes after start, and the stored index went from 92.7 MB to 81.4 MB.
+
 **Other candidates.** Live size when held alone in the same shell.
 
 | Candidate | Live size |
@@ -54,13 +65,15 @@ The restore took 141 ms after the change (not timed before).
 
 ## What I decided
 
-- The full-text index is now stored in the packed format. A snapshot in the old format is read once the old way and written back, so PDF text is not extracted again. In exchange, the first launch after updating goes through the old restore (that one launch was not measured).
+- The full-text index is now stored in the packed format. A snapshot in the old format is read once the old way and written back, so PDF text is not extracted again. In exchange, the first launch after updating goes through the old restore (the first launch in the table above; it weighed the same as before).
 - The app reads every embedding each time it searches by meaning (the 87 MB in the table above) and rewrites the whole index whenever it changes. Neither was changed here.
 
 ## Limits
 
 - One machine, one vault, one run per condition.
-- The numbers after the fix come from the replay only. The real app reads from browser storage by structured clone and the replay reads from files, so the read step does not weigh the same.
+- The real app was not used the same way before and after. Before: about twenty minutes of ordinary use, chat and search included. After: six minutes left idle after launch. Memory after heavy use was not measured.
+- Even on the second launch memory passes 4 GB just after start. I take that to be startup work other than the index, but did not break it down.
+- The replay reads the stored form from files and the real app reads it from browser storage by structured clone, so the read step does not weigh the same.
 - The shell used for the replay returned almost no freed memory to the system. The table shows how far memory grew; the real app may come down from there.
 - The real app's index had 34,262 passages and the replay 39,358 (PDF text is extracted differently).
 - The 200 searches include broad queries that match thousands of passages each — heavier than everyday searching.
