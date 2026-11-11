@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.11](https://github.com/kumagallium/Graphium/compare/v0.129.10...v0.129.11) - 2026-11-11
+
+- [fix] Open topic citations in the standalone chat in the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/1636
+
 ## [v0.129.10](https://github.com/kumagallium/Graphium/compare/v0.129.9...v0.129.10) - 2026-11-11
 
 - [fix] Store the search index packed so restoring it no longer takes gigabytes by @kumagallium in https://github.com/kumagallium/Graphium/pull/1634
