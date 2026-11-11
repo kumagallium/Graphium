@@ -449,7 +449,7 @@ import {
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument, buildContradictingAtomDocument, linkExistingAtomConflict, reinforceAtomWithClaims, filterSelfFromDerivedFromClaims,
   // Discovery 共通: embedding ベース重複検出（候補探し）+ LLM 判定（同じ/矛盾/別物）
-  partitionCandidatesByEmbedding, resolveAtomDuplicates,
+  partitionCandidatesByEmbedding, resolveAtomDuplicates, judgeAtomReinforcements,
   // インライン引用リンク
   buildNoteIndex,
   // 操作ログ
@@ -506,6 +506,7 @@ import { toStandaloneChatScope } from "./features/standalone-chat/scope";
 import { collectFolderScopeIds, normalizeFolderScope } from "./features/note-context/folder-scope";
 import type { StandaloneChat, StandaloneChatSummary } from "./features/standalone-chat/types";
 import type { WikiKind } from "./lib/document-types";
+import { lowestEpistemicStatus } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, setMemoPickerCallback, CaptureDialog, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel, MEMO_TARGET_NONE, memoTargetToSources, resolveNoteViewContext, resolveQuickMemoTarget } from "./features/mobile-capture";
 import type { MemoTarget, NoteViewMemoContext } from "./features/mobile-capture";
 import { TemplateListView } from "./features/template/TemplateListView";
@@ -1748,7 +1749,9 @@ async function loadNoteDocByFullKey(
 async function applyAtomReinforcement(opts: {
   // note-app には sampling 用の同名 AtomCandidate（クラスタ候補）があるため、
   // wiki-service の Atom 候補は構造的型で受ける
-  duplicates: { candidate: { title: string; derivedFromClaims: string[] }; matchedDocId: string; score?: number }[];
+  duplicates: { candidate: { title: string; derivedFromClaims: string[]; epistemicStatus?: import("./lib/document-types").EpistemicStatus }; matchedDocId: string; score?: number }[];
+  /** 名指しの補強（atomizer が既存の洞察を名指しし、審査を通ったもの）か。ログの文面だけが変わる */
+  named?: boolean;
   loadDoc: (key: string) => Promise<GraphiumDocument | null>;
   saveWikiFile: (id: string, doc: GraphiumDocument, options?: { activityType?: import("./features/document-provenance/types").EditActivityType; sources?: string[] }) => Promise<boolean>;
 }): Promise<number> {
@@ -1774,7 +1777,9 @@ async function applyAtomReinforcement(opts: {
       wikiLog.append(
         "merge",
         [dup.matchedDocId],
-        `Reinforced "${existing.title}" with ${result.addedClaimIds.length} new claim(s) (folded duplicate "${dup.candidate.title}")`,
+        opts.named
+          ? `Reinforced "${existing.title}" with ${result.addedClaimIds.length} new claim(s) (same rule found in other claims)`
+          : `Reinforced "${existing.title}" with ${result.addedClaimIds.length} new claim(s) (folded duplicate "${dup.candidate.title}")`,
         // 監査用: embedding 一致のスコアを残す（偽陽性の事後調査に使う）
         dup.score !== undefined ? { matchScore: dup.score, candidateTitle: dup.candidate.title } : undefined,
       ).catch(() => {});
@@ -1798,11 +1803,20 @@ async function applyAtomReinforcement(opts: {
  * - different / embedding段階で kept → 新規作成
  * に振り分ける。3 箇所の discovery 呼び出し（自動 Atomize / Maintenance 手動 discovery）が
  * この関数を共通で使う。
+ *
+ * これとは別に、atomizer が既存の洞察を名指しした補強の申し出（opts.reinforcements）を先に処理する:
+ * 別の資料の知見が既存の洞察と同じ規則を言っているとき、新しい洞察を作らずに、その知見を
+ * 既存の洞察の derivedFromClaims に足す。候補の文面どうしの近さ（embedding）を入口にしないので、
+ * 言い回しが違っても届く。足す前に審査（judgeAtomReinforcements）を通し、確かめられた知見だけを足す。
  */
 async function applyAtomDiscoveryResults(opts: {
   // note-app には sampling 用の同名 AtomCandidate（クラスタ候補）があるため、
   // wiki-service の Atom 候補は構造的型で受ける（applyAtomReinforcement と同じ回避）
   atoms: import("./features/wiki/wiki-service").AtomCandidate[];
+  /** 既存の洞察への補強の申し出（atomizeConcepts の reinforcements。まだ審査していない） */
+  reinforcements?: import("./features/wiki/wiki-service").AtomReinforcementProposal[];
+  /** atomizer に渡した束（補強の審査に、知見の題とプレビューを出すため） */
+  concepts?: ClaimSnapshot[];
   existingAtomDocIds: Set<string>;
   language: string;
   /** 作る洞察に記録するモデル名（atomize が返したモデル ID）。記録専用で、重複判定の body.model には使わない */
@@ -1818,7 +1832,49 @@ async function applyAtomDiscoveryResults(opts: {
     doc: GraphiumDocument,
     options?: { activityType?: import("./features/document-provenance/types").EditActivityType; sources?: string[] },
   ) => Promise<boolean>;
-}): Promise<{ created: number; reinforced: number; contradictions: number; createdTitles: string[] }> {
+}): Promise<{ created: number; reinforced: number; contradictions: number; createdTitles: string[]; createdAtoms: { id: string; title: string }[] }> {
+  // 名指しの補強: 既存の洞察（ゴミ箱・アーカイブを除く）への申し出だけを、既存の洞察の中身と並べて審査する。
+  // すでにその洞察が依拠している知見は審査に出さない（足すものが無い）。
+  let reinforcedByName = 0;
+  const named = (opts.reinforcements ?? []).filter((p) => opts.existingAtomDocIds.has(p.atomId));
+  if (named.length > 0 && opts.concepts) {
+    const snapById = new Map(opts.concepts.map((c) => [c.id, c]));
+    const items: Parameters<typeof judgeAtomReinforcements>[0] = [];
+    for (const p of named) {
+      const doc = await opts.loadDoc(`wiki:${p.atomId}`);
+      if (!doc || doc.wikiMeta?.kind !== "atom") continue;
+      const known = new Set(doc.wikiMeta.derivedFromClaims ?? []);
+      const claims = p.claimIds
+        .filter((id) => !known.has(id) && snapById.has(id))
+        .map((id) => ({ id, title: snapById.get(id)!.title, preview: snapById.get(id)!.bodyPreview }));
+      if (claims.length === 0) continue;
+      items.push({ atomId: p.atomId, title: doc.title, shape: doc.wikiMeta.shape, body: extractBodyPreview(doc, 2000), claims });
+    }
+    // 審査のモデルは渡さない（重複の判定と同じ理由 — 設定の洞察モデルの表示名で送る）
+    const confirmed = await judgeAtomReinforcements(items, opts.language);
+    // 審査に出した洞察・知見の範囲に収める（返ってきた id をそのまま信じない）
+    const sent = new Map(items.map((it) => [it.atomId, new Set(it.claims.map((c) => c.id))]));
+    reinforcedByName = await applyAtomReinforcement({
+      duplicates: confirmed
+        .map((r) => {
+          const claimIds = r.claimIds.filter((id) => sent.get(r.atomId)?.has(id));
+          return {
+            candidate: {
+              title: "",
+              derivedFromClaims: claimIds,
+              // 足す知見の最低の確からしさ（無記入は interpretation 扱い — atomizer への説明と同じ）
+              epistemicStatus: lowestEpistemicStatus(claimIds.map((id) => snapById.get(id)?.epistemicStatus ?? "interpretation")),
+            },
+            matchedDocId: r.atomId,
+          };
+        })
+        .filter((d) => sent.has(d.matchedDocId) && d.candidate.derivedFromClaims.length > 0),
+      named: true,
+      loadDoc: opts.loadDoc,
+      saveWikiFile: opts.saveWikiFile,
+    });
+  }
+
   const { kept, duplicates } = await partitionCandidatesByEmbedding(opts.atoms, opts.existingAtomDocIds);
 
   // 判定のモデルは渡さない — judgeAtomDuplicates が atomize と同じ設定の洞察モデル（表示名）を送る。
@@ -1834,7 +1890,7 @@ async function applyAtomDiscoveryResults(opts: {
     opts.language,
   );
 
-  const reinforced = await applyAtomReinforcement({
+  const reinforced = reinforcedByName + await applyAtomReinforcement({
     duplicates: resolved.same,
     loadDoc: opts.loadDoc,
     saveWikiFile: opts.saveWikiFile,
@@ -1842,6 +1898,7 @@ async function applyAtomDiscoveryResults(opts: {
 
   let created = 0;
   const createdTitles: string[] = [];
+  const createdAtoms: { id: string; title: string }[] = [];
 
   // 新規（embedding 未ヒット + LLM が "different" と判定した候補）
   for (const candidate of [...kept, ...resolved.different]) {
@@ -1855,6 +1912,7 @@ async function applyAtomDiscoveryResults(opts: {
     ).catch(() => {});
     created += 1;
     createdTitles.push(candidate.title);
+    createdAtoms.push({ id: newId, title: candidate.title });
   }
 
   // 矛盾（contradiction）— 新しい Atom を別に作り、既存 Atom と双方向に conflictsWith を書く
@@ -1880,12 +1938,13 @@ async function applyAtomDiscoveryResults(opts: {
       created += 1;
       contradictions += 1;
       createdTitles.push(dup.candidate.title);
+      createdAtoms.push({ id: newId, title: dup.candidate.title });
     } catch {
       // 矛盾処理の失敗は無視（従来どおり候補が捨てられるだけで、既存動作は壊れない）
     }
   }
 
-  return { created, reinforced, contradictions, createdTitles };
+  return { created, reinforced, contradictions, createdTitles, createdAtoms };
 }
 
 /**
@@ -12868,9 +12927,10 @@ export function NoteApp() {
           }));
           const coveragePlan = planCoverageSeeds(claimCandidates, MAX_SNAPSHOTS_PER_RUN);
           const seeds = coveragePlan.seeds.slice(0, atomizeBudget);
-          const existingAtomTitles = [...fm.wikiMetas.entries()]
+          // 既存の洞察は id つきで渡す（同じ規則の知見を、既存の洞察への補強として名指しで返せるように）
+          const existingAtoms = [...fm.wikiMetas.entries()]
             .filter(([, m]) => m.kind === "atom")
-            .map(([, m]) => m.title);
+            .map(([id, m]) => ({ id, title: m.title }));
           let createdAtoms = 0;
           let reinforcedAtoms = 0;
           let contradictedAtoms = 0;
@@ -12897,7 +12957,7 @@ export function NoteApp() {
             const atomResult = await atomizeConcepts(
               slice,
               getGenerationLanguage(),
-              { existingAtomTitles, model: getPreciseModelName() || undefined, signal },
+              { existingAtoms, model: getPreciseModelName() || undefined, signal },
             );
             // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
             // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
@@ -12916,6 +12976,8 @@ export function NoteApp() {
             );
             const discoveryResult = await applyAtomDiscoveryResults({
               atoms: atomResult.atoms,
+              reinforcements: atomResult.reinforcements,
+              concepts: slice,
               existingAtomDocIds,
               language: getGenerationLanguage(),
               model: atomResult.model ?? null,
@@ -12927,7 +12989,7 @@ export function NoteApp() {
             createdAtoms += discoveryResult.created;
             reinforcedAtoms += discoveryResult.reinforced;
             contradictedAtoms += discoveryResult.contradictions;
-            existingAtomTitles.push(...discoveryResult.createdTitles);
+            existingAtoms.push(...discoveryResult.createdAtoms);
           }
           // 実測カバレッジ（このスキャンで視野に入った知見の和集合）を必ず添える。
           // 「新規 0 件」が『見た上で無かった』のか『まだ見ていない』のかを区別できるようにする。
@@ -15548,9 +15610,10 @@ export function NoteApp() {
     // カバレッジ 100% までのシード列（実測プラン）。
     const coveragePlan = planCoverageSeeds(claimCandidates, MAX_SNAPSHOTS_PER_RUN);
     const seeds = coveragePlan.seeds;
-    const existingAtomTitles = [...fm.wikiMetas.entries()]
+    // 既存の洞察は id つきで渡す（同じ規則の知見を、既存の洞察への補強として名指しで返せるように）
+    const existingAtoms = [...fm.wikiMetas.entries()]
       .filter(([, m]) => m.kind === "atom")
-      .map(([, m]) => m.title);
+      .map(([id, m]) => ({ id, title: m.title }));
 
     const atomLabel = tStatic("settings.maintenance.kind.atom");
     const claimLabel = tStatic("settings.maintenance.kind.claim");
@@ -15594,10 +15657,11 @@ export function NoteApp() {
         const result = await atomizeConcepts(
           slice,
           getGenerationLanguage(),
-          { existingAtomTitles, model: getPreciseModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
+          { existingAtoms, model: getPreciseModelName() || undefined, ...(options?.signal ? { signal: options.signal } : {}) },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
-        if (result.atoms.length === 0) continue;
+        // 新しい候補が無くても、既存の洞察への補強の申し出があれば処理する
+        if (result.atoms.length === 0 && (result.reinforcements?.length ?? 0) === 0) continue;
         // 既存 Atom との embedding 類似度で「新規」と「重複」に分割（embedding 未設定なら全て新規扱い）。
         // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
         // ゴミ箱/アーカイブ済み Atom は除外（不可視 Atom への吸収防止。自動経路と同じ理由）。
@@ -15613,6 +15677,8 @@ export function NoteApp() {
         );
         const discoveryResult = await applyAtomDiscoveryResults({
           atoms: result.atoms,
+          reinforcements: result.reinforcements,
+          concepts: slice,
           existingAtomDocIds,
           language: getGenerationLanguage(),
           model: result.model ?? null,
@@ -15625,7 +15691,7 @@ export function NoteApp() {
         totalReinforced += discoveryResult.reinforced;
         totalContradictions += discoveryResult.contradictions;
         // 次イテレーションの dedup に渡す
-        existingAtomTitles.push(...discoveryResult.createdTitles);
+        existingAtoms.push(...discoveryResult.createdAtoms);
       }
       const coveredFinal = coveragePlan.cumulativeCovered[lastIteration - 1] ?? 0;
       setIngestToast((prev) => ({

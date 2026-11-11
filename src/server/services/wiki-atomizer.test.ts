@@ -26,6 +26,11 @@ import {
   resolveFoldVerdict,
   buildAtomDuplicateJudgeUserMessage,
   parseAtomDuplicateJudgeOutput,
+  existingAtomRefOf,
+  parseAtomizerReinforcements,
+  buildAtomizerSystemPrompt,
+  buildReinforceJudgeSystemPrompt,
+  buildReinforceJudgeUserMessage,
 } from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
@@ -525,5 +530,128 @@ describe("parseAtomDuplicateJudgeOutput / buildAtomDuplicateJudgeUserMessage —
     expect(msg).toContain("existingId: e1");
     expect(msg).toContain("電気陰性度差が小さいと移動度が高い");
     expect(msg).toContain("電気陰性度差が大きいと移動度が高い");
+  });
+});
+
+describe("buildAtomizerUserMessage — 既存の洞察の載せ方（題だけ / ref つき）", () => {
+  const cs = [{ id: "c1", title: "生地を寝かせると伸びがよくなる", bodyPreview: "寝かせ時間が長いほど伸びる。", relatedClaims: [] }];
+
+  it("題だけ（string[]）なら従来の重複回避の一覧", () => {
+    const msg = buildAtomizerUserMessage(cs, ["寝かせると伸びる"]);
+    expect(msg).toContain("## Existing Atoms (do NOT duplicate these)\n- 寝かせると伸びる");
+    expect(msg).not.toContain("reinforcements");
+    expect(msg).not.toContain("[a1]");
+  });
+
+  it("{id,title}[] なら ref つきの一覧で、見出しに reinforcements の案内が出る", () => {
+    const msg = buildAtomizerUserMessage(cs, [
+      { id: "x-1", title: "寝かせると伸びる" },
+      { id: "x-2", title: "温度が高いと発酵が速い" },
+    ]);
+    expect(msg).toContain("## Existing Atoms (do NOT duplicate these");
+    expect(msg).toContain("`reinforcements`");
+    expect(msg).toContain("- [a1] 寝かせると伸びる");
+    expect(msg).toContain("- [a2] 温度が高いと発酵が速い");
+    // id そのものは載せない
+    expect(msg).not.toContain("x-1");
+  });
+
+  it("空配列なら一覧の節そのものが出ない", () => {
+    expect(buildAtomizerUserMessage(cs, [])).not.toContain("Existing Atoms");
+  });
+
+  it("existingAtomRefOf は a1 始まり", () => {
+    expect(existingAtomRefOf(0)).toBe("a1");
+    expect(existingAtomRefOf(11)).toBe("a12");
+  });
+
+  it("システムプロンプトに reinforcements の出力形式と節が入る", () => {
+    const sys = buildAtomizerSystemPrompt("ja");
+    expect(sys).toContain('"reinforcements"');
+    expect(sys).toContain("atomRef");
+    expect(sys).toContain("Existing Atoms: reinforce, don't duplicate and don't drop");
+  });
+});
+
+describe("parseAtomizerReinforcements — 補強の申し出を読む", () => {
+  const existing = [
+    { id: "atom-1", title: "寝かせると伸びる" },
+    { id: "atom-2", title: "温度が高いと発酵が速い" },
+  ];
+  const ids = new Set(["c1", "c2", "c3"]);
+  const out = (reinforcements: unknown) => JSON.stringify({ atoms: [], reinforcements });
+
+  it("ref を id に引き直し、申し出を返す", () => {
+    const r = parseAtomizerReinforcements(out([{ atomRef: "a2", sourceConceptIds: ["c1", "c3"] }]), ids, existing);
+    expect(r).toEqual([{ atomId: "atom-2", claimIds: ["c1", "c3"] }]);
+  });
+
+  it("知らない ref と、配っていない知見 id は落とす（有効な id が 0 なら申し出ごと無し）", () => {
+    const r = parseAtomizerReinforcements(
+      out([
+        { atomRef: "a9", sourceConceptIds: ["c1"] },
+        { atomRef: "a1", sourceConceptIds: ["zzz", "c2"] },
+        { atomRef: "a2", sourceConceptIds: ["zzz"] },
+      ]),
+      ids,
+      existing,
+    );
+    expect(r).toEqual([{ atomId: "atom-1", claimIds: ["c2"] }]);
+  });
+
+  it("[a2] のように角括弧つきでも読む", () => {
+    const r = parseAtomizerReinforcements(out([{ atomRef: "[a2]", sourceConceptIds: ["c1"] }]), ids, existing);
+    expect(r).toEqual([{ atomId: "atom-2", claimIds: ["c1"] }]);
+  });
+
+  it("同じ洞察への申し出は 1 件にまとめ、id を重複させない", () => {
+    const r = parseAtomizerReinforcements(
+      out([
+        { atomRef: "a1", sourceConceptIds: ["c1", "c2"] },
+        { atomRef: "a1", sourceConceptIds: ["c2", "c3"] },
+      ]),
+      ids,
+      existing,
+    );
+    expect(r).toEqual([{ atomId: "atom-1", claimIds: ["c1", "c2", "c3"] }]);
+  });
+
+  it("キーが無い・配列でない・壊れた JSON・existingAtoms が空なら [] （投げない）", () => {
+    expect(parseAtomizerReinforcements(JSON.stringify({ atoms: [] }), ids, existing)).toEqual([]);
+    expect(parseAtomizerReinforcements(JSON.stringify({ reinforcements: "x" }), ids, existing)).toEqual([]);
+    expect(parseAtomizerReinforcements("これは JSON ではない", ids, existing)).toEqual([]);
+    expect(parseAtomizerReinforcements(out([{ atomRef: "a1", sourceConceptIds: ["c1"] }]), ids, [])).toEqual([]);
+  });
+
+  it("要素が壊れていても他の申し出は読む", () => {
+    const r = parseAtomizerReinforcements(out([null, "x", { atomRef: 1 }, { atomRef: "a1", sourceConceptIds: ["c1"] }]), ids, existing);
+    expect(r).toEqual([{ atomId: "atom-1", claimIds: ["c1"] }]);
+  });
+
+  it("コードフェンスつきでも読む", () => {
+    const text = "```json\n" + out([{ atomRef: "a1", sourceConceptIds: ["c2"] }]) + "\n```";
+    expect(parseAtomizerReinforcements(text, ids, existing)).toEqual([{ atomId: "atom-1", claimIds: ["c2"] }]);
+  });
+});
+
+describe("buildReinforceJudgeSystemPrompt / buildReinforceJudgeUserMessage — 補強の審査の指示文", () => {
+  it("システムプロンプトは懐疑的な審査と返却の形を指示する", () => {
+    const sys = buildReinforceJudgeSystemPrompt("ja");
+    expect(sys).toContain("skeptical");
+    expect(sys).toContain("coherentClaimIds");
+    expect(sys).toContain("subset");
+  });
+
+  it("ユーザーメッセージに洞察の題・形・本文と、知見の id・題・要旨が並ぶ（index は 1 始まり）", () => {
+    const msg = buildReinforceJudgeUserMessage([
+      { title: "寝かせると伸びる", shape: "monotonic-increase", body: "寝かせるほど伸びる。", claims: [{ id: "c1", title: "冷蔵でも伸びる", preview: "低温でも同じ。" }] },
+      { title: "温度で速くなる", body: "高温ほど速い。", claims: [{ id: "c2", title: "夏は速い", preview: "" }] },
+    ]);
+    expect(msg).toContain('[1] existing Atom: "寝かせると伸びる" | shape: monotonic-increase');
+    expect(msg).toContain("body: 寝かせるほど伸びる。");
+    expect(msg).toContain('(id: c1) "冷蔵でも伸びる" — 低温でも同じ。');
+    expect(msg).toContain('[2] existing Atom: "温度で速くなる" | shape: (none)');
+    expect(msg).toContain('(id: c2) "夏は速い"');
+    expect(msg).not.toContain('"夏は速い" —');
   });
 });

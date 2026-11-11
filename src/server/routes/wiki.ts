@@ -47,17 +47,23 @@ import {
   buildAtomDuplicateJudgeUserMessage,
   parseAtomDuplicateJudgeOutput,
   type AtomDuplicateJudgePair,
+  buildReinforceJudgeSystemPrompt,
+  type ExistingAtomRef,
 } from "../services/wiki-atomizer.js";
 import {
   applyFoldVerdicts,
+  applyReinforceVerdicts,
   applyReliftRewrites,
   applyTransferVerdicts,
   buildAtomizePrompt,
   buildFoldJudgeMessage,
+  buildReinforceJudgeMessage,
   buildReliftMessage,
   buildTransferJudgeMessage,
   parseAtomizeOutput,
+  parseAtomizeReinforcements,
   planFoldJudge,
+  planReinforceJudge,
   planReliftAll,
   planReliftResidual,
   planTransferJudge,
@@ -1100,6 +1106,12 @@ app.post("/atomize", async (c) => {
   const body = await c.req.json<{
     concepts: ClaimSnapshot[];
     existingAtomTitles?: string[];
+    /**
+     * 既存の洞察（id と題）。渡すと、同じ規則の知見を既存の洞察への補強として名指しで返せる
+     * （応答の reinforcements。審査は /judge-atom-reinforcements）。題だけの existingAtomTitles は
+     * 重複を避けるための一覧として引き続き受ける（再生成など、補強を受け取らない呼び出し用）
+     */
+    existingAtoms?: ExistingAtomRef[];
     language: string;
     model?: string;
   }>();
@@ -1114,7 +1126,14 @@ app.post("/atomize", async (c) => {
 
   // プロンプトの組み立てと、各ジャッジの対象選び・答えの反映は wiki-atom-pipeline の純関数
   // （MCP の洞察ツールと共用。ルートと MCP でずれを生まないため）
-  const { systemPrompt, userMessage } = buildAtomizePrompt(body.concepts, body.existingAtomTitles ?? [], body.language || "en");
+  const existingAtoms: ExistingAtomRef[] = Array.isArray(body.existingAtoms)
+    ? body.existingAtoms.filter((a) => a && typeof a.id === "string" && typeof a.title === "string")
+    : [];
+  const { systemPrompt, userMessage } = buildAtomizePrompt(
+    body.concepts,
+    existingAtoms.length > 0 ? existingAtoms : (body.existingAtomTitles ?? []),
+    body.language || "en",
+  );
 
   try {
     const model = await createModel(modelConfig);
@@ -1130,6 +1149,9 @@ app.post("/atomize", async (c) => {
     });
     // 配った Concept の id・epistemicStatus・rebuttalConditions だけを parser に渡す（parseAtomizeOutput）
     let atoms = parseAtomizeOutput(result.message, body.concepts);
+    // 既存の洞察を名指しした補強の申し出（まだ審査していない）。呼び出し側が既存の洞察の中身を読み、
+    // /judge-atom-reinforcements の審査を通してから足す（既存の洞察の本文はここには届いていないため）
+    const reinforcements = parseAtomizeReinforcements(result.message, body.concepts, existingAtoms);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
 
@@ -1219,7 +1241,7 @@ app.post("/atomize", async (c) => {
       console.error("Wiki relift error:", err);
     }
 
-    return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
+    return c.json({ atoms, reinforcements, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     console.error("Wiki atomize error:", err);
     // degrade（200 + 空 atoms）だが code は添えておく（クライアントで i18n 変換される）
@@ -1268,6 +1290,67 @@ app.post("/judge-atom-duplicates", async (c) => {
     console.error("Wiki judge-atom-duplicates error:", err);
     // fail-closed（黙って統合しない側に倒す）: 呼び出し側が verdicts 欠落を "different" として扱う
     return c.json({ verdicts: [], ...errorBody(err) });
+  }
+});
+
+// 補強（既存の洞察と同じ規則を言う知見を、既存の洞察に足す）の審査。
+// /atomize が返した申し出（reinforcements）を、既存の洞察の題・形・本文と並べて懐疑的に選び直す。
+// 返すのは確かめられた知見だけ。審査が取れない申し出は返さない（fail-closed）。
+app.post("/judge-atom-reinforcements", async (c) => {
+  const body = await c.req.json<{
+    language: string;
+    items: { atomId: string; title: string; shape?: string; body: string; claims: { id: string; title: string; preview: string }[] }[];
+    model?: string;
+  }>();
+
+  const items = Array.isArray(body.items)
+    ? body.items.filter((it) => it && typeof it.atomId === "string" && Array.isArray(it.claims) && it.claims.length > 0)
+    : [];
+  if (items.length === 0) return c.json({ reinforcements: [] });
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json({ reinforcements: [] });
+
+  const atomById = new Map(items.map((it) => [it.atomId, { id: it.atomId, title: it.title, shape: it.shape, body: it.body }]));
+  const concepts: ClaimSnapshot[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    for (const cl of it.claims) {
+      if (seen.has(cl.id)) continue;
+      seen.add(cl.id);
+      concepts.push({ id: cl.id, title: cl.title, bodyPreview: cl.preview ?? "", relatedClaims: [] });
+    }
+  }
+  const plan = planReinforceJudge(
+    items.map((it) => ({ atomId: it.atomId, claimIds: it.claims.map((cl) => cl.id) })),
+    (id) => atomById.get(id),
+    concepts,
+  );
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildReinforceJudgeSystemPrompt(body.language || "en"),
+      messages: [{ role: "user" as const, content: buildReinforceJudgeMessage(plan) }],
+      maxSteps: 1,
+      feature: "wiki.reinforce-judge",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+    const verdicts = parseFoldJudgeOutput(result.message);
+    return c.json({
+      reinforcements: applyReinforceVerdicts(plan, verdicts),
+      // 審査の理由（記録用。申し出の並びに対応）
+      reasons: plan.targets.map((t, k) => ({ atomId: t.atomId, reason: (verdicts.find((r) => r.index === k + 1) ?? verdicts[k])?.reason ?? "" })),
+      model: result.model,
+      tokenUsage: result.tokenUsage,
+    });
+  } catch (err) {
+    console.error("Wiki judge-atom-reinforcements error:", err);
+    // fail-closed: 審査できなかった申し出は足さない
+    return c.json({ reinforcements: [], ...errorBody(err) });
   }
 });
 

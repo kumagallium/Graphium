@@ -4,7 +4,8 @@
 // 知見（claim-tools.ts）と同じく、外の AI を「Graphium の経路のモデル役」にする。2 往復:
 //   1. start_insight_task: サーバーが束（知見 50 件）を選び、アプリの /atomize と同じ課題を配る
 //   2. submit_insights: アプリと同じ parseAtomizerOutput で読み、**まだ保存せず**、審査の課題を 1 本返す
-//      （transfer / fold / relift / 重複の 4 種。アプリは同じモデルの別呼び出しで走らせている）
+//      （transfer / fold / relift / 重複 / 補強の 5 種。アプリは同じモデルの別呼び出しで走らせている）
+//      補強 = 束の知見が既存の洞察と同じ規則を言っているとき、新しい洞察にせず既存の洞察に足す申し出
 //   3. submit_insight_review: 審査の答えをアプリと同じ既定で反映し、ガード・ロック・操作の記録つきで保存する
 // 来歴は Graphium が決める: 派生元の知見は束で配ったものだけ（parseAtomizerOutput が強制）、
 // epistemicStatus は入力の最低値を継承する（同上）。
@@ -30,12 +31,13 @@ import {
   reinforceAtomWithClaims,
   splitAtomDuplicateVerdicts,
 } from "../features/wiki/wiki-service";
-import type { GraphiumDocument } from "../lib/document-types";
+import { lowestEpistemicStatus, type GraphiumDocument } from "../lib/document-types";
 import {
   AtomizerOutputParseError,
   buildAtomDuplicateJudgeSystemPrompt,
   buildAtomDuplicateJudgeUserMessage,
   buildFoldJudgeSystemPrompt,
+  buildReinforceJudgeSystemPrompt,
   buildReliftSystemPrompt,
   buildTransferJudgeSystemPrompt,
   parseAtomDuplicateJudgeOutput,
@@ -46,16 +48,21 @@ import {
 } from "../server/services/wiki-atomizer";
 import {
   applyFoldVerdicts,
+  applyReinforceVerdicts,
   applyReliftRewrites,
   applyTransferVerdicts,
   buildAtomizePrompt,
   buildFoldJudgeMessage,
+  buildReinforceJudgeMessage,
   buildReliftMessage,
   buildTransferJudgeMessage,
   parseAtomizeOutput,
+  parseAtomizeReinforcements,
   planFoldJudge,
+  planReinforceJudge,
   planReliftWithHints,
   planTransferJudge,
+  type ReinforceJudgePlan,
 } from "../server/services/wiki-atom-pipeline";
 import type { ClaimSnapshot } from "../server/services/wiki-types";
 import { activeWikiEntries, INJECTION_GUARD, REFLECT_NOTE } from "./claim-tools";
@@ -239,7 +246,8 @@ export async function startInsightTask(input: StartInsightTaskInput, ctx: ToolCo
     claims.push({ id: e.noteId, text: `${snap.title}\n${snap.bodyPreview}`, modifiedTime: e.modifiedAt ?? "", snap });
   }
   if (claims.length < INSIGHT_MIN_CLAIMS) return NOT_ENOUGH_CLAIMS_MESSAGE(claims.length);
-  const existingAtomTitles = active.filter((e) => e.wikiKind === "atom").map((e) => e.title);
+  // 既存の洞察は ref つきで載せる（束の知見が同じ規則を言っていれば、補強として名指しで返せるように）
+  const existingAtoms = active.filter((e) => e.wikiKind === "atom").map((e) => ({ id: e.noteId, title: e.title }));
 
   // 巡の台帳の読み書きと課題の追加は、書き込みロックの下でまとめて行う（並走する呼び出しが同じ束を配らない）
   const lock = await acquireWriteLock(root);
@@ -257,7 +265,7 @@ export async function startInsightTask(input: StartInsightTaskInput, ctx: ToolCo
     });
     if (!plan) return NOT_ENOUGH_CLAIMS_MESSAGE(claims.length);
     const concepts = plan.slice.map((c) => c.snap);
-    const prompt = buildAtomizePrompt(concepts, existingAtomTitles, language);
+    const prompt = buildAtomizePrompt(concepts, existingAtoms, language);
     const counts: InsightCoverageCounts = {
       round: plan.coverage.round,
       submitted: plan.submitted,
@@ -275,6 +283,7 @@ export async function startInsightTask(input: StartInsightTaskInput, ctx: ToolCo
         concepts,
         conceptHashes: Object.fromEntries(concepts.map((c) => [c.id, conceptHash(c)])),
         coverage: counts,
+        existingAtoms,
       },
       client: ctx.getClientName?.(),
       createdAt: new Date().toISOString(),
@@ -295,11 +304,11 @@ export async function startInsightTask(input: StartInsightTaskInput, ctx: ToolCo
       `  期限: ${taskExpiresAt(task).toISOString()}（24 時間）`,
       `  ${describeCoverage(counts)}` + (plan.startedNewRound ? " ← 新しい巡に入りました" : ""),
       ...(read.kind === "corrupt" ? ["  注意: 視野の台帳が読めなかったため、新しい巡から始めました（視野の台帳が読めなかった）。"] : []),
-      `  既存の洞察: ${existingAtomTitles.length} 件（重複を避けるため一覧に載せています）`,
+      `  既存の洞察: ${existingAtoms.length} 件（一覧に ref つきで載せています。束の知見が既存の洞察と同じ規則なら、新しい洞察にせず reinforcements に名指しで返します）`,
       "",
       "## あなたの作業",
       "下の SYSTEM PROMPT を system プロンプト、USER MESSAGE をユーザーの入力とみなして従い、**JSON だけ**を作ってください。",
-      "（説明文・前置き・コードフェンスは付けないでください。洞察を作らないのが正しいときは {\"atoms\":[]} を返します。）",
+      "（説明文・前置き・コードフェンスは付けないでください。洞察を作らないのが正しいときは {\"atoms\":[]} を返します。既存の洞察への補強だけのときは atoms を空にして reinforcements に入れます。）",
       INJECTION_GUARD,
       "作った JSON は文字列のまま submit_insights の output に渡してください。**この時点では保存されません。**",
       "submit_insights の返事に、保存の前の審査の課題が返ります（審査は作者と別の文脈で行います）。",
@@ -339,7 +348,22 @@ async function acceptCoverage(root: string, taskId: string, activeClaimIds: Set<
 
 // ── 審査の課題 ──────────────────────────────────────────────
 
-type ReviewSection = { key: "transfer" | "fold" | "relift" | "duplicates"; label: string; systemPrompt: string; userMessage: string };
+type ReviewSection = { key: "transfer" | "fold" | "relift" | "duplicates" | "reinforce"; label: string; systemPrompt: string; userMessage: string };
+
+/** 審査に出す補強の申し出（台帳に控える形） */
+type ReviewReinforcement = NonNullable<NonNullable<KnowledgeTask["insightReview"]>["reinforcements"]>[number];
+
+/** 既存の洞察の、審査に出す中身（題・形・本文）と、いま依拠している知見。読めない・洞察でないなら null */
+function readReinforceTarget(root: string, atomId: string) {
+  const doc = readWikiDoc(root, atomId);
+  if (!doc || doc.wikiMeta?.kind !== "atom") return null;
+  const body = extractBodyPreview(doc, EXISTING_ATOM_BODY_CHARS);
+  return {
+    atom: { id: atomId, title: doc.title, shape: doc.wikiMeta.shape, body },
+    hash: existingHash({ title: doc.title, body }),
+    known: new Set(doc.wikiMeta.derivedFromClaims ?? []),
+  };
+}
 
 /** 審査の課題の節を組む。submit_insights（課題を出す）と submit_insight_review（答えを読む）で同じ計画を使う */
 function buildReviewSections(
@@ -347,6 +371,7 @@ function buildReviewSections(
   concepts: ClaimSnapshot[],
   duplicatePairs: { candidateIndex: number; existing: ExistingAtom; score: number }[],
   language: string,
+  reinforcePlan: ReinforceJudgePlan | null = null,
 ): ReviewSection[] {
   const lang = language || "en";
   const sections: ReviewSection[] = [];
@@ -388,6 +413,14 @@ function buildReviewSections(
       label: "既存の洞察と同じか・矛盾か・別か（重複）",
       systemPrompt: buildAtomDuplicateJudgeSystemPrompt(lang),
       userMessage: buildAtomDuplicateJudgeUserMessage(pairs),
+    });
+  }
+  if (reinforcePlan && reinforcePlan.targets.length > 0) {
+    sections.push({
+      key: "reinforce",
+      label: "束の知見は、既存の洞察の規則の事例か（補強）",
+      systemPrompt: buildReinforceJudgeSystemPrompt(lang),
+      userMessage: buildReinforceJudgeMessage(reinforcePlan),
     });
   }
   return sections;
@@ -446,7 +479,36 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
       }
       throw e;
     }
-    if (atoms.length === 0) {
+    // 既存の洞察への補強の申し出。配った一覧の ref・配った知見の id だけが通る（parseAtomizeReinforcements）。
+    // いま有効な洞察で、まだその洞察が依拠していない知見だけを審査に出す
+    const activeAtomIds = new Set(
+      activeWikiEntries(idx.index.notes)
+        .filter((n) => n.wikiKind === "atom")
+        .map((n) => n.noteId),
+    );
+    const reinforceHashes = new Map<string, string>();
+    const reinforcePlan = planReinforceJudge(
+      parseAtomizeReinforcements(input.output, concepts, task.insights.existingAtoms ?? [])
+        .filter((p) => activeAtomIds.has(p.atomId))
+        .map((p) => {
+          const known = readReinforceTarget(root, p.atomId)?.known;
+          return { atomId: p.atomId, claimIds: known ? p.claimIds.filter((id) => !known.has(id)) : [] };
+        }),
+      (atomId) => {
+        const target = readReinforceTarget(root, atomId);
+        if (!target) return null;
+        reinforceHashes.set(atomId, target.hash);
+        return target.atom;
+      },
+      concepts,
+    );
+    const reinforcements: ReviewReinforcement[] = reinforcePlan.targets.map((t) => ({
+      atomId: t.atomId,
+      existingHash: reinforceHashes.get(t.atomId) ?? "",
+      claimIds: t.claimIds,
+    }));
+
+    if (atoms.length === 0 && reinforcements.length === 0) {
       if (!isEmptyAtomsOutput(input.output)) {
         return (
           "INVALID_OUTPUT: output に有効な洞察がありませんでした（課題はまだ使えます）。" +
@@ -467,11 +529,11 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
     const dups = findDuplicateCandidates(atoms, existing);
 
     const language = normalizeGenerationLanguage(task.language, "ja");
-    const sections = buildReviewSections(atoms, concepts, dups, language);
+    const sections = buildReviewSections(atoms, concepts, dups, language, reinforcePlan);
 
     // atomizer の答えが通った → 束を提出済みに確定する（視野に数える）
     const counts = await acceptCoverage(root, task.taskId, activeClaimIds, task.insights.coverage);
-    const dependedIds = [...new Set(atoms.flatMap((a) => a.derivedFromClaims))];
+    const dependedIds = [...new Set([...atoms.flatMap((a) => a.derivedFromClaims), ...reinforcements.flatMap((r) => r.claimIds)])];
 
     const reviewTask: KnowledgeTask = {
       taskId: randomUUID(),
@@ -488,6 +550,7 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
           existingHash: existingHash(d.existing),
           score: d.score,
         })),
+        ...(reinforcements.length > 0 ? { reinforcements } : {}),
         conceptHashes: Object.fromEntries(dependedIds.map((id) => [id, task.insights!.conceptHashes[id]])),
         coverage: counts,
         ...(input.model?.trim() ? { authorModel: input.model.trim() } : {}),
@@ -500,7 +563,9 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
     await markTaskDone(root, task.taskId);
 
     const lines: string[] = [
-      `洞察の候補を ${atoms.length} 件受け取りました。**まだ保存していません。** 保存の前に審査が要ります。`,
+      `洞察の候補を ${atoms.length} 件` +
+        (reinforcements.length > 0 ? `、既存の洞察への補強の申し出を ${reinforcements.length} 件` : "") +
+        "受け取りました。**まだ保存していません。** 保存の前に審査が要ります。",
       ...atoms.map(
         (a, i) =>
           `  ${i + 1}. 「${a.title}」（知見 ${a.derivedFromClaims.length} 件に依拠${a.transfer ? "、別分野の例あり" : ""}）`,
@@ -515,7 +580,7 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
       `  { ${sections.map((s) => `"${s.key}": <${s.key} の答え>`).join(", ")} }`,
       "**上のキーはすべて必須です**（欠けていると INVALID_OUTPUT で断ります）。答えない節は空配列 [] を入れてください。",
       "答えない節・読めない節・一部の項目にしか答えていない節は、アプリの審査が失敗したときと同じ既定で扱います:",
-      "  transfer は例を外す（fail-closed）／fold はそのまま（fail-open）／relift は元の文／重複は別の洞察として新規作成",
+      "  transfer は例を外す（fail-closed）／fold はそのまま（fail-open）／relift は元の文／重複は別の洞察として新規作成／補強（reinforce）は足さない（fail-closed）",
       INJECTION_GUARD,
       `  submit_insight_review({ taskId: "${reviewTask.taskId}", output: <JSON 文字列>, model: <あなたのモデル名> })`,
     ];
@@ -538,18 +603,24 @@ export async function submitInsights(input: SubmitInsightsInput, ctx: ToolContex
 // ── submit_insight_review ───────────────────────────────────
 
 /** 審査の課題に含めた節のキー（buildReviewSections と同じ条件）。答えにはこのすべてが要る */
-function requiredSectionKeys(atoms: AtomCandidate[], concepts: ClaimSnapshot[], hasDuplicatePairs: boolean): ReviewSection["key"][] {
+function requiredSectionKeys(
+  atoms: AtomCandidate[],
+  concepts: ClaimSnapshot[],
+  hasDuplicatePairs: boolean,
+  hasReinforcements = false,
+): ReviewSection["key"][] {
   const keys: ReviewSection["key"][] = [];
   if (planTransferJudge(atoms).targets.length > 0) keys.push("transfer");
   if (planFoldJudge(atoms, concepts).targets.length > 0) keys.push("fold");
   if (atoms.length > 0) keys.push("relift");
   if (hasDuplicatePairs) keys.push("duplicates");
+  if (hasReinforcements) keys.push("reinforce");
   return keys;
 }
 
 export type SubmitInsightReviewInput = CommonInput & { taskId: string; output: string };
 
-/** 審査の答えの封筒（{ transfer, fold, relift, duplicates }）を読む。オブジェクトでなければ null */
+/** 審査の答えの封筒（{ transfer, fold, relift, duplicates, reinforce }）を読む。オブジェクトでなければ null */
 function parseReviewEnvelope(output: string): Record<string, unknown> | null {
   let t = output.trim();
   const m = t.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -607,6 +678,10 @@ export async function submitInsightReview(
     for (const a of review.candidates) {
       if (a.derivedFromClaims.some((id) => !activeClaimIds.has(id))) return TASK_STALE_MESSAGE;
     }
+    const reinforceTargets = review.reinforcements ?? [];
+    for (const r of reinforceTargets) {
+      if (r.claimIds.some((id) => !activeClaimIds.has(id))) return TASK_STALE_MESSAGE;
+    }
     // 審査を待つ間に依拠する知見の本文・epistemicStatus などが変わっていたら断る（継承した status が古くなる）
     for (const [id, hash] of Object.entries(review.conceptHashes ?? {})) {
       const doc = readWikiDoc(root, id);
@@ -623,7 +698,12 @@ export async function submitInsightReview(
     }
 
     // 課題に含めた節のキーはすべて必須（中身が空配列なら「答えない」の明示）。何も審査せずに通る入口をふさぐ
-    const required = requiredSectionKeys(review.candidates, review.concepts, review.duplicatePairs.length > 0);
+    const required = requiredSectionKeys(
+      review.candidates,
+      review.concepts,
+      review.duplicatePairs.length > 0,
+      reinforceTargets.length > 0,
+    );
     const missing = required.filter((k) => envelope[k] === undefined);
     if (missing.length > 0) {
       return (
@@ -667,7 +747,7 @@ export async function submitInsightReview(
       foldDropped = atoms.reduce((n, a) => n + (a.foldDroppedClaims ?? 0), 0);
     }
     // relift（答えが無ければ元の文）。対象は審査の課題を出したときと同じ（全候補）
-    {
+    if (atoms.length > 0) {
       const raw = sectionText(envelope.relift);
       const rewrites = raw ? parseReliftOutput(raw) : [];
       if (rewrites.length === 0) unanswered.push("relift（元の文のままにしました）");
@@ -704,6 +784,27 @@ export async function submitInsightReview(
     const inPair = new Set(pairs.map((p) => p.candidateIndex));
     // 候補探しに掛からなかった候補（アプリの kept）は新規
     const kept = atoms.filter((_, i) => !inPair.has(i));
+
+    // 補強（答えが無ければ足さない）。審査が「その洞察の規則の事例だ」と確かめた知見だけを残し、
+    // 既存の洞察が今も有効で、審査に出した内容のままのものだけを足す（変わっていたら判定は古い内容に対するもの）
+    let confirmedReinforcements: { atomId: string; claimIds: string[] }[] = [];
+    let reinforceRejected = 0;
+    if (reinforceTargets.length > 0) {
+      const raw = sectionText(envelope.reinforce);
+      const verdicts = raw ? parseFoldJudgeOutput(raw) : [];
+      noteUnanswered("reinforce", verdicts, reinforceTargets.length, "既存の洞察には足しませんでした");
+      const hashOf = new Map(reinforceTargets.map((r) => [r.atomId, r.existingHash]));
+      confirmedReinforcements = applyReinforceVerdicts(
+        { targets: reinforceTargets.map((r) => ({ atomId: r.atomId, claimIds: r.claimIds })), items: [] },
+        verdicts,
+      ).filter(
+        (r) =>
+          activeEntries.some((e) => e.noteId === r.atomId && e.wikiKind === "atom") &&
+          readReinforceTarget(root, r.atomId)?.hash === hashOf.get(r.atomId),
+      );
+      const offered = reinforceTargets.reduce((n, r) => n + r.claimIds.length, 0);
+      reinforceRejected = offered - confirmedReinforcements.reduce((n, r) => n + r.claimIds.length, 0);
+    }
 
     // ── 保存 ──
     const client = ctx.getClientName?.();
@@ -768,6 +869,37 @@ export async function submitInsightReview(
     };
 
     try {
+      // 0. 補強（名指し）。束の知見が既存の洞察と同じ規則を言っていると審査で確かめられたものを、
+      //    既存の洞察の derivedFromClaims に足す（本文は変えない）
+      for (const r of confirmedReinforcements) {
+        if (await checkStopped()) break;
+        await lock.refresh();
+        try {
+          const existingDoc = readWikiDoc(root, r.atomId);
+          const statusOf = new Map(review.concepts.map((c) => [c.id, c.epistemicStatus]));
+          const result = existingDoc
+            ? reinforceAtomWithClaims(existingDoc, {
+                derivedFromClaims: r.claimIds,
+                // 足す知見の最低の確からしさ（無記入は interpretation 扱い）。洞察のほうが高ければ下げる
+                epistemicStatus: lowestEpistemicStatus(r.claimIds.map((id) => statusOf.get(id) ?? "interpretation")),
+              })
+            : null;
+          if (!result) continue; // 足すものが無い（すでに依拠している）
+          const ok = await op.save(r.atomId, result.doc, {
+            activityType: "wiki_reinforce",
+            agentLabel,
+            sources: result.addedClaimIds,
+          });
+          if (!ok) {
+            failures.push(`保存に失敗: 「${result.doc.title}」への補強`);
+            continue;
+          }
+          saved.push({ id: r.atomId, title: result.doc.title, kind: "reinforced", addedClaims: result.addedClaimIds.length });
+        } catch (e) {
+          failures.push(`洞察 ${r.atomId} への補強: ${failureMessage("保存に失敗しました", e, host)}`);
+        }
+      }
+
       // 1. 支持追加（same）。本文は変えず、既存の洞察の derivedFromClaims に新しい知見を足す
       for (const dup of split.same) {
         if (await checkStopped()) break;
@@ -797,6 +929,7 @@ export async function submitInsightReview(
       }
 
       // 2. 新規（候補探しに掛からなかったもの + 重複の判定が「別」だったもの）
+      // （0. で止まっていれば split.same のループは checkStopped で抜ける）
       if (!stopped) {
         for (const candidate of [...kept, ...split.different]) {
           if (await checkStopped()) break;
@@ -870,6 +1003,7 @@ export async function submitInsightReview(
       if (skippedNoNewSupport > 0) lines.push(`  既存の洞察と同じで、新しい支持が無く捨てた候補: ${skippedNoNewSupport} 件`);
       if (transferDropped > 0) lines.push(`  審査で外した別分野の例（transfer）: ${transferDropped} 件`);
       if (foldDropped > 0) lines.push(`  fold で絞った知見: ${foldDropped} 件`);
+      if (reinforceRejected > 0) lines.push(`  審査で足さなかった補強の知見: ${reinforceRejected} 件`);
       if (unanswered.length > 0) lines.push(`  答えのなかった審査（既定で処理）: ${unanswered.join("、")}`);
       lines.push(
         `  ${describeCoverage(review.coverage)}`,
@@ -938,7 +1072,8 @@ export function registerInsightTools(server: McpServer, ctx: ToolContext = {}): 
       title: "洞察の候補を提出する",
       description:
         "start_insight_task で受け取った課題への答え（JSON）を提出する。アプリと同じパーサーで読むが、**まだ保存しない**。" +
-        "代わりに審査の課題（transfer / fold / relift / 重複）を 1 本返す。派生元の知見は課題で配った束のものだけが通る。",
+        "代わりに審査の課題（transfer / fold / relift / 重複 / 補強）を 1 本返す。派生元の知見は課題で配った束のものだけが通る。" +
+        "束の知見が既存の洞察と同じ規則を言っているときは、新しい洞察にせず reinforcements に { atomRef, sourceConceptIds } で返す（審査を通れば既存の洞察に足される）。",
       inputSchema: {
         taskId: z.string().describe("start_insight_task が返した taskId"),
         output: z.string().describe("課題への答えの JSON（文字列のまま）"),
@@ -953,9 +1088,9 @@ export function registerInsightTools(server: McpServer, ctx: ToolContext = {}): 
     {
       title: "洞察の審査を提出して保存する",
       description:
-        "submit_insights の返事に含まれる審査の課題への答え（{\"transfer\":…,\"fold\":…,\"relift\":…,\"duplicates\":…} の JSON）を提出し、洞察を保存する。" +
+        "submit_insights の返事に含まれる審査の課題への答え（{\"transfer\":…,\"fold\":…,\"relift\":…,\"duplicates\":…,\"reinforce\":…} のうち課題にある節の JSON）を提出し、洞察を保存する。" +
         "**審査は作者と別の文脈（サブエージェントなど）で行うこと。** 作ったときの推論は使わず、課題の項目だけを見て答える。" +
-        "答えない節はアプリの審査が失敗したときと同じ既定で扱う（transfer は外す・fold はそのまま・relift は元の文・重複は新規）。" +
+        "答えない節はアプリの審査が失敗したときと同じ既定で扱う（transfer は外す・fold はそのまま・relift は元の文・重複は新規・補強は足さない）。" +
         "すべて記録され、undo_operation で取り消せる（作った洞察はゴミ箱へ、支持追加・矛盾のリンクは元に戻る）。",
       inputSchema: {
         taskId: z.string().describe("審査の課題の taskId（submit_insights が返したもの）"),
