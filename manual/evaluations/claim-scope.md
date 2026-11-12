@@ -86,6 +86,43 @@ I ran the current instruction (the second version plus one sentence that asks to
 - **"Scope" is a criterion that is strict about wording.** Writing one trial as "frying for 65 minutes brings out sweetness" fails; "after frying for 65 minutes the sweetness remained" passes. I have not measured how much this difference in wording matters to a reader or to later steps (insights, retrieval). The gap between gemma-4-31B-it and gpt-5.6-luna is almost entirely this one criterion.
 - **Some differences do not depend on that criterion.** Statements not in the note were more frequent with gpt-oss-120b and Kimi-K2.7-Code (0.10 and 0.14 per claim, against 0.00 for gpt-5.6-luna), and they passed "faithful" on 9 and 11 outputs.
 
+## Check at the insight step (2026-11-12): does the wording of claims change the insights?
+
+I measured whether the wording that fails "scope" (writing one trial as "doing X brings out Y") does harm one step later, when insights are made from the claims.
+
+- **Input.** The claims from the follow-up measurement above: those of gpt-5.6-luna (19 outputs passing "scope") and those of gemma-4-31B-it (6 passing).
+- **Conditions.** The claims of one note were passed to insight generation once. 20 notes, three conditions. What was passed is each claim's title and body; as in the app, the body is cut at 240 characters (every claim here was within 240).
+
+| Condition | Model that wrote the claims | Model that wrote the insights |
+|---|---|---|
+| A | gpt-5.6-luna | gpt-5.6-luna |
+| B | gemma-4-31B-it | gpt-5.6-luna |
+| C | gemma-4-31B-it | gemma-4-31B-it |
+
+- **Grading.** Each packet held only the note and the insights; the claims and both model names were hidden. Claude Sonnet marked 4 criteria as pass or fail. The criteria were fixed before measuring. Insights are meant to be written as general rules, so generalizing was not marked down by itself.
+- **Grader noise.** A separate grader re-graded 10 outputs. The pass/fail calls agreed on 38 of 40 (both disagreements were on "supported").
+
+Outputs that passed (of 20).
+
+| Condition | Supported | No added reason | Has content | Is a rule | All criteria |
+|---|---|---|---|---|---|
+| A: luna claims → luna | 16 | 15 | 9 | 19 | 6 |
+| B: gemma claims → luna | 15 | 13 | 12 | 20 | 4 |
+| C: gemma claims → gemma | 14 | 9 | 17 | 19 | 4 |
+
+Rates per insight.
+
+| Condition | Insights in total | Not supported | Reason added | Empty generality | Only a restatement |
+|---|---|---|---|---|---|
+| A: luna claims → luna | 79 | 6% | 8% | 16% | 1% |
+| B: gemma claims → luna | 64 | 8% | 11% | 14% | 0% |
+| C: gemma claims → gemma | 60 | 10% | 27% | 5% | 2% |
+
+- **I could not see a difference from the wording of the claims.** With gpt-5.6-luna writing the insights in both cases (A and B), unsupported insights were 6% and 8%, and insights with an added reason 8% and 11%. On the same notes, "supported" got better for 4 outputs and worse for 5, "no added reason" better for 1 and worse for 3, and "has content" better for 4 and worse for 1. Outputs passing every criterion were 6 and 4. The criteria do not point the same way, and the re-grade also disagreed on "supported" for 2 of 10, so this gap cannot be told apart from noise.
+- **A clear difference appeared when the model that writes the insights was changed.** From the same gemma-4-31B-it claims, when gemma-4-31B-it also wrote the insights (C), 27% of them added a reason or mechanism the note does not state (11% in B). Separately from the grading, counting the type label the model itself puts on each insight gave "causal" on 24 of 60 (4 of 64 in B) and "observational" on 2 (19 in B). Each condition ran once.
+- **Empty generalities were more frequent in insights written by gpt-5.6-luna** (16% and 14%, against 5% for gemma-4-31B-it).
+- **What I read from it.** The difference in wording that "scope" looks at did not show up in the quality of the insights in this measurement. The gap between gemma-4-31B-it and gpt-5.6-luna at the claim step (1 against 12 outputs passing every criterion) is not a number about harm to later steps. On the other hand, when gemma-4-31B-it is also given the insight step, added reasons went up and empty generalities went down. Outputs passing every criterion were 4, the same as B.
+
 ## What I decided
 
 - **Claims go as far as splitting them apart and making them readable without the note.** Generalizing across situations is the job of insights.
@@ -105,5 +142,6 @@ I ran the current instruction (the second version plus one sentence that asks to
 - One line of graders. The packets for the second version were graded in a separate round (by a separate agent) from the old and first-version packets. Agreement on the 10 re-graded outputs was low for "not a copy" (7 of 10), so the copy rates are a rough guide.
 - The old-condition gpt-5.6-luna outputs came from another measurement taken at a different time (same server-side code, same input).
 - Memos (scribbled notes) and ingesting outside sources were not measured. The scope rule is not applied to memos.
+- The check at the insight step ran once per condition with one line of graders. It passed the claims of a single note, which differs from real use (claims from several notes are passed together). The gemma-4-31B-it claims are also fewer (73, against 106 for gpt-5.6-luna), so this is not a comparison where only the wording changes. Effects on retrieval and source checking were not measured.
 - The follow-up ran once per model. It was run in a separate round from the second version and graded by separate graders. The gap between 12 and 10 passing outputs supports no more than "the same or slightly better".
 - I did not separate whether the 2 timeouts of Kimi-K2.7-Code came from a busy service or from a slow model.
