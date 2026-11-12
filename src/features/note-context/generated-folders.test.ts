@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildGeneratedNoteFolders } from "./generated-folders";
+import { buildGeneratedNoteFolders, GENERATED_NOTE_FOLDER_KEYS } from "./generated-folders";
+import { isPlanFolderPath } from "./reserved-folders";
+import { en } from "../../i18n/en";
+import { ja } from "../../i18n/ja";
+import { ko } from "../../i18n/ko";
 
 describe("buildGeneratedNoteFolders", () => {
   it("元がフォルダに入っていなくても種類のフォルダに入る（未分類に落ちない）", () => {
@@ -25,5 +29,17 @@ describe("buildGeneratedNoteFolders", () => {
   it("種類のフォルダが空なら元のフォルダだけ、どちらも無ければ undefined", () => {
     expect(buildGeneratedNoteFolders("", ["熱電"])).toEqual(["熱電"]);
     expect(buildGeneratedNoteFolders("  ", [])).toBeUndefined();
+  });
+});
+
+describe("GENERATED_NOTE_FOLDER_KEYS", () => {
+  it("どの種類のフォルダ名も全ロケールにあり、予約フォルダ「計画」と重ならない", () => {
+    for (const dict of [en, ja, ko] as Record<string, string>[]) {
+      for (const key of Object.values(GENERATED_NOTE_FOLDER_KEYS)) {
+        const name = dict[key];
+        expect(name?.trim(), key).toBeTruthy();
+        expect(isPlanFolderPath(name), key).toBe(false);
+      }
+    }
   });
 });

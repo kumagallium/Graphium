@@ -9086,7 +9086,7 @@ export function NoteApp() {
     () => buildNoteFolderLookup(fm.noteIndex?.notes ?? []),
     [fm.noteIndex],
   );
-  // アプリ内で生成するノート（翻訳・手順抽出）の置き場所: 種類のフォルダ＋元の素材のフォルダ。
+  // アプリ内で生成するノート（翻訳・手順抽出・音声ノート）の置き場所: 種類のフォルダ＋元の素材のフォルダ。
   // 素材をフォルダに入れないまま生成しても「未分類」に落ちないようにする（generated-folders.ts）
   const generatedNoteFolders = useCallback(
     (kind: GeneratedNoteKind, source?: Pick<MediaIndexEntry, "noteContexts" | "usedIn">) =>
@@ -10521,13 +10521,15 @@ export function NoteApp() {
             knowledgeLinks: [],
           },
         ],
+        // 録音はフォルダを意識せずに始めることが多いので、「音声ノート」フォルダで受ける
+        noteContexts: generatedNoteFolders("voice"),
         createdAt: now,
         modifiedAt: now,
       };
       const newId = await fm.handleCreateNoteFromImport(doc);
       navigateToNote(newId);
     },
-    [fm, navigateToNote],
+    [fm, navigateToNote, generatedNoteFolders],
   );
 
   // 投入口（既存資料の一括持ち込み）の Markdown インポート実装。

@@ -731,6 +731,7 @@ export const ko: Record<string, string> = {
   // 生成ノートの種類のフォルダ（generated-folders.ts）。翻訳・論文からの手順抽出が作るノートの受け皿
   "generatedFolder.translation": "번역",
   "generatedFolder.procedure": "절차",
+  "generatedFolder.voice": "음성 노트",
   "template.plan.h1Placeholder": "계획 제목",
   "template.plan.backgroundHeading": "배경과 목표",
   "template.plan.samplesHeading": "대상과 조건",

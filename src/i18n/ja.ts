@@ -757,6 +757,7 @@ export const ja: Record<string, string> = {
   // 生成ノートの種類のフォルダ（generated-folders.ts）。翻訳・論文からの手順抽出が作るノートの受け皿
   "generatedFolder.translation": "翻訳",
   "generatedFolder.procedure": "手順",
+  "generatedFolder.voice": "音声ノート",
   "template.plan.h1Placeholder": "プランのタイトル",
   "template.plan.backgroundHeading": "背景・目的",
   "template.plan.samplesHeading": "対象と条件",
