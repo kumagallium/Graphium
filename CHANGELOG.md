@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.16](https://github.com/kumagallium/Graphium/compare/v0.129.15...v0.129.16) - 2026-11-12
+
+- [fix] Stop a regenerated claim from linking to itself through its previous title by @kumagallium in https://github.com/kumagallium/Graphium/pull/1648
+
 ## [v0.129.15](https://github.com/kumagallium/Graphium/compare/v0.129.14...v0.129.15) - 2026-11-12
 
 - [feat] File new voice notes into a Voice notes folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1644
