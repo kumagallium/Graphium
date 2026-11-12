@@ -137,6 +137,28 @@ describe("buildWikiListColumnPlan", () => {
     expect(plan.baseWidth - noSource.baseWidth).toBe(120);
   });
 
+  it("派生の列があるときは出典数の手前で隠し、全部隠した幅は派生の列が無いときと変わらない", () => {
+    const base = buildWikiListColumnPlan({ hasWorldVerdict: true, hasSourceVerdict: true });
+    const derived = buildWikiListColumnPlan({ hasWorldVerdict: true, hasSourceVerdict: true, hasDerived: true });
+    expect(derived.hideable.map((c) => c.key)).toEqual(["model", "createdAt", "worldVerdict", "derived", "sources"]);
+    expect(derived.baseWidth).toBe(base.baseWidth);
+    expect(tableMinWidth(derived, true)).toBe(tableMinWidth(base, true));
+  });
+
+  it("値の無い参照先・被参照の列は幅に数えない（ノート一覧も同じ）", () => {
+    const full = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: false });
+    const none = buildWikiListColumnPlan({
+      hasWorldVerdict: false,
+      hasSourceVerdict: false,
+      hasOutgoing: false,
+      hasIncoming: false,
+    });
+    expect(full.baseWidth - none.baseWidth).toBe(76 * 2);
+    const noteFull = buildNoteListColumnPlan(FULL);
+    const noteNone = buildNoteListColumnPlan({ ...FULL, hasOutgoing: false, hasIncoming: false });
+    expect(noteFull.baseWidth - noteNone.baseWidth).toBe(72 * 2);
+  });
+
   it("境目の幅（ストーリーのコメントと同じ値）", () => {
     const noWorld = buildWikiListColumnPlan({ hasWorldVerdict: false, hasSourceVerdict: true });
     expect([0, 1, 2, 3].map((k) => requiredWidth(noWorld, k))).toEqual([1199, 1077, 951, 871]);

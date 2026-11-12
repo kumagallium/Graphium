@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// WikiListView の「リンク」列のテスト。生成元（出典の引用）へのリンクは数えず、
-// それ以外へ張ったリンクだけを数える — 数えると「生成元」列と同じ数字が並ぶだけになるため。
+// WikiListView の「参照先」「被参照」「派生」列のテスト。生成元（出典の引用）へのリンクは
+// 参照先・被参照に数えず、それ以外へ張ったリンクだけを数える — 数えると「生成元」「派生」列と
+// 同じ数字が並ぶだけになるため。数え方そのものは navigation/link-counts.test.ts で確かめる。
 // 文言は LocaleProvider の既定（jsdom の navigator.language → en）で照合する。
 
 import { describe, it, expect, afterEach } from "vitest";
@@ -27,16 +28,16 @@ function entry(noteId: string, derivedFromNotes: string[], targets: string[]) {
   };
 }
 
-/** 見出し「Links」と同じ列の、指定タイトルの行のセルの文字 */
+/** 見出し「Outgoing」（参照先）と同じ列の、指定タイトルの行のセルの文字 */
 function linksCell(title: string): string {
   const headers = [...document.querySelectorAll("thead th")];
-  const col = headers.findIndex((th) => th.textContent?.startsWith("Links"));
+  const col = headers.findIndex((th) => th.textContent?.startsWith("Outgoing"));
   expect(col).toBeGreaterThan(-1);
   const row = screen.getByText(title).closest("tr")!;
   return row.querySelectorAll("td")[col].textContent ?? "";
 }
 
-describe("WikiListView リンク列", () => {
+describe("WikiListView 参照先・被参照の列", () => {
   it("生成元へのリンクは数えず、それ以外へのリンクだけを数える", () => {
     const files = [file("t1", "トピック1"), file("t2", "トピック2")];
     const metas = new Map<string, WikiMetaSummary>([
@@ -65,7 +66,7 @@ describe("WikiListView リンク列", () => {
       </LocaleProvider>,
     );
     expect(linksCell("トピック1")).toBe("—");
-    expect(linksCell("トピック2")).toBe("2");
+    expect(linksCell("トピック2")).toBe("2 →");
   });
 
   it("値のある行が 1 件でもあれば列を出し、絞り込んでも列は出たままにする", () => {
@@ -90,10 +91,12 @@ describe("WikiListView リンク列", () => {
         />
       </LocaleProvider>,
     );
-    // リンクは t2 だけ、被参照は t1 だけに値がある。どちらの列も出て、値の無い行は「—」
+    // 参照先は t2 だけ、被参照は t1 だけに値がある。どちらの列も出て、値の無い行は「—」
     expect(linksCell("トピック1")).toBe("—");
-    expect(cellUnder("Refs in", "トピック1")).toBe("1");
-    expect(cellUnder("Refs in", "トピック2")).toBe("—");
+    expect(cellUnder("Incoming", "トピック1")).toBe("← 1");
+    expect(cellUnder("Incoming", "トピック2")).toBe("—");
+    // どのトピックからも何も作られていないので、派生の列は出ない
+    expect(headerLabels().some((h) => h.startsWith("Derived"))).toBe(false);
   });
 
   it("古い形式のトピックは束ねている知見へのリンクも生成元として数えない", () => {
@@ -117,9 +120,13 @@ describe("WikiListView リンク列", () => {
         />
       </LocaleProvider>,
     );
-    expect(linksCell("トピック1")).toBe("1");
+    expect(linksCell("トピック1")).toBe("1 →");
   });
 });
+
+function headerLabels(): string[] {
+  return [...document.querySelectorAll("thead th")].map((th) => th.textContent ?? "");
+}
 
 /** 見出しが label で始まる列の、指定タイトルの行のセルの文字 */
 function cellUnder(label: string, title: string): string {
@@ -155,10 +162,49 @@ describe("WikiListView 生成元列（洞察）", () => {
     );
     expect(cellUnder("Sources", "洞察1")).toBe("3");
     expect(cellUnder("Sources", "洞察2")).toBe("1");
-    // もとの知見へのリンクは「リンク」には数えない。どの洞察にも値が無いので、リンクと被参照は
+    // もとの知見へのリンクは参照先には数えない。どの洞察にも値が無いので、参照先・被参照・派生は
     // 列ごと出さない（「—」だけの列を並べない）
-    const headers = [...document.querySelectorAll("thead th")].map((th) => th.textContent ?? "");
-    expect(headers.some((h) => h.startsWith("Links"))).toBe(false);
-    expect(headers.some((h) => h.startsWith("Refs in"))).toBe(false);
+    const headers = headerLabels();
+    expect(headers.some((h) => h.startsWith("Outgoing"))).toBe(false);
+    expect(headers.some((h) => h.startsWith("Incoming"))).toBe(false);
+    expect(headers.some((h) => h.startsWith("Derived"))).toBe(false);
+  });
+});
+
+describe("WikiListView 派生列（知見）", () => {
+  it("知見をもとにした洞察は被参照でなく派生に数える", () => {
+    const files = [file("c1", "知見1"), file("c2", "知見2")];
+    const metas = new Map<string, WikiMetaSummary>([
+      ["c1", { title: "知見1", kind: "claim" }],
+      ["c2", { title: "知見2", kind: "claim" }],
+      ["a1", { title: "洞察1", kind: "atom", derivedFromClaims: ["c1", "c2"] }],
+      ["a2", { title: "洞察2", kind: "atom", derivedFromClaims: ["c1"] }],
+    ]);
+    const noteIndex = {
+      notes: [
+        entry("c1", ["n1"], ["n1"]),
+        // c2 は本文で c1 にも張っている（これは参照）
+        entry("c2", ["n1"], ["n1", "c1"]),
+        entry("a1", [], ["c1", "c2"]),
+        entry("a2", [], ["c1"]),
+      ],
+    } as unknown as GraphiumIndex;
+    render(
+      <LocaleProvider>
+        <WikiListView
+          noteIndex={noteIndex}
+          wikiKind="claim"
+          wikiFiles={files}
+          wikiMetas={metas}
+          onOpenWiki={() => {}}
+          onBack={() => {}}
+          onDeleteWiki={async () => {}}
+        />
+      </LocaleProvider>,
+    );
+    expect(cellUnder("Derived", "知見1")).toBe("2");
+    expect(cellUnder("Derived", "知見2")).toBe("1");
+    expect(cellUnder("Incoming", "知見1")).toBe("← 1");
+    expect(cellUnder("Incoming", "知見2")).toBe("—");
   });
 });

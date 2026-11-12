@@ -353,13 +353,20 @@ export const NarrowScrolls: Story = {
   decorators: [widthDecorator(800)],
 };
 
-// ── 生成元・リンク・被参照の列を、種類ごとに実際の埋まり方で確かめる ──
-// 索引（noteIndex）を渡して 3 列に数字を出す。見本はパン作り。
-// 知見: 生成元はノート 1〜2 件、リンクはごく一部、被参照は洞察・トピックから。
-// 洞察: もとは知見（derivedFromClaims）。本文のリンクもその知見を指す。
-// 要約: もとはノート 1 件で、リンクも被参照も無い。
+// ── 生成元・派生・参照先・被参照の列を、種類ごとに実際の埋まり方で確かめる ──
+// 索引（noteIndex）を渡して列に数字を出す。見本はパン作り。数え方はノート一覧と同じ
+// （navigation/link-counts.ts）: もと・派生の関係は参照先・被参照に数えない。
+// 知見: 生成元はノート 1〜2 件、派生はそれをもとにした洞察、参照先・被参照はごく一部。
+// 洞察: もとは知見（derivedFromClaims）。本文のリンクもその知見を指すので、ほかの列は出ない。
+// 要約: もとはノート 1 件で、ほかの列は出ない。
 
-type LinkFixture = { noteId: string; title: string; derivedFromNotes?: string[]; targets?: string[] };
+type LinkFixture = {
+  noteId: string;
+  title: string;
+  derivedFromNotes?: string[];
+  derivedFromClaims?: string[];
+  targets?: string[];
+};
 
 function linkIndex(rows: LinkFixture[]): GraphiumIndex {
   return {
@@ -367,6 +374,7 @@ function linkIndex(rows: LinkFixture[]): GraphiumIndex {
       noteId: r.noteId,
       title: r.title,
       derivedFromNotes: r.derivedFromNotes ?? [],
+      derivedFromClaims: r.derivedFromClaims,
       outgoingLinks: (r.targets ?? []).map((targetNoteId) => ({ targetNoteId, layer: "knowledge" as const })),
     })),
   } as unknown as GraphiumIndex;
@@ -428,7 +436,12 @@ const BREAD_INDEX = linkIndex([
   { noteId: "bc5", title: BREAD_CLAIM_FILES[4].name, derivedFromNotes: ["n1"], targets: ["n1", "bc1"] },
   { noteId: "bc6", title: BREAD_CLAIM_FILES[5].name, derivedFromNotes: ["n4"], targets: ["n4"] },
   // 洞察: 生成元のノートは持たず、もとの知見へ本文からリンクする
-  ...BREAD_ATOM_FILES.map((f) => ({ noteId: f.id, title: f.name, targets: BREAD_ATOM_CLAIMS[f.id] })),
+  ...BREAD_ATOM_FILES.map((f) => ({
+    noteId: f.id,
+    title: f.name,
+    derivedFromClaims: BREAD_ATOM_CLAIMS[f.id],
+    targets: BREAD_ATOM_CLAIMS[f.id],
+  })),
   // 要約: もとのノート 1 件だけ
   { noteId: "bs1", title: BREAD_SUMMARY_FILES[0].name, derivedFromNotes: ["n1"], targets: ["n1"] },
   { noteId: "bs2", title: BREAD_SUMMARY_FILES[1].name, derivedFromNotes: ["n2"], targets: ["n2"] },
@@ -438,7 +451,7 @@ const BREAD_INDEX = linkIndex([
 const breadArgs = { ...baseArgs, noteIndex: BREAD_INDEX, worldGroundingEnabled: false };
 
 export const LinkColumnsClaim: Story = {
-  name: "列の数字 — 知見（生成元はノート・リンクは一部・被参照は洞察から）",
+  name: "列の数字 — 知見（生成元はノート・派生は洞察・参照先と被参照は一部）",
   args: { ...breadArgs, wikiKind: "claim", wikiFiles: BREAD_CLAIM_FILES, wikiMetas: BREAD_CLAIM_METAS },
 };
 

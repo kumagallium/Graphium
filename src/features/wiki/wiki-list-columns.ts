@@ -1,6 +1,6 @@
 // ナレッジ一覧の列の幅と、狭いときに隠す順
 //
-// 隠す順: モデル → 作成日 → 世界照合（世界照合の列があるときだけ）→ 出典数。タイトル・種別・
+// 隠す順: モデル → 作成日 → 世界照合（世界照合の列があるときだけ）→ 派生（列があるときだけ）→ 出典数。タイトル・種別・
 // 参照先・被参照・出典照合（中身と状態を識別する列）と更新日は隠さない。補助の列（どのモデルが
 // 作ったか・いつ作ったか）から先に隠し、それでも足りない知見・洞察の一覧では世界照合の列も
 // 隠す（Windows 既定 150% の表の内側 976px に収めるため。境目は wiki-list-columns.test.ts で確かめる）。
@@ -14,7 +14,7 @@
 
 import type { ColumnPlan, HideableColumn } from "../../lib/responsive-columns";
 
-export type WikiListHideableColumn = "model" | "createdAt" | "worldVerdict" | "sources";
+export type WikiListHideableColumn = "model" | "createdAt" | "worldVerdict" | "derived" | "sources";
 
 /** タイトル列の最小幅（日本語で 1 行 12 字前後） */
 export const WIKI_LIST_TITLE_MIN_WIDTH = 240;
@@ -26,7 +26,8 @@ export const WIKI_LIST_COLUMN_WIDTH = {
   checkbox: 36,
   type: 140,
   sources: 80,
-  /** リンク・被参照。英語の "Refs in ↓"（nowrap）が収まる幅 */
+  /** 派生・参照先・被参照。英語の "Outgoing ↓" "Incoming ↓"（nowrap）が収まる幅 */
+  derived: 76,
   outgoing: 76,
   incoming: 76,
   worldVerdict: 110,
@@ -43,7 +44,9 @@ export interface WikiListColumnOptions {
   hasWorldVerdict: boolean;
   /** 出典照合の列が出ているか */
   hasSourceVerdict: boolean;
-  /** リンクの列が出ているか（その種類に値が 1 件も無いときは出さない）。省略時は出ている扱い */
+  /** 派生の列が出ているか（その種類に値が 1 件も無いときは出さない）。省略時は出ていない扱い */
+  hasDerived?: boolean;
+  /** 参照先の列が出ているか（その種類に値が 1 件も無いときは出さない）。省略時は出ている扱い */
   hasOutgoing?: boolean;
   /** 被参照の列が出ているか（同上）。省略時は出ている扱い */
   hasIncoming?: boolean;
@@ -67,6 +70,8 @@ export function buildWikiListColumnPlan(
     { key: "createdAt", width: W.createdAt },
   ];
   if (opts.hasWorldVerdict) hideable.push({ key: "worldVerdict", width: W.worldVerdict });
+  // 派生は出典数の手前で隠す（全部隠したときの幅を、派生の列が無い一覧と同じに保つ）
+  if (opts.hasDerived) hideable.push({ key: "derived", width: W.derived });
   hideable.push({ key: "sources", width: W.sources });
   return {
     baseWidth,

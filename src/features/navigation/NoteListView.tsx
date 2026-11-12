@@ -21,6 +21,7 @@ import { bestHitsBySource, useLexicalStatus } from "../lexical-search";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { useListPeekKeys } from "../../hooks/use-list-peek-keys";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
+import { LinkCountBadge } from "./LinkCountBadge";
 import { tableMinWidth } from "../../lib/responsive-columns";
 import {
   NOTE_LIST_TITLE_COMPACT_MIN_WIDTH,
@@ -468,7 +469,13 @@ export function NoteListView({
     return pinned;
   }, [authorFilter, labelFilter, contextFilter, selectedFolder, sortKey]);
   const hasLabelColumn = labelFilterOptions.length > 0;
+  // 参照先・被参照も、どのノートにも値が無いときは列ごと出さない（ナレッジ一覧と同じ規則）。
+  // 絞り込む前の全件で決め、読み込み前（0 件）は出しておく（読み込み後に表が動くのを避ける）
+  const showOutgoing = entries.length === 0 || entries.some((e) => e.outgoingLinkCount > 0);
+  const showIncoming = entries.length === 0 || entries.some((e) => e.incomingLinkCount > 0);
   const columnPlan = buildNoteListColumnPlan({
+    hasOutgoing: showOutgoing,
+    hasIncoming: showIncoming,
     hasCheckbox: !!onDeleteNotes,
     hasActions: !!(onDeleteNotes || onArchiveNotes),
     hasLabels: hasLabelColumn,
@@ -767,20 +774,24 @@ export function NoteListView({
                 >
                   {t("nav.noteColumn")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
-                  onClick={() => handleSort("outgoingLinkCount")}
-                  data-tooltip={t("nav.outgoingTooltip")}
-                >
-                  {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
-                <th
-                  className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
-                  onClick={() => handleSort("incomingLinkCount")}
-                  data-tooltip={t("nav.incomingTooltip")}
-                >
-                  {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
+                {showOutgoing && (
+                  <th
+                    className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
+                    onClick={() => handleSort("outgoingLinkCount")}
+                    data-tooltip={t("nav.outgoingTooltip")}
+                  >
+                    {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
+                {showIncoming && (
+                  <th
+                    className="py-2 px-2 w-[72px] whitespace-nowrap cursor-pointer hover:text-foreground text-center"
+                    onClick={() => handleSort("incomingLinkCount")}
+                    data-tooltip={t("nav.incomingTooltip")}
+                  >
+                    {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
                 {/* PROV ラベル列: どのノートにもラベルが無い時は列ごと隠す */}
                 {labelFilterOptions.length > 0 && (
                   <th className={cn("py-2 px-3 w-[140px]", hide.has("labels") && "hidden")}>
@@ -1018,32 +1029,16 @@ export function NoteListView({
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-center">
-                    {entry.outgoingLinkCount > 0 && (
-                      <span
-                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded-full ${
-                          entry.outgoingLinkCount >= 3
-                            ? "bg-info-bg text-info font-medium"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {entry.outgoingLinkCount} &rarr;
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 px-2 text-center">
-                    {entry.incomingLinkCount > 0 && (
-                      <span
-                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded-full ${
-                          entry.incomingLinkCount >= 2
-                            ? "bg-label-sample-bg text-label-sample font-medium"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        &larr; {entry.incomingLinkCount}
-                      </span>
-                    )}
-                  </td>
+                  {showOutgoing && (
+                    <td className="py-2 px-2 text-center">
+                      <LinkCountBadge direction="outgoing" count={entry.outgoingLinkCount} />
+                    </td>
+                  )}
+                  {showIncoming && (
+                    <td className="py-2 px-2 text-center">
+                      <LinkCountBadge direction="incoming" count={entry.incomingLinkCount} />
+                    </td>
+                  )}
                   {/* PROV ラベル列: ヘッダと揃えて、ラベルが全体で 0 件なら列ごと隠す */}
                   {labelFilterOptions.length > 0 && (
                     <td className={cn("py-2 px-3", hide.has("labels") && "hidden")}>
