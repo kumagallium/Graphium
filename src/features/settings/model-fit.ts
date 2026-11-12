@@ -9,6 +9,12 @@
 // 区分の中でも差はある（世界照合では luna が 16 件中 7 件を判定できず、Opus 5 は 15/16）ので、断定でなく「目安」として出す。
 // 世界照合は v0.125 から専用の選択欄を外し、デフォルト（軽い処理）の段で動く。
 // 測り直したら、ここと検証の記録のページを同じ PR で直す。
+//
+// 2026-11-12 に、公開されている 9 つのモデルと基準点（gpt-5.6-luna）を、同じ 18 作業・架空の題材・3 回ずつで測り直した
+// （manual/evaluations/open-models-by-feature.md）。精密の段のオープンな大型だけを「向かない」から「条件つき」に上げた。
+// 条件つきは、段の作業の一部だけが基準点に近い、の意味。
+// ローカル 30B 級と音声ノートの欄は変えていない: 30B 級は API 経由でしか測っておらず（前回パソコン上で測った結果が残る）、
+// 清書の訂正率は基準点 0.60 に対してオープンな大型で 0.18〜0.36 と遠かった。10B 級は測っていない。
 
 /** 割り当て枠。default・standard・precise が難しさ別の 3 段、meeting は音声ノートの欄 */
 export type ModelSlot = "default" | "standard" | "precise" | "meeting";
@@ -33,7 +39,10 @@ export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
   standard: { frontier: "good", openLarge: "partial", local30b: "partial", local10b: "poor" },
   // 精密な処理（論文からの手順・名寄せ・計画づくりと根拠照合・洞察の抽出・清書）。オープンな大型は
   // 手順のつながり F1 0.31・計画 0/2・洞察 0/4・清書 0/3。30B 級も計画 0/2・清書 0/3。10B 級は時間切れが多い
-  precise: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },
+  // 2026-11-12 の測り直し（オープンな大型 3 つ）: 論文からの手順（工程の F1 0.76〜0.87、基準点 0.89）・名寄せ・
+  // 計画の根拠の照合・重複の判定は、基準点と 95% 区間が重なった。計画の下書き（見せてよい 0.00〜0.10、基準点 0.50）と
+  // 知見の一般化（0.00〜0.10、基準点 0.30〜0.50）は離れた。照らし合わせる仕事だけ足りるので条件つき
+  precise: { frontier: "good", openLarge: "partial", local30b: "poor", local10b: "poor" },
   // 清書は発言を書き換えない忠実さが要る。オープンな大型と 30B 級は清書 0/3（語の置き換え・付け足し）、
   // 10B 級はほとんど直せないか時間切れ
   meeting: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },

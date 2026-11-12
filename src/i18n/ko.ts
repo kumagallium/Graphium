@@ -947,7 +947,7 @@ export const ko: Record<string, string> = {
   "settings.insightTest.sectionSummary": "인사이트는 고급 작업 모델({name})로 동작합니다. 함께 들어 있는 지견으로 그 모델을 시험할 수 있습니다",
   "settings.insightTest.sectionHelp": "인사이트 발견은 모델 지정의 '고급 작업 모델'을 씁니다. 다른 모델로 시험하려면 거기서 다시 고르세요. 테스트 입력도 결과도 저장하지 않습니다.",
   "settings.modelFit.note.standard": "지식 베이스에 추가와 번역은 공개 대형 모델로도 충분합니다.",
-  "settings.modelFit.note.precise": "스텝 추출·계획·정리하기는 강한 모델이 아니면 무너지기 쉽습니다.",
+  "settings.modelFit.note.precise": "스텝 추출과 근거 대조는 공개 모델로도 충분한 경우가 있습니다. 계획 작성과 인사이트 발견은 강한 모델이 알맞습니다.",
   "meeting.aiModelSameAsPreciseNamed": "고급 작업 모델과 같음({name})",
   "meeting.aiModelSameAsPrecise": "고급 작업 모델과 같음",
   "settings.atomizeIngestBudget.summary": "노트를 지식 베이스에 추가할 때 인사이트를 찾는 횟수입니다.",
