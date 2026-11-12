@@ -98,12 +98,51 @@ export function migrateToLatest(doc: GraphiumDocument, selfId?: string): Graphiu
 function stripSelfReferenceLinks(doc: GraphiumDocument, selfId: string): void {
   for (const page of doc.pages ?? []) {
     if (Array.isArray(page.knowledgeLinks)) {
+      // リンクを外す前に、対になる青い @ の文字を普通の文字に戻す（外すと行き先のない青い文字が残る）
+      if (doc.wikiMeta) unstyleSelfMentions(page, selfId);
       page.knowledgeLinks = page.knowledgeLinks.filter((l) => l?.targetNoteId !== selfId);
     }
     if (Array.isArray(page.provLinks)) {
       page.provLinks = page.provLinks.filter((l) => l?.targetNoteId !== selfId);
     }
   }
+}
+
+/**
+ * 自分宛ての knowledgeLink と対になる青い @ メンションを、普通の文字に戻す（AI が作ったナレッジのページだけ）。
+ * 再生成で題が変わったとき、本文が前の題を引いて自分宛てのリンクになったデータの後始末。
+ * 文字とリンクは ID で結ばれていないので、AI の書き込みが守る「同じブロックの中で同じ順に並ぶ」を
+ * 頼りに対応させる。ブロック内の青い @ の数とリンクの数が合わないとき（人が編集した等）は触らない。
+ */
+function unstyleSelfMentions(page: GraphiumDocument["pages"][number], selfId: string): void {
+  const linksByBlock = new Map<string, boolean[]>();
+  for (const l of page.knowledgeLinks ?? []) {
+    if (!l?.sourceBlockId) continue;
+    const list = linksByBlock.get(l.sourceBlockId) ?? [];
+    list.push(l.targetNoteId === selfId);
+    linksByBlock.set(l.sourceBlockId, list);
+  }
+  const visit = (blocks: any[]): void => {
+    for (const block of blocks ?? []) {
+      if (!block || typeof block !== "object") continue;
+      const isSelf = linksByBlock.get(block.id);
+      if (isSelf?.some(Boolean) && Array.isArray(block.content)) {
+        const mentions = block.content.filter(
+          (c: any) => c?.type === "text" && c.styles?.textColor === "blue" && typeof c.text === "string" && c.text.startsWith("@"),
+        );
+        if (mentions.length === isSelf.length) {
+          mentions.forEach((c: any, i: number) => {
+            if (!isSelf[i]) return;
+            c.text = c.text.slice(1).replace(/^🤖 /, "");
+            const { textColor: _drop, ...rest } = c.styles;
+            c.styles = rest;
+          });
+        }
+      }
+      if (Array.isArray(block.children)) visit(block.children);
+    }
+  };
+  visit(page.blocks as any[]);
 }
 
 const KNOWN_INLINE_STYLE_KEYS = new Set([
