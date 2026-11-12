@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.13](https://github.com/kumagallium/Graphium/compare/v0.129.12...v0.129.13) - 2026-11-11
+
+- feat: add claims that restate an existing insight to that insight by @kumagallium in https://github.com/kumagallium/Graphium/pull/1640
+
 ## [v0.129.12](https://github.com/kumagallium/Graphium/compare/v0.129.11...v0.129.12) - 2026-11-11
 
 - fix: send the note preview in _meta instead of structuredContent by @kumagallium in https://github.com/kumagallium/Graphium/pull/1638

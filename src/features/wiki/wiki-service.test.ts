@@ -3,6 +3,7 @@ import {
   parseInlineCitations,
   promoteClaimStatusIfCorroborated,
   reinforceAtomWithClaims,
+  judgeAtomReinforcements,
   buildAtomDocument,
   buildWikiDocument,
   filterSelfFromDerivedFromClaims,
@@ -367,6 +368,87 @@ describe("reinforceAtomWithClaims - Atom の支持追加", () => {
     expect(
       reinforceAtomWithClaims(atomDoc(["claim-a"]), { derivedFromClaims: ["", "claim-a"] }),
     ).toBeNull();
+  });
+});
+
+describe("reinforceAtomWithClaims - epistemicStatus の扱い", () => {
+  const atomDoc = (epistemicStatus?: string) => ({
+    version: 2,
+    title: "atom",
+    pages: [{ id: "main", title: "atom", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+    wikiMeta: {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromClaims: ["claim-a"],
+      ...(epistemicStatus ? { epistemicStatus } : {}),
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+    },
+    createdAt: "2026-07-01T00:00:00Z",
+    modifiedAt: "2026-07-01T00:00:00Z",
+  }) as any;
+
+  it("足す側のほうが低ければ洞察の epistemicStatus を下げる", () => {
+    const r = reinforceAtomWithClaims(atomDoc("observation"), { derivedFromClaims: ["claim-b"], epistemicStatus: "speculation" });
+    expect(r!.doc.wikiMeta!.epistemicStatus).toBe("speculation");
+  });
+
+  it("足す側のほうが高くても上げない", () => {
+    const r = reinforceAtomWithClaims(atomDoc("interpretation"), { derivedFromClaims: ["claim-b"], epistemicStatus: "established" });
+    expect(r!.doc.wikiMeta!.epistemicStatus).toBe("interpretation");
+  });
+
+  it("既存の洞察に epistemicStatus が無ければ付けない", () => {
+    const r = reinforceAtomWithClaims(atomDoc(), { derivedFromClaims: ["claim-b"], epistemicStatus: "speculation" });
+    expect(r!.doc.wikiMeta!.epistemicStatus).toBeUndefined();
+    expect("epistemicStatus" in r!.doc.wikiMeta!).toBe(false);
+  });
+
+  it("candidate に epistemicStatus が無ければ既存のまま", () => {
+    const r = reinforceAtomWithClaims(atomDoc("observation"), { derivedFromClaims: ["claim-b"] });
+    expect(r!.doc.wikiMeta!.epistemicStatus).toBe("observation");
+  });
+});
+
+describe("judgeAtomReinforcements - 補強の審査（fail-closed）", () => {
+  const originalFetch = global.fetch;
+  const items = [{ atomId: "x1", title: "寝かせると伸びる", body: "本文", claims: [{ id: "c1", title: "t", preview: "p" }] }];
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("items が空なら呼ばずに空配列", async () => {
+    expect(await judgeAtomReinforcements([], "ja")).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("成功すれば reinforcements を返し、/judge-atom-reinforcements に POST する", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ reinforcements: [{ atomId: "x1", claimIds: ["c1"] }] }),
+    });
+    expect(await judgeAtomReinforcements(items, "ja")).toEqual([{ atomId: "x1", claimIds: ["c1"] }]);
+    const [url, init] = (global.fetch as any).mock.calls[0];
+    expect(String(url)).toContain("/judge-atom-reinforcements");
+    expect(init.method).toBe("POST");
+  });
+
+  it("!ok なら空配列（足さない）", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 500 });
+    expect(await judgeAtomReinforcements(items, "ja")).toEqual([]);
+  });
+
+  it("fetch が投げても空配列（足さない）", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    (global.fetch as any).mockRejectedValue(new Error("network"));
+    expect(await judgeAtomReinforcements(items, "ja")).toEqual([]);
   });
 });
 

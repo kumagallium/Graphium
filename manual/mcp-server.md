@@ -339,7 +339,7 @@ Things to know:
 Your assistant can also look for [insights](/knowledge-layer#discovering-insights-from-claims) across your claims, again with its own model. As with claims, it takes part in Graphium's own step rather than writing pages freely, but there are two rounds instead of one:
 
 1. `start_insight_task` — Graphium picks a bundle of 50 related claims and hands the assistant the same instructions it would send to its own model.
-2. `submit_insights` — the assistant passes the insights it wrote. Nothing is saved yet. Graphium returns a **review task** with the same four checks the app runs: whether an example from another field really has the same shape, whether the claims bundled into one insight really belong together, a plain-language rewording, and whether an insight repeats or contradicts one you already have.
+2. `submit_insights` — the assistant passes the insights it wrote. Nothing is saved yet. Graphium returns a **review task** with the same four checks the app runs: whether an example from another field really has the same shape, whether the claims bundled into one insight really belong together, a plain-language rewording, and whether an insight repeats or contradicts one you already have. When the assistant says a claim is one more instance of an insight you already have, the review task also has a fifth check, **reinforce**, asking whether the claim really fits that insight's rule.
 3. `submit_insight_review` — the assistant passes the review's answers, and Graphium saves the insights.
 
 You only ask — *"look for insights across my claims"* — and the assistant calls the tools in order.
@@ -350,6 +350,7 @@ What stays with Graphium:
 
 - **Which claims an insight rests on.** Only claims from the bundle can be its sources, and its certainty is the lowest of theirs.
 - **How much has been looked at.** Each answer reports **coverage** — how many of your claims have been looked at so far, out of all of them. A bundle counts only once the assistant has answered it. Ask again to continue; when every claim has been looked at, the next round starts.
+- **Adding support.** A claim the assistant names as another instance of an existing insight is added to that insight only if the reinforce check confirms it. With no answer, or if the insight changed in the meantime, nothing is added.
 - **Repeats and contradictions.** An insight the review marks as the same as an existing one adds its claims to that insight instead of making a new page. One it marks as contradicting is kept as a separate insight, linked to the other both ways, and shows up as a Contradiction in **Upkeep → Check**.
 
 Things to know:

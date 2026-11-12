@@ -32,6 +32,12 @@ export type InsightTaskData = {
   conceptHashes: Record<string, string>;
   /** 配った時点の視野（提出済み / 有効な知見の総数 / 配布中の件数）と巡 */
   coverage: InsightCoverageCounts;
+  /**
+   * プロンプトに ref つきで載せた既存の洞察（並びが ref の a1, a2, … に対応する）。
+   * 提出の reinforcements（既存の洞察への補強の申し出）の ref を id に戻すのに使う。
+   * 無い課題（この欄ができる前に配ったもの）は補強を受け取らない
+   */
+  existingAtoms?: { id: string; title: string }[];
 };
 
 export type InsightCoverageCounts = { round: number; submitted: number; total: number; pendingCount: number };
@@ -44,6 +50,11 @@ export type InsightReviewData = {
   concepts: ClaimSnapshot[];
   /** 重複の候補。candidateIndex は candidates の位置。existingHash は審査に出した時点の既存の洞察の指紋 */
   duplicatePairs: { candidateIndex: number; existingId: string; existingHash: string; score: number }[];
+  /**
+   * 既存の洞察への補強の申し出（審査に出した並び。審査の index はこの並びに対応する）。
+   * existingHash は審査に出した時点の既存の洞察の指紋。claimIds はその洞察がまだ依拠していない知見だけ
+   */
+  reinforcements?: { atomId: string; existingHash: string; claimIds: string[] }[];
   /** 依拠する知見の指紋（審査の間に知見が変わっていないかを見る。TASK_STALE） */
   conceptHashes: Record<string, string>;
   /** 提出を受理した時点の視野 */
