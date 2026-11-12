@@ -882,7 +882,7 @@ export const en: Record<string, string> = {
   "settings.autoGrounding.title": "Auto-ground new knowledge",
   "settings.autoGrounding.help": "Automatically world-checks newly created insights and claims, one at a time in the background (off by default). It checks the KB first and only calls the model for claims not yet known, so the KB grows and checks get faster and cheaper over time. Insights grounded to the same world fact get linked automatically.",
   "settings.features.worldGrounding.title": "Use world grounding",
-  "settings.features.worldGrounding.help": "World-grounding works better with a smarter model. When off, grounding buttons and columns are hidden. Existing results are kept.",
+  "settings.features.worldGrounding.help": "World-grounding looks things up in Wikipedia and OpenAlex before it judges. If a web search MCP is connected, its results are used too. When off, grounding buttons and columns are hidden. Existing results are kept.",
   "settings.features.claims.title": "Use claims",
   "settings.features.claims.summary": "Pull out each proposition in your sources as a claim",
   "settings.features.claims.help": "Claims are a Graphium-specific extension: they take every proposition a note or document carries (such as \"X happens when Y\"), leaving out experiment-specific details so each still makes sense in another context. Topics are built directly from your sources, separately from claims. Insights are built from claims, so turning claims off turns insights off too. When off, ingest skips claim extraction and only the topic stage runs from your source text. Existing claims and insights are kept and stay visible.",

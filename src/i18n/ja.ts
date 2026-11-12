@@ -882,7 +882,7 @@ export const ja: Record<string, string> = {
   "settings.autoGrounding.title": "自動で世界照合する",
   "settings.autoGrounding.help": "新しく作られた洞察・知見を、バックグラウンドで1件ずつ自動的に世界照合します（既定 OFF）。まず KB を見て、未登録の主張だけモデル判定するので、使うほど KB が育ち照合は速く・安くなります。同じ世界事実に接続した洞察どうしが自動でつながります。",
   "settings.features.worldGrounding.title": "世界照合を使う",
-  "settings.features.worldGrounding.help": "世界照合は賢いモデルほど判定の質が上がります。オフにすると、照合のボタンと列が隠れます。照合済みの結果は残ります。",
+  "settings.features.worldGrounding.help": "世界照合は、Wikipedia と OpenAlex を調べて判定します。Web 検索の MCP をつないでいれば、その結果も使います。オフにすると、照合のボタンと列が隠れます。照合済みの結果は残ります。",
   "settings.features.claims.title": "知見を使う",
   "settings.features.claims.summary": "資料から命題を 1 件ずつ取り出します",
   "settings.features.claims.help": "知見は Graphium 独自の拡張で、ノートや資料に含まれる命題（「Y のとき X になる」など）をあるだけ取り出します。実験固有の詳細は除き、他の文脈でも使える形で書きます。トピックは知見とは別に資料から直接作られます。洞察は知見から作るため、知見をオフにすると洞察も使えません。オフにすると、取り込みは知見の抽出をせず、トピック段だけが資料本文から走ります。作成済みの知見・洞察は残り、引き続き見られます。",
