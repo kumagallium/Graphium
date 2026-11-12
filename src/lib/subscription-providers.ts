@@ -11,9 +11,23 @@
 //   - 従量課金が発生しない（使用量ダッシュボードでコスト計算対象外）
 //   - copilot-subscription だけは web 検索を内蔵する（hasBuiltinWebSearch）
 
+//
+// chatgpt-plan（Sign in with ChatGPT）は CLI を使わず、OpenAI の公開 Responses API を
+// 利用者の OAuth トークンで呼ぶ。API キー無し・温度指定なし・従量課金なしは同じだが、
+// ツールは AI SDK の LanguageModel 経路でそのまま実行できる（runsToolsThroughLanguageModel）。
+
 export const SUBSCRIPTION_PROVIDERS = [
   "copilot-subscription",
+  "chatgpt-plan",
 ] as const;
+
+/**
+ * サブスク型のうち、AI SDK の LanguageModel 経路（generateText）でツールを実行できるもの。
+ * agent-loop はこれが true のプロバイダを text-tool-call フォールバックへ回さない。
+ */
+export function runsToolsThroughLanguageModel(provider: string | null | undefined): boolean {
+  return provider === "chatgpt-plan";
+}
 
 export type SubscriptionProvider = (typeof SUBSCRIPTION_PROVIDERS)[number];
 

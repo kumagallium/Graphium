@@ -37,6 +37,7 @@ Under **Registered Models**, click **Add model**. The first question is **Where 
 | Choice | What happens |
 |---|---|
 | **Add another model from a service you already use** | Adds another model with a service (and key) you already use. Shown only when a model is registered |
+| **Use your ChatGPT plan** | Connects with your ChatGPT Plus / Pro plan with one button ([below](#chatgpt-plan)). Desktop app only |
 | **Use your GitHub account** | Connects GitHub Copilot with one button ([below](#connect-github-copilot-with-one-button)). Desktop app only |
 | **Connect with an API key (cloud services)** | Pick Anthropic, Cloudflare, Google, Mistral, OpenAI, OpenRouter, or Sakura AI Engine and paste a key ([below](#free-tier-services)) |
 | **Run it on this computer** | Connects to a model running in LM Studio or Ollama. No key needed |
@@ -79,6 +80,24 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 **For terminal users:** if you have already signed in with the GitHub Copilot CLI (`npm install -g @github/copilot`, then `copilot` once in a terminal), **Connect** uses that sign-in and needs no approval. To add another Copilot model, use **Add another model from a service you already use**, pick GitHub Copilot, and click **Fetch available models**. To switch GitHub accounts later, click **Sign in to GitHub again** on the Copilot model in **Settings → AI** and pick the other account in your browser.
 
 ::: info The Claude subscription provider was removed
+### Connect with your ChatGPT plan {#chatgpt-plan}
+
+If you subscribe to ChatGPT Plus or Pro, click **Continue with ChatGPT** under **Use your ChatGPT plan**. ChatGPT opens in your browser; sign in and allow Graphium to use your plan. When you are done, the Graphium screen updates and one model is registered. No API key is needed. Graphium itself stays free, and AI use counts toward your ChatGPT plan's allowance.
+
+This uses "Sign in with ChatGPT", which OpenAI offers to open-source apps that run on the user's own computer. Graphium receives only the permission to call AI on your plan; it cannot see your ChatGPT conversations or API keys. The permission is stored in Graphium's data folder on this computer, readable only by you.
+
+- **See or adjust usage:** **Manage usage** on the registered model's row opens Usage in ChatGPT settings. Graphium tells you when a limit is reached, but it cannot see how much is left or when it resets — check ChatGPT settings for that.
+- **Sign out:** click **Sign out** on the model's row. The model stays registered, so signing in again makes it work as before. You can also disconnect Graphium from ChatGPT settings.
+- **If you have been signed out:** the top of **Settings → AI** shows "You have been signed out of ChatGPT" — click **Sign in again**.
+- **Add another model:** under **Add another model from a service you already use**, pick ChatGPT and choose from the models your plan offers.
+- **If port 1455 is in use:** the first sign-in waits for ChatGPT's reply on port 1455 of this computer. Finish signing in with any other app that uses the same port (Codex, for example), then try again.
+
+::: warning If you work with unpublished data
+Notes, materials, and chat content you pass to the AI are sent to OpenAI as use of your ChatGPT account. OpenAI's "Sign in with ChatGPT" documentation does not say whether content sent this way is used for training (as of 2026-11-13). If you work with unpublished data, turn off **Improve the model for everyone** under **Settings → Data controls** in ChatGPT, or choose a connection that states it is not used for training (such as OpenAI with an API key).
+:::
+
+OpenAI still treats this as a preview, so eligible plans and conditions may change. Some features are not available through plan usage, such as image generation and file search (Graphium's chat, knowledge ingest, and checks are within scope).
+
 Earlier versions offered a **Claude (Subscription · Claude Code)** provider that ran AI through a Claude Pro/Max plan. It was removed because Anthropic's terms do not permit third-party apps to use subscription authentication. Any model registered through it disappears from the list on first launch after updating — register another provider instead. Anthropic API keys are unaffected, and the GitHub Copilot provider above fills the same no-API-key role.
 :::
 

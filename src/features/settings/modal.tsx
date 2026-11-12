@@ -35,6 +35,9 @@ import {
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { COPILOT_SETTINGS_URL, CopilotOneClick } from "./copilot-one-click/CopilotOneClick";
+import { ChatGptPlanConnect } from "./chatgpt-plan/ChatGptPlanConnect";
+import { ChatGptPlanRow } from "./chatgpt-plan/ChatGptPlanRow";
+import type { ChatGptModel } from "./chatgpt-plan/state";
 import { AssistantConnect } from "./assistant-connect/AssistantConnect";
 import { AiConnectFlow, KEYLESS_PLACEHOLDER } from "./ai-connect/AiConnectFlow";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
@@ -80,7 +83,10 @@ import { ZoomSettingSection } from "../ui-zoom/ZoomSetting";
 import { BulkBodyWidthSection, type BulkBodyWidthSectionProps } from "./BulkBodyWidthSection";
 import { SETTINGS_BLOCK_BAND_CLASS, SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS, SETTINGS_BLOCK_TITLE_TEXT_CLASS, SETTINGS_CARD_CLASS, SETTINGS_HEADING_ICON_SIZE, SETTINGS_INNER_CARD_CLASS, SETTINGS_ITEM_BODY_CLASS, SettingsBlockTitle, SettingsGroup, usePersistentOpen } from "./SettingsGroup";
 import { SettingsStatus } from "./SettingsStatus";
-import { getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired } from "../../lib/ai-error";
+import {
+  getCopilotAuthExpired, setCopilotAuthExpired, subscribeCopilotAuthExpired,
+  getChatGptAuthExpired, setChatGptAuthExpired, subscribeChatGptAuthExpired,
+} from "../../lib/ai-error";
 import { SettingToggle } from "./SettingToggle";
 import { useIsDesktop } from "../../hooks/use-media-query";
 // 共有ライブラリの読み直し通知（共有ルート・スイッチを変えたとき）。
@@ -151,6 +157,7 @@ const PROVIDERS = [
   { id: "google", name: "Google Gemini" },
   { id: "openai-compatible", name: "OpenAI Compatible (Groq, Ollama, etc.)" },
   { id: "copilot-subscription", name: "GitHub Copilot (Subscription · Copilot CLI)" },
+  { id: "chatgpt-plan", name: "ChatGPT (your ChatGPT plan)" },
 ] as const;
 
 // copilot-subscription は "default"（CLI の既定モデル）を即提示し、実 ID の一覧は
@@ -545,6 +552,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // Copilot のログイン切れ（localizeAiError が立てるフラグ）と、再ログインの部品の開閉
   const copilotAuthExpired = useSyncExternalStore(subscribeCopilotAuthExpired, getCopilotAuthExpired, () => false);
   const [reloginOpen, setReloginOpen] = useState(false);
+  // ChatGPT のプラン（chatgpt-plan）: サインイン切れのフラグ、再サインインの部品、選択画面から始めた初回の接続
+  const chatgptAuthExpired = useSyncExternalStore(subscribeChatGptAuthExpired, getChatGptAuthExpired, () => false);
+  const [chatgptReloginOpen, setChatgptReloginOpen] = useState(false);
+  const [chatgptFlowOpen, setChatgptFlowOpen] = useState(false);
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
   const [sourceModelId, setSourceModelId] = useState<string | null>(null);
   const [addProvider, setAddProvider] = useState("anthropic");
@@ -711,6 +722,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // Copilot のモデルが登録済みか（再ログインの入口を出す条件）と、ログイン切れの帯を出すか
   const hasCopilotModel = !isWebMode && models.some((m) => m.provider === "copilot-subscription");
   const copilotExpiredShown = copilotAuthExpired && hasCopilotModel;
+  const hasChatGptModel = !isWebMode && models.some((m) => m.provider === "chatgpt-plan");
+  const chatgptExpiredShown = chatgptAuthExpired && hasChatGptModel;
+  // 認証切れの帯は 1 つだけ出す（Copilot を先に）
+  const authExpiredShown = copilotExpiredShown || chatgptExpiredShown;
   const missingModelNames = [...new Set([
     modelMissing ? model : "",
     embeddingModelMissing || embeddingModelUnsupported ? embeddingModel : "",
@@ -1386,6 +1401,44 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setSubscriptionError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
     }
   }, [t, refreshModels]);
+
+  // ChatGPT のプラン: 確認が済んだモデルを 1 件登録する。API キー・エンドポイントは持たない。
+  // 表示名が既存のモデル名と重なるときは、名前を変えて登録する（Copilot の行と違い、ここでは断らない）
+  const handleUseChatGptPlan = useCallback(async (model: ChatGptModel) => {
+    setSubscriptionError("");
+    let name = model.name.trim() || model.id;
+    if (isDuplicateModelName(name, "", models)) {
+      const base = `${name} (ChatGPT)`;
+      name = base;
+      for (let n = 2; isDuplicateModelName(name, "", models); n++) name = `${base} ${n}`;
+    }
+    try {
+      const res = await fetch(`${apiBase()}/models`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_name: name, provider: "chatgpt-plan", model_id: model.id, api_key: "" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          data.code === "DUPLICATE_MODEL_NAME" ? DUPLICATE_MODEL_NAME_ERROR : data.error || `Error ${res.status}`,
+        );
+      }
+      setChatgptFlowOpen(false);
+      setChatGptAuthExpired(false);
+      refreshModels();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setSubscriptionError(message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : message);
+    }
+  }, [t, refreshModels, models]);
+
+  // ChatGPT の再サインインが済んだ: モデルは登録し直さず、フラグを下ろして部品を閉じ、AI の状態を読み直す
+  const handleChatGptReloggedIn = useCallback(() => {
+    setChatGptAuthExpired(false);
+    setChatgptReloginOpen(false);
+    refreshModels();
+  }, [refreshModels]);
 
   // 再ログインが済んだ: モデルは登録し直さず、フラグを下ろして部品を閉じ、AI の状態を読み直す
   const handleCopilotReloggedIn = useCallback(() => {
@@ -2657,10 +2710,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 あと一手（選び直す）の状態で出す。以前は古い名前のまま「〜を使っています」と出ていた */}
             {!modelsLoading && (
               <SettingsStatus
-                state={models.length > 0 && missingModelNames.length === 0 && !copilotExpiredShown ? "ready" : "setup"}
+                state={models.length > 0 && missingModelNames.length === 0 && !authExpiredShown ? "ready" : "setup"}
                 title={
                   copilotExpiredShown
                     ? t("settings.aiStatus.copilotExpiredTitle")
+                    : chatgptExpiredShown
+                    ? t("settings.aiStatus.chatgptExpiredTitle")
                     : models.length === 0
                     ? t("settings.aiStatus.setupTitle")
                     : missingModelNames.length > 0
@@ -2670,6 +2725,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 description={
                   copilotExpiredShown
                     ? t("settings.aiStatus.copilotExpiredDesc")
+                    : chatgptExpiredShown
+                    ? t("settings.aiStatus.chatgptExpiredDesc")
                     : models.length === 0
                     ? t("settings.aiStatus.setupDesc")
                     : missingModelNames.length > 0
@@ -2681,6 +2738,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 action={
                   copilotExpiredShown
                     ? { label: t("settings.aiStatus.copilotExpiredAction"), onClick: () => setReloginOpen(true), disabled: reloginOpen }
+                    : chatgptExpiredShown
+                    ? { label: t("settings.aiStatus.chatgptExpiredAction"), onClick: () => setChatgptReloginOpen(true), disabled: chatgptReloginOpen }
                     : models.length > 0
                     ? undefined
                     : {
@@ -2700,6 +2759,29 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 onCancel={() => setReloginOpen(false)}
                 onAddManually={() => {}}
               />
+            )}
+
+            {/* ChatGPT のプラン: 再サインイン（帯のすぐ下。開いたらすぐ流れを始める） */}
+            {hasChatGptModel && chatgptReloginOpen && (
+              <ChatGptPlanConnect
+                mode="relogin"
+                autoStart
+                onConnected={handleChatGptReloggedIn}
+                onCancel={() => setChatgptReloginOpen(false)}
+              />
+            )}
+
+            {/* ChatGPT のプラン: すでにモデルがあるときに、追加の選択画面から始めた初回の接続（空の状態では下の一覧の位置に出す） */}
+            {chatgptFlowOpen && models.length > 0 && (
+              <>
+                <ChatGptPlanConnect
+                  mode="embedded"
+                  autoStart
+                  onConnected={handleUseChatGptPlan}
+                  onCancel={() => setChatgptFlowOpen(false)}
+                />
+                {subscriptionError && <p className="text-xs text-destructive">{subscriptionError}</p>}
+              </>
             )}
 
             {/* 登録済みモデル一覧 */}
@@ -2742,7 +2824,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   {!isWebMode ? (
                     // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
                     <>
-                      {copilotFlowOpen ? (
+                      {chatgptFlowOpen ? (
+                        <ChatGptPlanConnect
+                          mode="embedded"
+                          autoStart
+                          onConnected={handleUseChatGptPlan}
+                          onCancel={() => setChatgptFlowOpen(false)}
+                        />
+                      ) : copilotFlowOpen ? (
                         <CopilotOneClick
                           mode="embedded"
                           autoStart
@@ -2751,7 +2840,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                           onAddManually={() => {}}
                         />
                       ) : (
-                        <AiConnectFlow {...aiConnectProps} onConnectCopilot={() => setCopilotFlowOpen(true)} />
+                        <AiConnectFlow
+                          {...aiConnectProps}
+                          onConnectChatGpt={() => setChatgptFlowOpen(true)}
+                          onConnectCopilot={() => setCopilotFlowOpen(true)}
+                        />
                       )}
                       {subscriptionError && (
                         <p className="text-xs text-destructive mt-2">{subscriptionError}</p>
@@ -2897,6 +2990,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                             )}
                           </div>
                         )}
+                        {/* ChatGPT のプラン: 使用中の表示・使用量の確認・サインアウト（Copilot の行と同じ位置） */}
+                        {m.provider === "chatgpt-plan" && !isWebMode && (
+                          <ChatGptPlanRow
+                            expired={chatgptAuthExpired}
+                            onSignInAgain={() => setChatgptReloginOpen(true)}
+                          />
+                        )}
                         {/* 削除の確認中だけ、このモデルを選んでいる項目と、削除すると既定に戻ることを出す */}
                         {deleteConfirm === m.id && modelSlotLabelsUsing(m).length > 0 && (
                           <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
@@ -3026,6 +3126,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 ) : !legacyForm ? (
                   <AiConnectFlow
                     {...aiConnectProps}
+                    onConnectChatGpt={isWebMode ? undefined : () => { setShowAddForm(false); setChatgptFlowOpen(true); }}
                     onConnectCopilot={isWebMode ? undefined : () => { setShowAddForm(false); setCopilotFlowOpen(true); }}
                   />
                 ) : (

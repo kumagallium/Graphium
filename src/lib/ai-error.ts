@@ -45,6 +45,10 @@ export async function aiErrorFromResponse(
 const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   NO_MODEL_REGISTERED: "aiError.noModelRegistered",
   COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "aiError.copilotSubscriptionAuthExpired",
+  CHATGPT_PLAN_AUTH_EXPIRED: "aiError.chatgptPlanAuthExpired",
+  CHATGPT_PLAN_LIMIT_REACHED: "aiError.chatgptPlanLimitReached",
+  CHATGPT_PLAN_NOT_ELIGIBLE: "aiError.chatgptPlanNotEligible",
+  CHATGPT_PLAN_UNAVAILABLE: "aiError.chatgptPlanUnavailable",
   INVALID_API_KEY: "aiError.invalidApiKey",
   API_KEY_FORBIDDEN: "aiError.apiKeyForbidden",
   EMBEDDING_MODEL_UNSUPPORTED: "aiError.embeddingModelUnsupported",
@@ -62,6 +66,12 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
 
 /** Copilot のログイン切れ通知イベント。note-app がトースト表示と設定 AI タブ誘導のために listen する */
 export const COPILOT_AUTH_EXPIRED_EVENT = "graphium-copilot-auth-expired";
+
+/** ChatGPT のプランのサインイン切れ通知イベント。note-app がトースト表示と設定 AI タブ誘導のために listen する */
+export const CHATGPT_AUTH_EXPIRED_EVENT = "graphium-chatgpt-auth-expired";
+
+/** ChatGPT のプランの利用上限に達した通知イベント。note-app がトースト表示のために listen する（設定は開かない） */
+export const CHATGPT_LIMIT_REACHED_EVENT = "graphium-chatgpt-limit-reached";
 
 /** 通知イベントを連続で飛ばさない間隔（ms） */
 export const COPILOT_AUTH_EXPIRED_THROTTLE_MS = 60_000;
@@ -89,10 +99,36 @@ export function subscribeCopilotAuthExpired(listener: () => void): () => void {
   };
 }
 
+// 「ChatGPT のサインインが切れている」フラグ（Copilot と同じ形。設定 AI タブの帯・行の操作が読む）
+let chatgptAuthExpired = false;
+const chatgptAuthExpiredListeners = new Set<() => void>();
+let lastChatgptAuthExpiredAt = 0;
+let lastChatgptLimitReachedAt = 0;
+
+export function getChatGptAuthExpired(): boolean {
+  return chatgptAuthExpired;
+}
+
+export function setChatGptAuthExpired(value: boolean): void {
+  if (chatgptAuthExpired === value) return;
+  chatgptAuthExpired = value;
+  chatgptAuthExpiredListeners.forEach((fn) => fn());
+}
+
+export function subscribeChatGptAuthExpired(listener: () => void): () => void {
+  chatgptAuthExpiredListeners.add(listener);
+  return () => {
+    chatgptAuthExpiredListeners.delete(listener);
+  };
+}
+
 /** テスト用: 抑制タイマーとフラグを初期状態に戻す */
 export function resetCopilotAuthExpiredForTest(): void {
   lastCopilotAuthExpiredAt = 0;
   copilotAuthExpired = false;
+  lastChatgptAuthExpiredAt = 0;
+  lastChatgptLimitReachedAt = 0;
+  chatgptAuthExpired = false;
 }
 
 /**
@@ -102,6 +138,8 @@ export function resetCopilotAuthExpiredForTest(): void {
  *
  * ⚠️ 例外的に副作用がある: code が COPILOT_SUBSCRIPTION_AUTH_EXPIRED のとき、
  * 認証切れフラグを立て、COPILOT_AUTH_EXPIRED_EVENT を dispatch する（60 秒に 1 回）。
+ * CHATGPT_PLAN_AUTH_EXPIRED も同じ流儀（フラグと CHATGPT_AUTH_EXPIRED_EVENT）。
+ * CHATGPT_PLAN_LIMIT_REACHED は CHATGPT_LIMIT_REACHED_EVENT を 60 秒に 1 回 dispatch する。
  * この関数はチャット・ナレッジ化・取り込み・音声要約など約 27 か所の失敗経路が
  * 必ず通る唯一の場所なので、ここで検知すれば呼び出し側を 1 つも直さずに
  * 「再ログインの導線」をアプリ全体で出せる。文言化の副作用と引き換えに網羅性を取った。
@@ -109,6 +147,8 @@ export function resetCopilotAuthExpiredForTest(): void {
 export function localizeAiError(err: unknown): string {
   const code = aiErrorCodeOf(err);
   if (code === "COPILOT_SUBSCRIPTION_AUTH_EXPIRED") notifyCopilotAuthExpired();
+  if (code === "CHATGPT_PLAN_AUTH_EXPIRED") notifyChatGptAuthExpired();
+  if (code === "CHATGPT_PLAN_LIMIT_REACHED") notifyChatGptLimitReached();
   if (code) return tStatic(CODE_TO_I18N_KEY[code]);
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string" && err) return err;
@@ -123,6 +163,23 @@ function notifyCopilotAuthExpired(): void {
   if (lastCopilotAuthExpiredAt !== 0 && now - lastCopilotAuthExpiredAt < COPILOT_AUTH_EXPIRED_THROTTLE_MS) return;
   lastCopilotAuthExpiredAt = now;
   window.dispatchEvent(new CustomEvent(COPILOT_AUTH_EXPIRED_EVENT));
+}
+
+function notifyChatGptAuthExpired(): void {
+  if (typeof window === "undefined") return;
+  setChatGptAuthExpired(true);
+  const now = Date.now();
+  if (lastChatgptAuthExpiredAt !== 0 && now - lastChatgptAuthExpiredAt < COPILOT_AUTH_EXPIRED_THROTTLE_MS) return;
+  lastChatgptAuthExpiredAt = now;
+  window.dispatchEvent(new CustomEvent(CHATGPT_AUTH_EXPIRED_EVENT));
+}
+
+function notifyChatGptLimitReached(): void {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (lastChatgptLimitReachedAt !== 0 && now - lastChatgptLimitReachedAt < COPILOT_AUTH_EXPIRED_THROTTLE_MS) return;
+  lastChatgptLimitReachedAt = now;
+  window.dispatchEvent(new CustomEvent(CHATGPT_LIMIT_REACHED_EVENT));
 }
 
 /** AI 未設定ガード発火の通知イベント。note-app がトースト表示のために listen する */

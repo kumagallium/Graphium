@@ -9,12 +9,15 @@ import {
   localizeAiError,
   aiErrorFromResponse,
   COPILOT_AUTH_EXPIRED_EVENT,
+  CHATGPT_AUTH_EXPIRED_EVENT,
+  CHATGPT_LIMIT_REACHED_EVENT,
+  getChatGptAuthExpired,
   getCopilotAuthExpired,
   setCopilotAuthExpired,
   subscribeCopilotAuthExpired,
   resetCopilotAuthExpiredForTest,
 } from "./ai-error";
-import { CodedError } from "./ai-error-codes";
+import { CodedError, type AiErrorCode } from "./ai-error-codes";
 
 beforeEach(() => {
   syncLocale("en");
@@ -148,5 +151,58 @@ describe("Copilot ログイン切れの検知", () => {
     setCopilotAuthExpired(false);
     expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+});
+
+describe("ChatGPT プランのエラーとサインイン切れの検知", () => {
+  const coded = (code: AiErrorCode) => new CodedError("x", code);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    resetCopilotAuthExpiredForTest();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("4 つのコードがそれぞれ固有の文言に解決される（キー名やコードを出さない）", () => {
+    const texts = ([
+      "CHATGPT_PLAN_AUTH_EXPIRED",
+      "CHATGPT_PLAN_LIMIT_REACHED",
+      "CHATGPT_PLAN_NOT_ELIGIBLE",
+      "CHATGPT_PLAN_UNAVAILABLE",
+    ] as AiErrorCode[]).map((c) => localizeAiError(coded(c)));
+    expect(new Set(texts).size).toBe(4);
+    for (const text of texts) expect(text).not.toMatch(/^aiError\.|CHATGPT_PLAN/);
+  });
+
+  it("LIMIT_REACHED は認証切れフラグを立てず、専用イベントを 60 秒に 1 回 dispatch する", () => {
+    const fn = vi.fn();
+    window.addEventListener(CHATGPT_LIMIT_REACHED_EVENT, fn);
+    localizeAiError(coded("CHATGPT_PLAN_LIMIT_REACHED"));
+    localizeAiError(coded("CHATGPT_PLAN_LIMIT_REACHED"));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(getChatGptAuthExpired()).toBe(false);
+    vi.advanceTimersByTime(60_500);
+    localizeAiError(coded("CHATGPT_PLAN_LIMIT_REACHED"));
+    expect(fn).toHaveBeenCalledTimes(2);
+    window.removeEventListener(CHATGPT_LIMIT_REACHED_EVENT, fn);
+  });
+
+  it("AUTH_EXPIRED だけがフラグを立て、イベントを 60 秒に 1 回 dispatch する", () => {
+    const fn = vi.fn();
+    window.addEventListener(CHATGPT_AUTH_EXPIRED_EVENT, fn);
+    localizeAiError(coded("CHATGPT_PLAN_LIMIT_REACHED"));
+    expect(fn).not.toHaveBeenCalled();
+    expect(getChatGptAuthExpired()).toBe(false);
+    localizeAiError(coded("CHATGPT_PLAN_AUTH_EXPIRED"));
+    localizeAiError(coded("CHATGPT_PLAN_AUTH_EXPIRED"));
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(getChatGptAuthExpired()).toBe(true);
+    vi.advanceTimersByTime(60_500);
+    localizeAiError(coded("CHATGPT_PLAN_AUTH_EXPIRED"));
+    expect(fn).toHaveBeenCalledTimes(2);
+    window.removeEventListener(CHATGPT_AUTH_EXPIRED_EVENT, fn);
   });
 });

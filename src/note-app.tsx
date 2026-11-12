@@ -562,7 +562,7 @@ import { resolveBlockMaterial } from "./features/asset-browser/block-material";
 import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale, getGenerationLanguage } from "./i18n";
 import { toGenerationLanguage } from "./lib/language";
-import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT } from "./lib/ai-error";
+import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT, CHATGPT_AUTH_EXPIRED_EVENT, CHATGPT_LIMIT_REACHED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
@@ -8790,6 +8790,52 @@ export function NoteApp() {
     };
     window.addEventListener(COPILOT_AUTH_EXPIRED_EVENT, handler);
     return () => window.removeEventListener(COPILOT_AUTH_EXPIRED_EVENT, handler);
+  }, []);
+  // ChatGPT のサインイン切れ（CHATGPT_AUTH_EXPIRED_EVENT）。Copilot と同じ知らせ方
+  useEffect(() => {
+    const handler = () => {
+      const id = "chatgpt-auth";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id),
+          {
+            id,
+            status: "error" as const,
+            noteTitle: tStatic("chatgptPlan.authExpired.toastTitle"),
+            result: tStatic("chatgptPlan.authExpired.toastBody"),
+          },
+        ],
+      }));
+      if (!showSettingsRef.current) {
+        window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
+      }
+    };
+    window.addEventListener(CHATGPT_AUTH_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(CHATGPT_AUTH_EXPIRED_EVENT, handler);
+  }, []);
+  // ChatGPT のプランの利用上限（CHATGPT_LIMIT_REACHED_EVENT）。固定 id のトースト 1 件で知らせ、
+  // 「Manage usage」で ChatGPT の使用量の設定を外部ブラウザで開く。Graphium の設定は開かない
+  useEffect(() => {
+    const handler = () => {
+      const id = "chatgpt-limit";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id),
+          {
+            id,
+            status: "error" as const,
+            noteTitle: tStatic("chatgptPlan.limitReached.toastTitle"),
+            result: tStatic("chatgptPlan.limitReached.toastBody"),
+            action: {
+              label: tStatic("settings.chatgptPlan.manageUsage"),
+              onClick: () => void openExternalUrl("https://chatgpt.com/settings/usage"),
+            },
+          },
+        ],
+      }));
+    };
+    window.addEventListener(CHATGPT_LIMIT_REACHED_EVENT, handler);
+    return () => window.removeEventListener(CHATGPT_LIMIT_REACHED_EVENT, handler);
   }, []);
   // Embedding 失敗（notifyEmbeddingFailure → EMBEDDING_FAILED_EVENT）のトースト表示。
   // 発火元は同じ原因をセッション内 1 回に抑えているので、ここは受けて表示するだけ。
