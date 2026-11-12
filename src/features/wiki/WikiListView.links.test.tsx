@@ -68,6 +68,34 @@ describe("WikiListView リンク列", () => {
     expect(linksCell("トピック2")).toBe("2");
   });
 
+  it("値のある行が 1 件でもあれば列を出し、絞り込んでも列は出たままにする", () => {
+    const files = [file("t1", "トピック1"), file("t2", "トピック2")];
+    const metas = new Map<string, WikiMetaSummary>([
+      ["t1", { title: "トピック1", kind: "topic" }],
+      ["t2", { title: "トピック2", kind: "topic" }],
+    ]);
+    const noteIndex = {
+      notes: [entry("t1", ["pdf:a"], ["pdf:a"]), entry("t2", ["pdf:b"], ["pdf:b", "t1"])],
+    } as unknown as GraphiumIndex;
+    render(
+      <LocaleProvider>
+        <WikiListView
+          noteIndex={noteIndex}
+          wikiKind="topic"
+          wikiFiles={files}
+          wikiMetas={metas}
+          onOpenWiki={() => {}}
+          onBack={() => {}}
+          onDeleteWiki={async () => {}}
+        />
+      </LocaleProvider>,
+    );
+    // リンクは t2 だけ、被参照は t1 だけに値がある。どちらの列も出て、値の無い行は「—」
+    expect(linksCell("トピック1")).toBe("—");
+    expect(cellUnder("Refs in", "トピック1")).toBe("1");
+    expect(cellUnder("Refs in", "トピック2")).toBe("—");
+  });
+
   it("古い形式のトピックは束ねている知見へのリンクも生成元として数えない", () => {
     const files = [file("t1", "トピック1")];
     const metas = new Map<string, WikiMetaSummary>([
@@ -127,7 +155,10 @@ describe("WikiListView 生成元列（洞察）", () => {
     );
     expect(cellUnder("Sources", "洞察1")).toBe("3");
     expect(cellUnder("Sources", "洞察2")).toBe("1");
-    // もとの知見へのリンクは「リンク」には数えない（生成元と同じ数字を 2 列に並べない）
-    expect(cellUnder("Links", "洞察1")).toBe("—");
+    // もとの知見へのリンクは「リンク」には数えない。どの洞察にも値が無いので、リンクと被参照は
+    // 列ごと出さない（「—」だけの列を並べない）
+    const headers = [...document.querySelectorAll("thead th")].map((th) => th.textContent ?? "");
+    expect(headers.some((h) => h.startsWith("Links"))).toBe(false);
+    expect(headers.some((h) => h.startsWith("Refs in"))).toBe(false);
   });
 });

@@ -635,9 +635,17 @@ export function WikiListView({
   const showWorldVerdict =
     wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled;
   const showSourceVerdict = wikiKind === "claim" || wikiKind === "topic";
+  // リンク・被参照は、その種類に値が 1 件でもあるときだけ列を出す。洞察と要約はほぼ全行が
+  // 空で、「—」だけの列が 2 本並ぶと、数字の入っている生成元の列まで読み飛ばされる。
+  // 絞り込みや検索で列が出入りしないよう、絞り込む前の全件（wikiEntries）で決める。
+  // 索引がまだ無い間は決められないので出しておく（読み込み後に列が増えて表が動くのを避ける）
+  const showOutgoing = !noteIndex || wikiEntries.some((e) => e.outgoing > 0);
+  const showIncoming = !noteIndex || wikiEntries.some((e) => e.incoming > 0);
   const columnPlan = buildWikiListColumnPlan({
     hasWorldVerdict: showWorldVerdict,
     hasSourceVerdict: showSourceVerdict,
+    hasOutgoing: showOutgoing,
+    hasIncoming: showIncoming,
   });
   const cols = useResponsiveColumns(columnPlan);
   const hide = cols.hidden;
@@ -652,9 +660,11 @@ export function WikiListView({
       verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
       sources: ["sources", t("wikiList.colSources")],
     };
+    if (sortKey === "outgoing" && !showOutgoing) return t("wikiList.colOutgoing");
+    if (sortKey === "incoming" && !showIncoming) return t("wikiList.colIncoming");
     const hit = byKey[sortKey];
     return hit && hide.has(hit[0]) ? hit[1] : null;
-  }, [sortKey, hide, t]);
+  }, [sortKey, hide, showOutgoing, showIncoming, t]);
 
   const selectableEntries = filtered;
   const toggleSelectAll = useCallback(() => {
@@ -947,20 +957,24 @@ export function WikiListView({
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
-                  onClick={() => handleSort("outgoing")}
-                  data-tooltip={t("wikiList.colOutgoingTooltip")}
-                >
-                  {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
-                <th
-                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
-                  onClick={() => handleSort("incoming")}
-                  data-tooltip={t("wikiList.colIncomingTooltip")}
-                >
-                  {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
+                {showOutgoing && (
+                  <th
+                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
+                    onClick={() => handleSort("outgoing")}
+                    data-tooltip={t("wikiList.colOutgoingTooltip")}
+                  >
+                    {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
+                {showIncoming && (
+                  <th
+                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
+                    onClick={() => handleSort("incoming")}
+                    data-tooltip={t("wikiList.colIncomingTooltip")}
+                  >
+                    {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
                 {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                   <th
                     className={cn(
@@ -1062,12 +1076,16 @@ export function WikiListView({
                   <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {entry.outgoing > 0 ? entry.outgoing : <span className="text-muted-foreground/40">—</span>}
-                  </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
-                  </td>
+                  {showOutgoing && (
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                      {entry.outgoing > 0 ? entry.outgoing : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+                  )}
+                  {showIncoming && (
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                      {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+                  )}
                   {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                     <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
                       <WorldVerdictCell grounding={entry.worldGrounding} />

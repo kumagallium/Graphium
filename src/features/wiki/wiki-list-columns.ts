@@ -43,6 +43,10 @@ export interface WikiListColumnOptions {
   hasWorldVerdict: boolean;
   /** 出典照合の列が出ているか */
   hasSourceVerdict: boolean;
+  /** リンクの列が出ているか（その種類に値が 1 件も無いときは出さない）。省略時は出ている扱い */
+  hasOutgoing?: boolean;
+  /** 被参照の列が出ているか（同上）。省略時は出ている扱い */
+  hasIncoming?: boolean;
 }
 
 export function buildWikiListColumnPlan(
@@ -53,8 +57,8 @@ export function buildWikiListColumnPlan(
     WIKI_LIST_TITLE_MIN_WIDTH +
     W.checkbox +
     W.type +
-    W.outgoing +
-    W.incoming +
+    (opts.hasOutgoing === false ? 0 : W.outgoing) +
+    (opts.hasIncoming === false ? 0 : W.incoming) +
     W.modifiedAt +
     W.delete +
     (opts.hasSourceVerdict ? W.sourceVerdict : 0);
