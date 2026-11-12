@@ -56,7 +56,8 @@ With two displays, press **Open in a separate window** in the side peek's header
 - **Open in the main window** moves the note to the main window. Edits you just made in the separate window are saved first.
 - Clicking a link to another note inside the separate window opens that note in the same window.
 - There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
-- The separate window holds one note: it has no sidebar, no right panel, and no chat. Inserting images and other files from the slash menu is done in the main window.
+- The **Steps** button in the separate window's header opens the steps panel to the right of the note, the same one as in the main window's right panel. Adding, renaming, or connecting steps there writes to the note. Memos on connections are shown in the main window only.
+- The separate window holds one note: it has no sidebar and no chat, and the other right-panel tabs (graph, history, memos) stay in the main window. Inserting images and other files from the slash menu is done in the main window.
 - The desktop app remembers the separate window's position and size. Closing the main window closes it too.
 - Pressing the button saves and closes the side peek. The button appears at widths where windows can sit side by side (not at phone width).
 

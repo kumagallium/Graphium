@@ -48,7 +48,12 @@ import {
 } from "../../lib/peek-save-queue";
 import { flushEditorsBeforeExit } from "../../lib/flush-on-exit";
 import { readIndexFile, type GraphiumIndex } from "../navigation/index-file";
-import { SidePeek } from "../index-table/side-peek";
+import { SidePeek, type PeekStandalonePanelArgs } from "../index-table/side-peek";
+import { ProvGraphPanel } from "../prov-generator/view";
+import { useProvGeneration } from "../../hooks/use-prov-generation";
+import { useLabelStore } from "../context-label/store";
+import { isProvLabelsEnabled } from "../settings";
+import { useMediaInlineLabelStore } from "../inline-label/media-store";
 
 type LoadState =
   | { phase: "loading" }
@@ -312,6 +317,14 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
     );
   }
   const entry = noteIndex?.notes.find((n) => n.noteId === noteId);
+  // ステップ（工程）の右パネル。ラベルの機能を切っているときと、ナレッジのページには出さない
+  const standalonePanel =
+    isProvLabelsEnabled() && !noteId.includes(":")
+      ? {
+          label: t("panel.prov"),
+          render: (args: PeekStandalonePanelArgs) => <ViewerProvPanel args={args} index={noteIndex} />,
+        }
+      : undefined;
   return (
     <MediaInlineLabelProvider>
       <AiAssistantProvider aiAvailable={false}>
@@ -329,9 +342,47 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
           noteIndex={noteIndex}
           archived={!!entry?.archivedAt}
           trashed={!!entry?.deletedAt}
+          standalonePanel={standalonePanel}
         />
       </AiAssistantProvider>
     </MediaInlineLabelProvider>
+  );
+}
+
+/**
+ * 別ウィンドウの右のパネル「ステップ」。メインの右パネルと同じ部品を、このノートのストアと
+ * エディタにつないで出す。SidePeek のストアの内側で描かれる（standalonePanel）。
+ * 線のメモは出さない（メモの一覧と作成はメインが持つ）
+ */
+function ViewerProvPanel({
+  args,
+  index,
+}: {
+  args: PeekStandalonePanelArgs;
+  index: GraphiumIndex | null;
+}) {
+  const labelStore = useLabelStore();
+  const linkStore = useLinkStore();
+  const mediaInlineLabelStore = useMediaInlineLabelStore();
+  const { provDoc, triggerRegeneration } = useProvGeneration(
+    args.editorRef,
+    labelStore.labels,
+    linkStore.links,
+    args.doc.documentProvenance,
+    mediaInlineLabelStore.labels,
+  );
+  const { subscribeChange } = args;
+  useEffect(() => subscribeChange(triggerRegeneration), [subscribeChange, triggerRegeneration]);
+  return (
+    <div className="flex-1 min-h-0 overflow-auto">
+      <ProvGraphPanel
+        doc={provDoc}
+        editorRef={args.editorRef}
+        noteId={args.noteId}
+        noteContexts={args.noteContexts}
+        index={index}
+      />
+    </div>
   );
 }
 

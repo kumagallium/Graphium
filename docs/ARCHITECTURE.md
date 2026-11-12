@@ -3285,6 +3285,9 @@ The same `src/` tree is built four different ways.
   flush-before-open (`flushPeekSaves`), mention rename, body-width changes,
   maintenance undo, flush on exit — reach the other window, and the viewer's
   saves run the same post-save step as a side peek's (index and doc cache).
+  The viewer can show the steps panel (`ProvGraphPanel`) beside the note,
+  rendered inside the side peek's stores (`standalonePanel`); the other
+  right-panel tabs depend on `NoteApp` state and stay in `main`.
   When `main` closes a note it stays "held" until its closing save has
   left the save queue. Messages travel as Tauri events
   (`viewer-bus-to-main` / `viewer-bus-to-viewer`) or a `BroadcastChannel`
