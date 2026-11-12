@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.129.17](https://github.com/kumagallium/Graphium/compare/v0.129.16...v0.129.17) - 2026-11-12
+
+- [fix] Model guide: open large is conditional for the advanced tier by @kumagallium in https://github.com/kumagallium/Graphium/pull/1649
+- [fix] Count links the same way in the Notes list and the Knowledge list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1650
+
 ## [v0.129.16](https://github.com/kumagallium/Graphium/compare/v0.129.15...v0.129.16) - 2026-11-12
 
 - [fix] Stop a regenerated claim from linking to itself through its previous title by @kumagallium in https://github.com/kumagallium/Graphium/pull/1648
