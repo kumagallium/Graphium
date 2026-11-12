@@ -8,6 +8,7 @@ import type {
   GraphiumFile,
   WikiMetaSummary,
 } from "../../lib/document-types";
+import type { GraphiumIndex } from "../navigation/index-file";
 import "../../app.css";
 
 const now = new Date();
@@ -277,14 +278,9 @@ export const ClaimListMenuBusy: Story = {
 
 // ── 幅が狭いとき、補助の列を順に隠す ──
 // 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
-// モデル → 作成日 → 世界照合（列があるときだけ）→ 出典数の順に隠れ、タイトル列は 240px 以上を保つ。
-// 境目（表の内側の幅）は種別ごとに違う:
-//   知見（出典照合あり・世界照合なし）: 1199 未満でモデル、1077 未満で作成日、951 未満で出典数、最小 871
-//   知見（世界照合も出る既定）        : 1309 未満でモデル、1187 未満で作成日、1061 未満で世界照合、951 未満で出典数、最小 871
-// 871 未満（1164 幅・サイドバー開き = 表の内側 860 前後）は、最後の手段としてタイトルの
-// 最小幅を 200px に詰める（表は 814px）。
-// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024
-// （表の内側は 976）。世界照合が出る既定の知見一覧でも、世界照合まで隠せば収まる。
+// モデル → 作成日 → 世界照合（列があるときだけ）→ 参照先 → 被参照 → 出典数の順に隠れ、
+// タイトル列は 240px 以上を保つ。境目（表の内側の幅）は note-list-columns.test.ts で確かめている。
+// 全部隠してもなお足りないときは、最後の手段としてタイトルの最小幅を 200px に詰める。
 
 const widthDecorator = (width: number) => (Story: ComponentType) => (
   <div
@@ -341,13 +337,125 @@ export const NarrowWithWorldWindowsDefault: Story = {
 };
 
 export const NarrowWithWorldSidebarOpen1164: Story = {
-  name: "枠の幅 908（1164 幅・サイドバー開き・世界照合あり: 出典数まで隠し、タイトルを詰めて収まる）",
+  name: "枠の幅 908（1164 幅・サイドバー開き・世界照合あり: 参照先・被参照まで隠して収まる）",
   args: narrowClaimWithWorldArgs,
   decorators: [widthDecorator(908)],
 };
 
 export const NarrowScrolls: Story = {
-  name: "枠の幅 800（タイトルを詰めてもなお足りず、横スクロール）",
+  name: "枠の幅 800（隠せる列を全部隠す）",
   args: narrowClaimArgs,
   decorators: [widthDecorator(800)],
+};
+
+// ── 生成元・派生・参照先・被参照の列を、種類ごとに実際の埋まり方で確かめる ──
+// 索引（noteIndex）を渡して列に数字を出す。見本はパン作り。数え方はノート一覧と同じ
+// （navigation/link-counts.ts）: もと・派生の関係は参照先・被参照に数えない。
+// 知見: 生成元はノート 1〜2 件、派生はそれをもとにした洞察、参照先・被参照はごく一部。
+// 洞察: もとは知見（derivedFromClaims）。本文のリンクもその知見を指すので、ほかの列は出ない。
+// 要約: もとはノート 1 件で、ほかの列は出ない。
+
+type LinkFixture = {
+  noteId: string;
+  title: string;
+  derivedFromNotes?: string[];
+  derivedFromClaims?: string[];
+  targets?: string[];
+};
+
+function linkIndex(rows: LinkFixture[]): GraphiumIndex {
+  return {
+    notes: rows.map((r) => ({
+      noteId: r.noteId,
+      title: r.title,
+      derivedFromNotes: r.derivedFromNotes ?? [],
+      derivedFromClaims: r.derivedFromClaims,
+      outgoingLinks: (r.targets ?? []).map((targetNoteId) => ({ targetNoteId, layer: "knowledge" as const })),
+    })),
+  } as unknown as GraphiumIndex;
+}
+
+const BREAD_CLAIM_FILES: GraphiumFile[] = [
+  { id: "bc1", name: "加水率を 75% に上げると気泡が大きくなる", modifiedTime: hoursAgo(2), createdTime: daysAgo(1) },
+  { id: "bc2", name: "一次発酵を冷蔵で一晩おくと酸味が増す", modifiedTime: hoursAgo(6), createdTime: daysAgo(2) },
+  { id: "bc3", name: "塩を後入れするとこね時間が短くなる", modifiedTime: daysAgo(1), createdTime: daysAgo(3) },
+  { id: "bc4", name: "焼成の最初にスチームを入れるとクラストが薄くなる", modifiedTime: daysAgo(2), createdTime: daysAgo(4) },
+  { id: "bc5", name: "全粒粉を 20% 混ぜると吸水が増える", modifiedTime: daysAgo(3), createdTime: daysAgo(5) },
+  { id: "bc6", name: "予熱が足りないと底が白く焼き上がる", modifiedTime: daysAgo(4), createdTime: daysAgo(6) },
+];
+
+const BREAD_CLAIM_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_CLAIM_FILES.map((f, i) => [
+    f.id,
+    { title: f.name, kind: "claim", model: i % 2 === 0 ? "claude-haiku-4-5" : "gpt-oss-120b" },
+  ]),
+);
+
+const BREAD_ATOM_FILES: GraphiumFile[] = [
+  { id: "ba1", name: "水分が多い生地ほど発酵の温度管理が効く", modifiedTime: hoursAgo(1), createdTime: daysAgo(1) },
+  { id: "ba2", name: "クラストの厚みは最初の 5 分で決まる", modifiedTime: hoursAgo(9), createdTime: daysAgo(2) },
+  { id: "ba3", name: "こね時間を縮める手はどれも塩の扱いに行き着く", modifiedTime: daysAgo(2), createdTime: daysAgo(3) },
+  { id: "ba4", name: "全粒粉の配合と加水は一緒に動かす", modifiedTime: daysAgo(3), createdTime: daysAgo(5) },
+];
+
+const BREAD_ATOM_CLAIMS: Record<string, string[]> = {
+  ba1: ["bc1", "bc2", "bc5"],
+  ba2: ["bc4", "bc6"],
+  ba3: ["bc3"],
+  ba4: ["bc1", "bc5"],
+};
+
+const BREAD_ATOM_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_ATOM_FILES.map((f) => [
+    f.id,
+    { title: f.name, kind: "atom", model: "claude-haiku-4-5", atomType: "mechanistic",derivedFromClaims: BREAD_ATOM_CLAIMS[f.id] },
+  ]),
+);
+
+const BREAD_SUMMARY_FILES: GraphiumFile[] = [
+  { id: "bs1", name: "高加水カンパーニュの試作（3 回目）", modifiedTime: hoursAgo(4), createdTime: daysAgo(1) },
+  { id: "bs2", name: "冷蔵発酵の比較メモ", modifiedTime: daysAgo(1), createdTime: daysAgo(2) },
+  { id: "bs3", name: "オーブンの予熱と焼き色", modifiedTime: daysAgo(4), createdTime: daysAgo(6) },
+];
+
+const BREAD_SUMMARY_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_SUMMARY_FILES.map((f) => [f.id, { title: f.name, kind: "summary", model: "gpt-oss-120b" }]),
+);
+
+const BREAD_INDEX = linkIndex([
+  // 知見: 本文の出典リンクは生成元のノートを指す。bc5 だけ別の知見（bc1）にも張っている
+  { noteId: "bc1", title: BREAD_CLAIM_FILES[0].name, derivedFromNotes: ["n1"], targets: ["n1"] },
+  { noteId: "bc2", title: BREAD_CLAIM_FILES[1].name, derivedFromNotes: ["n2"], targets: ["n2"] },
+  { noteId: "bc3", title: BREAD_CLAIM_FILES[2].name, derivedFromNotes: ["n1", "n3"], targets: ["n1", "n3"] },
+  { noteId: "bc4", title: BREAD_CLAIM_FILES[3].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+  { noteId: "bc5", title: BREAD_CLAIM_FILES[4].name, derivedFromNotes: ["n1"], targets: ["n1", "bc1"] },
+  { noteId: "bc6", title: BREAD_CLAIM_FILES[5].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+  // 洞察: 生成元のノートは持たず、もとの知見へ本文からリンクする
+  ...BREAD_ATOM_FILES.map((f) => ({
+    noteId: f.id,
+    title: f.name,
+    derivedFromClaims: BREAD_ATOM_CLAIMS[f.id],
+    targets: BREAD_ATOM_CLAIMS[f.id],
+  })),
+  // 要約: もとのノート 1 件だけ
+  { noteId: "bs1", title: BREAD_SUMMARY_FILES[0].name, derivedFromNotes: ["n1"], targets: ["n1"] },
+  { noteId: "bs2", title: BREAD_SUMMARY_FILES[1].name, derivedFromNotes: ["n2"], targets: ["n2"] },
+  { noteId: "bs3", title: BREAD_SUMMARY_FILES[2].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+]);
+
+const breadArgs = { ...baseArgs, noteIndex: BREAD_INDEX, worldGroundingEnabled: false };
+
+export const LinkColumnsClaim: Story = {
+  name: "列の数字 — 知見（生成元はノート・派生は洞察・参照先と被参照は一部）",
+  args: { ...breadArgs, wikiKind: "claim", wikiFiles: BREAD_CLAIM_FILES, wikiMetas: BREAD_CLAIM_METAS },
+};
+
+export const LinkColumnsAtom: Story = {
+  name: "列の数字 — 洞察（もとは知見 1〜3 件）",
+  args: { ...breadArgs, wikiKind: "atom", wikiFiles: BREAD_ATOM_FILES, wikiMetas: BREAD_ATOM_METAS },
+};
+
+export const LinkColumnsSummary: Story = {
+  name: "列の数字 — 要約（もとはノート 1 件）",
+  args: { ...breadArgs, wikiKind: "summary", wikiFiles: BREAD_SUMMARY_FILES, wikiMetas: BREAD_SUMMARY_METAS },
 };

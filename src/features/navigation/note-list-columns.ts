@@ -45,6 +45,10 @@ export interface NoteListColumnOptions {
   hasActions: boolean;
   /** ラベル列（どのノートにもラベルが無いときは列ごと無い） */
   hasLabels: boolean;
+  /** 参照先の列（どのノートにも値が無いときは列ごと無い）。省略時は出ている扱い */
+  hasOutgoing?: boolean;
+  /** 被参照の列（同上）。省略時は出ている扱い */
+  hasIncoming?: boolean;
   /**
    * 隠さず残す列。絞り込みが掛かっている列は、隠すと「なぜ少ないのか」が見えなくなる
    * （絞り込みの操作は列ヘッダにしか無い）ので、幅が足りなくても残して横スクロールに任せる
@@ -68,7 +72,8 @@ export function buildNoteListColumnPlan(
 
   let baseWidth =
     NOTE_LIST_TITLE_MIN_WIDTH +
-    W.linkCount * 2 +
+    (opts.hasOutgoing === false ? 0 : W.linkCount) +
+    (opts.hasIncoming === false ? 0 : W.linkCount) +
     W.modifiedAt +
     (opts.hasCheckbox ? W.checkbox : 0) +
     (opts.hasActions ? W.actions : 0);
