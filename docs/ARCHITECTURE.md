@@ -3263,25 +3263,37 @@ The same `src/` tree is built four different ways.
   seconds). `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
   since a restored `visible: true` would otherwise show `main` before the
   frontend is ready.
-- A second window, label `viewer`, shows one note read-only next to `main`
-  (the side peek's **Open in a separate window** button, for a second
-  display). There is at most one: `open_viewer_window` creates it, or sends
-  the new target to the existing one (`viewer-set-target`) and brings it to
-  the front. It loads the same bundle; `main.tsx` sees
-  `window.__GRAPHIUM_VIEWER__` (set by an initialization script; on the web
-  the same page is opened with `?viewer=note&id=<id>`) and renders
-  `ViewerWindow` instead of `NoteApp`, skipping the sidecar, menu, updater,
-  close handling and exit flush — those belong to `main` only. The viewer
-  never saves: two windows editing the same note would overwrite each other
-  (saving has no conflict detection), so writing stays in `main` and the
-  viewer's **Open in the main window** hands the note over
-  (`viewer_open_in_main`). After each save `main` tells the viewer
-  (`viewer-note-saved`; a `BroadcastChannel` on the web) and the viewer
-  re-reads the note from storage, also whenever it regains focus. Its
+- A second window, label `viewer`, shows one note next to `main` (the side
+  peek's **Open in a separate window** button, for a second display). There
+  is at most one: `open_viewer_window` creates it, or sends the new target
+  to the existing one (`viewer-set-target`) and brings it to the front. It
+  loads the same bundle; `main.tsx` sees `window.__GRAPHIUM_VIEWER__` (set
+  by an initialization script; on the web the same page is opened with
+  `?viewer=note&id=<id>`) and renders `ViewerWindow` instead of `NoteApp`,
+  skipping the sidecar, menu, updater and app shutdown — those belong to
+  `main` only, and so do the index, background jobs and search indexes.
+  Saving has no conflict detection, so a note is writable in **one place at
+  a time**: `main` keeps telling the viewer which notes it has open in an
+  editor (`holds`, the non-remote entries of the live-peek registry in
+  `src/lib/peek-save-queue.ts`), and the viewer edits a note only while
+  `main` does not hold it — otherwise, and until `main` has answered, it
+  renders the note read-only and re-reads it after each save in `main`
+  (`viewer-note-saved`) and on focus. While the viewer edits (it mounts the
+  side peek's editor, `SidePeek` with `standalone`), `main` registers a
+  remote stand-in for that note in the same registry
+  (`src/features/viewer-window/main-bridge.ts`), so the existing paths —
+  flush-before-open (`flushPeekSaves`), mention rename, body-width changes,
+  maintenance undo, flush on exit — reach the other window, and the viewer's
+  saves run the same post-save step as a side peek's (index and doc cache).
+  When `main` closes a note it stays "held" until its closing save has
+  left the save queue. Messages travel as Tauri events
+  (`viewer-bus-to-main` / `viewer-bus-to-viewer`) or a `BroadcastChannel`
+  on the web. Closing the viewer is held back until it has flushed
+  (`viewer-close-requested` → `viewer_close_ack`, with a failsafe). Its
   capability (`capabilities/viewer.json`) is limited to core events and
   opening external links. Closing `main` exits the app and takes the viewer
   with it. Code: `src/lib/viewer-window.ts`,
-  `src/features/viewer-window/ViewerWindow.tsx`.
+  `src/features/viewer-window/`.
 - Zoom is the webview's own page zoom, owned by Rust
   (`src-tauri/src/ui_zoom.rs`). The View menu used to write
   `document.body.style.zoom`, which shrinks only the content: `innerWidth`

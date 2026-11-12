@@ -2225,8 +2225,10 @@ export const en: Record<string, string> = {
   "sidePeek.resizeHandle": "Drag to resize / double-click to reset",
   "sidePeek.popOut": "Open in a separate window",
   "viewerWindow.viewOnly": "View only",
+  "viewerWindow.heldByMain": "View only — open in the main window",
+  "viewerWindow.heldByMainHint": "Close this note in the main window to edit it here",
   "viewerWindow.openInMain": "Open in the main window",
-  "viewerWindow.openInMainHint": "To edit this note, open it in the main window",
+  "viewerWindow.openInMainHint": "Open this note in the main window",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "Enter the note title in the first column before clicking",

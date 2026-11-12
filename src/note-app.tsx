@@ -9,6 +9,7 @@ import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks,
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { onOpenInMainRequest } from "./lib/viewer-window";
+import { installViewerMainBridge } from "./features/viewer-window/main-bridge";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
@@ -10492,11 +10493,21 @@ export function NoteApp() {
     [closeAllViews, fm, router],
   );
 
-  // 別ウィンドウ（参照用の表示ウィンドウ）の「メインのウィンドウで開く」を受ける。
+  // 別ウィンドウの「メインのウィンドウで開く」を受ける。
   // ピークの「フルスクリーンで開く」と同じ経路で開く（lib/viewer-window.ts）
   const navigateToNoteRef = useRef(navigateToNote);
   navigateToNoteRef.current = navigateToNote;
   useEffect(() => onOpenInMainRequest((id) => navigateToNoteRef.current(id)), []);
+
+  // 別ウィンドウで編集しているノートを、このウィンドウの保存の列と保存後の処理につなぐ
+  // （features/viewer-window/main-bridge.ts）。別ウィンドウの保存は、一覧のピークの保存と同じ
+  // 後処理（索引と doc キャッシュの更新・改名の伝播）に流す
+  const handleViewerSavedRef = useRef(handleListPeekSaved);
+  handleViewerSavedRef.current = handleListPeekSaved;
+  useEffect(
+    () => installViewerMainBridge({ onSaved: (id, doc) => handleViewerSavedRef.current(id, doc) }),
+    [],
+  );
 
   // 会議の録音: ブロックを経由せずに始まった録音（開始ダイアログ経由）の文字起こしブロックを、
   // いまのノートへ差し込む。実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。

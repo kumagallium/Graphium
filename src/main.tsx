@@ -24,7 +24,7 @@ import { getViewerTarget } from "./lib/viewer-window";
 import { ViewerWindow } from "./features/viewer-window/ViewerWindow";
 
 // ── 別ウィンドウ（参照用の表示ウィンドウ）として開かれたか ──
-// 別ウィンドウは読むだけのページ。sidecar・メニュー・自動更新・終了処理・未保存の書き出しは
+// 別ウィンドウは 1 つのノートだけを出すページ。sidecar・メニュー・自動更新・アプリの終了処理は
 // メインのウィンドウだけが持つ（別ウィンドウでも動かすと sidecar が 2 つ立つ）。
 const viewerTarget = getViewerTarget();
 
@@ -71,7 +71,8 @@ if (isTauri() && !viewerTarget) {
 // ── タブを閉じる・リロードする・隠れるとき: 未保存の編集の書き出しを始める ──
 // デスクトップのリロードもここを通る。確認ダイアログは Web 版だけ（デスクトップの終了は
 // 上の経路で書き終わりを待てる）
-if (!viewerTarget) installPageExitFlush({ confirmWhenUnsaved: !isTauri() });
+// 別ウィンドウも編集できるので同じ扱い（デスクトップの別ウィンドウは、閉じる前に Rust が待つ）
+installPageExitFlush({ confirmWhenUnsaved: !isTauri() });
 
 // ── 文字を書けない場所の Backspace で前の画面へ戻らないようにする（WebKit の既定動作） ──
 installBackspaceNavigationGuard();

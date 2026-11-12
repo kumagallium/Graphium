@@ -167,7 +167,7 @@ const storage = () => getActiveProvider();
 const listFiles = () => storage().listFiles();
 const loadFile = (id: string) => storage().loadFile(id);
 const createFile = (title: string, content: GraphiumDocument) => storage().createFile(title, content);
-// 保存できたら、別ウィンドウ（参照用の表示ウィンドウ）が同じノートを出していれば読み直してもらう
+// 保存できたら、別ウィンドウが同じノートを出していれば読み直してもらう
 // （lib/viewer-window.ts。開いていなければ何も起きない）
 const saveFile = async (id: string, content: GraphiumDocument) => {
   await storage().saveFile(id, content);

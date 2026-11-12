@@ -1,10 +1,15 @@
-// 別ウィンドウ（参照用の表示ウィンドウ）のページ。
+// 別ウィンドウのページ。
 //
-// メインのウィンドウとは別の JS 文脈で動く。NoteApp を載せず、保存先から読んだノートを
-// 読み取り専用のエディタで描くだけにする（lib/viewer-window.ts の「なぜ表示だけか」）。
-// ここからは何も保存しない。編集したいときは「メインのウィンドウで開く」で渡す。
+// メインのウィンドウとは別の JS 文脈で動く。NoteApp は載せない（索引・裏の処理・全文の索引を
+// 2 つ動かさないため）。出し方は 2 つあり、メインからの知らせ（holds）で切り替える
+// （決まりごとは lib/viewer-window.ts の「編集の受け渡し」）:
 //
-// 中身は次のときに読み直す:
+//   編集    … メインがこのノートを開いていないとき。サイドピークと同じ編集部品（SidePeek）を
+//             ウィンドウいっぱいに出す。保存はここから行い、メインへ知らせる
+//   表示のみ … メインがこのノートを開いているとき・メインの答えがまだ無いとき・版のスナップショット。
+//             保存先から読んだノートを読み取り専用で描く。ここからは何も保存しない
+//
+// 表示のみの中身は次のときに読み直す:
 //   - メインがこのノートを保存した（onViewerNoteSaved）
 //   - このウィンドウが手前に来た（連絡が届かなかったときの保険）
 // 読み直して中身が同じなら描き直さない（読んでいる位置が飛ばないように）。
@@ -12,8 +17,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PanelsTopLeft } from "lucide-react";
 import type { GraphiumDocument } from "../../lib/document-types";
-import { getActiveProvider, probeServerProvider } from "../../lib/storage/registry";
-import { loadSnapshot } from "../version-snapshots/snapshot-store";
+import { loadViewerDoc, viewerDocSignature } from "./load-viewer-doc";
 import { SandboxEditor } from "../../base/editor";
 import { customBlockEntries, sanitizeBlocksForLoad } from "../../blocks/registry";
 import { useRemoteContentScope } from "../../blocks/remote-content";
@@ -26,68 +30,314 @@ import { MemoQuoteProvider, useMemoQuoteStore } from "../memo-quote";
 import { AiAssistantProvider } from "../ai-assistant/store";
 import { useT } from "../../i18n";
 import {
+  ackViewerClose,
+  onMessageFromMain,
+  onViewerCloseRequested,
   onViewerNoteSaved,
   onViewerTargetChange,
   requestOpenInMain,
+  sendToMain,
   type ViewerTarget,
 } from "../../lib/viewer-window";
+import {
+  applyLiveBodyWidth,
+  applyLiveExternalDoc,
+  applyLiveMentionRename,
+  flushPeekSaves,
+  pendingPeekSave,
+} from "../../lib/peek-save-queue";
+import { flushEditorsBeforeExit } from "../../lib/flush-on-exit";
+import { readIndexFile, type GraphiumIndex } from "../navigation/index-file";
+import { SidePeek } from "../index-table/side-peek";
 
 type LoadState =
   | { phase: "loading" }
   | { phase: "ready"; doc: GraphiumDocument; signature: string }
   | { phase: "error"; message: string };
 
-// 保存先の準備は、このウィンドウで 1 度だけ行う。読み直しのたびに行うと、デスクトップ版では
-// そのたびにノートの一覧を取り直す（init が list を呼ぶ）。失敗したら次の読み込みでやり直す
-let providerReady: Promise<void> | null = null;
-function ensureProviderReady(): Promise<void> {
-  if (!providerReady) {
-    providerReady = (async () => {
-      // Web のサーバー保存は起動後に見つかる。先に確かめないと IndexedDB を読みに行く
-      await probeServerProvider();
-      await getActiveProvider().init();
-    })().catch((e) => {
-      providerReady = null;
-      throw e;
+/** このウィンドウが最後に読んだ・保存した doc（保存のとき、メインが書いた chats などを古い値で戻さないため） */
+const viewerDocCache = new Map<string, GraphiumDocument>();
+
+/** メインからの知らせ（holds）を待つ間、問い合わせを繰り返す間隔 */
+const HELLO_RETRY_MS = 1000;
+/**
+ * メインの知らせがこれだけ途絶えたら、そのメインはいないものとして扱う（タブを閉じた・固まった）。
+ * メインは main-bridge の HOLDS_HEARTBEAT_MS ごとに送り直す
+ */
+const MAIN_STALE_MS = 13000;
+
+/**
+ * メインが開いているノートの一覧を追う。answered は、生きているメインが 1 つでも答えたか
+ * （答えが無いうちは編集させない）
+ */
+function useMainHolds(): { answered: boolean; isHeld: (id: string) => boolean } {
+  const mainsRef = useRef(new Map<string, { ids: Set<string>; seen: number }>());
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const mains = mainsRef.current;
+    const off = onMessageFromMain((msg) => {
+      if (msg.type === "holds") {
+        const prev = mains.get(msg.mainId);
+        mains.set(msg.mainId, { ids: new Set(msg.ids), seen: Date.now() });
+        // 中身が同じ送り直し（生きている印）では描き直さない
+        if (prev && prev.ids.size === msg.ids.length && msg.ids.every((id) => prev.ids.has(id))) return;
+      } else if (msg.type === "bye") {
+        if (!mains.delete(msg.mainId)) return;
+      } else return;
+      bump((n) => n + 1);
     });
-  }
-  return providerReady;
-}
-
-/** テスト用: 保存先の準備をやり直させる */
-export function resetViewerProviderForTest(): void {
-  providerReady = null;
-}
-
-/** 保存先からノートを読む。ピーク（side-peek.tsx）と同じ振り分け */
-export async function loadViewerDoc(id: string): Promise<GraphiumDocument> {
-  await ensureProviderReady();
-  const provider = getActiveProvider();
-  if (id.startsWith("snapshot:")) {
-    const doc = await loadSnapshot(provider, id.slice("snapshot:".length));
-    if (!doc) throw new Error("snapshot not found");
-    return doc;
-  }
-  if (id.startsWith("wiki:")) {
-    if (!provider.loadWikiFile) throw new Error("wiki not supported");
-    return provider.loadWikiFile(id.slice("wiki:".length));
-  }
-  if (id.startsWith("skill:")) {
-    if (!provider.loadSkillFile) throw new Error("skill not supported");
-    return provider.loadSkillFile(id.slice("skill:".length));
-  }
-  return provider.loadFile(id);
-}
-
-/** 描き直すかどうかの判定に使う、見た目に効く部分の写し */
-export function viewerDocSignature(doc: GraphiumDocument): string {
-  const page = doc.pages?.[0];
-  return JSON.stringify([doc.title ?? "", page ?? null]);
+    sendToMain({ type: "hello" });
+    const timer = setInterval(() => {
+      const now = Date.now();
+      let pruned = false;
+      for (const [mainId, main] of mains) {
+        if (now - main.seen > MAIN_STALE_MS) {
+          mains.delete(mainId);
+          pruned = true;
+        }
+      }
+      if (pruned) bump((n) => n + 1);
+      // 受け口の登録（デスクトップは非同期）より先に答えが返ると取りこぼすので、答えが来るまで聞き直す
+      if (mains.size === 0) sendToMain({ type: "hello" });
+    }, HELLO_RETRY_MS);
+    return () => {
+      off();
+      clearInterval(timer);
+    };
+  }, []);
+  const mains = mainsRef.current;
+  return {
+    answered: mains.size > 0,
+    isHeld: (id) => {
+      for (const main of mains.values()) if (main.ids.has(id)) return true;
+      return false;
+    },
+  };
 }
 
 export function ViewerWindow({ initialTarget }: { initialTarget: ViewerTarget }) {
-  const t = useT();
   const [target, setTarget] = useState<ViewerTarget>(initialTarget);
+  // デスクトップ: 開いたまま別のものを出すよう頼まれた
+  useEffect(() => onViewerTargetChange((next) => setTarget(next)), []);
+  const targetId = target.id;
+  const targetIdRef = useRef(targetId);
+  targetIdRef.current = targetId;
+
+  const { answered, isHeld } = useMainHolds();
+  const held = isHeld(targetId);
+  // 版のスナップショットは不変（どこでも編集しない）
+  const canEdit = answered && !held && !targetId.startsWith("snapshot:");
+  // 外から内容が差し替わり、開いている編集部品が受け取れなかったときに作り直す番号
+  const [editGen, setEditGen] = useState(0);
+
+  // メインからの頼まれごと。編集部品（SidePeek）は、同じウィンドウのピークと同じ口
+  // （lib/peek-save-queue.ts）に登録されているので、そこへ流す
+  useEffect(
+    () =>
+      onMessageFromMain((msg) => {
+        switch (msg.type) {
+          case "flush": {
+            // まず「受け取った」と返す（メインは、これが無ければこのウィンドウを閉じたものとして扱う）
+            sendToMain({ type: "flush-ack", nonce: msg.nonce });
+            const saves = flushPeekSaves(msg.id);
+            const reply = (saved: boolean, doc: GraphiumDocument | null) =>
+              sendToMain({ type: "flushed", nonce: msg.nonce, id: msg.id, saved, doc });
+            if (!saves) reply(true, viewerDocCache.get(msg.id) ?? null);
+            else {
+              void saves.then(
+                // 書けなかったときは、書こうとした形を返す（メインが開くときに引き取れるように）
+                (outcome) => reply(outcome.saved, outcome.saved ? (viewerDocCache.get(msg.id) ?? outcome.doc) : outcome.doc),
+                () => reply(false, null),
+              );
+            }
+            return;
+          }
+          case "mention-rename":
+            applyLiveMentionRename(msg.id, msg.renamedId, msg.oldTitle, msg.newTitle, msg.includeWikiLabels);
+            return;
+          case "body-width":
+            viewerDocCache.set(msg.id, msg.doc);
+            applyLiveBodyWidth(msg.id, msg.width, msg.doc);
+            return;
+          case "external-doc":
+            viewerDocCache.set(msg.id, msg.doc);
+            // 編集部品が受け取れなければ（読み込み中など）、保存先から開き直す
+            if (applyLiveExternalDoc(msg.id, msg.doc) === 0 && msg.id === targetIdRef.current) {
+              setEditGen((n) => n + 1);
+            }
+            return;
+        }
+      }),
+    [],
+  );
+
+  // デスクトップ: ウィンドウを閉じる前に、未保存の編集を書き出す（Rust が閉じるのを止めて待っている）
+  useEffect(
+    () =>
+      onViewerCloseRequested(async () => {
+        await flushEditorsBeforeExit();
+        sendToMain({ type: "editing-stopped", id: targetIdRef.current });
+        ackViewerClose();
+      }),
+    [],
+  );
+  // Web で閉じるときは「編集をやめた」と知らせない。書き出し（installPageExitFlush が始める）の
+  // 終わりを待てないので、先に知らせるとメインが書き込み中のファイルを読む。メインは、書き出しを
+  // 頼んで返事が無いことで、このウィンドウが閉じたと知る（main-bridge の flush-ack）
+
+  const openNote = useCallback((id: string) => setTarget({ kind: "note", id }), []);
+
+  return (
+    <div className="h-dvh flex flex-col bg-background text-foreground" data-viewer-window data-viewer-mode={canEdit ? "edit" : "view"}>
+      {canEdit ? (
+        <ViewerEditable key={`${targetId}:${editGen}`} noteId={targetId} onOpenNote={openNote} />
+      ) : (
+        <ViewerReadOnly targetId={targetId} held={held} />
+      )}
+    </div>
+  );
+}
+
+type EditState =
+  | { phase: "loading" }
+  | { phase: "ready"; doc: GraphiumDocument }
+  | { phase: "error" };
+
+const noop = () => {};
+
+/** 編集できる出し方。サイドピークの編集部品をウィンドウいっぱいに出す */
+function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (id: string) => void }) {
+  const t = useT();
+  const [state, setState] = useState<EditState>({ phase: "loading" });
+  const [title, setTitle] = useState("");
+  // @ で入れる候補・引用・文脈ラベルの候補に使う索引（読むだけ。書くのはメイン）
+  const [noteIndex, setNoteIndex] = useState<GraphiumIndex | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let announced = false;
+    (async () => {
+      // 表示のみから切り替わった直後は、このウィンドウの前の編集の書き出しが残っていることがある
+      await pendingPeekSave(noteId);
+      const doc = await loadViewerDoc(noteId);
+      if (cancelled) return;
+      viewerDocCache.set(noteId, doc);
+      setTitle(doc.title ?? "");
+      setState({ phase: "ready", doc });
+      announced = true;
+      sendToMain({ type: "editing", id: noteId, doc });
+      readIndexFile()
+        .then((index) => {
+          if (!cancelled) setNoteIndex(index);
+        })
+        .catch(() => {});
+    })().catch((e) => {
+      console.error("[viewer-window] load failed", e);
+      if (!cancelled) setState({ phase: "error" });
+    });
+    return () => {
+      cancelled = true;
+      if (!announced) return;
+      // 編集部品は外れるときに未保存を書き出す（この後片付けより先に列へ並ぶ）。それが終わってから
+      // 「やめた」と知らせる。先に知らせると、メインが書き出しの前のファイルから開く
+      const stop = () => sendToMain({ type: "editing-stopped", id: noteId });
+      const pending = pendingPeekSave(noteId);
+      if (pending) void pending.then(stop, stop);
+      else stop();
+    };
+  }, [noteId]);
+
+  useEffect(() => {
+    const shown = title || (state.phase === "ready" ? t("nav.untitled") : "");
+    document.title = shown ? `${shown} — Graphium` : "Graphium";
+  }, [title, state.phase, t]);
+
+  // メインがこのノートのファイルを書いた（チャットの書き戻し・改名の反映など）。
+  // 本文はこのウィンドウのエディタが持っているので描き直さず、次の保存に載せる外側の項目
+  // （chats・wikiMeta）だけ新しくなるよう、読んだ doc を控えに入れる
+  useEffect(
+    () =>
+      onViewerNoteSaved((id) => {
+        if (id !== noteId) return;
+        void loadViewerDoc(id)
+          .then((doc) => viewerDocCache.set(id, doc))
+          .catch(() => {});
+      }),
+    [noteId],
+  );
+
+  // メインが、このノートを別ウィンドウで編集中だと把握していなければ名乗り直す
+  // （メインが読み込み直された・こちらの最初の知らせより後に起きた）。把握されていないと、
+  // メインはこのウィンドウに未保存を書き出させずにノートを開く
+  const unsavedRef = useRef(false);
+  const ready = state.phase === "ready";
+  useEffect(() => {
+    if (!ready) return;
+    return onMessageFromMain((msg) => {
+      if (msg.type !== "holds" || msg.remotes.includes(noteId)) return;
+      const doc = viewerDocCache.get(noteId);
+      if (!doc) return;
+      sendToMain({ type: "editing", id: noteId, doc });
+      if (unsavedRef.current) sendToMain({ type: "dirty", id: noteId, unsaved: true });
+    });
+  }, [noteId, ready]);
+
+  const handleSaved = useCallback((id: string, savedDoc: GraphiumDocument) => {
+    viewerDocCache.set(id, savedDoc);
+    setTitle(savedDoc.title ?? "");
+    sendToMain({ type: "saved", id, doc: savedDoc });
+  }, []);
+  const handleSaveStatus = useCallback(
+    (status: "saving" | "saved" | "dirty") => {
+      unsavedRef.current = status !== "saved";
+      sendToMain({ type: "dirty", id: noteId, unsaved: status !== "saved" });
+    },
+    [noteId],
+  );
+  const getCachedDoc = useCallback((id: string) => viewerDocCache.get(id), []);
+  const openInMain = useCallback((id: string) => requestOpenInMain(id), []);
+
+  if (state.phase === "loading") {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
+  if (state.phase === "error") {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-destructive" role="alert">
+        {t("sidePeek.loadError")}
+      </div>
+    );
+  }
+  const entry = noteIndex?.notes.find((n) => n.noteId === noteId);
+  return (
+    <MediaInlineLabelProvider>
+      <AiAssistantProvider aiAvailable={false}>
+        <SidePeek
+          noteId={noteId}
+          cachedDoc={state.doc}
+          standalone
+          inline
+          onClose={noop}
+          onNavigate={openInMain}
+          onOpenNoteInPeek={onOpenNote}
+          onSaved={handleSaved}
+          onSaveStatusChange={handleSaveStatus}
+          getCachedDoc={getCachedDoc}
+          noteIndex={noteIndex}
+          archived={!!entry?.archivedAt}
+          trashed={!!entry?.deletedAt}
+        />
+      </AiAssistantProvider>
+    </MediaInlineLabelProvider>
+  );
+}
+
+/** 表示のみの出し方。held はメインがこのノートを開いているか（開いていなければ、メインの答え待ちか版） */
+function ViewerReadOnly({ targetId, held }: { targetId: string; held: boolean }) {
+  const t = useT();
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   // 読み直しの合図（増やすと読み直す）
   const [reloadTick, setReloadTick] = useState(0);
@@ -95,11 +345,7 @@ export function ViewerWindow({ initialTarget }: { initialTarget: ViewerTarget })
   // 描き直しをまたいで読んでいる位置を保つ
   const keepScrollRef = useRef<number | null>(null);
 
-  // デスクトップ: 開いたまま別のものを出すよう頼まれた
-  useEffect(() => onViewerTargetChange((next) => setTarget(next)), []);
-
   // 行き先が変わったら読み込み中から始める（前のノートを出したままにしない）
-  const targetId = target.id;
   const shownIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -109,7 +355,9 @@ export function ViewerWindow({ initialTarget }: { initialTarget: ViewerTarget })
       keepScrollRef.current = null;
       setState({ phase: "loading" });
     }
-    loadViewerDoc(targetId)
+    // 編集から切り替わった直後は、このウィンドウの最後の書き出しが終わってから読む
+    Promise.resolve(pendingPeekSave(targetId))
+      .then(() => loadViewerDoc(targetId))
       .then((doc) => {
         if (cancelled) return;
         const signature = viewerDocSignature(doc);
@@ -184,13 +432,17 @@ export function ViewerWindow({ initialTarget }: { initialTarget: ViewerTarget })
   const handleOpenInMain = useCallback(() => requestOpenInMain(targetId), [targetId]);
 
   return (
-    <div className="h-dvh flex flex-col bg-background text-foreground" data-viewer-window>
+    <>
       <header className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border bg-[var(--color-surface)]">
         <span className="flex-1 min-w-0 truncate text-sm font-semibold" data-viewer-title>
           {title}
         </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground px-1.5 py-0.5 rounded border border-border">
-          {t("viewerWindow.viewOnly")}
+        <span
+          className="shrink-0 text-[11px] text-muted-foreground px-1.5 py-0.5 rounded border border-border"
+          data-tooltip={held ? t("viewerWindow.heldByMainHint") : undefined}
+          data-viewer-view-only
+        >
+          {held ? t("viewerWindow.heldByMain") : t("viewerWindow.viewOnly")}
         </span>
         {canOpenInMain && (
           <button
@@ -223,7 +475,7 @@ export function ViewerWindow({ initialTarget }: { initialTarget: ViewerTarget })
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 

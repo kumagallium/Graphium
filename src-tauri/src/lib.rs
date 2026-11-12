@@ -415,7 +415,7 @@ fn app_ready(app: tauri::AppHandle) {
     reveal_main(&app, "app_ready");
 }
 
-/// 別ウィンドウ（参照用の表示ウィンドウ）のラベル。1 枚だけ持つ
+/// 別ウィンドウ（ノートを 1 つ出すウィンドウ）のラベル。1 枚だけ持つ
 const VIEWER_LABEL: &str = "viewer";
 
 /// 別ウィンドウに出す行き先 ID の長さの上限（src/lib/viewer-window.ts の MAX_ID_LENGTH と同じ）
@@ -437,7 +437,7 @@ fn viewer_init_script(id: &str) -> String {
     format!("window.__GRAPHIUM_VIEWER__ = {target};")
 }
 
-/// ノートを別ウィンドウ（読むだけの表示ウィンドウ）で開く。すでに開いていれば中身を差し替えて
+/// ノートを別ウィンドウで開く。すでに開いていれば中身を差し替えて
 /// 手前に出す。ページ側は src/features/viewer-window/ViewerWindow.tsx。
 ///
 /// async にしているのは、同期コマンドの中でウィンドウを作ると Windows で固まるため。
@@ -448,6 +448,8 @@ async fn open_viewer_window(app: tauri::AppHandle, id: String) -> Result<(), Str
         return Err("invalid viewer id".into());
     }
     if let Some(viewer) = app.get_webview_window(VIEWER_LABEL) {
+        // 閉じる待ちの最中に開き直された。閉じるのをやめる（遅れて届く返事では閉じない）
+        VIEWER_CLOSE_PENDING.store(0, Ordering::SeqCst);
         app.emit_to(
             VIEWER_LABEL,
             "viewer-set-target",
@@ -469,8 +471,57 @@ async fn open_viewer_window(app: tauri::AppHandle, id: String) -> Result<(), Str
     .min_inner_size(360.0, 400.0)
     .initialization_script(viewer_init_script(&id))
     .build()
+    .map(|viewer| {
+        // 新しいウィンドウ。前のウィンドウの閉じる待ちは引き継がない
+        VIEWER_CLOSE_PENDING.store(0, Ordering::SeqCst);
+        // 閉じる前に、未保存の編集を書き出させる（メインの終了と同じ流儀）。一旦止めてページへ
+        // 知らせ、viewer_close_ack を受けて閉じる。返事が無くても VIEWER_CLOSE_FAILSAFE_SECS で閉じる
+        let handle = viewer.clone();
+        viewer.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let seq = VIEWER_CLOSE_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+                VIEWER_CLOSE_PENDING.store(seq, Ordering::SeqCst);
+                let _ = handle
+                    .app_handle()
+                    .emit_to(VIEWER_LABEL, "viewer-close-requested", ());
+                let failsafe = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(
+                        VIEWER_CLOSE_FAILSAFE_SECS,
+                    ));
+                    // この閉じる要求がまだ待ちのままなら閉じる（返事が来た・開き直したなら何もしない）
+                    if VIEWER_CLOSE_PENDING
+                        .compare_exchange(seq, 0, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        let _ = failsafe.destroy();
+                    }
+                });
+            }
+        });
+    })
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 別ウィンドウの閉じる待ちの番号（0 = 待っていない）。フェイルセーフが、後から開き直した
+/// ウィンドウを閉じないようにする
+static VIEWER_CLOSE_PENDING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VIEWER_CLOSE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 別ウィンドウの書き出しを待つ上限（src/lib/flush-on-exit.ts の EXIT_FLUSH_TIMEOUT_MS より長く）
+const VIEWER_CLOSE_FAILSAFE_SECS: u64 = 7;
+
+/// 別ウィンドウが未保存の編集を書き出し終えた。閉じる
+#[tauri::command]
+fn viewer_close_ack(app: tauri::AppHandle) {
+    // 閉じる待ちでなければ何もしない（待ちの最中に開き直された）
+    if VIEWER_CLOSE_PENDING.swap(0, Ordering::SeqCst) == 0 {
+        return;
+    }
+    if let Some(viewer) = app.get_webview_window(VIEWER_LABEL) {
+        let _ = viewer.destroy();
+    }
 }
 
 /// 別ウィンドウの「メインのウィンドウで開く」。メインへ行き先を送り、手前に出す
@@ -3610,6 +3661,7 @@ pub fn run() {
             app_ready,
             open_viewer_window,
             viewer_open_in_main,
+            viewer_close_ack,
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,

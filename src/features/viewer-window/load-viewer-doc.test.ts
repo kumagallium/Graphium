@@ -20,7 +20,7 @@ vi.mock("../version-snapshots/snapshot-store", () => ({
 vi.mock("../../base/editor", () => ({ SandboxEditor: () => null }));
 vi.mock("../../blocks/registry", () => ({ customBlockEntries: [], sanitizeBlocksForLoad: (b: unknown[]) => b }));
 
-import { loadViewerDoc, resetViewerProviderForTest, viewerDocSignature } from "./ViewerWindow";
+import { loadViewerDoc, resetViewerProviderForTest, viewerDocSignature } from "./load-viewer-doc";
 
 describe("loadViewerDoc", () => {
   beforeEach(() => {

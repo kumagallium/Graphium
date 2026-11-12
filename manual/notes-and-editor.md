@@ -49,12 +49,14 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ### Open in a separate window {#open-in-a-separate-window}
 
-With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and keep writing in the main window while you read.
+With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and write there, or keep it open to read while you write in the main window.
 
-- The separate window is **View only**. Writing stays in the main window, so the same note is never edited in two places with one edit overwriting the other.
-- When you edit that note in the main window, the separate window picks up the change each time it is saved, and keeps your reading position.
-- To edit the note shown in the separate window, press **Open in the main window**.
+- You can edit the note in the separate window. It saves on its own, like the side peek.
+- A note is editable in one place at a time. While the main window has the same note open (in the editor or a side peek), the separate window shows it as **View only — open in the main window**, and picks up each save from the main window while keeping your reading position. When the main window moves to another note, the separate window becomes editable again.
+- **Open in the main window** moves the note to the main window. Edits you just made in the separate window are saved first.
+- Clicking a link to another note inside the separate window opens that note in the same window.
 - There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
+- The separate window holds one note: it has no sidebar, no right panel, and no chat. Inserting images and other files from the slash menu is done in the main window.
 - The desktop app remembers the separate window's position and size. Closing the main window closes it too.
 - Pressing the button saves and closes the side peek. The button appears at widths where windows can sit side by side (not at phone width).
 

@@ -2225,8 +2225,10 @@ export const ja: Record<string, string> = {
   "sidePeek.resizeHandle": "ドラッグで幅を変更 / ダブルクリックで元に戻す",
   "sidePeek.popOut": "別ウィンドウで開く",
   "viewerWindow.viewOnly": "表示のみ",
+  "viewerWindow.heldByMain": "メインで開いているので表示のみ",
+  "viewerWindow.heldByMainHint": "メインのウィンドウでこのノートを閉じると、ここで編集できます",
   "viewerWindow.openInMain": "メインのウィンドウで開く",
-  "viewerWindow.openInMainHint": "編集するときは、メインのウィンドウで開きます",
+  "viewerWindow.openInMainHint": "このノートをメインのウィンドウで開きます",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "1列目にノートのタイトルを入力してからクリックしてください",

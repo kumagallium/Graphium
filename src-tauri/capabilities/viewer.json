@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "viewer",
-  "description": "別ウィンドウ（参照用の表示ウィンドウ）の権限。読むだけなので、プラグインの権限はイベントの受信と外部リンクを開くことだけにする（shell・updater・process・dialog は持たせない）。アプリ自身のコマンドはこの一覧の対象外",
+  "description": "別ウィンドウ（ノートを 1 つ出すウィンドウ）の権限。保存はアプリ自身のコマンドで行うので、プラグインの権限はイベントの受信と外部リンクを開くことだけにする（shell・updater・process・dialog は持たせない）。アプリ自身のコマンドはこの一覧の対象外",
   "windows": ["viewer"],
   "permissions": [
     "core:default",
