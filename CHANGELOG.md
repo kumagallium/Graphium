@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.15](https://github.com/kumagallium/Graphium/compare/v0.129.14...v0.129.15) - 2026-11-12
+
+- [feat] File new voice notes into a Voice notes folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1644
+
 ## [v0.129.14](https://github.com/kumagallium/Graphium/compare/v0.129.13...v0.129.14) - 2026-11-12
 
 - feat: write claims as self-contained points that stay inside what the note supports by @kumagallium in https://github.com/kumagallium/Graphium/pull/1642
