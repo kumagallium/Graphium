@@ -2,6 +2,7 @@
 // インデックスファイルから取得する IndexFileNoteListSource を使用
 
 import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./index-file";
+import { buildLinkCounts, linkCountsOf } from "./link-counts";
 
 export type NoteListEntry = {
   noteId: string;
@@ -34,23 +35,10 @@ export class IndexFileNoteListSource implements NoteListSource {
   constructor(private index: GraphiumIndex) {}
 
   async loadNoteList(): Promise<NoteListEntry[]> {
-    // 被参照カウント用: noteId → 参照元ノートID の Set
-    const incomingMap = new Map<string, Set<string>>();
-    for (const note of this.index.notes) {
-      for (const link of note.outgoingLinks) {
-        if (!incomingMap.has(link.targetNoteId)) {
-          incomingMap.set(link.targetNoteId, new Set());
-        }
-        incomingMap.get(link.targetNoteId)!.add(note.noteId);
-      }
-    }
-
-    // outgoing: ユニークなターゲット数
-    const outgoingMap = new Map<string, number>();
-    for (const note of this.index.notes) {
-      const uniqueTargets = new Set(note.outgoingLinks.map((l) => l.targetNoteId));
-      outgoingMap.set(note.noteId, uniqueTargets.size);
-    }
+    // 参照先・被参照はナレッジ一覧と同じ規則で数える（link-counts.ts）。このノートから作った
+    // 知見は出典として必ずこのノートへリンクするが、それは被参照には数えない — 本アイコンの
+    // 列（knowledgeCount）が同じ数を出しているので、数えると 2 列に同じ数字が並ぶ
+    const linkCounts = buildLinkCounts(this.index);
 
     // 通常ノート ID → 派生 wiki エントリ配列の逆引き
     const knowledgeMap = buildKnowledgeMap(this.index);
@@ -76,8 +64,8 @@ export class IndexFileNoteListSource implements NoteListSource {
         createdAt: n.createdAt,
         labels: Array.from(labelSet),
         noteContexts: n.noteContexts ?? [],
-        incomingLinkCount: incomingMap.get(n.noteId)?.size ?? 0,
-        outgoingLinkCount: outgoingMap.get(n.noteId) ?? 0,
+        incomingLinkCount: linkCountsOf(linkCounts, n.noteId).incoming,
+        outgoingLinkCount: linkCountsOf(linkCounts, n.noteId).outgoing,
         author: n.author,
         model: n.model,
         knowledgeCount: wikiEntries.length,

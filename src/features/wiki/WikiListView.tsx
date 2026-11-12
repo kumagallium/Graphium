@@ -25,6 +25,8 @@ import { FileSearch } from "lucide-react";
 import { TOPIC_TYPES, type GraphiumFile, type TopicType } from "../../lib/document-types";
 import { compareKindLabels, kindSortLabel } from "./wiki-list-kind-sort";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { buildLinkCounts, linkCountsOf } from "../navigation/link-counts";
+import { LinkCountBadge } from "../navigation/LinkCountBadge";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useLocale, useT } from "../../i18n";
 import { listCollationLocale } from "../../lib/locale-format";
@@ -47,6 +49,7 @@ type SortKey =
   | "modifiedAt"
   | "createdAt"
   | "sources"
+  | "derived"
   | "incoming"
   | "outgoing"
   | "verdict"
@@ -392,43 +395,16 @@ export function WikiListView({
   // 出典照合の「要確認のみ」フィルタ（claim/topic のみ意味を持つ）。既定は全件表示。
   const [sourceCheckNeedsReviewOnly, setSourceCheckNeedsReviewOnly] = useState(false);
 
-  // 被参照カウント（このページを参照している「distinct なノート/wiki」の数）
-  // 1 ノートが本文で同じ wiki を複数回引用しても 1 と数える。
-  const incomingRefCount = useMemo(() => {
-    const counts = new Map<string, number>();
-    if (!noteIndex) return counts;
-    for (const entry of noteIndex.notes) {
-      const targets = new Set<string>();
-      for (const link of entry.outgoingLinks ?? []) {
-        if (link.targetNoteId) targets.add(link.targetNoteId);
-      }
-      for (const target of targets) {
-        counts.set(target, (counts.get(target) ?? 0) + 1);
-      }
+  // 参照先・被参照・派生はノート一覧と同じ規則で数える（navigation/link-counts.ts）。
+  // もと（生成元）と派生の関係は参照先・被参照に数えない — 本文の出典リンクはほぼ必ず生成元を
+  // 指すので、数えると「生成元」「派生」と同じ数字が並ぶだけになる。
+  // 古い索引には derivedFromClaims が無いことがあるので、読み込み済みの wikiMeta の分も渡す
+  const linkCounts = useMemo(() => {
+    const extra = new Map<string, readonly string[]>();
+    for (const [id, meta] of wikiMetas) {
+      if (meta.derivedFromClaims?.length) extra.set(id, meta.derivedFromClaims);
     }
-    return counts;
-  }, [noteIndex]);
-
-  // リンク列のカウント（この Wiki がリンクしている distinct な targetNoteId 数）
-  // 同一 target を複数回引用しても 1 と数える。生成元（derivedFromNotes / トピックの
-  // derivedFromClaims）へのリンクは数えない — 本文の出典リンクはほぼ必ず生成元を指すので、
-  // 数えると「生成元」列と同じ数字が並ぶだけになる。ここは「生成元以外へ張ったリンク」を出す。
-  const outgoingRefCountById = useMemo(() => {
-    const counts = new Map<string, number>();
-    if (!noteIndex) return counts;
-    for (const entry of noteIndex.notes) {
-      const sources = new Set<string>([
-        entry.noteId,
-        ...(entry.derivedFromNotes ?? []),
-        ...(wikiMetas.get(entry.noteId)?.derivedFromClaims ?? []),
-      ]);
-      const targets = new Set<string>();
-      for (const link of entry.outgoingLinks ?? []) {
-        if (link.targetNoteId && !sources.has(link.targetNoteId)) targets.add(link.targetNoteId);
-      }
-      counts.set(entry.noteId, targets.size);
-    }
-    return counts;
+    return buildLinkCounts(noteIndex, extra);
   }, [noteIndex, wikiMetas]);
 
   // 生成元ノート数を index から引く（doc を読み込まなくても済むように）
@@ -479,19 +455,23 @@ export function WikiListView({
         // 他 kind の「派生元ノート数」とは意味が違うが、同じ列を流用する（新規列を増やさない）。
         // 新形式トピック（derivedFromClaims が未設定/空で derivedFromNotes に資料 id を持つ）は
         // 0 件と誤表示しないよう、derivedFromClaims が空なら資料数にフォールバックする。
+        // 洞察も同じ — もとは知見（derivedFromClaims）で、生成元のノートは持たない。ノート数だけを
+        // 見ると全行が空になり、開くと知見を何件も引いているのに一覧では数が見えなくなる。
         sources:
-          wikiKind === "topic"
+          wikiKind === "topic" || wikiKind === "atom"
             ? ((wikiMetas.get(f.id)!.derivedFromClaims?.length ?? 0) || (sourcesCountById.get(f.id) ?? 0))
             : (sourcesCountById.get(f.id) ?? 0),
-        incoming: incomingRefCount.get(f.id) ?? 0,
-        outgoing: outgoingRefCountById.get(f.id) ?? 0,
+        incoming: linkCountsOf(linkCounts, f.id).incoming,
+        outgoing: linkCountsOf(linkCounts, f.id).outgoing,
+        // このページをもとに作られたページの数（知見なら、それを引いている洞察など）
+        derived: linkCountsOf(linkCounts, f.id).derived,
         // 世界モデル照合 verdict（Phase 2 / PR 2A） — summary 以外で意味を持つ
         worldGrounding: wikiMetas.get(f.id)!.groundingValidity,
         // 出典照合 verdict（Source check, v1.1） — claim/topic のみ意味を持つ
         sourceCheck: wikiMetas.get(f.id)!.sourceCheckVerdict,
       }));
     return real;
-  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById, createdAtById]);
+  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, linkCounts, createdAtById]);
 
   // Type 列フィルタの選択肢を、現在の wikiEntries から動的に集計する。
   // claim → claimRole（複数可）, atom → atomType, synthesis → synthesisMode。
@@ -603,6 +583,9 @@ export function WikiListView({
         case "sources":
           cmp = a.sources - b.sources;
           break;
+        case "derived":
+          cmp = a.derived - b.derived;
+          break;
         case "incoming":
           cmp = a.incoming - b.incoming;
           break;
@@ -628,14 +611,24 @@ export function WikiListView({
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
-  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 出典数）から隠す。タイトル・種別・状態などの
+  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 参照先 → 被参照 → 出典数）から隠す。タイトル・種別・状態などの
   // 中身を識別する列は残す。列が出る条件は th / td の描画条件と同じ
   const showWorldVerdict =
     wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled;
   const showSourceVerdict = wikiKind === "claim" || wikiKind === "topic";
+  // 派生・参照先・被参照は、その種類に値が 1 件でもあるときだけ列を出す。洞察と要約はほぼ全行が
+  // 空で、「—」だけの列が 2 本並ぶと、数字の入っている生成元の列まで読み飛ばされる。
+  // 絞り込みや検索で列が出入りしないよう、絞り込む前の全件（wikiEntries）で決める。
+  // 索引がまだ無い間は決められないので出しておく（読み込み後に列が増えて表が動くのを避ける）
+  const showDerived = !noteIndex || wikiEntries.some((e) => e.derived > 0);
+  const showOutgoing = !noteIndex || wikiEntries.some((e) => e.outgoing > 0);
+  const showIncoming = !noteIndex || wikiEntries.some((e) => e.incoming > 0);
   const columnPlan = buildWikiListColumnPlan({
     hasWorldVerdict: showWorldVerdict,
     hasSourceVerdict: showSourceVerdict,
+    hasDerived: showDerived,
+    hasOutgoing: showOutgoing,
+    hasIncoming: showIncoming,
   });
   const cols = useResponsiveColumns(columnPlan);
   const hide = cols.hidden;
@@ -649,10 +642,15 @@ export function WikiListView({
       createdAt: ["createdAt", t("wikiList.colCreated")],
       verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
       sources: ["sources", t("wikiList.colSources")],
+      outgoing: ["outgoing", t("wikiList.colOutgoing")],
+      incoming: ["incoming", t("wikiList.colIncoming")],
     };
+    if (sortKey === "derived" && !showDerived) return t("wikiList.colDerived");
+    if (sortKey === "outgoing" && !showOutgoing) return t("wikiList.colOutgoing");
+    if (sortKey === "incoming" && !showIncoming) return t("wikiList.colIncoming");
     const hit = byKey[sortKey];
     return hit && hide.has(hit[0]) ? hit[1] : null;
-  }, [sortKey, hide, t]);
+  }, [sortKey, hide, showDerived, showOutgoing, showIncoming, t]);
 
   const selectableEntries = filtered;
   const toggleSelectAll = useCallback(() => {
@@ -937,24 +935,47 @@ export function WikiListView({
                     hide.has("sources") && "hidden",
                   )}
                   onClick={() => handleSort("sources")}
-                  data-tooltip={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
+                  data-tooltip={
+                    wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic")
+                    : wikiKind === "atom" ? t("wikiList.colSourcesTooltipAtom")
+                    : t("wikiList.colSourcesTooltip")
+                  }
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
-                  onClick={() => handleSort("outgoing")}
-                  data-tooltip={t("wikiList.colOutgoingTooltip")}
-                >
-                  {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
-                <th
-                  className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
-                  onClick={() => handleSort("incoming")}
-                  data-tooltip={t("wikiList.colIncomingTooltip")}
-                >
-                  {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
-                </th>
+                {showDerived && (
+                  <th
+                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
+                    onClick={() => handleSort("derived")}
+                    data-tooltip={t("wikiList.colDerivedTooltip")}
+                  >
+                    {t("wikiList.colDerived")}{sortKey === "derived" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
+                {showOutgoing && (
+                  <th
+                    className={cn(
+                      "py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums",
+                      hide.has("outgoing") && "hidden",
+                    )}
+                    onClick={() => handleSort("outgoing")}
+                    data-tooltip={t("wikiList.colOutgoingTooltip")}
+                  >
+                    {t("wikiList.colOutgoing")}{sortKey === "outgoing" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
+                {showIncoming && (
+                  <th
+                    className={cn(
+                      "py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums",
+                      hide.has("incoming") && "hidden",
+                    )}
+                    onClick={() => handleSort("incoming")}
+                    data-tooltip={t("wikiList.colIncomingTooltip")}
+                  >
+                    {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
                 {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                   <th
                     className={cn(
@@ -1056,12 +1077,25 @@ export function WikiListView({
                   <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {entry.outgoing > 0 ? entry.outgoing : <span className="text-muted-foreground/40">—</span>}
-                  </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
-                  </td>
+                  {showDerived && (
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                      {entry.derived > 0 ? entry.derived : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+                  )}
+                  {showOutgoing && (
+                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("outgoing") && "hidden")}>
+                      {entry.outgoing > 0
+                        ? <LinkCountBadge direction="outgoing" count={entry.outgoing} />
+                        : <span className="pl-1.5 text-muted-foreground/40">—</span>}
+                    </td>
+                  )}
+                  {showIncoming && (
+                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("incoming") && "hidden")}>
+                      {entry.incoming > 0
+                        ? <LinkCountBadge direction="incoming" count={entry.incoming} />
+                        : <span className="pl-1.5 text-muted-foreground/40">—</span>}
+                    </td>
+                  )}
                   {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
                     <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
                       <WorldVerdictCell grounding={entry.worldGrounding} />

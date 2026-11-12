@@ -76,13 +76,13 @@ Prompts take trial and error, so skills support the same manual version snapshot
 
 The sidebar's **Knowledge** tab lists **Topics**, **Q&A**, **Claims**, and **Insights** with counts (plus **Previous Summaries** if any legacy summaries remain). Click a kind to open its list view, which offers:
 
-- Columns: **Title**, **Type**, **Sources** (how many source notes — for topics, how many documents it was built from, or for older topics the member claims it groups), **Links** (how many links the page makes, not counting links to its sources, i.e. citations) / **Refs in**, **Model**, **Created**, and **Modified**. The Claims and Insights lists add **World** (latest [world-grounding](/ai-grounding) verdict) while world grounding is turned on, and the Topics and Claims lists add **Source check** (latest [source check](/ai-grounding#source-check-does-the-source-actually-say-it) result), which is never left out. When the window is narrow, **Model**, then **Created**, then **World** (where the list has it), then **Sources** are left out so the title stays readable, and past that the title column is narrowed a little so **Modified** is not cut off (the sort basis shows above the list while its column is hidden)
+- Columns: **Title**, **Type**, **Sources** (how many source notes — for insights, how many claims it was drawn from; for topics, how many documents it was built from, or for older topics the member claims it groups), **Derived** (how many Knowledge pages were made from this page — for a claim, the insights and topics built on it), **Outgoing** (how many pages this page links to in its body) / **Incoming** (how many pages link to it in their body) — neither counts a source/derived relation, and the Notes list counts its Outgoing / Incoming the same way; Derived, Outgoing and Incoming are left out for a kind where no page has a value — **Model**, **Created**, and **Modified**. The Claims and Insights lists add **World** (latest [world-grounding](/ai-grounding) verdict) while world grounding is turned on, and the Topics and Claims lists add **Source check** (latest [source check](/ai-grounding#source-check-does-the-source-actually-say-it) result), which is never left out. When the window is narrow, **Model**, then **Created**, then **World** (where the list has it), then **Outgoing**, then **Incoming**, then **Sources** are left out so the title stays readable, and past that the title column is narrowed a little so **Modified** is not cut off (the sort basis shows above the list while its column is hidden)
 - Search, per-column type filters, sorting, and multi-select by dragging over the rows or shift-clicking a range
 - Bulk actions on selected rows: **Check world**, **Regenerate**, **Clear result**, and the trash button at the right end (moves them to the trash). For Topics (select 2 or more) **Merge** also appears, which asks which topic to keep and moves the other(s) into it
 
 Claims also show an evidence status: **?candidate** (used in only 1 note) or **✓verified** (used in 2+ notes). A claim that gets corroborated by a second independent note is promoted automatically, and its page shows a **Corroborated** badge.
 
-![Knowledge list view showing claims with Type, Sources, Links, Refs in, and Source check columns](/screenshots/knowledge-list.png)
+![Knowledge list view showing claims with Type, Sources, Derived, Incoming, and Source check columns](/screenshots/knowledge-list.png)
 
 ## Knowledge pages are editable notes
 
@@ -102,7 +102,7 @@ The body ends with a **References** section linking back to sources. Keep in min
 
 ### Links between topics <Badge type="tip" text="Added in v0.129.2 (2026-11-10)" />
 
-When a Topic's body mentions another Topic's title, the page links to that Topic. The link shows in the list's **Links** / **Refs in** columns and as a reference line in the global graph. Titles shorter than 3 characters are not linked, and neither are pages that share the same short name and differ only in the parentheses (for example two pages called "BP (...)"), since there is no telling which one is meant. It is decided by matching text only — no AI call. Existing pages can be linked again with **Tidy up for me**.
+When a Topic's body mentions another Topic's title, the page links to that Topic. The link shows in the list's **Outgoing** / **Incoming** columns and as a reference line in the global graph. Titles shorter than 3 characters are not linked, and neither are pages that share the same short name and differ only in the parentheses (for example two pages called "BP (...)"), since there is no telling which one is meant. It is decided by matching text only — no AI call. Existing pages can be linked again with **Tidy up for me**.
 
 ## Topic types <Badge type="tip" text="Added in v0.89.15 (2026-10-20)" />
 
