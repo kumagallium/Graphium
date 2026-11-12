@@ -278,14 +278,9 @@ export const ClaimListMenuBusy: Story = {
 
 // ── 幅が狭いとき、補助の列を順に隠す ──
 // 判定は表を包む枠の幅で行う。枠の内側の幅（左右の余白 24px×2 を除く）に対して
-// モデル → 作成日 → 世界照合（列があるときだけ）→ 出典数の順に隠れ、タイトル列は 240px 以上を保つ。
-// 境目（表の内側の幅）は種別ごとに違う:
-//   知見（出典照合あり・世界照合なし）: 1199 未満でモデル、1077 未満で作成日、951 未満で出典数、最小 871
-//   知見（世界照合も出る既定）        : 1309 未満でモデル、1187 未満で作成日、1061 未満で世界照合、951 未満で出典数、最小 871
-// 871 未満（1164 幅・サイドバー開き = 表の内側 860 前後）は、最後の手段としてタイトルの
-// 最小幅を 200px に詰める（表は 814px）。
-// Windows 既定（150% 表示）の実質 1280 幅でサイドバーを開いていれば、枠はおよそ 1024
-// （表の内側は 976）。世界照合が出る既定の知見一覧でも、世界照合まで隠せば収まる。
+// モデル → 作成日 → 世界照合（列があるときだけ）→ 参照先 → 被参照 → 出典数の順に隠れ、
+// タイトル列は 240px 以上を保つ。境目（表の内側の幅）は note-list-columns.test.ts で確かめている。
+// 全部隠してもなお足りないときは、最後の手段としてタイトルの最小幅を 200px に詰める。
 
 const widthDecorator = (width: number) => (Story: ComponentType) => (
   <div
@@ -342,13 +337,13 @@ export const NarrowWithWorldWindowsDefault: Story = {
 };
 
 export const NarrowWithWorldSidebarOpen1164: Story = {
-  name: "枠の幅 908（1164 幅・サイドバー開き・世界照合あり: 出典数まで隠し、タイトルを詰めて収まる）",
+  name: "枠の幅 908（1164 幅・サイドバー開き・世界照合あり: 参照先・被参照まで隠して収まる）",
   args: narrowClaimWithWorldArgs,
   decorators: [widthDecorator(908)],
 };
 
 export const NarrowScrolls: Story = {
-  name: "枠の幅 800（タイトルを詰めてもなお足りず、横スクロール）",
+  name: "枠の幅 800（隠せる列を全部隠す）",
   args: narrowClaimArgs,
   decorators: [widthDecorator(800)],
 };

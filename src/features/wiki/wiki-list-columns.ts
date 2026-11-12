@@ -1,20 +1,18 @@
 // ナレッジ一覧の列の幅と、狭いときに隠す順
 //
-// 隠す順: モデル → 作成日 → 世界照合（世界照合の列があるときだけ）→ 派生（列があるときだけ）→ 出典数。タイトル・種別・
-// 参照先・被参照・出典照合（中身と状態を識別する列）と更新日は隠さない。補助の列（どのモデルが
-// 作ったか・いつ作ったか）から先に隠し、それでも足りない知見・洞察の一覧では世界照合の列も
-// 隠す（Windows 既定 150% の表の内側 976px に収めるため。境目は wiki-list-columns.test.ts で確かめる）。
-// 出典数（sources）は最後に隠す。世界照合の後ろに置くのは、976px の見た目（出典数が残る）を
-// 変えないため。さらに全部隠してもなお枠が 871px（知見の一覧で、隠さない列 + タイトル 240 +
-// スクロールバー）を下回るとき（1164 幅・サイドバー開き = 表の内側 860px 前後）は、最後の手段として
-// タイトルの最小幅を 240 → 200 に詰める（表は 814px になり、スクロールバー込みでも 860 − 17 に収まる）。
+// 隠す順: モデル → 作成日 → 世界照合（列があるときだけ）→ 参照先 → 被参照（どちらも列が
+// あるときだけ）→ 出典数。タイトル・種別・派生・出典照合（中身と状態を識別する列）と更新日は
+// 隠さない。補助の列（どのモデルが作ったか・いつ作ったか）から先に隠し、それでも足りない
+// 知見・洞察の一覧では世界照合の列も隠す（Windows 既定 150% の表の内側 976px に収めるため。
+// 境目は note-list-columns.test.ts で確かめる）。出典数（sources）は最後に隠す。全部隠しても
+// なお枠が足りないときは、最後の手段としてタイトルの最小幅を 240 → 200 に詰める。
 // ナレッジ一覧は並べ替えの選択が列ヘッダにしか無いので、並べ替えの基準の列が隠れたときは
 // WikiListView がツールバーに「並び順: …」を出す（何で並んでいるかが画面から消えないように）。
 // 幅の数値は WikiListView の th の w-[…] と揃える（Tailwind は動的なクラス名を拾えない）。
 
 import type { ColumnPlan, HideableColumn } from "../../lib/responsive-columns";
 
-export type WikiListHideableColumn = "model" | "createdAt" | "worldVerdict" | "derived" | "sources";
+export type WikiListHideableColumn = "model" | "createdAt" | "worldVerdict" | "outgoing" | "incoming" | "sources";
 
 /** タイトル列の最小幅（日本語で 1 行 12 字前後） */
 export const WIKI_LIST_TITLE_MIN_WIDTH = 240;
@@ -60,8 +58,7 @@ export function buildWikiListColumnPlan(
     WIKI_LIST_TITLE_MIN_WIDTH +
     W.checkbox +
     W.type +
-    (opts.hasOutgoing === false ? 0 : W.outgoing) +
-    (opts.hasIncoming === false ? 0 : W.incoming) +
+    (opts.hasDerived ? W.derived : 0) +
     W.modifiedAt +
     W.delete +
     (opts.hasSourceVerdict ? W.sourceVerdict : 0);
@@ -70,8 +67,10 @@ export function buildWikiListColumnPlan(
     { key: "createdAt", width: W.createdAt },
   ];
   if (opts.hasWorldVerdict) hideable.push({ key: "worldVerdict", width: W.worldVerdict });
-  // 派生は出典数の手前で隠す（全部隠したときの幅を、派生の列が無い一覧と同じに保つ）
-  if (opts.hasDerived) hideable.push({ key: "derived", width: W.derived });
+  // 参照先・被参照は世界照合の次に隠す。ナレッジの本文のリンクはほとんどが出典（生成元）で、
+  // それ以外へのリンクを持つページは少ない。もと・派生（生成元・派生）のほうを残す
+  if (opts.hasOutgoing !== false) hideable.push({ key: "outgoing", width: W.outgoing });
+  if (opts.hasIncoming !== false) hideable.push({ key: "incoming", width: W.incoming });
   hideable.push({ key: "sources", width: W.sources });
   return {
     baseWidth,

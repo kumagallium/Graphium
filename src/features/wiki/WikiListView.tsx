@@ -611,7 +611,7 @@ export function WikiListView({
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
-  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 出典数）から隠す。タイトル・種別・状態などの
+  // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 参照先 → 被参照 → 出典数）から隠す。タイトル・種別・状態などの
   // 中身を識別する列は残す。列が出る条件は th / td の描画条件と同じ
   const showWorldVerdict =
     wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled;
@@ -642,7 +642,8 @@ export function WikiListView({
       createdAt: ["createdAt", t("wikiList.colCreated")],
       verdict: ["worldVerdict", t("wikiList.colWorldVerdict")],
       sources: ["sources", t("wikiList.colSources")],
-      derived: ["derived", t("wikiList.colDerived")],
+      outgoing: ["outgoing", t("wikiList.colOutgoing")],
+      incoming: ["incoming", t("wikiList.colIncoming")],
     };
     if (sortKey === "derived" && !showDerived) return t("wikiList.colDerived");
     if (sortKey === "outgoing" && !showOutgoing) return t("wikiList.colOutgoing");
@@ -944,10 +945,7 @@ export function WikiListView({
                 </th>
                 {showDerived && (
                   <th
-                    className={cn(
-                      "py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums",
-                      hide.has("derived") && "hidden",
-                    )}
+                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
                     onClick={() => handleSort("derived")}
                     data-tooltip={t("wikiList.colDerivedTooltip")}
                   >
@@ -956,7 +954,10 @@ export function WikiListView({
                 )}
                 {showOutgoing && (
                   <th
-                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
+                    className={cn(
+                      "py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums",
+                      hide.has("outgoing") && "hidden",
+                    )}
                     onClick={() => handleSort("outgoing")}
                     data-tooltip={t("wikiList.colOutgoingTooltip")}
                   >
@@ -965,7 +966,10 @@ export function WikiListView({
                 )}
                 {showIncoming && (
                   <th
-                    className="py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums"
+                    className={cn(
+                      "py-2 pl-3 w-[76px] whitespace-nowrap cursor-pointer hover:text-foreground tabular-nums",
+                      hide.has("incoming") && "hidden",
+                    )}
                     onClick={() => handleSort("incoming")}
                     data-tooltip={t("wikiList.colIncomingTooltip")}
                   >
@@ -1074,19 +1078,19 @@ export function WikiListView({
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
                   </td>
                   {showDerived && (
-                    <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("derived") && "hidden")}>
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                       {entry.derived > 0 ? entry.derived : <span className="text-muted-foreground/40">—</span>}
                     </td>
                   )}
                   {showOutgoing && (
-                    <td className="py-2 pl-1.5 text-xs text-muted-foreground tabular-nums">
+                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("outgoing") && "hidden")}>
                       {entry.outgoing > 0
                         ? <LinkCountBadge direction="outgoing" count={entry.outgoing} />
                         : <span className="pl-1.5 text-muted-foreground/40">—</span>}
                     </td>
                   )}
                   {showIncoming && (
-                    <td className="py-2 pl-1.5 text-xs text-muted-foreground tabular-nums">
+                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("incoming") && "hidden")}>
                       {entry.incoming > 0
                         ? <LinkCountBadge direction="incoming" count={entry.incoming} />
                         : <span className="pl-1.5 text-muted-foreground/40">—</span>}
