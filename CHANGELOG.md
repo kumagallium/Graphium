@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.18](https://github.com/kumagallium/Graphium/compare/v0.129.17...v0.129.18) - 2026-11-12
+
+- [fix] Bring the Memos list's columns in line with the Notes and Knowledge lists by @kumagallium in https://github.com/kumagallium/Graphium/pull/1652
+
 ## [v0.129.17](https://github.com/kumagallium/Graphium/compare/v0.129.16...v0.129.17) - 2026-11-12
 
 - [fix] Model guide: open large is conditional for the advanced tier by @kumagallium in https://github.com/kumagallium/Graphium/pull/1649
