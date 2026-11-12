@@ -356,7 +356,11 @@ export function buildWikiDocument(
   if (ingesterOutput.kind === "summary") return null;
 
   const now = new Date().toISOString();
-  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex, ingesterOutput.title);
+  // 再生成で題が変わると、索引にはまだ前の題でこのページ自身が載っている。AI が前の題を
+  // [[...]] で引くと、題の一致で見る selfTitle ガード（新しい題）をすり抜けて自分宛ての
+  // リンクになる。自分の ID は引用の解決先から外す（前の題は文字のまま残る）
+  const citationIndex = selfId ? noteIndex?.filter((n) => n.id !== selfId) : noteIndex;
+  const converted = convertSectionsToBlocks(ingesterOutput.sections, citationIndex, ingesterOutput.title);
 
   // 関連セクションを追加（派生元ノート + 関連 Concept）
   // selfTitle には生成中の Wiki 自身のタイトル（ingesterOutput.title）を渡す。

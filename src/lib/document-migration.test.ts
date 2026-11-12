@@ -636,6 +636,55 @@ describe("migrateToLatest - 自己参照リンクのサニタイズ", () => {
     expect(doc.pages[0].knowledgeLinks).toHaveLength(1);
   });
 
+  describe("自分宛てのリンクと対になる青い @ の文字", () => {
+    const link = (id: string, sourceBlockId: string, targetNoteId: string) =>
+      ({ id, sourceBlockId, targetBlockId: "", targetNoteId, type: "reference", layer: "knowledge", createdBy: "ai" });
+    const mention = (title: string) => ({ type: "text", text: `@${title}`, styles: { textColor: "blue" } });
+    const wikiDoc = (content: any[], knowledgeLinks: any[]): GraphiumDocument => {
+      const doc = baseDoc(LATEST_DOCUMENT_VERSION, {
+        id: "p1",
+        title: "p1",
+        blocks: [{ id: "b1", type: "paragraph", props: {}, content, children: [] }],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks,
+      });
+      (doc as any).wikiMeta = { kind: "claim" };
+      return doc;
+    };
+
+    it("自分宛ての分だけ普通の文字に戻し、他のメンションは残す", () => {
+      const doc = wikiDoc(
+        [mention("🤖 前の題"), { type: "text", text: " と ", styles: {} }, mention("出典ノート")],
+        [link("l1", "b1", "self-id"), link("l2", "b1", "other-id")],
+      );
+      migrateToLatest(doc, "self-id");
+      expect((doc.pages[0].blocks[0] as any).content).toEqual([
+        { type: "text", text: "前の題", styles: {} },
+        { type: "text", text: " と ", styles: {} },
+        mention("出典ノート"),
+      ]);
+      expect(doc.pages[0].knowledgeLinks).toEqual([link("l2", "b1", "other-id")]);
+    });
+
+    it("青い @ の数とリンクの数が合わないブロックは、文字に触らずリンクだけ外す", () => {
+      const doc = wikiDoc(
+        [mention("🤖 前の題"), mention("出典ノート")],
+        [link("l1", "b1", "self-id")],
+      );
+      migrateToLatest(doc, "self-id");
+      expect((doc.pages[0].blocks[0] as any).content).toEqual([mention("🤖 前の題"), mention("出典ノート")]);
+      expect(doc.pages[0].knowledgeLinks).toEqual([]);
+    });
+
+    it("ナレッジでないノートの文字には触らない", () => {
+      const doc = wikiDoc([mention("前の題")], [link("l1", "b1", "self-id")]);
+      delete (doc as any).wikiMeta;
+      migrateToLatest(doc, "self-id");
+      expect((doc.pages[0].blocks[0] as any).content).toEqual([mention("前の題")]);
+    });
+  });
+
   it("自己参照が無ければ selfId を渡しても変化しない", () => {
     const doc = linkDoc([
       { id: "l1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "other-id", type: "reference", layer: "knowledge", createdBy: "ai" },

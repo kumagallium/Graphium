@@ -618,6 +618,27 @@ describe("buildWikiDocument - relatedClaims の自己参照抑止", () => {
     const links = doc.pages[0].knowledgeLinks as any[];
     expect(links.some((l) => l.targetNoteId === "other-id")).toBe(true);
   });
+
+  it("再生成で題が変わっても、本文が前の題を [[...]] で引いたら自分宛てのリンクにしない", () => {
+    // 索引にはまだ前の題でこのページ自身が載っている（保存前なので）。題の一致で見る
+    // selfTitle ガードは新しい題しか知らないので、ID で外す
+    const output = {
+      ...ingesterOutput("新しい題", []),
+      sections: [{ heading: "効果", content: "[[前の題]] の測定では減った。[[別のノート]] も同じ。" }],
+    };
+    const noteIndex = [
+      { id: "self-id", title: "前の題", isWiki: true },
+      { id: "n2", title: "別のノート", isWiki: false },
+    ];
+    const doc = buildWikiDocument(output, "source-note", null, "Source Note", undefined, "ja", noteIndex, "self-id")!;
+    const links = doc.pages[0].knowledgeLinks as any[];
+    expect(links.some((l) => l.targetNoteId === "self-id")).toBe(false);
+    expect(links.some((l) => l.targetNoteId === "n2")).toBe(true);
+    // 前の題は青いメンションにせず、文字のまま残す
+    const inline = (doc.pages[0].blocks as any[]).flatMap((b) => (Array.isArray(b.content) ? b.content : []));
+    expect(inline).toContainEqual({ type: "text", text: "前の題", styles: {} });
+    expect(inline.some((c: any) => c.text === "@🤖 前の題")).toBe(false);
+  });
 });
 
 describe("buildWikiDocument - summary の新規生成停止（PR3）", () => {
