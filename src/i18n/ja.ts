@@ -2581,6 +2581,8 @@ export const ja: Record<string, string> = {
   "memo.deleteConfirmMessage": "このメモを完全に削除しますか？元に戻せません。",
   "memo.colText": "本文",
   "memo.colUsedIn": "使用",
+  "memo.colUsedInTooltip": "このメモを挿入したノートの数。ナレッジ化は数えません（本のアイコンの列に出ます）",
+  "memo.colFolderTooltip": "このメモが入っているフォルダ（1 つのメモを複数のフォルダに入れられます）",
   "memo.colDate": "作成日",
   "memo.bulkDeleteConfirmTitle": "メモを一括削除",
   "memo.bulkDeleteConfirmMessage": "選択した {count} 件のメモを削除します。このうち {refCount} 件はノートに挿入済みです。挿入先のノート本文は影響を受けません。",

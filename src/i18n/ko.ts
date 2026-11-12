@@ -2549,6 +2549,8 @@ export const ko: Record<string, string> = {
   "memo.deleteConfirmMessage": "이 메모를 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.",
   "memo.colText": "내용",
   "memo.colUsedIn": "사용",
+  "memo.colUsedInTooltip": "이 메모를 삽입한 노트 수. 지식 베이스로 만든 것은 세지 않습니다(책 아이콘 열에 표시됩니다)",
+  "memo.colFolderTooltip": "이 메모가 들어 있는 폴더(하나의 메모를 여러 폴더에 넣을 수 있습니다)",
   "memo.colDate": "생성일",
   "memo.bulkDeleteConfirmTitle": "선택한 메모 삭제",
   "memo.bulkDeleteConfirmMessage": "선택한 메모 {count}개를 삭제합니다. 그중 {refCount}개는 이미 노트에 삽입되어 있지만, 그 노트 본문에는 영향이 없습니다.",
