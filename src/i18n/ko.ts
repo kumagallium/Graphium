@@ -929,7 +929,7 @@ export const ko: Record<string, string> = {
   "settings.modelFit.level.partial": "조건부",
   "settings.modelFit.level.poor": "알맞지 않음",
   "settings.modelFit.note.default": "채팅 답변과 점검은 로컬 모델로도 대체로 충분합니다.",
-  "settings.modelFit.note.meeting": "정리하기와 요약은 모델에 따라 차이가 큽니다. 발언을 바꾸지 않는 충실함이 필요하므로 강한 모델이 안심입니다.",
+  "settings.modelFit.note.meeting": "정리하기는 발언을 바꾸지 않는 충실함이 필요하므로 강한 모델이 알맞습니다.",
   "settings.modelFit.link": "측정 결과",
   "settings.standardModel": "표준 작업 모델",
   "settings.standardModel.summary": "지식 베이스에 추가·번역·토픽 정리에 씁니다. 비워 두면 가벼운 작업 모델",

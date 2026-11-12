@@ -958,7 +958,7 @@ export const ja: Record<string, string> = {
   "settings.modelFit.level.partial": "条件つき",
   "settings.modelFit.level.poor": "向かない",
   "settings.modelFit.note.default": "チャットの回答や点検は、ローカルのモデルでもほぼ足ります。",
-  "settings.modelFit.note.meeting": "清書と要約は、モデルによって差が大きく出ます。発言を書き換えない忠実さが要るので、強いモデルが安心です。",
+  "settings.modelFit.note.meeting": "清書は発言を書き換えない忠実さが要るので、強いモデルが向いています。",
   "settings.modelFit.link": "測った結果",
   "settings.standardModel": "標準の処理のモデル",
   "settings.standardModel.summary": "ナレッジ化・翻訳・トピックの整理に使います。空欄なら軽い処理のモデル",

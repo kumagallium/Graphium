@@ -958,7 +958,7 @@ export const en: Record<string, string> = {
   "settings.modelFit.level.partial": "with limits",
   "settings.modelFit.level.poor": "not a good fit",
   "settings.modelFit.note.default": "Even a local model handles chat answers and lint well.",
-  "settings.modelFit.note.meeting": "Clean-up and summaries vary a lot from model to model. Clean up must not change what people said, so a strong model is the safer choice.",
+  "settings.modelFit.note.meeting": "Clean up must not change what people said, so a strong model suits it.",
   "settings.modelFit.link": "What we measured",
   "settings.standardModel": "Standard work model",
   "settings.standardModel.summary": "Used for adding to Knowledge, translation and organizing topics. Left empty, it uses the light work model",

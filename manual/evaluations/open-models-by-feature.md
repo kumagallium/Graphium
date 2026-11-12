@@ -11,7 +11,7 @@
 
 "At least 90%" is a ratio of averages, and it is not proof of no difference (see "Limits" below).
 
-Based on this, in the model guide in Settings, I changed two classes in the Advanced work and Voice note rows from "poor fit" to "conditional".
+Based on this, I changed just 1 place in the model guide in Settings. In the Advanced work tier, open large moved from "poor fit" to "conditional".
 
 ## How I measured it
 
@@ -134,9 +134,10 @@ Below, "the six models of ~30B and up" means oss, Weblab, Kimi, Q3.6, gemma and 
 
 ## What I decided
 
-- I changed 4 places in the model guide in [Settings](/settings). In the **Advanced work** and **Voice note** rows, I moved open large and local ~30B from "poor fit" to "conditional".
-- I gave "conditional" where only some of the tasks in that tier come close to the reference point, or where models in the same class split. In Advanced work, the tasks that cross-check (extracting procedures, name alignment, grounding checks, duplicate detection) came close to the reference point, while plan drafting and generalizing findings were far off. In Voice notes, recall on summaries came close to the reference point, while the correction rate on clean copy was, for the best model, just under 90% of the reference point.
+- I changed 1 place in the model guide in [Settings](/settings). In the **Advanced work** tier, I moved open large from "poor fit" to "conditional". For the three models of ~100B and up (oss, Weblab, Kimi), the tasks that cross-check (extracting procedures, name alignment, grounding checks, duplicate detection) overlapped the reference point's interval, while plan drafting and generalizing findings were far off. "Conditional" means that only some of the tasks in that tier come close to the reference point.
 - I also changed the text under the guide. For Advanced work it is now "Open models can be enough for extracting procedures and checking sources. Drafting plans and finding insights suit a strong model."
+- **I did not change the guide for local ~30B.** This time the ~30B models were only measured through an API. When I measured on a computer [last time](/evaluations/model-tiers-by-feature), plan drafting was 0 of 2 and clean copy was 0 of 3. That result stays until I measure on a computer again.
+- **I did not change the guide for the Voice note slot either.** The correction rate on clean copy was .18-.36 for the three open large models, far from the reference point's .60.
 - I did not change the guide for the Light and Standard tiers. I did not change the ~10B guide either, because I did not measure it this time.
-- The "conditional" for local ~30B comes from results measuring same-size models through an API. It is not a value checked on a computer.
-- I did not change the default models or which tier each feature is assigned to.
+- I did not change the default models or which tier each feature is assigned to. In the guides for the Standard and Advanced tiers, only top cloud is a "good fit". What separated in these results was less the tier than "tasks that cross-check" versus "tasks that write from scratch". Whether to redraw the tiers will be decided after measuring several top cloud models and models running on a computer.
+- This measurement used the API of a single provider. The window size and rate limits are partly set by the provider, not by the model. That is another reason I kept the guide change to 1 place.
