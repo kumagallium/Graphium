@@ -2582,6 +2582,8 @@ export const en: Record<string, string> = {
   "memo.deleteConfirmMessage": "Permanently delete this memo? This cannot be undone.",
   "memo.colText": "Text",
   "memo.colUsedIn": "Used",
+  "memo.colUsedInTooltip": "Number of notes this memo was inserted into, not counting Knowledge made from it (that is the book column)",
+  "memo.colFolderTooltip": "Folders this memo is in (a memo can be in more than one)",
   "memo.colDate": "Created",
   "memo.bulkDeleteConfirmTitle": "Delete selected memos",
   "memo.bulkDeleteConfirmMessage": "Delete {count} selected memos. {refCount} of them have already been inserted into notes. Those note bodies will not be affected.",
