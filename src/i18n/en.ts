@@ -1947,6 +1947,7 @@ export const en: Record<string, string> = {
   "wikiList.colSources": "Sources",
   "wikiList.colSourcesTooltip": "Number of source notes this Knowledge page was derived from",
   "wikiList.colSourcesTooltipTopic": "Number of documents this Topic was built from (for older topics, the number of claims it groups)",
+  "wikiList.colSourcesTooltipAtom": "Number of claims this Insight was drawn from",
   "wikiList.colOutgoing": "Links",
   "wikiList.colOutgoingTooltip": "Number of links this page makes, not counting links to its sources (citations)",
   "wikiList.colIncoming": "Refs in",

@@ -479,8 +479,10 @@ export function WikiListView({
         // 他 kind の「派生元ノート数」とは意味が違うが、同じ列を流用する（新規列を増やさない）。
         // 新形式トピック（derivedFromClaims が未設定/空で derivedFromNotes に資料 id を持つ）は
         // 0 件と誤表示しないよう、derivedFromClaims が空なら資料数にフォールバックする。
+        // 洞察も同じ — もとは知見（derivedFromClaims）で、生成元のノートは持たない。ノート数だけを
+        // 見ると全行が空になり、開くと知見を何件も引いているのに一覧では数が見えなくなる。
         sources:
-          wikiKind === "topic"
+          wikiKind === "topic" || wikiKind === "atom"
             ? ((wikiMetas.get(f.id)!.derivedFromClaims?.length ?? 0) || (sourcesCountById.get(f.id) ?? 0))
             : (sourcesCountById.get(f.id) ?? 0),
         incoming: incomingRefCount.get(f.id) ?? 0,
@@ -937,7 +939,11 @@ export function WikiListView({
                     hide.has("sources") && "hidden",
                   )}
                   onClick={() => handleSort("sources")}
-                  data-tooltip={wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic") : t("wikiList.colSourcesTooltip")}
+                  data-tooltip={
+                    wikiKind === "topic" ? t("wikiList.colSourcesTooltipTopic")
+                    : wikiKind === "atom" ? t("wikiList.colSourcesTooltipAtom")
+                    : t("wikiList.colSourcesTooltip")
+                  }
                 >
                   {t("wikiList.colSources")}{sortKey === "sources" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>

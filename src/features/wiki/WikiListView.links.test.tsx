@@ -92,3 +92,42 @@ describe("WikiListView リンク列", () => {
     expect(linksCell("トピック1")).toBe("1");
   });
 });
+
+/** 見出しが label で始まる列の、指定タイトルの行のセルの文字 */
+function cellUnder(label: string, title: string): string {
+  const headers = [...document.querySelectorAll("thead th")];
+  const col = headers.findIndex((th) => th.textContent?.startsWith(label));
+  expect(col).toBeGreaterThan(-1);
+  const row = screen.getByText(title).closest("tr")!;
+  return row.querySelectorAll("td")[col].textContent ?? "";
+}
+
+describe("WikiListView 生成元列（洞察）", () => {
+  it("洞察はもとになった知見の件数を出す（生成元のノートを持たないので、ノート数では全行が空になる）", () => {
+    const files = [file("a1", "洞察1"), file("a2", "洞察2")];
+    const metas = new Map<string, WikiMetaSummary>([
+      ["a1", { title: "洞察1", kind: "atom", derivedFromClaims: ["c1", "c2", "c3"] }],
+      ["a2", { title: "洞察2", kind: "atom", derivedFromClaims: ["c1"] }],
+    ]);
+    const noteIndex = {
+      notes: [entry("a1", [], ["c1", "c2", "c3"]), entry("a2", [], ["c1"])],
+    } as unknown as GraphiumIndex;
+    render(
+      <LocaleProvider>
+        <WikiListView
+          noteIndex={noteIndex}
+          wikiKind="atom"
+          wikiFiles={files}
+          wikiMetas={metas}
+          onOpenWiki={() => {}}
+          onBack={() => {}}
+          onDeleteWiki={async () => {}}
+        />
+      </LocaleProvider>,
+    );
+    expect(cellUnder("Sources", "洞察1")).toBe("3");
+    expect(cellUnder("Sources", "洞察2")).toBe("1");
+    // もとの知見へのリンクは「リンク」には数えない（生成元と同じ数字を 2 列に並べない）
+    expect(cellUnder("Links", "洞察1")).toBe("—");
+  });
+});

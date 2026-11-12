@@ -8,6 +8,7 @@ import type {
   GraphiumFile,
   WikiMetaSummary,
 } from "../../lib/document-types";
+import type { GraphiumIndex } from "../navigation/index-file";
 import "../../app.css";
 
 const now = new Date();
@@ -350,4 +351,103 @@ export const NarrowScrolls: Story = {
   name: "枠の幅 800（タイトルを詰めてもなお足りず、横スクロール）",
   args: narrowClaimArgs,
   decorators: [widthDecorator(800)],
+};
+
+// ── 生成元・リンク・被参照の列を、種類ごとに実際の埋まり方で確かめる ──
+// 索引（noteIndex）を渡して 3 列に数字を出す。見本はパン作り。
+// 知見: 生成元はノート 1〜2 件、リンクはごく一部、被参照は洞察・トピックから。
+// 洞察: もとは知見（derivedFromClaims）。本文のリンクもその知見を指す。
+// 要約: もとはノート 1 件で、リンクも被参照も無い。
+
+type LinkFixture = { noteId: string; title: string; derivedFromNotes?: string[]; targets?: string[] };
+
+function linkIndex(rows: LinkFixture[]): GraphiumIndex {
+  return {
+    notes: rows.map((r) => ({
+      noteId: r.noteId,
+      title: r.title,
+      derivedFromNotes: r.derivedFromNotes ?? [],
+      outgoingLinks: (r.targets ?? []).map((targetNoteId) => ({ targetNoteId, layer: "knowledge" as const })),
+    })),
+  } as unknown as GraphiumIndex;
+}
+
+const BREAD_CLAIM_FILES: GraphiumFile[] = [
+  { id: "bc1", name: "加水率を 75% に上げると気泡が大きくなる", modifiedTime: hoursAgo(2), createdTime: daysAgo(1) },
+  { id: "bc2", name: "一次発酵を冷蔵で一晩おくと酸味が増す", modifiedTime: hoursAgo(6), createdTime: daysAgo(2) },
+  { id: "bc3", name: "塩を後入れするとこね時間が短くなる", modifiedTime: daysAgo(1), createdTime: daysAgo(3) },
+  { id: "bc4", name: "焼成の最初にスチームを入れるとクラストが薄くなる", modifiedTime: daysAgo(2), createdTime: daysAgo(4) },
+  { id: "bc5", name: "全粒粉を 20% 混ぜると吸水が増える", modifiedTime: daysAgo(3), createdTime: daysAgo(5) },
+  { id: "bc6", name: "予熱が足りないと底が白く焼き上がる", modifiedTime: daysAgo(4), createdTime: daysAgo(6) },
+];
+
+const BREAD_CLAIM_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_CLAIM_FILES.map((f, i) => [
+    f.id,
+    { title: f.name, kind: "claim", model: i % 2 === 0 ? "claude-haiku-4-5" : "gpt-oss-120b" },
+  ]),
+);
+
+const BREAD_ATOM_FILES: GraphiumFile[] = [
+  { id: "ba1", name: "水分が多い生地ほど発酵の温度管理が効く", modifiedTime: hoursAgo(1), createdTime: daysAgo(1) },
+  { id: "ba2", name: "クラストの厚みは最初の 5 分で決まる", modifiedTime: hoursAgo(9), createdTime: daysAgo(2) },
+  { id: "ba3", name: "こね時間を縮める手はどれも塩の扱いに行き着く", modifiedTime: daysAgo(2), createdTime: daysAgo(3) },
+  { id: "ba4", name: "全粒粉の配合と加水は一緒に動かす", modifiedTime: daysAgo(3), createdTime: daysAgo(5) },
+];
+
+const BREAD_ATOM_CLAIMS: Record<string, string[]> = {
+  ba1: ["bc1", "bc2", "bc5"],
+  ba2: ["bc4", "bc6"],
+  ba3: ["bc3"],
+  ba4: ["bc1", "bc5"],
+};
+
+const BREAD_ATOM_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_ATOM_FILES.map((f) => [
+    f.id,
+    { title: f.name, kind: "atom", model: "claude-haiku-4-5", atomType: "mechanistic",derivedFromClaims: BREAD_ATOM_CLAIMS[f.id] },
+  ]),
+);
+
+const BREAD_SUMMARY_FILES: GraphiumFile[] = [
+  { id: "bs1", name: "高加水カンパーニュの試作（3 回目）", modifiedTime: hoursAgo(4), createdTime: daysAgo(1) },
+  { id: "bs2", name: "冷蔵発酵の比較メモ", modifiedTime: daysAgo(1), createdTime: daysAgo(2) },
+  { id: "bs3", name: "オーブンの予熱と焼き色", modifiedTime: daysAgo(4), createdTime: daysAgo(6) },
+];
+
+const BREAD_SUMMARY_METAS = new Map<string, WikiMetaSummary>(
+  BREAD_SUMMARY_FILES.map((f) => [f.id, { title: f.name, kind: "summary", model: "gpt-oss-120b" }]),
+);
+
+const BREAD_INDEX = linkIndex([
+  // 知見: 本文の出典リンクは生成元のノートを指す。bc5 だけ別の知見（bc1）にも張っている
+  { noteId: "bc1", title: BREAD_CLAIM_FILES[0].name, derivedFromNotes: ["n1"], targets: ["n1"] },
+  { noteId: "bc2", title: BREAD_CLAIM_FILES[1].name, derivedFromNotes: ["n2"], targets: ["n2"] },
+  { noteId: "bc3", title: BREAD_CLAIM_FILES[2].name, derivedFromNotes: ["n1", "n3"], targets: ["n1", "n3"] },
+  { noteId: "bc4", title: BREAD_CLAIM_FILES[3].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+  { noteId: "bc5", title: BREAD_CLAIM_FILES[4].name, derivedFromNotes: ["n1"], targets: ["n1", "bc1"] },
+  { noteId: "bc6", title: BREAD_CLAIM_FILES[5].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+  // 洞察: 生成元のノートは持たず、もとの知見へ本文からリンクする
+  ...BREAD_ATOM_FILES.map((f) => ({ noteId: f.id, title: f.name, targets: BREAD_ATOM_CLAIMS[f.id] })),
+  // 要約: もとのノート 1 件だけ
+  { noteId: "bs1", title: BREAD_SUMMARY_FILES[0].name, derivedFromNotes: ["n1"], targets: ["n1"] },
+  { noteId: "bs2", title: BREAD_SUMMARY_FILES[1].name, derivedFromNotes: ["n2"], targets: ["n2"] },
+  { noteId: "bs3", title: BREAD_SUMMARY_FILES[2].name, derivedFromNotes: ["n4"], targets: ["n4"] },
+]);
+
+const breadArgs = { ...baseArgs, noteIndex: BREAD_INDEX, worldGroundingEnabled: false };
+
+export const LinkColumnsClaim: Story = {
+  name: "列の数字 — 知見（生成元はノート・リンクは一部・被参照は洞察から）",
+  args: { ...breadArgs, wikiKind: "claim", wikiFiles: BREAD_CLAIM_FILES, wikiMetas: BREAD_CLAIM_METAS },
+};
+
+export const LinkColumnsAtom: Story = {
+  name: "列の数字 — 洞察（もとは知見 1〜3 件）",
+  args: { ...breadArgs, wikiKind: "atom", wikiFiles: BREAD_ATOM_FILES, wikiMetas: BREAD_ATOM_METAS },
+};
+
+export const LinkColumnsSummary: Story = {
+  name: "列の数字 — 要約（もとはノート 1 件）",
+  args: { ...breadArgs, wikiKind: "summary", wikiFiles: BREAD_SUMMARY_FILES, wikiMetas: BREAD_SUMMARY_METAS },
 };

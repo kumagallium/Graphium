@@ -1918,6 +1918,7 @@ export const ko: Record<string, string> = {
   "wikiList.colSources": "원본 수",
   "wikiList.colSourcesTooltip": "이 지식 베이스 페이지가 파생된 원본 노트 수",
   "wikiList.colSourcesTooltipTopic": "이 토픽을 만든 문서 수(이전 형식의 토픽은 묶고 있는 지견 수)",
+  "wikiList.colSourcesTooltipAtom": "이 인사이트의 바탕이 된 지견 수",
   "wikiList.colOutgoing": "링크",
   "wikiList.colOutgoingTooltip": "이 페이지에서 나가는 링크 수. 원본 자료로 가는 링크(출처 인용)는 세지 않습니다",
   "wikiList.colIncoming": "들어오는 링크",

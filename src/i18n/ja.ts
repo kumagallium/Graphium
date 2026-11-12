@@ -1947,6 +1947,7 @@ export const ja: Record<string, string> = {
   "wikiList.colSources": "生成元",
   "wikiList.colSourcesTooltip": "このナレッジのもとになったノートの数",
   "wikiList.colSourcesTooltipTopic": "このトピックのもとになった資料の件数（古い形式のトピックでは、束ねている知見の件数）",
+  "wikiList.colSourcesTooltipAtom": "この洞察のもとになった知見の件数",
   "wikiList.colOutgoing": "リンク",
   "wikiList.colOutgoingTooltip": "このページから張っているリンクの件数。生成元へのリンク（出典の引用）は数えません",
   "wikiList.colIncoming": "被参照",
