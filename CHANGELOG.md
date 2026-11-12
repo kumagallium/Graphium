@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.14](https://github.com/kumagallium/Graphium/compare/v0.129.13...v0.129.14) - 2026-11-12
+
+- feat: write claims as self-contained points that stay inside what the note supports by @kumagallium in https://github.com/kumagallium/Graphium/pull/1642
+
 ## [v0.129.13](https://github.com/kumagallium/Graphium/compare/v0.129.12...v0.129.13) - 2026-11-11
 
 - feat: add claims that restate an existing insight to that insight by @kumagallium in https://github.com/kumagallium/Graphium/pull/1640
