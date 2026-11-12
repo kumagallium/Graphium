@@ -974,7 +974,7 @@ export const ja: Record<string, string> = {
   "settings.insightTest.sectionTitle": "洞察のテスト",
   "settings.insightTest.sectionSummary": "洞察は高度な処理のモデル（{name}）で動きます。同梱の知見で、そのモデルを試せます",
   "settings.insightTest.sectionHelp": "洞察の発見は、モデルの割り当ての「高度な処理のモデル」を使います。別のモデルで試したいときは、そこで選び直してください。テストの入力も結果も保存しません。",
-  "settings.modelFit.note.standard": "ナレッジ化と翻訳は、オープンな大型モデルでも足ります。",
+  "settings.modelFit.note.standard": "オープンな大型モデルは、モデルによって差があります。ノートに無いことが知見に混ざることがあります。",
   "settings.modelFit.note.precise": "手順の抽出・計画・清書は、強いモデルでないと崩れやすくなります。",
   "meeting.aiModelSameAsPreciseNamed": "高度な処理のモデルと同じ（{name}）",
   "meeting.aiModelSameAsPrecise": "高度な処理のモデルと同じ",

@@ -27,7 +27,10 @@ export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
   default: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
   // 標準の処理（ナレッジ化・翻訳・トピックの振り分けと改訂）。オープンな大型はナレッジ化 4/5・翻訳 3/4・
   // トピック 5/8。30B 級はナレッジ化 3/5・トピック 4/8 で 1 件 1〜3 分。10B 級はナレッジ化 2/5・翻訳 1/4
-  standard: { frontier: "good", openLarge: "good", local30b: "partial", local10b: "poor" },
+  // 2026-11-12 に知見づくりを 20 本で測り直し（manual/evaluations/claim-scope.md）、オープンな大型を条件つきに下げた。
+  // 区分の中の差が大きい: 忠実の合格は gemma-4-31B-it が 17/20、Kimi-K2.7-Code が 11/20、gpt-oss-120b が 9/20
+  // （上位のクラウドの gpt-5.6-luna は 20/20）。後の 2 つはノートに無いことを足す知見が多い
+  standard: { frontier: "good", openLarge: "partial", local30b: "partial", local10b: "poor" },
   // 精密な処理（論文からの手順・名寄せ・計画づくりと根拠照合・洞察の抽出・清書）。オープンな大型は
   // 手順のつながり F1 0.31・計画 0/2・洞察 0/4・清書 0/3。30B 級も計画 0/2・清書 0/3。10B 級は時間切れが多い
   precise: { frontier: "good", openLarge: "poor", local30b: "poor", local10b: "poor" },

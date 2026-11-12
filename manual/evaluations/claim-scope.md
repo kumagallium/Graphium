@@ -134,6 +134,7 @@ Rates per insight.
 
 - **Broken JSON in the AI's reply.** When one place in the reply broke, every claim for that note was thrown away. The empty results from gpt-oss-120b came from this. It now tries a mechanical repair. In the second run of the second version, it rescued 1 and failed to rescue 2.
 - **Phrasing like "in this prototype".** Since it was judged to lean on the note, I added one sentence to the instruction that names the situation. I measured it the next day, and it helped a little with gpt-5.6-luna ([follow-up measurement](#follow-up-measurement-2026-11-12-the-added-sentence-and-two-more-models)).
+- **The model guide in Settings.** For the Standard tier it said open large models were a good fit. The follow-up showed a wide spread inside that class ("faithful" passes of 17, 11 and 9 of 20), so the guide now shows conditional, and its note says that some of these models add things the note does not say ([the measurement behind the guide](/evaluations/model-tiers-by-feature)).
 
 ## Limits
 

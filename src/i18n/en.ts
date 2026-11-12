@@ -974,7 +974,7 @@ export const en: Record<string, string> = {
   "settings.insightTest.sectionTitle": "Insight test",
   "settings.insightTest.sectionSummary": "Insights run on the advanced work model ({name}). Try that model on the bundled claims",
   "settings.insightTest.sectionHelp": "Insight discovery uses the advanced work model under Model assignment. To try a different model, choose it there. The test input and results are not saved.",
-  "settings.modelFit.note.standard": "An open large model handles adding to Knowledge and translation well.",
+  "settings.modelFit.note.standard": "Open large models vary from one to another. Some add things to claims that the note does not say.",
   "settings.modelFit.note.precise": "Procedures, plans and clean-up tend to break down unless the model is strong.",
   "meeting.aiModelSameAsPreciseNamed": "Same as the advanced work model ({name})",
   "meeting.aiModelSameAsPrecise": "Same as the advanced work model",
