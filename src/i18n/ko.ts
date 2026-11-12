@@ -856,7 +856,7 @@ export const ko: Record<string, string> = {
   "settings.autoGrounding.title": "새 지식을 자동으로 대조",
   "settings.autoGrounding.help": "새로 만든 인사이트와 지견을 백그라운드에서 하나씩 자동으로 일반 지식과 대조합니다(기본값: 끔). 대조 데이터를 먼저 보고 아직 없는 진술만 모델로 판단하므로, 쓸수록 대조 데이터가 늘어 대조가 빠르고 저렴해집니다. 같은 일반 지식 항목과 대조된 인사이트끼리는 자동으로 연결됩니다.",
   "settings.features.worldGrounding.title": "일반 지식 대조 사용",
-  "settings.features.worldGrounding.help": "일반 지식 대조는 성능 좋은 모델일수록 판단이 정확합니다. 끄면 대조 버튼과 열이 숨겨집니다. 기존 결과는 남습니다.",
+  "settings.features.worldGrounding.help": "일반 지식 대조는 Wikipedia와 OpenAlex를 찾아본 뒤 판단합니다. 웹 검색 MCP를 연결했다면 그 결과도 함께 사용합니다. 끄면 대조 버튼과 열이 숨겨집니다. 기존 결과는 남습니다.",
   "settings.features.claims.title": "지견 사용",
   "settings.features.claims.summary": "자료에 담긴 명제를 하나씩 지견으로 뽑아냅니다",
   "settings.features.claims.help": "지견은 Graphium 고유의 확장으로, 노트나 문서에 담긴 명제(예: 'Y일 때 X가 일어난다')를 모두 뽑아냅니다. 실험 고유의 세부 사항은 빼서 다른 맥락에서도 통하게 씁니다. 토픽은 지견과 별도로 원본 자료에서 바로 만들어집니다. 인사이트는 지견으로 만들기 때문에 지견을 끄면 인사이트도 꺼집니다. 끄면 지식 베이스에 추가할 때 지견을 추출하지 않고, 원본 텍스트로 토픽만 만듭니다. 기존 지견과 인사이트는 남아 계속 볼 수 있습니다.",

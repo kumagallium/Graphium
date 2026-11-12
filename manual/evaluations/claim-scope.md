@@ -1,0 +1,148 @@
+# Claims stay inside what the note supports <Badge type="info" text="Measured 2026-11-11 · v0.129" />
+
+**Question.** Should the AI generalize at the claim step? If the instruction is rewritten as "one claim each, readable without the note, never beyond what the note supports", does claims stretching beyond the note go down, and does readability hold up? I measured this with two models.
+
+**Short answer.** The first version reduced claims stretching beyond the note but increased copies of the note's record. The second version, a two-layer "point, then record", raised the number of outputs passing every criterion from 4 of 20 to 10 of 20 with gpt-5.6-luna, and cut claims stretching beyond the note from 20% to 3%. With gpt-oss-120b the improvement was small. I adopted the second version. For both models, one run per condition was judged, and the second version's outputs were judged in a later round than the old and first-version outputs (see [Limits](#limits)).
+
+## How I measured it
+
+- **Input.** 20 made-up cooking notes (curry and bread). Ingestion was called once per note.
+- **Models.** gpt-5.6-luna and gpt-oss-120b.
+- **Conditions.** Three.
+
+| Condition | Instruction |
+|---|---|
+| Old | Unchanged |
+| First version | Added a scope rule: "write a single trial as something that happened" |
+| Second version (adopted) | Two layers, "point, then record". Write a single trial so that the wording shows it is one trial. Do not turn a one-line record into a claim |
+
+- **Grading.** Outputs were made into packets with the model and condition hidden, and Claude Sonnet marked each against 7 criteria as pass or fail. The criteria were fixed before measuring. Only the first run's outputs were graded. For the second and third runs of gpt-oss-120b I looked only at automatic counts: the number of claims and the number of empty results.
+- **Grader noise.** I had a second grader re-grade 10 outputs from the old condition. The pass/fail verdicts agreed on 62 of 70. For the "not a copy" criterion, they agreed on 7 of 10, the lowest of the seven.
+
+## Results
+
+For the 20 outputs of the first run: how many passed every criterion, and how many passed each one. An output with zero claims counts as failing every criterion. The "per claim" table after it uses only the claims of outputs that could be judged as its denominator.
+
+| Condition / model | Empty | Faithful | Scope | Readable alone | One claim each | Not a copy | Point | States kept apart | All criteria |
+|---|---|---|---|---|---|---|---|---|---|
+| Old / gpt-5.6-luna | 0 | 14 | 10 | 14 | 18 | 17 | 17 | 18 | 4 |
+| First / gpt-5.6-luna | 0 | 16 | 15 | 16 | 19 | 9 | 19 | 18 | 3 |
+| Second / gpt-5.6-luna | 0 | 19 | 17 | 13 | 18 | 19 | 18 | 19 | 10 |
+| Old / gpt-oss-120b | 0 | 7 | 6 | 16 | 16 | 11 | 17 | 19 | 2 |
+| First / gpt-oss-120b | 2 | 8 | 7 | 14 | 13 | 6 | 16 | 16 | 1 |
+| Second / gpt-oss-120b | 0 | 8 | 8 | 14 | 18 | 14 | 18 | 17 | 3 |
+
+Rates per claim.
+
+| Condition / model | Claims in total | Statements not in the note (per claim) | Stretched beyond the note | Not readable alone | Packed together | Copies |
+|---|---|---|---|---|---|---|
+| Old / gpt-5.6-luna | 102 | 0.07 | 20% | 12% | 2% | 5% |
+| First / gpt-5.6-luna | 128 | 0.03 | 8% | 4% | 1% | 24% |
+| Second / gpt-5.6-luna | 102 | 0.01 | 3% | 13% | 2% | 2% |
+| Old / gpt-oss-120b | 120 | 0.19 | 24% | 8% | 6% | 23% |
+| First / gpt-oss-120b | 124 | 0.16 | 19% | 5% | 8% | 34% |
+| Second / gpt-oss-120b | 120 | 0.12 | 20% | 8% | 2% | 13% |
+
+Old against new on the same notes (better / worse / same).
+
+| | Faithful | Scope | Readable alone | One claim each | Not a copy | Point | States kept apart |
+|---|---|---|---|---|---|---|---|
+| gpt-5.6-luna old→first | 6/4/10 | 6/1/13 | 4/2/14 | 2/1/17 | 0/8/12 | 2/0/18 | 1/1/18 |
+| gpt-5.6-luna old→second | 6/1/13 | 8/1/11 | 3/4/13 | 1/1/18 | 3/1/16 | 2/1/17 | 1/0/19 |
+| gpt-oss-120b old→first | 4/1/13 | 3/1/14 | 2/3/13 | 2/3/13 | 1/5/12 | 1/0/17 | 0/2/16 |
+| gpt-oss-120b old→second | 2/1/17 | 4/2/14 | 2/4/14 | 3/1/16 | 5/2/13 | 1/0/19 | 1/3/16 |
+
+What I read from it.
+
+- **The first version backfired.** Claims stretching beyond the note went down (20% to 8% with gpt-5.6-luna). But "write only what happened" was read literally, and the body became just one sentence of the record. Copies rose from 5% to 24%; on the same notes, none got better and 8 got worse. The number of claims also went up, and one point split into fragments of fact.
+- **The second version worked with gpt-5.6-luna.** Outputs passing every criterion went from 4 to 10, claims stretching beyond the note from 20% to 3%, and statements not in the note from 0.07 to 0.01. Copies went from 5% to 2%. On the same notes, "not a copy" got better for 3 outputs and worse for 1.
+- **With gpt-oss-120b the second version helped only a little.** Copies went from 23% to 13%, packed-together claims from 6% to 2%, and statements not in the note from 0.19 to 0.12. Claims stretching beyond the note barely moved (24% to 20%), and outputs passing every criterion went from 2 to 3. On the other hand, passes on "readable alone" fell from 16 to 14, and on "telling states apart" from 19 to 17.
+- **"Not readable alone" did not improve** (12% to 13% with gpt-5.6-luna). Phrasing such as "in this prototype" or "this time" in the second version was judged to lean on the note in some cases.
+- At the start I had assumed gpt-oss-120b packs everything into one claim, but that was a hasty conclusion from a single trial. Over three old-condition runs the average was around 6 claims per note, and packed-together claims were 6%.
+
+## Follow-up measurement (2026-11-12): the added sentence, and two more models
+
+I ran the current instruction (the second version plus one sentence that asks to name the situation) on the same 20 notes with four models. gpt-5.6-luna and gpt-oss-120b were run again as the baseline, and Kimi-K2.7-Code and gemma-4-31B-it were added. Each model ran once, graded the same way. A separate grader re-graded 10 outputs of the second version, and the pass/fail calls agreed on 67 of 70.
+
+| Current instruction / model | Empty or failed | Faithful | Scope | Readable alone | One claim each | Not a copy | Point | States kept apart | All criteria |
+|---|---|---|---|---|---|---|---|---|---|
+| gpt-5.6-luna | 0 | 20 | 19 | 14 | 18 | 20 | 19 | 20 | 12 |
+| gpt-oss-120b | 1 | 9 | 5 | 13 | 17 | 11 | 17 | 16 | 2 |
+| Kimi-K2.7-Code | 2 | 11 | 7 | 13 | 15 | 12 | 18 | 14 | 1 |
+| gemma-4-31B-it | 0 | 17 | 6 | 19 | 17 | 19 | 19 | 19 | 1 |
+
+| Current instruction / model | Claims in total | Statements not in the note (per claim) | Stretched beyond the note | Not readable alone | Packed together | Copies |
+|---|---|---|---|---|---|---|
+| gpt-5.6-luna | 106 | 0.00 | 1% | 8% | 3% | 0% |
+| gpt-oss-120b | 125 | 0.10 | 21% | 9% | 2% | 17% |
+| Kimi-K2.7-Code | 105 | 0.14 | 19% | 10% | 4% | 10% |
+| gemma-4-31B-it | 73 | 0.05 | 37% | 1% | 4% | 1% |
+
+- **The added sentence helped a little with gpt-5.6-luna.** "Not readable alone" went from 13% of claims to 8%, and the passing outputs from 13 to 14. With gpt-5.6-luna no criterion got worse. With gpt-oss-120b the rate stayed the same (8% to 9%), and the passing outputs fell on "scope" (8 to 5) and "not a copy" (14 to 11). With one run each, I cannot tell this apart from run-to-run variation.
+- **The one empty output of gpt-oss-120b was broken JSON.** Even with the mechanical repair in place, some breakage cannot be rescued.
+- **gemma-4-31B-it writes readable claims, but stretches them.** It passed "readable alone" on 19 outputs, more than gpt-5.6-luna (14), with "not a copy" at 19 against 20 and "faithful" at 17 against 20. But 37% of its claims wrote a single trial as a general rule, and only 6 outputs passed "scope". It also produced fewer claims (3.7 per note on average).
+- **Kimi-K2.7-Code was about level with gpt-oss-120b.** In addition, 2 of its 20 notes did not return within 10 minutes and are counted as failures.
+- **Outputs that passed every criterion: 12 for gpt-5.6-luna, and 1 or 2 for each of the other three.** The size of this gap depends heavily on the "scope" criterion. Counted again without "scope": 13 for gpt-5.6-luna, 12 for gemma-4-31B-it, 5 for gpt-oss-120b, 5 for Kimi-K2.7-Code.
+- **"Scope" is a criterion that is strict about wording.** Writing one trial as "frying for 65 minutes brings out sweetness" fails; "after frying for 65 minutes the sweetness remained" passes. I have not measured how much this difference in wording matters to a reader or to later steps (insights, retrieval). The gap between gemma-4-31B-it and gpt-5.6-luna is almost entirely this one criterion.
+- **Some differences do not depend on that criterion.** Statements not in the note were more frequent with gpt-oss-120b and Kimi-K2.7-Code (0.10 and 0.14 per claim, against 0.00 for gpt-5.6-luna), and they passed "faithful" on 9 and 11 outputs.
+
+## Check at the insight step (2026-11-12): does the wording of claims change the insights?
+
+I measured whether the wording that fails "scope" (writing one trial as "doing X brings out Y") does harm one step later, when insights are made from the claims.
+
+- **Input.** The claims from the follow-up measurement above: those of gpt-5.6-luna (19 outputs passing "scope") and those of gemma-4-31B-it (6 passing).
+- **Conditions.** The claims of one note were passed to insight generation once. 20 notes, three conditions. What was passed is each claim's title and body; as in the app, the body is cut at 240 characters (every claim here was within 240).
+
+| Condition | Model that wrote the claims | Model that wrote the insights |
+|---|---|---|
+| A | gpt-5.6-luna | gpt-5.6-luna |
+| B | gemma-4-31B-it | gpt-5.6-luna |
+| C | gemma-4-31B-it | gemma-4-31B-it |
+
+- **Grading.** Each packet held only the note and the insights; the claims and both model names were hidden. Claude Sonnet marked 4 criteria as pass or fail. The criteria were fixed before measuring. Insights are meant to be written as general rules, so generalizing was not marked down by itself.
+- **Grader noise.** A separate grader re-graded 10 outputs. The pass/fail calls agreed on 38 of 40 (both disagreements were on "supported").
+
+Outputs that passed (of 20).
+
+| Condition | Supported | No added reason | Has content | Is a rule | All criteria |
+|---|---|---|---|---|---|
+| A: luna claims → luna | 16 | 15 | 9 | 19 | 6 |
+| B: gemma claims → luna | 15 | 13 | 12 | 20 | 4 |
+| C: gemma claims → gemma | 14 | 9 | 17 | 19 | 4 |
+
+Rates per insight.
+
+| Condition | Insights in total | Not supported | Reason added | Empty generality | Only a restatement |
+|---|---|---|---|---|---|
+| A: luna claims → luna | 79 | 6% | 8% | 16% | 1% |
+| B: gemma claims → luna | 64 | 8% | 11% | 14% | 0% |
+| C: gemma claims → gemma | 60 | 10% | 27% | 5% | 2% |
+
+- **I could not see a difference from the wording of the claims.** With gpt-5.6-luna writing the insights in both cases (A and B), unsupported insights were 6% and 8%, and insights with an added reason 8% and 11%. On the same notes, "supported" got better for 4 outputs and worse for 5, "no added reason" better for 1 and worse for 3, and "has content" better for 4 and worse for 1. Outputs passing every criterion were 6 and 4. The criteria do not point the same way, and the re-grade also disagreed on "supported" for 2 of 10, so this gap cannot be told apart from noise.
+- **A clear difference appeared when the model that writes the insights was changed.** From the same gemma-4-31B-it claims, when gemma-4-31B-it also wrote the insights (C), 27% of them added a reason or mechanism the note does not state (11% in B). Separately from the grading, counting the type label the model itself puts on each insight gave "causal" on 24 of 60 (4 of 64 in B) and "observational" on 2 (19 in B). Each condition ran once.
+- **Empty generalities were more frequent in insights written by gpt-5.6-luna** (16% and 14%, against 5% for gemma-4-31B-it).
+- **What I read from it.** The difference in wording that "scope" looks at did not show up in the quality of the insights in this measurement. The gap between gemma-4-31B-it and gpt-5.6-luna at the claim step (1 against 12 outputs passing every criterion) is not a number about harm to later steps. On the other hand, when gemma-4-31B-it is also given the insight step, added reasons went up and empty generalities went down. Outputs passing every criterion were 4, the same as B.
+
+## What I decided
+
+- **Claims go as far as splitting them apart and making them readable without the note.** Generalizing across situations is the job of insights.
+- **The body starts with the point in the first sentence, then gives the note's record.** I adopted the second version's form.
+- **A single trial is written in a way that shows it is a single trial.**
+- **This rule is not applied to memos (scribbled notes).**
+
+## Fixed afterwards
+
+- **Broken JSON in the AI's reply.** When one place in the reply broke, every claim for that note was thrown away. The empty results from gpt-oss-120b came from this. It now tries a mechanical repair. In the second run of the second version, it rescued 1 and failed to rescue 2.
+- **Phrasing like "in this prototype".** Since it was judged to lean on the note, I added one sentence to the instruction that names the situation. I measured it the next day, and it helped a little with gpt-5.6-luna ([follow-up measurement](#follow-up-measurement-2026-11-12-the-added-sentence-and-two-more-models)).
+- **The model guide in Settings.** For the Standard tier it said open large models were a good fit. The follow-up showed a wide spread inside that class ("faithful" passes of 17, 11 and 9 of 20), so the guide now shows conditional, and its note says that some of these models add things the note does not say ([the measurement behind the guide](/evaluations/model-tiers-by-feature)).
+
+## Limits
+
+- 20 made-up cooking notes. Research notes may behave differently.
+- gpt-5.6-luna ran once per condition. For gpt-oss-120b too, only the first run was graded.
+- One line of graders. The packets for the second version were graded in a separate round (by a separate agent) from the old and first-version packets. Agreement on the 10 re-graded outputs was low for "not a copy" (7 of 10), so the copy rates are a rough guide.
+- The old-condition gpt-5.6-luna outputs came from another measurement taken at a different time (same server-side code, same input).
+- Memos (scribbled notes) and ingesting outside sources were not measured. The scope rule is not applied to memos.
+- The check at the insight step ran once per condition with one line of graders. It passed the claims of a single note, which differs from real use (claims from several notes are passed together). The gemma-4-31B-it claims are also fewer (73, against 106 for gpt-5.6-luna), so this is not a comparison where only the wording changes. Effects on retrieval and source checking were not measured.
+- The follow-up ran once per model. It was run in a separate round from the second version and graded by separate graders. The gap between 12 and 10 passing outputs supports no more than "the same or slightly better".
+- I did not separate whether the 2 timeouts of Kimi-K2.7-Code came from a busy service or from a slow model.

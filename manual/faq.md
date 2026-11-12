@@ -15,7 +15,7 @@ Honest answers to the questions that come up most — especially the "why did it
 
 ::: details Does Graphium secretly limit how many Insights or Claims are created?
 
-No. There are no quality-based silent drops: the model's confidence score is recorded and shown, never used to discard a candidate, and there is no minimum or maximum count a scan must produce. Claims work the same way — the extractor is told to harvest every distinct transferable point, with no fixed cap.
+No. There are no quality-based silent drops: the model's confidence score is recorded and shown, never used to discard a candidate, and there is no minimum or maximum count a scan must produce. Claims work the same way — the extractor is told to harvest every distinct point a note establishes, with no fixed cap. A Claim is written to be read without the note and to stay inside what the note supports; a single trial is worded as a single trial, and generalizing across cases is left to Insights ([how this wording was chosen](/evaluations/claim-scope)).
 
 The numbers that *do* exist fall into three categories, and each has a reason you can check:
 

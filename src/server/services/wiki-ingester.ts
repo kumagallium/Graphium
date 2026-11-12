@@ -24,6 +24,7 @@ import { containsWithin, normalizeForQuoteMatch, quoteAppearsInAny, containsWith
 import { splitNumericText } from "./frame-number.js";
 import { buildExistingClaimIndex, resolveExistingClaimRef, type ExistingClaimIndex } from "./ingest-existing-index.js";
 import { splitStateText } from "./frame-state.js";
+import { jsonrepair } from "jsonrepair";
 import { generationLanguageName } from "../../lib/language.js";
 
 /** Ingester が返す判断フレーム（title ベース。WikiMeta の DecisionFrame は id ベース） */
@@ -276,22 +277,55 @@ export function buildIngesterSystemPrompt(
   // （FAQ が「上限はない」と約束しているため）。ユーザー自身の経験という枠組みは
   // 通常ノートでは保つ（文書モードのように「文書自体が確立する命題」までは広げない）。
   const normalHarvestBlock = !isDocument && !isMemo
-    ? `**Harvest every distinct transferable insight the note carries as its own Claim.** Walk the note from start to end and pull out each idea — grounded in the user's own experience (see the level guidance below) — that can stand on its own and transfer to another context.
+    ? `**Harvest every distinct point the note establishes as its own Claim.** Walk the note from start to end and pull out each point — grounded in the user's own experience (see the level guidance below) — that a reader could use without opening the note.
 
-- **No fixed upper limit, and no padding.** A rich note commonly yields several Claims; a thin note may yield only one, or zero if it carries nothing transferable. Emit exactly as many as the note genuinely carries — never pad to reach a number, never bundle two ideas to save space.
-- **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" below).
-- The quality gate is unchanged: no restatement of the source, no textbook filler, each Claim is one transferable idea.`
+- **No fixed upper limit, and no padding.** A rich note commonly yields several Claims; a thin note may yield only one, or zero if it establishes nothing worth keeping. Emit exactly as many as the note genuinely carries — never pad to reach a number, never bundle two points to save space.
+- **Prefer splitting over bundling** — if a note carries two distinct points, two short Claims beat one long combined page. Each Claim must hold exactly one point (see "Splitting test" below).
+- The quality gate is unchanged: no copied-out sentences, no textbook filler, each Claim is one self-contained point.`
     : "";
+
+  // 知見は「切り分け・脱文脈」まで。適用範囲を広げる一般化は洞察（Atomizer）の仕事。
+  // メモは 1 つの着想を抽象化して拾う設計（memoSparkBlock）なので、この範囲の規則は掛けない。
+  const scopeRuleBlock = isMemo
+    ? ""
+    : `
+### Stay inside what the ${isDocument ? "source" : "note"} supports (do not generalise here)
+
+Making a Claim readable on its own is **not** the same as widening it. Lifting a pattern across cases is a later step that compares many Claims; if you widen here, that step has nothing real to compare and the Claim can no longer be checked against its source.
+
+- **One trial stays one trial — and says so.** If the point rests on what happened once, make that visible in the wording (${ja ? "「1 回の比較では」「〜になった」「〜の可能性がある」" : `"in one comparison", "X dropped to Y", "may"`}) instead of writing an established law (${ja ? "「〜すると〜になる」" : `"doing X gives Y"`}). Name the case rather than pointing at it — ${ja ? "「今回の試作では」ではなく「全粒粉を 2 割混ぜた試作では」" : `not "in this run" but "in the run with 20% whole wheat"`} — so the Claim still reads without the ${isDocument ? "source" : "note"}. Write a rule only when the ${isDocument ? "source" : "note"} itself states it as a rule or tested it more than once.
+- **A Claim is a point, not a log line.** A bare measurement, a single table row, or one step of a procedure is evidence. Fold it into the Claim whose point it supports; do not emit it as a Claim of its own, and do not split one point into several fact fragments.
+- **Two layers in the body.** First sentence: the point — what a reader should take away — in your own sentence. Next: what the ${isDocument ? "source" : "note"} actually recorded (values, conditions), cited with \`[[title]]\`. The first sentence must not be a sentence lifted from the ${isDocument ? "source" : "note"}.
+- **Keep the numbers and conditions.** The values, units, and conditions that make the point checkable belong in the Claim. Drop only what identifies people, places, and one-off bookkeeping (names, sample IDs, dates).
+- **Do not add a cause, an effect, or advice the ${isDocument ? "source" : "note"} does not state.**
+- The wording must agree with \`statementForm\`: an \`instance\` Claim reads as a case, a \`general\` Claim as a rule.
+
+${ja ? `例 — ノート: 「キャッシュの保持を 5 分に延ばしたら、応答時間の p95 が 800 ms から 300 ms に下がった。ただし更新直後の画面が古いまま残った」
+
+- ❌ 並べただけ・2 点を 1 件に: 「キャッシュを 5 分に延ばしたら p95 が 300 ms に下がり、更新直後の画面は古いままになった」
+- ❌ 範囲の広げすぎ（1 回の試行を法則に）: 「キャッシュ時間を延ばせば応答は速くなる」
+- ❌ 記録の 1 行だけ: 「p95 は 300 ms だった」
+- ✅ 1 件目 — 題: 「キャッシュを 5 分に延ばすと応答の遅い側が大きく縮んだ」／本文: 「保持時間を延ばす変更は、遅い応答を減らす手として効いた。[[API の応答を速くする]] では、5 分に延ばした 1 回の変更で p95 が 800 ms から 300 ms に下がった。」
+- ✅ 2 件目 — 題: 「キャッシュを 5 分にすると更新直後の画面が古いまま残った」／本文: 「速さと引き換えに、更新がすぐ見えなくなった。[[API の応答を速くする]] では、更新直後の画面が古いまま残った。」` : `Example — note: "Raised the cache TTL to 5 minutes; p95 response time fell from 800 ms to 300 ms. But pages stayed stale right after an update."
+
+- ❌ Copied out, two points in one page: "Raising the cache TTL to 5 minutes dropped p95 to 300 ms and pages stayed stale after updates"
+- ❌ Over-reach (one trial written as a law): "A longer cache TTL makes responses faster"
+- ❌ A log line: "p95 was 300 ms"
+- ✅ Claim 1 — title: "Raising the cache TTL to 5 minutes sharply cut slow responses" / body: "Holding responses longer worked as a way to trim the slow tail. In [[Speeding up the API]], one change to a 5-minute TTL took p95 from 800 ms to 300 ms."
+- ✅ Claim 2 — title: "A 5-minute cache TTL left pages stale right after an update" / body: "The speed came at the cost of freshness. In [[Speeding up the API]], pages stayed stale right after an update."`}
+`;
 
   const claimCountHeading = isMemo
     ? "usually exactly 1 — extract the memo's spark"
-    : "harvest every distinct transferable insight — no fixed cap";
+    : isDocument
+    ? "harvest every distinct transferable insight — no fixed cap"
+    : "harvest every distinct point — no fixed cap";
 
   const claimCountGuideline = isDocument
     ? `one per distinct transferable insight the document carries (no fixed cap; a substantial document commonly yields 5-8). **Harvest, don't collapse** — see the document-mode block above. Still no padding or restatement; each Claim holds exactly one idea.`
     : isMemo
     ? `usually exactly 1: the single transferable insight the memo captures. Extract it even from a short quote or observation (see the memo block above). 0 only when the memo genuinely carries nothing transferable; more than one only when the fragment truly holds multiple independent ideas — this is not a cap.`
-    : `one per distinct transferable insight the note carries — no fixed cap (see the harvest block above). **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
+    : `one per distinct point the note establishes — no fixed cap (see the harvest block above). **Prefer splitting over bundling** — if a note carries two distinct points, two short Claims beat one long combined page. Each Claim must hold exactly one point (see "Splitting test" above).`;
 
   const skillSection = skills && skills.length > 0
     ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
@@ -299,7 +333,7 @@ export function buildIngesterSystemPrompt(
 
   return `You are a note writer for Graphium, a provenance-tracking note editor.
 
-You produce zero or more public-ready **Claims** that crystallize knowledge from the note in a transferable form. Claims may eventually be shared as Knowledge Packs, so Claim content must be PII-free and abstracted from one-off specifics. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
+You produce zero or more public-ready **Claims**. Each Claim states **one point the note establishes**, rewritten so it can be read on its own — by someone who never opens the note — without claiming more than the note supports. Claims may eventually be shared as Knowledge Packs, so Claim content must be PII-free. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
 
 ## Voice (read this first)
 
@@ -569,27 +603,28 @@ ${memoSparkBlock}
 ` : `
 ${normalHarvestBlock}
 `}
-**One Claim = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
+**One Claim = one idea.** This is the strongest rule. If a note carries two distinct points, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
 
-Claims are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
+Claims are **self-contained**: written so they make sense to a reader who has never seen this note or this lab. They MUST be PII-free:
 
 - ❌ Personal/lab-specific: investigator names, institution names, internal project codenames, sample IDs, instrument serial numbers, file paths, dates of specific experiments. Omit these — do not include them in the Claim.
-- ✅ Transferable: the principle / finding, with the specific evidence cited via \`[[note title]]\` so the reader can trace it back.
-- Frame as "X happens when Y because Z" — propositional, not autobiographical.
-
+- ✅ Self-contained: the point itself, in your own words, with the specific evidence cited via \`[[note title]]\` so the reader can trace it back.
+- Write it as a statement about the subject ("X did Y under Z"), not as a diary entry ("today I tried…"), and not with pointers that need the note ("this", "the above", "as planned").
+- **Title and body are rewritten; frames are quoted.** The "quote verbatim" rules above apply only to the frame fields (\`decisionFrame\`, \`ruleFrame\`, \`observationFrame\`). \`title\` and \`sections\` are your own sentences — do not paste the note's sentences into them.
+${scopeRuleBlock}
 ### Splitting test (apply before settling on the section structure)
 
 Before writing the body, ask: **"Does this Claim assert one claim, or several?"**
 
 - One claim → one Claim. Proceed.
-- Several claims, each transferable on its own → split into separate Claims. Each gets its own title that names that one claim.
+- Several claims, each readable on its own → split into separate Claims. Each gets its own title that names that one claim.
 - Several pieces that only make sense together (a mechanism that needs setup + reasoning + consequence to land) → one Claim is correct. The test is whether the pieces are independent claims or facets of the same claim.
 
 When in doubt, split.
 
 ### level: \`finding\` vs \`principle\`
 
-- **\`finding\`** (default, where most Claims live): a transferable proposition that emerged from the user's own experience. Specific enough to be **the user's** knowledge, abstract enough to combine with other findings. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
+- **\`finding\`** (default, where most Claims live): a point the user's own record supports — something observed, decided, or tested. Keep it as specific as the note is; it is **the user's** knowledge, not a textbook statement. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
 - **\`principle\`**: a textbook-knowable general truth that the note's reasoning **explicitly depended on**. Recording these is valuable because (a) the user may not have known it before, (b) it becomes a synthesis hub when other notes also lean on it. But the bar for generation is high — see threshold below.
 - \`bridge\` is a legacy level from the removed cross-update synthesis pass; do not generate it at ingest time.
 
@@ -631,10 +666,11 @@ Double brackets become clickable links. Generic references that don't name the t
 
 ### Bad / Good Claims
 
-- ❌ **Restatement**: A Claim that paraphrases the note in different words. Adds nothing.
+- ❌ **Copied out**: the note's sentences strung together, several points in one page, still needing the note to make sense. Adds nothing.
+- ❌ **Over-reach**: one trial written as a general law, or a cause / effect / advice the note never states.
 - ❌ **Textbook chapter**: A Claim that explains general background the note didn't actually depend on.
 - ❌ **Lab-specific log**: A Claim that names specific samples, dates, or instruments — omit these details instead.
-- ✅ **Transferable proposition**: A claim of the form "X happens / works / fails when Y, because Z" that another researcher could pick up and apply, with \`[[note title]]\` showing where the evidence came from.
+- ✅ **Self-contained point**: one statement a reader can use without the note — "X did / works / fails under Y", plus "because Z" only when the note gives the reason — with the conditions and numbers kept and \`[[note title]]\` showing where the evidence came from.
 
 ## Merge vs Create
 
@@ -655,7 +691,7 @@ Output in: ${generationLanguageName(language)}
 ## Quality Guidelines
 
 - Claims: ${claimCountGuideline}
-- Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Claims — an empty \`wikis\` array is a valid, honest answer.
+- Quality > quantity. If the note establishes no point worth keeping, generate zero Claims — an empty \`wikis\` array is a valid, honest answer.
 - Length: include what the Claim needs to be understood and traced — no more. A 3-sentence Claim that lands cleanly beats a 10-sentence one with filler. If you find yourself stretching to fill space, the Claim is done.
 - relatedClaims: \`{title, citation}\` pairs for connected existing Claims. \`citation\` explains the link in one line (e.g., "provides pH-dependency context"). Empty array if none.
 - externalReferences: 0-5 per wiki. Prefer stable, well-known URLs. \`citation\` explains what each reference supports.
@@ -685,7 +721,16 @@ export function parseIngesterOutput(
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (err) {
+      // 1 文字の崩れ（"1." のような数値・文字列の中の生の改行・途中切断）で全知見を失わないよう、
+      // 捨てる前に jsonrepair で機械修復を試みる（Atomizer と同じ方針）。不完全な要素は
+      // 下の必須フィールド検証（title / sections）と frame の原文照合が弾く。
+      parsed = JSON.parse(jsonrepair(jsonText));
+      console.warn("Ingester 出力の JSON を jsonrepair で修復してパースした:", String(err).slice(0, 120));
+    }
     const wikis = parsed.wikis ?? parsed;
 
     if (!Array.isArray(wikis)) return [];
