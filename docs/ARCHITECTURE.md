@@ -3263,6 +3263,25 @@ The same `src/` tree is built four different ways.
   seconds). `tauri-plugin-window-state` runs without `StateFlags::VISIBLE`,
   since a restored `visible: true` would otherwise show `main` before the
   frontend is ready.
+- A second window, label `viewer`, shows one note read-only next to `main`
+  (the side peek's **Open in a separate window** button, for a second
+  display). There is at most one: `open_viewer_window` creates it, or sends
+  the new target to the existing one (`viewer-set-target`) and brings it to
+  the front. It loads the same bundle; `main.tsx` sees
+  `window.__GRAPHIUM_VIEWER__` (set by an initialization script; on the web
+  the same page is opened with `?viewer=note&id=<id>`) and renders
+  `ViewerWindow` instead of `NoteApp`, skipping the sidecar, menu, updater,
+  close handling and exit flush — those belong to `main` only. The viewer
+  never saves: two windows editing the same note would overwrite each other
+  (saving has no conflict detection), so writing stays in `main` and the
+  viewer's **Open in the main window** hands the note over
+  (`viewer_open_in_main`). After each save `main` tells the viewer
+  (`viewer-note-saved`; a `BroadcastChannel` on the web) and the viewer
+  re-reads the note from storage, also whenever it regains focus. Its
+  capability (`capabilities/viewer.json`) is limited to core events and
+  opening external links. Closing `main` exits the app and takes the viewer
+  with it. Code: `src/lib/viewer-window.ts`,
+  `src/features/viewer-window/ViewerWindow.tsx`.
 - Zoom is the webview's own page zoom, owned by Rust
   (`src-tauri/src/ui_zoom.rs`). The View menu used to write
   `document.body.style.zoom`, which shrinks only the content: `innerWidth`

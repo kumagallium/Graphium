@@ -6,7 +6,8 @@
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, PictureInPicture2 } from "lucide-react";
+import { openViewerWindow } from "../../lib/viewer-window";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
@@ -2030,6 +2031,16 @@ function SidePeekInner({
     leavePeek(() => onNavigate(noteId, docRef.current ?? undefined));
   }, [leavePeek, noteId, onNavigate]);
 
+  // 「別ウィンドウで開く」: 読むだけの表示ウィンドウに出し、このピークは保存し終えて閉じる
+  // （同じノートを 2 か所に出さない）。ウィンドウを先に開くのは、Web 版で利用者の操作として
+  // 扱われるように。未保存の編集は、閉じる前の保存が終わると別ウィンドウへ届く
+  // （save-note-doc の notifyViewerNoteSaved）。開けなかったらピークは閉じない
+  const handlePopOut = useCallback(() => {
+    void openViewerWindow({ kind: "note", id: noteId }).then((opened) => {
+      if (opened) leavePeek(onClose);
+    });
+  }, [leavePeek, noteId, onClose]);
+
   const statusText = saveStatus === "saving" ? t("common.saving")
     : saveStatus === "dirty" ? t("common.unsaved")
     : t("common.saved");
@@ -2170,6 +2181,38 @@ function SidePeekInner({
               <polyline points="9 21 3 21 3 15" />
               <line x1="10" y1="14" x2="3" y2="21" />
             </svg>
+          </button>
+        )}
+
+        {/* 別ウィンドウで開く（2 枚目の画面に出して、見ながら書く）。ウィンドウを並べられる
+            デスクトップ幅のときだけ出す */}
+        {isDesktop && (
+          <button
+            onClick={handlePopOut}
+            data-tooltip={t("sidePeek.popOut")}
+            aria-label={t("sidePeek.popOut")}
+            data-side-peek-pop-out
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
+          >
+            <PictureInPicture2 size={16} />
           </button>
         )}
 

@@ -2192,6 +2192,10 @@ export const ko: Record<string, string> = {
   "sidePeek.fullscreen": "전체 화면으로 열기",
   "sidePeek.loadError": "불러오지 못했습니다",
   "sidePeek.resizeHandle": "끌어서 크기 조절 / 두 번 클릭해 기본값으로",
+  "sidePeek.popOut": "별도 창에서 열기",
+  "viewerWindow.viewOnly": "보기 전용",
+  "viewerWindow.openInMain": "기본 창에서 열기",
+  "viewerWindow.openInMainHint": "편집하려면 기본 창에서 엽니다",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "클릭하기 전에 첫 번째 열에 노트 제목을 입력해 주세요",

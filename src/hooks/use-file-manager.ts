@@ -9,6 +9,7 @@ import type { GenerationLanguage } from "../lib/language";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
+import { notifyViewerNoteSaved } from "../lib/viewer-window";
 import type { StorageProvider } from "../lib/storage/types";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
@@ -166,7 +167,12 @@ const storage = () => getActiveProvider();
 const listFiles = () => storage().listFiles();
 const loadFile = (id: string) => storage().loadFile(id);
 const createFile = (title: string, content: GraphiumDocument) => storage().createFile(title, content);
-const saveFile = (id: string, content: GraphiumDocument) => storage().saveFile(id, content);
+// 保存できたら、別ウィンドウ（参照用の表示ウィンドウ）が同じノートを出していれば読み直してもらう
+// （lib/viewer-window.ts。開いていなければ何も起きない）
+const saveFile = async (id: string, content: GraphiumDocument) => {
+  await storage().saveFile(id, content);
+  notifyViewerNoteSaved(id);
+};
 const deleteFile = (id: string) => storage().deleteFile(id);
 const uploadMediaFileWithMeta = (file: File) => storage().uploadMedia(file);
 // Wiki ドキュメント操作ヘルパー
@@ -179,9 +185,10 @@ const createWikiFile = (title: string, content: GraphiumDocument) => {
   if (!storage().createWikiFile) throw new Error("Wiki 非対応のストレージプロバイダーです");
   return storage().createWikiFile!(title, content);
 };
-const saveWikiFile = (id: string, content: GraphiumDocument) => {
+const saveWikiFile = async (id: string, content: GraphiumDocument) => {
   if (!storage().saveWikiFile) throw new Error("Wiki 非対応のストレージプロバイダーです");
-  return storage().saveWikiFile!(id, content);
+  await storage().saveWikiFile!(id, content);
+  notifyViewerNoteSaved(`wiki:${id}`);
 };
 const deleteWikiFileFromStorage = (id: string) => {
   if (!storage().deleteWikiFile) throw new Error("Wiki 非対応のストレージプロバイダーです");

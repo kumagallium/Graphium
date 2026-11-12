@@ -47,6 +47,17 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ![The ⋯ menu in a note's side peek: Markdown (.md), Copy link, Archive, and Move to trash](/screenshots/side-peek-menu.png)
 
+### Open in a separate window {#open-in-a-separate-window}
+
+With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and keep writing in the main window while you read.
+
+- The separate window is **View only**. Writing stays in the main window, so the same note is never edited in two places with one edit overwriting the other.
+- When you edit that note in the main window, the separate window picks up the change each time it is saved, and keeps your reading position.
+- To edit the note shown in the separate window, press **Open in the main window**.
+- There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
+- The desktop app remembers the separate window's position and size. Closing the main window closes it too.
+- Pressing the button saves and closes the side peek. The button appears at widths where windows can sit side by side (not at phone width).
+
 Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. The drag can start anywhere on a row except the title text itself — grabbing the title text [carries the note to a folder](#folders) instead. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)

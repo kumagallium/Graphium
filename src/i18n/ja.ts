@@ -2223,6 +2223,10 @@ export const ja: Record<string, string> = {
   "sidePeek.fullscreen": "フルスクリーンで開く",
   "sidePeek.loadError": "読み込みに失敗しました",
   "sidePeek.resizeHandle": "ドラッグで幅を変更 / ダブルクリックで元に戻す",
+  "sidePeek.popOut": "別ウィンドウで開く",
+  "viewerWindow.viewOnly": "表示のみ",
+  "viewerWindow.openInMain": "メインのウィンドウで開く",
+  "viewerWindow.openInMainHint": "編集するときは、メインのウィンドウで開きます",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "1列目にノートのタイトルを入力してからクリックしてください",
