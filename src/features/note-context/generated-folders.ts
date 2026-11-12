@@ -1,4 +1,4 @@
-// Graphium がアプリ内で生成するノート（翻訳・論文からの手順抽出など）の置き場所を決める。
+// Graphium がアプリ内で生成するノート（翻訳・論文からの手順抽出・音声ノートなど）の置き場所を決める。
 //
 // 規則: 「種類のフォルダ」を必ず付け、元の素材・ノートがフォルダに入っていればそれも引き継ぐ。
 // - 素材をフォルダに入れないまま生成しても「未分類」に落ちない（種類のフォルダが受け皿になる）
@@ -15,6 +15,7 @@ import { isPlanFolderPath } from "./reserved-folders";
 export const GENERATED_NOTE_FOLDER_KEYS = {
   translation: "generatedFolder.translation",
   procedure: "generatedFolder.procedure",
+  voice: "generatedFolder.voice",
 } as const;
 
 export type GeneratedNoteKind = keyof typeof GENERATED_NOTE_FOLDER_KEYS;

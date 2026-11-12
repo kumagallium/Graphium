@@ -16,7 +16,7 @@ There are two ways in.
 
 | Where | What happens |
 |---|---|
-| **+ Note ▾** → **Voice note** | Creates a new note titled "Voice note …" with the voice note block at the top |
+| **+ Note ▾** → **Voice note** | Creates a new note titled "Voice note …" with the voice note block at the top. The note goes into the **Voice notes** folder, so it doesn't land in Unfiled (you can change its folders afterwards) |
 | `/audio` in any note | Inserts the block at your cursor (the slash menu entry reads **Audio (transcribe at this spot)**) |
 
 ![The menu behind the arrow of + Note: Blank note, Voice note, From a template…](/screenshots/new-note-menu.png)

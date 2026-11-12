@@ -124,7 +124,8 @@ type GraphiumDocument = {
   // folder (localised "Translations" / "Procedures") plus the source
   // material's folders; a plan made from a chat answer goes to the reserved
   // "Plan" folder and its run notes to "Procedures" (the Plan folder is never
-  // inherited); web clips go to "Web clips". See
+  // inherited); a new voice note goes to "Voice notes"; web clips go to
+  // "Web clips". See
   // `src/features/note-context/generated-folders.ts`.
   noteContexts?: string[];
 
