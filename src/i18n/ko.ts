@@ -1281,6 +1281,7 @@ export const ko: Record<string, string> = {
   "settings.chatgptPlan.chooseOther": "다른 방법으로 연결",
   "settings.chatgptPlan.verifying": "연결을 확인하고 있습니다",
   "settings.chatgptPlan.waitingBrowser": "브라우저에서 이어서 진행해 주세요. 끝나면 이 화면이 바뀝니다.",
+  "settings.chatgptPlan.waitingHint": "브라우저에 오류가 표시되면 취소하고 다른 방법으로 연결해 주세요. 회사·학교·프로그램에서 제공한 계정은 관리자 설정으로 사용할 수 없는 경우가 있습니다.",
   "settings.chatgptPlan.welcome": "Graphium의 AI는 ChatGPT 플랜의 한도를 사용합니다. 사용량은 ChatGPT 설정에서 확인하고 조정할 수 있습니다.",
   "settings.chatgptPlan.notGranted": "로그인은 되었지만 플랜 사용이 허용되지 않았습니다. 다시 로그인해서 허용하거나, API 키 등 다른 방법으로 연결해 주세요.",
   "settings.chatgptPlan.portInUse": "다른 앱이 1455번 포트를 사용 중입니다. Codex 등의 로그인을 마친 뒤 다시 시도해 주세요.",

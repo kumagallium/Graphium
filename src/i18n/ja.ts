@@ -1310,6 +1310,7 @@ export const ja: Record<string, string> = {
   "settings.chatgptPlan.chooseOther": "別の方法でつなぐ",
   "settings.chatgptPlan.verifying": "接続を確かめています",
   "settings.chatgptPlan.waitingBrowser": "ブラウザで続けてください。終わるとこの画面が切り替わります。",
+  "settings.chatgptPlan.waitingHint": "ブラウザにエラーが出たときは、キャンセルして別の方法でつないでください。会社・学校・プログラム経由のアカウントでは、管理者の設定で使えないことがあります。",
   "settings.chatgptPlan.welcome": "Graphium の AI は ChatGPT のプランの枠を使います。使用量は ChatGPT の設定で確認・調整できます。",
   "settings.chatgptPlan.notGranted": "サインインはできましたが、プランの利用が許可されていません。もう一度サインインして許可するか、API キーなど別の方法でつないでください。",
   "settings.chatgptPlan.portInUse": "別のアプリが 1455 番を使っています。Codex などのサインインを終えてから、もう一度お試しください。",

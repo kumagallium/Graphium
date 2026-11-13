@@ -1310,6 +1310,7 @@ export const en: Record<string, string> = {
   "settings.chatgptPlan.chooseOther": "Choose another way",
   "settings.chatgptPlan.verifying": "Checking the connection",
   "settings.chatgptPlan.waitingBrowser": "Please continue in your browser. This screen updates when you are done.",
+  "settings.chatgptPlan.waitingHint": "If the browser shows an error, cancel and connect another way. Accounts provided by a company, school, or program may have this turned off by an administrator.",
   "settings.chatgptPlan.welcome": "Graphium's AI uses your ChatGPT plan's allowance. You can check and adjust usage in ChatGPT settings.",
   "settings.chatgptPlan.notGranted": "You signed in, but ChatGPT plan use was not allowed. Sign in again and allow it, or choose another way to connect, such as an API key.",
   "settings.chatgptPlan.portInUse": "Another app is using port 1455. Finish signing in there (Codex, for example), then try again.",

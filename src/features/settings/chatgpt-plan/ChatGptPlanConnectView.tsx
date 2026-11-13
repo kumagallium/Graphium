@@ -101,6 +101,10 @@ export function ChatGptPlanConnectView({
               <Loader2 size={12} className="animate-spin" />
               {t("settings.chatgptPlan.waitingBrowser")}
             </div>
+            {/* ブラウザ側で断られた（組織の設定など）場合、こちらには何も届かず待ち続ける。抜け方を書いておく */}
+            <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+              {t("settings.chatgptPlan.waitingHint")}
+            </p>
             <div className="flex items-center justify-center gap-2">
               <button type="button" className={subBtn} onClick={onCancelSignIn}>
                 {t("settings.chatgptPlan.cancel")}
