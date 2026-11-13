@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.131.0](https://github.com/kumagallium/Graphium/compare/v0.130.1...v0.131.0) - 2026-11-13
+
+- feat: connect with a ChatGPT plan (Sign in with ChatGPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1663
+
 ## [v0.130.1](https://github.com/kumagallium/Graphium/compare/v0.130.0...v0.130.1) - 2026-11-13
 
 - [docs] Manual: a topic page screenshot, and roadmap rows for v0.128.0 to v0.130.0 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1659
