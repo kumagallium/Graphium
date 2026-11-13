@@ -415,6 +415,130 @@ fn app_ready(app: tauri::AppHandle) {
     reveal_main(&app, "app_ready");
 }
 
+/// 別ウィンドウ（ノートを 1 つ出すウィンドウ）のラベル。1 枚だけ持つ
+const VIEWER_LABEL: &str = "viewer";
+
+/// 別ウィンドウに出す行き先 ID の長さの上限（src/lib/viewer-window.ts の MAX_ID_LENGTH と同じ）
+const VIEWER_ID_MAX_LEN: usize = 512;
+
+/// 行き先 ID として受け取ってよいか。空・長すぎ・制御文字に加えて、パスの区切りと `..` を弾く
+/// （ID は別ウィンドウでノートのファイル名になる。ノートのフォルダの外を指させない）
+fn is_valid_viewer_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= VIEWER_ID_MAX_LEN
+        && !id.chars().any(|c| c.is_control() || c == '/' || c == '\\')
+        && !id.contains("..")
+}
+
+/// 別ウィンドウのページが読み込み前に受け取る行き先（`window.__GRAPHIUM_VIEWER__`）の代入文。
+/// ID は JSON の文字列として埋めるので、引用符や改行が入っていても式を壊さない
+fn viewer_init_script(id: &str) -> String {
+    let target = serde_json::json!({ "kind": "note", "id": id });
+    format!("window.__GRAPHIUM_VIEWER__ = {target};")
+}
+
+/// ノートを別ウィンドウで開く。すでに開いていれば中身を差し替えて
+/// 手前に出す。ページ側は src/features/viewer-window/ViewerWindow.tsx。
+///
+/// async にしているのは、同期コマンドの中でウィンドウを作ると Windows で固まるため。
+/// 位置と大きさは window-state プラグインがラベルごとに覚える（2 枚目の画面に置いたら次もそこ）。
+#[tauri::command]
+async fn open_viewer_window(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    if !is_valid_viewer_id(&id) {
+        return Err("invalid viewer id".into());
+    }
+    if let Some(viewer) = app.get_webview_window(VIEWER_LABEL) {
+        // 閉じる待ちの最中に開き直された。閉じるのをやめる（遅れて届く返事では閉じない）
+        VIEWER_CLOSE_PENDING.store(0, Ordering::SeqCst);
+        app.emit_to(
+            VIEWER_LABEL,
+            "viewer-set-target",
+            serde_json::json!({ "kind": "note", "id": id }),
+        )
+        .map_err(|e| e.to_string())?;
+        let _ = viewer.unminimize();
+        let _ = viewer.show();
+        let _ = viewer.set_focus();
+        return Ok(());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        VIEWER_LABEL,
+        tauri::WebviewUrl::App("app/index.html".into()),
+    )
+    .title("Graphium")
+    .inner_size(760.0, 900.0)
+    .min_inner_size(360.0, 400.0)
+    .initialization_script(viewer_init_script(&id))
+    .build()
+    .map(|viewer| {
+        // 新しいウィンドウ。前のウィンドウの閉じる待ちは引き継がない
+        VIEWER_CLOSE_PENDING.store(0, Ordering::SeqCst);
+        // 閉じる前に、未保存の編集を書き出させる（メインの終了と同じ流儀）。一旦止めてページへ
+        // 知らせ、viewer_close_ack を受けて閉じる。返事が無くても VIEWER_CLOSE_FAILSAFE_SECS で閉じる
+        let handle = viewer.clone();
+        viewer.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let seq = VIEWER_CLOSE_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+                VIEWER_CLOSE_PENDING.store(seq, Ordering::SeqCst);
+                let _ = handle
+                    .app_handle()
+                    .emit_to(VIEWER_LABEL, "viewer-close-requested", ());
+                let failsafe = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(
+                        VIEWER_CLOSE_FAILSAFE_SECS,
+                    ));
+                    // この閉じる要求がまだ待ちのままなら閉じる（返事が来た・開き直したなら何もしない）
+                    if VIEWER_CLOSE_PENDING
+                        .compare_exchange(seq, 0, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        let _ = failsafe.destroy();
+                    }
+                });
+            }
+        });
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 別ウィンドウの閉じる待ちの番号（0 = 待っていない）。フェイルセーフが、後から開き直した
+/// ウィンドウを閉じないようにする
+static VIEWER_CLOSE_PENDING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VIEWER_CLOSE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 別ウィンドウの書き出しを待つ上限（src/lib/flush-on-exit.ts の EXIT_FLUSH_TIMEOUT_MS より長く）
+const VIEWER_CLOSE_FAILSAFE_SECS: u64 = 7;
+
+/// 別ウィンドウが未保存の編集を書き出し終えた。閉じる
+#[tauri::command]
+fn viewer_close_ack(app: tauri::AppHandle) {
+    // 閉じる待ちでなければ何もしない（待ちの最中に開き直された）
+    if VIEWER_CLOSE_PENDING.swap(0, Ordering::SeqCst) == 0 {
+        return;
+    }
+    if let Some(viewer) = app.get_webview_window(VIEWER_LABEL) {
+        let _ = viewer.destroy();
+    }
+}
+
+/// 別ウィンドウの「メインのウィンドウで開く」。メインへ行き先を送り、手前に出す
+#[tauri::command]
+fn viewer_open_in_main(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    if !is_valid_viewer_id(&id) {
+        return Err("invalid viewer id".into());
+    }
+    app.emit_to(MAIN_LABEL, "viewer-open-in-main", id)
+        .map_err(|e| e.to_string())?;
+    if let Some(main) = app.get_webview_window(MAIN_LABEL) {
+        let _ = main.unminimize();
+        let _ = main.set_focus();
+    }
+    Ok(())
+}
+
 /// 閉じる要求からフロントの shutdown_ack を待つ上限（秒）。
 /// フロントは ACK の前に録音中の会議録音の保存（最大 5 秒）、未保存の編集の書き出し（最大 5 秒）、
 /// sidecar の停止（最大 2 秒）を順に待つので、その合計（12 秒）より長くする
@@ -3535,6 +3659,9 @@ pub fn run() {
             cancel_scan,
             read_scanned_file,
             app_ready,
+            open_viewer_window,
+            viewer_open_in_main,
+            viewer_close_ack,
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,
@@ -3766,6 +3893,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 別ウィンドウの行き先 ID: 空・長すぎ・制御文字入りは受け取らない
+    #[test]
+    fn viewer_id_validation() {
+        assert!(is_valid_viewer_id("abc-123"));
+        assert!(is_valid_viewer_id("wiki:abc"));
+        assert!(!is_valid_viewer_id(""));
+        assert!(!is_valid_viewer_id("a\nb"));
+        // ノートのフォルダの外を指す形
+        assert!(!is_valid_viewer_id("../../x"));
+        assert!(!is_valid_viewer_id("a/b"));
+        assert!(!is_valid_viewer_id("a\\b"));
+        assert!(!is_valid_viewer_id("wiki:.."));
+        assert!(!is_valid_viewer_id(&"a".repeat(VIEWER_ID_MAX_LEN + 1)));
+    }
+
+    /// 行き先はページの読み込み前のスクリプトに埋める。引用符や </script> が入った ID でも
+    /// 代入文 1 つのままで、JSON として読み戻せること
+    #[test]
+    fn viewer_init_script_embeds_id_as_json() {
+        let id = "a\"; alert(1); //</script>";
+        let script = viewer_init_script(id);
+        let json = script
+            .strip_prefix("window.__GRAPHIUM_VIEWER__ = ")
+            .and_then(|s| s.strip_suffix(';'))
+            .expect("assignment shape");
+        let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed["kind"], "note");
+        assert_eq!(parsed["id"], id);
+    }
 
     /// tauri.conf.json の updater 設定が、プラグインの実際の型で読めること。
     /// 読めないとアプリが起動時に落ちる。requireSignedVersion は署名と版を結び付けて

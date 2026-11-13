@@ -20,12 +20,22 @@ import { ConfirmHost } from "./ui/confirm-dialog";
 import { getDemoId } from "./lib/demo/demo-mode";
 import { DemoBanner } from "./features/demo/DemoBanner";
 import { DemoTour } from "./features/demo/DemoTour";
+import { getViewerTarget } from "./lib/viewer-window";
+import { ViewerWindow } from "./features/viewer-window/ViewerWindow";
 
-// ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
+// ── 別ウィンドウ（参照用の表示ウィンドウ）として開かれたか ──
+// 別ウィンドウは 1 つのノートだけを出すページ。sidecar・メニュー・自動更新・アプリの終了処理は
+// メインのウィンドウだけが持つ（別ウィンドウでも動かすと sidecar が 2 つ立つ）。
+const viewerTarget = getViewerTarget();
+
 if (isTauri()) {
   // 外部リンク（<a target="_blank"> / 出典 URL）を OS ブラウザで開けるようにする。
   // Tauri WebView は target="_blank" を素通しすると何も起きないため横取りする。
   installExternalLinkHandler();
+}
+
+// ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
+if (isTauri() && !viewerTarget) {
   // sidecar 起動を await し、失敗時もアプリは続行（AI 機能のみ無効化）
   startSidecar().then((ok) => {
     if (!ok) console.warn("[main] sidecar 起動失敗 — AI 機能は利用不可");
@@ -61,6 +71,7 @@ if (isTauri()) {
 // ── タブを閉じる・リロードする・隠れるとき: 未保存の編集の書き出しを始める ──
 // デスクトップのリロードもここを通る。確認ダイアログは Web 版だけ（デスクトップの終了は
 // 上の経路で書き終わりを待てる）
+// 別ウィンドウも編集できるので同じ扱い（デスクトップの別ウィンドウは、閉じる前に Rust が待つ）
 installPageExitFlush({ confirmWhenUnsaved: !isTauri() });
 
 // ── 文字を書けない場所の Backspace で前の画面へ戻らないようにする（WebKit の既定動作） ──
@@ -70,14 +81,15 @@ installBackspaceNavigationGuard();
 installTooltips();
 
 // ── マイグレーション（provnote → graphium） ──
-migrateFromProvnote();
+if (!viewerTarget) migrateFromProvnote();
 
 // ── フォント・色モード適用（読みやすさ設定） ──
 applyFontMode(getSelectedLatinFont(), getSelectedJpFont());
 applyColorMode(getSelectedColorMode());
 
 // ── 見本モード（?demo=<id>）: 帯の分だけアプリの高さを縮める印（app.css の html[data-demo]） ──
-const demoId = getDemoId();
+// 別ウィンドウには帯を出さない（見本のデータを読むことだけ引き継ぐ）
+const demoId = viewerTarget ? null : getDemoId();
 if (demoId) {
   document.documentElement.dataset.demo = demoId;
   // 見本は空の新規ノートではなく、AI が作ったトピックの一覧から始める（リンクで来た場合はそのまま）
@@ -88,14 +100,20 @@ if (demoId) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LocaleProvider>
-      <NoteApp />
-      {/* 見本モードの帯。本人のノートへ戻る・最初から */}
-      {demoId && <DemoBanner />}
-      {demoId && <DemoTour />}
-      {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
-      <UiZoomOverlays />
-      {/* 確認ダイアログ（window.confirm の代わり。デスクトップ版では window.confirm が素通りするため） */}
-      <ConfirmHost />
+      {viewerTarget ? (
+        <ViewerWindow initialTarget={viewerTarget} />
+      ) : (
+        <>
+          <NoteApp />
+          {/* 見本モードの帯。本人のノートへ戻る・最初から */}
+          {demoId && <DemoBanner />}
+          {demoId && <DemoTour />}
+          {/* 拡大縮小の短い表示と、画面が狭い環境の案内。どの画面でも出るようルートに置く */}
+          <UiZoomOverlays />
+          {/* 確認ダイアログ（window.confirm の代わり。デスクトップ版では window.confirm が素通りするため） */}
+          <ConfirmHost />
+        </>
+      )}
     </LocaleProvider>
   </StrictMode>
 );
@@ -116,7 +134,7 @@ createRoot(document.getElementById("root")!).render(
 //
 // sidecar の起動は待たない ── 待たせても AI を使わない利用者の起動が遅く
 // なるだけで、起動中であることはサイドバーのナレッジ節が示す。
-if (isTauri()) {
+if (isTauri() && !viewerTarget) {
   void import("@tauri-apps/api/core")
     .then(({ invoke }) => invoke("app_ready"))
     .catch((e) => console.error("[main] app_ready invoke failed", e));
