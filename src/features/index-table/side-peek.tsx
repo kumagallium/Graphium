@@ -29,6 +29,12 @@ import type { BlockLink } from "../../lib/block-link-types";
 import { useSourceCheckStale } from "../source-check/use-source-check";
 import { applySavedToPeekDoc, pickPeekExternalFields } from "./peek-save-merge";
 import { leaveAfterSave } from "./peek-leave";
+import {
+  nextStandalonePanelTab,
+  resolveStandalonePanelTab,
+  STANDALONE_PANEL_OPEN_KEY,
+  STANDALONE_PANEL_TAB_KEY,
+} from "./standalone-panel-tab";
 import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
 import { copyBodyWidthFields } from "../paper-mode/bulk-body-width";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
@@ -334,18 +340,22 @@ type SidePeekProps = {
    */
   standalone?: boolean;
   /**
-   * 別ウィンドウ（standalone）で本文の右に出すパネル。ヘッダーに開閉のボタンが付く。
-   * 中身はこのピークのストア（ラベル・リンク）の内側で描かれるので、同じノートのストアを読める
+   * 別ウィンドウ（standalone）で本文の右に出すパネル（タブ）。ヘッダーにタブごとの開閉のボタンが付く。
+   * 開けるのは 1 つだけ。中身はこのピークのストア（ラベル・リンク）の内側で描かれるので、
+   * 同じノートのストアを読める
    */
-  standalonePanel?: {
+  standalonePanels?: {
+    id: string;
     label: string;
+    /** 右端のアイコンの列に出すアイコン（本体の右パネルと同じもの） */
+    icon: ReactNode;
     render: (args: PeekStandalonePanelArgs) => ReactNode;
-  };
+  }[];
   /** 保存の状態が変わるたびに呼ぶ（別ウィンドウが、未保存の有無をメインへ知らせるのに使う） */
   onSaveStatusChange?: (status: "saving" | "saved" | "dirty") => void;
 };
 
-/** standalonePanel.render に渡す引数 */
+/** standalonePanels の render に渡す引数 */
 export type PeekStandalonePanelArgs = {
   noteId: string;
   /** このピークのエディタ（パネルからの追加・改名・削除はここへ書き、ピークの自動保存に乗る） */
@@ -435,7 +445,6 @@ function SidePeekSideMenu() {
 // 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
 // まま auto-save されてデータが壊れる。children を持つブロック（step / カラム）
 // では親が落ちると子孫ごと消えるため、損失はさらに大きい。
-const STANDALONE_PANEL_OPEN_KEY = "graphium:viewer-window:panel-open";
 
 function sanitizeBlocks(blocks: any[]): any[] {
   return sanitizeBlocksForLoad(blocks);
@@ -448,7 +457,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, onRecordMemoUsage, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  renderWikiContext, files, onRefreshFiles, standalone = false, onSaveStatusChange, standalonePanel,
+  renderWikiContext, files, onRefreshFiles, standalone = false, onSaveStatusChange, standalonePanels,
   reopenWithDoc, forceOpenDoc,
 }: SidePeekProps & SidePeekReopen) {
   const t = useT();
@@ -529,24 +538,33 @@ function SidePeekInner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
-  // 別ウィンドウの右のパネル。開閉は次に開いたときも同じにする（このウィンドウだけの好み）
-  const [standalonePanelOpen, setStandalonePanelOpen] = useState(() => {
+  // 別ウィンドウの右のパネル。開いているタブは次に開いたときも同じにする（このウィンドウだけの好み）。
+  // 覚えた値と旧版のキーは起動時に 1 度だけ読み、どれを開くかは一覧と合わせて毎回決める
+  const [panelMemory, setPanelMemory] = useState<{ tab: string | null; legacy: string | null }>(() => {
     try {
-      return localStorage.getItem(STANDALONE_PANEL_OPEN_KEY) === "1";
+      return {
+        tab: localStorage.getItem(STANDALONE_PANEL_TAB_KEY),
+        legacy: localStorage.getItem(STANDALONE_PANEL_OPEN_KEY),
+      };
     } catch {
-      return false;
+      return { tab: null, legacy: null };
     }
   });
-  const toggleStandalonePanel = useCallback(() => {
-    setStandalonePanelOpen((open) => {
+  const standalonePanelIds = (standalonePanels ?? []).map((p) => p.id);
+  const openPanelId = resolveStandalonePanelTab(panelMemory.tab, panelMemory.legacy, standalonePanelIds);
+  const openPanel = standalonePanels?.find((p) => p.id === openPanelId) ?? null;
+  const toggleStandalonePanel = useCallback(
+    (id: string) => {
+      const next = nextStandalonePanelTab(openPanelId, id);
       try {
-        localStorage.setItem(STANDALONE_PANEL_OPEN_KEY, open ? "0" : "1");
+        localStorage.setItem(STANDALONE_PANEL_TAB_KEY, next);
       } catch {
         // 覚えられなくても開閉はできる
       }
-      return !open;
-    });
-  }, []);
+      setPanelMemory((m) => ({ ...m, tab: next }));
+    },
+    [openPanelId],
+  );
   // 本文の変更を、右のパネルへ知らせる口（state にすると打つたびにピーク全体を描き直す）
   const changeListenersRef = useRef(new Set<() => void>());
   const subscribeChange = useCallback((fn: () => void) => {
@@ -2326,27 +2344,6 @@ function SidePeekInner({
           {statusText}
         </span>
 
-        {standalone && standalonePanel && (
-          <button
-            type="button"
-            onClick={toggleStandalonePanel}
-            aria-pressed={standalonePanelOpen}
-            data-standalone-panel-toggle
-            style={{
-              flexShrink: 0,
-              padding: "3px 8px",
-              borderRadius: 4,
-              border: "1px solid var(--color-border-subtle)",
-              background: standalonePanelOpen ? "var(--color-surface-hover)" : "transparent",
-              cursor: "pointer",
-              fontSize: 11,
-              color: "var(--color-text-secondary, var(--color-foreground))",
-            }}
-          >
-            {standalonePanel.label}
-          </button>
-        )}
-
         {/* 右端の ⋯（素材のピークと同じ位置。項目は peek-note-menu.tsx） */}
         <PeekNoteMenu
           link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)}
@@ -2808,10 +2805,11 @@ function SidePeekInner({
           </>
         )}
       </div>
-      {standalone && standalonePanel && standalonePanelOpen && effectiveDoc && !loading && !error && (
+      {standalone && openPanel && effectiveDoc && !loading && !error && (
         <aside
           data-standalone-panel
-          aria-label={standalonePanel.label}
+          data-standalone-panel-id={openPanel.id}
+          aria-label={openPanel.label}
           style={{
             width: "clamp(300px, 42vw, 520px)",
             flexShrink: 0,
@@ -2823,14 +2821,51 @@ function SidePeekInner({
             background: "var(--color-muted)",
           }}
         >
-          {standalonePanel.render({
-            noteId,
-            editorRef,
-            noteContexts: peekContexts,
-            doc: effectiveDoc,
-            subscribeChange,
-          })}
+          {/* パネルの見出し（本体の右パネルと同じ形） */}
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold tracking-wide text-foreground">{openPanel.label}</span>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {openPanel.render({
+              noteId,
+              editorRef,
+              noteContexts: peekContexts,
+              doc: effectiveDoc,
+              subscribeChange,
+            })}
+          </div>
         </aside>
+      )}
+      {/* 右端のアイコンの列。本体の右パネル（note-app.tsx のアイコンレール）と同じ見た目・同じ動き:
+          押すとそのタブが開き、開いているタブをもう一度押すと閉じる */}
+      {standalone && standalonePanels && standalonePanels.length > 0 && effectiveDoc && !loading && !error && (
+        <div
+          data-standalone-panel-rail
+          className="shrink-0 border-border bg-muted/50 flex items-center gap-1 w-10 border-l flex-col py-2"
+        >
+          {standalonePanels.map((panel) => {
+            const pressed = panel.id === openPanelId;
+            return (
+              <button
+                key={panel.id}
+                type="button"
+                onClick={() => toggleStandalonePanel(panel.id)}
+                aria-label={panel.label}
+                aria-pressed={pressed}
+                data-tooltip={panel.label}
+                data-standalone-panel-toggle={panel.id}
+                className={
+                  "flex items-center justify-center rounded-md transition-colors w-8 h-8 cursor-pointer " +
+                  (pressed
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/50")
+                }
+              >
+                {panel.icon}
+              </button>
+            );
+          })}
+        </div>
       )}
       </div>
 

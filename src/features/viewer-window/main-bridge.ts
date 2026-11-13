@@ -1,6 +1,6 @@
 // メインのウィンドウ側の橋。別ウィンドウで編集しているノートを、メインの既存の経路につなぐ。
 //
-// 役割は 2 つ（決まりごとは lib/viewer-window.ts の「編集の受け渡し」）:
+// 役割は 3 つ（決まりごとは lib/viewer-window.ts の「編集の受け渡し」）:
 //
 //   1. メインが開いているノートの一覧を別ウィンドウへ知らせる（holds）。
 //      別ウィンドウは、メインが開いているノートを表示のみにする。メインがノートを閉じたときは、
@@ -11,6 +11,9 @@
 //      メインがそのノートを開く前の「未保存を書き出させて待つ」（flushPeekSaves）、改名の反映、
 //      本文の幅の一括変更、保守の取り消しが、同じウィンドウのサイドピークと同じ口で別ウィンドウへ届く。
 //      別ウィンドウの保存は、サイドピークの保存と同じ後処理（索引と doc キャッシュの更新）に流す
+//
+// 3. 別ウィンドウのグラフとメモのパネルからの依頼（graph-request / memo-create / memo-delete）。
+//    実処理は deps が持つ。ここは返事を必ず返すことだけを担う（決まりごとは lib/viewer-window.ts）
 //
 // 書き出しを頼んだとき（flush）の待ち方:
 //   - 別ウィンドウはまず「受け取った」と返す（flush-ack）。これが届かなければ、別ウィンドウは
@@ -32,6 +35,8 @@ import {
   onMessageFromViewer,
   sendToViewer,
   type MainToViewerMessage,
+  type ViewerMemoCreateRequest,
+  type ViewerNoteGraph,
   type ViewerToMainMessage,
 } from "../../lib/viewer-window";
 
@@ -45,6 +50,12 @@ export const HOLDS_HEARTBEAT_MS = 4000;
 export type ViewerMainBridgeDeps = {
   /** 別ウィンドウがノートを保存した。サイドピークの onSaved と同じ後処理を行う */
   onSaved: (noteId: string, savedDoc: GraphiumDocument) => void;
+  /** 別ウィンドウのグラフのパネル用に、このノートのグラフを作る（作れなければ null） */
+  getNoteGraph?: (noteId: string) => Promise<ViewerNoteGraph | null>;
+  /** 別ウィンドウのメモのパネルから頼まれたメモを作る（成否を返す） */
+  createMemo?: (req: ViewerMemoCreateRequest) => Promise<boolean>;
+  /** 別ウィンドウのメモのパネルから頼まれたメモを消す */
+  deleteMemo?: (memoId: string) => Promise<void> | void;
   /** テスト用の差し替え口 */
   send?: (msg: MainToViewerMessage) => void;
   subscribe?: (fn: (msg: ViewerToMainMessage) => void) => () => void;
@@ -230,6 +241,50 @@ export function installViewerMainBridge(deps: ViewerMainBridgeDeps): () => void 
       case "flushed":
         flushWaiters.get(msg.nonce)?.done(msg.saved, msg.doc);
         return;
+      // グラフとメモの依頼。依存が無い・失敗したときも必ず返事を返す（別ウィンドウは返事で待ちをやめる）
+      case "graph-request": {
+        const { nonce, id } = msg;
+        const reply = (graph: ViewerNoteGraph | null) => {
+          if (disposed) return;
+          send({ type: "graph-data", nonce, id, data: graph?.data ?? null, lineageTree: graph?.lineageTree ?? null });
+        };
+        if (!deps.getNoteGraph) return reply(null);
+        void Promise.resolve()
+          .then(() => deps.getNoteGraph!(id))
+          .then(reply, () => reply(null));
+        return;
+      }
+      case "memo-create": {
+        const { nonce } = msg;
+        const req: ViewerMemoCreateRequest = {
+          noteId: msg.noteId,
+          title: msg.title,
+          text: msg.text,
+          block: msg.block,
+          folder: msg.folder,
+        };
+        const reply = (ok: boolean) => {
+          if (disposed) return;
+          send({ type: "memo-result", nonce, ok });
+        };
+        if (!deps.createMemo) return reply(false);
+        void Promise.resolve()
+          .then(() => deps.createMemo!(req))
+          .then((ok) => reply(ok === true), () => reply(false));
+        return;
+      }
+      case "memo-delete": {
+        const { nonce, memoId } = msg;
+        const reply = (ok: boolean) => {
+          if (disposed) return;
+          send({ type: "memo-result", nonce, ok });
+        };
+        if (!deps.deleteMemo) return reply(false);
+        void Promise.resolve()
+          .then(() => deps.deleteMemo!(memoId))
+          .then(() => reply(true), () => reply(false));
+        return;
+      }
     }
   });
 

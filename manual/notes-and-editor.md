@@ -51,15 +51,18 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and write there, or keep it open to read while you write in the main window.
 
-![A note in its own window. The header shows the note title, Saved, a Steps button and a ⋯ menu. The note fills the left side; the steps panel on the right shows the steps from Autolyse to Bake as a graph, with Tidy up, Parameters and Add step above it.](/screenshots/separate-window.png)
+![A note in its own window. The header shows the note title, Saved and a ⋯ menu. The right edge has three icons: Graph, Steps and Memos. The note fills the left side; the Steps panel beside it shows the steps from Autolyse to Bake as a graph, with Tidy up, Parameters and Add step above it.](/screenshots/separate-window.png)
 
 - You can edit the note in the separate window. It saves on its own, like the side peek.
 - A note is editable in one place at a time. While the main window has the same note open (in the editor or a side peek), the separate window shows it as **View only — open in the main window**, and picks up each save from the main window while keeping your reading position. When the main window moves to another note, the separate window becomes editable again.
 - **Open in the main window** moves the note to the main window. Edits you just made in the separate window are saved first.
 - Clicking a link to another note inside the separate window opens that note in the same window.
 - There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
-- The **Steps** button in the separate window's header opens the steps panel to the right of the note, the same one as in the main window's right panel. Adding, renaming, or connecting steps there writes to the note. Memos on connections are shown in the main window only.
-- The separate window holds one note: it has no sidebar and no chat, and the other right-panel tabs (graph, history, memos) stay in the main window. Inserting images and other files from the slash menu is done in the main window.
+- The icons on the right edge of the separate window open a panel beside the note, the same way as the main window's right panel: **Graph**, **Steps** and **Memos**, one at a time. Press the open one again to close it.
+  - **Steps** is the same panel as in the main window's right panel. Adding, renaming, or connecting steps there writes to the note. Memos on connections are shown in the main window only.
+  - **Graph** shows the notes and Knowledge pages around this note (**Neighbors**) and where it came from (**Lineage**). Click a note to open it in the same window. The **Genealogy** view, and opening materials or memos from the graph, are in the main window.
+  - **Memos** lists the memos on this note. You can write a new one or delete one there.
+- The separate window holds one note: it has no sidebar and no chat, and the other right-panel tabs (history, comments, proposals) stay in the main window. Inserting images and other files from the slash menu is done in the main window.
 - The desktop app remembers the separate window's position and size. Closing the main window closes it too.
 - Pressing the button saves and closes the side peek. The button appears at widths where windows can sit side by side (not at phone width).
 

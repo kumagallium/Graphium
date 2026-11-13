@@ -3285,8 +3285,14 @@ The same `src/` tree is built four different ways.
   flush-before-open (`flushPeekSaves`), mention rename, body-width changes,
   maintenance undo, flush on exit — reach the other window, and the viewer's
   saves run the same post-save step as a side peek's (index and doc cache).
-  The viewer can show the steps panel (`ProvGraphPanel`) beside the note,
-  rendered inside the side peek's stores (`standalonePanel`); the other
+  The viewer can show one panel beside the note — steps, graph or memos —
+  rendered inside the side peek's stores (`standalonePanels`). Steps
+  (`ProvGraphPanel`) runs on the note's own stores. The viewer does not
+  load every note or write the memo index: the graph is built by `main`
+  and sent over (`graph-request` → `graph-data`, `computeNoteGraph` in
+  `use-file-manager.ts`), and memos are read from the capture index but
+  created and deleted by `main` (`memo-create` / `memo-delete`, with
+  `captures-changed` telling the viewer to re-read). The other
   right-panel tabs depend on `NoteApp` state and stay in `main`.
   When `main` closes a note it stays "held" until its closing save has
   left the save queue. Messages travel as Tauri events
