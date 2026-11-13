@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.130.0](https://github.com/kumagallium/Graphium/compare/v0.129.19...v0.130.0) - 2026-11-13
+
+- [feat] Open a note from the side peek in a separate window (editable, with the steps panel) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1654
+
 ## [v0.129.19](https://github.com/kumagallium/Graphium/compare/v0.129.18...v0.129.19) - 2026-11-12
 
 - [docs] Manual (ja): rewrite every page for readability by @kumagallium in https://github.com/kumagallium/Graphium/pull/1655
