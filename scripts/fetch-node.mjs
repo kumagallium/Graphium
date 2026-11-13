@@ -23,7 +23,7 @@ const PROJECT_ROOT = join(__dirname, "..");
 // Node 22 LTS (Jod) — maintenance LTS until 2027-04。
 // 同梱する node は配布物の一部なので、Node.js のセキュリティリリースが出たらここを上げる
 // （2026-10-21 のリリース: Brotli の OOB write・TLS のホスト名検査・dns の NUL 切り詰めなど 10 件）
-const NODE_VERSION = "v22.23.4";
+const NODE_VERSION = "v22.23.5";
 const SIDECAR_DIR = join(PROJECT_ROOT, "src-tauri", "sidecar");
 const BINARIES_DIR = join(PROJECT_ROOT, "src-tauri", "binaries");
 
