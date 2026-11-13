@@ -65,7 +65,8 @@ export function randomUrlToken(bytes = 32): string {
 }
 
 export function generatePkce(): { verifier: string; challenge: string } {
-  const verifier = randomUrlToken(48);
+  // 32 バイト = 43 文字（RFC 7636 の最小長。OpenAI の参照実装と同じ長さ）
+  const verifier = randomUrlToken(32);
   const challenge = base64url(createHash("sha256").update(verifier).digest());
   return { verifier, challenge };
 }
