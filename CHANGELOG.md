@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.129.19](https://github.com/kumagallium/Graphium/compare/v0.129.18...v0.129.19) - 2026-11-12
+
+- [docs] Manual (ja): rewrite every page for readability by @kumagallium in https://github.com/kumagallium/Graphium/pull/1655
+
 ## [v0.129.18](https://github.com/kumagallium/Graphium/compare/v0.129.17...v0.129.18) - 2026-11-12
 
 - [fix] Bring the Memos list's columns in line with the Notes and Knowledge lists by @kumagallium in https://github.com/kumagallium/Graphium/pull/1652
