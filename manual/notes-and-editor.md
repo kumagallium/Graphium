@@ -47,6 +47,22 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ![The ⋯ menu in a note's side peek: Markdown (.md), Copy link, Archive, and Move to trash](/screenshots/side-peek-menu.png)
 
+### Open in a separate window <Badge type="tip" text="Added in v0.130.0 (2026-11-13)" /> {#open-in-a-separate-window}
+
+With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and write there, or keep it open to read while you write in the main window.
+
+![A note in its own window. The header shows the note title, Saved, a Steps button and a ⋯ menu. The note fills the left side; the steps panel on the right shows the steps from Autolyse to Bake as a graph, with Tidy up, Parameters and Add step above it.](/screenshots/separate-window.png)
+
+- You can edit the note in the separate window. It saves on its own, like the side peek.
+- A note is editable in one place at a time. While the main window has the same note open (in the editor or a side peek), the separate window shows it as **View only — open in the main window**, and picks up each save from the main window while keeping your reading position. When the main window moves to another note, the separate window becomes editable again.
+- **Open in the main window** moves the note to the main window. Edits you just made in the separate window are saved first.
+- Clicking a link to another note inside the separate window opens that note in the same window.
+- There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
+- The **Steps** button in the separate window's header opens the steps panel to the right of the note, the same one as in the main window's right panel. Adding, renaming, or connecting steps there writes to the note. Memos on connections are shown in the main window only.
+- The separate window holds one note: it has no sidebar and no chat, and the other right-panel tabs (graph, history, memos) stay in the main window. Inserting images and other files from the slash menu is done in the main window.
+- The desktop app remembers the separate window's position and size. Closing the main window closes it too.
+- Pressing the button saves and closes the side peek. The button appears at widths where windows can sit side by side (not at phone width).
+
 Selecting rows lets you act in bulk: move notes to trash, archive them, or add all of them to a folder at once. To select several rows, drag down the list or click one row's checkbox and shift-click another — the range between them joins the selection. The drag can start anywhere on a row except the title text itself — grabbing the title text [carries the note to a folder](#folders) instead. Archived and trashed notes live in the **Trash & Archive** view — archiving shelves a note while links and citations to it keep resolving. <Badge type="tip" text="Added in v0.61.1 (2026-09-08)" />
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)

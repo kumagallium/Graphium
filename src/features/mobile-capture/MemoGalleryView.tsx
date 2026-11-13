@@ -29,15 +29,10 @@ import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
+import { LinkCountBadge } from "../navigation/LinkCountBadge";
+import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
-
-/** 作成日を YYYY-MM-DD でフォーマット（リスト表示用） */
-function formatCreatedDate(isoDate: string): string {
-  const d = new Date(isoDate);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
-}
 
 // ── 一括削除確認ダイアログ（メモ用、AssetGalleryView と同パターン） ──
 
@@ -744,6 +739,21 @@ export function MemoGalleryView({
     [captureIndex],
   );
   // フォルダで絞る。UNFILED_PATH は「どのフォルダにも入っていない」を表す特別な値
+  // 「使用」は、このメモを挿入したノートの数（ノート一覧・ナレッジ一覧の被参照にあたる）。
+  // ナレッジ化は別の列（本アイコン）に出て、ここには数えない — もと・派生の関係を参照に
+  // 数えない、という 2 つの一覧と同じ規則。どのメモにも値が無いときは列ごと出さない
+  // （絞り込む前の全件で決める。絞り込みで列が出入りしないように）
+  const showUsedColumn = useMemo(
+    () => allCaptures.length === 0 || allCaptures.some((c) => (c.usedIn?.length ?? 0) > 0),
+    [allCaptures],
+  );
+  // フォルダの列も同じ規則 — どのメモもフォルダに入っていないときは出さない。
+  // ギャラリー表示のカードと同じ印（ContextBadge）で、ノート一覧のフォルダ列と同じ位置に置く
+  const showFolderColumn = useMemo(
+    () => allCaptures.some((c) => (c.noteContexts?.length ?? 0) > 0),
+    [allCaptures],
+  );
+
   const captures = useMemo(() => {
     if (folderFilter.length === 0) return allCaptures;
     const wantsUnfiled = folderFilter.includes(UNFILED_PATH);
@@ -1083,15 +1093,22 @@ export function MemoGalleryView({
                   />
                 </th>
                 <th className="py-2 px-3">{t("memo.colText")}</th>
-                <th className="py-2 px-2 w-[60px] text-center">
-                  {t("memo.colUsedIn")}
-                </th>
+                {showUsedColumn && (
+                  <th className="py-2 px-2 w-[60px] text-center whitespace-nowrap" data-tooltip={t("memo.colUsedInTooltip")}>
+                    {t("memo.colUsedIn")}
+                  </th>
+                )}
+                {showFolderColumn && (
+                  <th className="py-2 px-3 w-[150px]" data-tooltip={t("memo.colFolderTooltip")}>
+                    {t("nav.noteContexts")}
+                  </th>
+                )}
                 <th className="py-2 px-2 w-[60px] text-center" data-tooltip={t("nav.knowledgeColumn")}>
                   <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
                     <BookOpen size={14} />
                   </span>
                 </th>
-                <th className="py-2 pl-3 w-[110px]">{t("memo.colDate")}</th>
+                <th className="py-2 pl-3 w-[126px] whitespace-nowrap">{t("memo.colDate")}</th>
                 <th className="py-2 px-2 w-[72px]" />
               </tr>
             </thead>
@@ -1132,9 +1149,26 @@ export function MemoGalleryView({
                         {entry.text}
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
-                      {usedCount > 0 ? usedCount : <span className="text-muted-foreground/30">—</span>}
-                    </td>
+                    {showUsedColumn && (
+                      <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
+                        {usedCount > 0
+                          ? <LinkCountBadge direction="incoming" count={usedCount} />
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                    )}
+                    {showFolderColumn && (
+                      <td className="py-2 px-3">
+                        {(entry.noteContexts?.length ?? 0) > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {entry.noteContexts!.map((value) => (
+                              <ContextBadge key={value} value={value} />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/40 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                       {knowledgedCount > 0 ? (
                         <button
@@ -1159,11 +1193,11 @@ export function MemoGalleryView({
                           )}
                         </button>
                       ) : (
-                        <span className="text-muted-foreground/30 text-xs">—</span>
+                        <span className="text-muted-foreground/40 text-xs">—</span>
                       )}
                     </td>
-                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                      {formatCreatedDate(entry.createdAt)}
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {formatDateTime(entry.createdAt)}
                     </td>
                     <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">

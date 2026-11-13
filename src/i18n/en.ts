@@ -2258,6 +2258,12 @@ export const en: Record<string, string> = {
   "sidePeek.fullscreen": "Open in full screen",
   "sidePeek.loadError": "Failed to load",
   "sidePeek.resizeHandle": "Drag to resize / double-click to reset",
+  "sidePeek.popOut": "Open in a separate window",
+  "viewerWindow.viewOnly": "View only",
+  "viewerWindow.heldByMain": "View only — open in the main window",
+  "viewerWindow.heldByMainHint": "Close this note in the main window to edit it here",
+  "viewerWindow.openInMain": "Open in the main window",
+  "viewerWindow.openInMainHint": "Open this note in the main window",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "Enter the note title in the first column before clicking",
@@ -2614,6 +2620,8 @@ export const en: Record<string, string> = {
   "memo.deleteConfirmMessage": "Permanently delete this memo? This cannot be undone.",
   "memo.colText": "Text",
   "memo.colUsedIn": "Used",
+  "memo.colUsedInTooltip": "Number of notes this memo was inserted into, not counting Knowledge made from it (that is the book column)",
+  "memo.colFolderTooltip": "Folders this memo is in (a memo can be in more than one)",
   "memo.colDate": "Created",
   "memo.bulkDeleteConfirmTitle": "Delete selected memos",
   "memo.bulkDeleteConfirmMessage": "Delete {count} selected memos. {refCount} of them have already been inserted into notes. Those note bodies will not be affected.",

@@ -2227,6 +2227,12 @@ export const ko: Record<string, string> = {
   "sidePeek.fullscreen": "전체 화면으로 열기",
   "sidePeek.loadError": "불러오지 못했습니다",
   "sidePeek.resizeHandle": "끌어서 크기 조절 / 두 번 클릭해 기본값으로",
+  "sidePeek.popOut": "별도 창에서 열기",
+  "viewerWindow.viewOnly": "보기 전용",
+  "viewerWindow.heldByMain": "기본 창에서 열려 있어 보기 전용",
+  "viewerWindow.heldByMainHint": "기본 창에서 이 노트를 닫으면 여기서 편집할 수 있습니다",
+  "viewerWindow.openInMain": "기본 창에서 열기",
+  "viewerWindow.openInMainHint": "이 노트를 기본 창에서 엽니다",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "클릭하기 전에 첫 번째 열에 노트 제목을 입력해 주세요",
@@ -2581,6 +2587,8 @@ export const ko: Record<string, string> = {
   "memo.deleteConfirmMessage": "이 메모를 완전히 삭제하시겠습니까? 되돌릴 수 없습니다.",
   "memo.colText": "내용",
   "memo.colUsedIn": "사용",
+  "memo.colUsedInTooltip": "이 메모를 삽입한 노트 수. 지식 베이스로 만든 것은 세지 않습니다(책 아이콘 열에 표시됩니다)",
+  "memo.colFolderTooltip": "이 메모가 들어 있는 폴더(하나의 메모를 여러 폴더에 넣을 수 있습니다)",
   "memo.colDate": "생성일",
   "memo.bulkDeleteConfirmTitle": "선택한 메모 삭제",
   "memo.bulkDeleteConfirmMessage": "선택한 메모 {count}개를 삭제합니다. 그중 {refCount}개는 이미 노트에 삽입되어 있지만, 그 노트 본문에는 영향이 없습니다.",
