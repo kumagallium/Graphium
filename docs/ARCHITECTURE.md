@@ -2306,7 +2306,7 @@ Notes:
   images across the history are sent; older ones become a one-line note).
   Whether the chat model can see images is decided by one rule shared by
   client and server (`src/lib/model-vision.ts`: Anthropic, Google, Copilot,
-  OpenAI except text-only families, and OpenAI-compatible models whose name
+  OpenAI and ChatGPT-plan models except text-only families, and OpenAI-compatible models whose name
   marks a vision family). For a model that cannot, the client reads each
   image with on-device OCR and sends the text instead, and says so above the
   input before sending. The server (`src/server/services/chat-images.ts`)
@@ -4773,6 +4773,57 @@ server can fetch and sign in to it for users who have none
   started with `COPILOT_AUTO_UPDATE=false` so the pinned version stays put.
   Sign-in state is the CLI's own (`~/.copilot` / Keychain), shared with a
   terminal-installed Copilot CLI.
+
+### Sign in with ChatGPT (`chatgpt-plan`)
+
+The `chatgpt-plan` provider calls OpenAI's public Responses API with an OAuth
+access token for the user's own ChatGPT plan, using OpenAI's "Sign in with
+ChatGPT" flow for open-source apps that run on the user's machine. No CLI and
+no API key are involved, and the flow is implemented in Graphium's own code
+from OpenAI's published documentation (`services/chatgpt-plan/`, routes under
+`/api/models/chatgpt/`). Desktop / local Node server only.
+
+- **Sign-in** (`manager.ts`, `oauth.ts`): `POST sign-in` starts a one-shot
+  HTTP listener bound to `127.0.0.1` and returns the authorize URL, which the
+  client opens in the system browser. The first sign-in registers a client
+  dynamically (`client_id=dynamic_agent_client`, callback fixed at
+  `http://127.0.0.1:1455/auth/callback`); later sign-ins reuse the issued
+  client ID and may fall back to another port. Every attempt uses fresh
+  `state`, `nonce`, and PKCE (S256) values, and a per-installation
+  `ext_agent_host_id`. The callback is checked against `state`, the code is
+  exchanged without a client secret, and the ID token is verified with
+  `node:crypto` against OpenAI's JWKS (signature, `iss`, `aud`, `exp`,
+  `nonce`). Plan usage is on only when the granted scopes include
+  `chatgpt.tokens.use.direct`. `GET status` reports the sign-in state and the
+  account; it never returns tokens or the authorize URL. If a first sign-in
+  gets an issued client ID but cannot finish, the ID is kept
+  (`pendingClientId`) and the next attempt authorizes with it instead of
+  registering again. A code exchange refused with `invalid_grant` is reported
+  as `CHATGPT_NOT_ELIGIBLE`: OpenAI gives no reason, and a workspace or plan
+  outside personal Plus / Pro is what produced it when checked against a real
+  account (2026-11-13). `GRAPHIUM_CHATGPT_DEBUG=1` logs the body of a failed
+  token response and the names and lengths of the fields sent, never values.
+- **Storage** (`store.ts`): `<dataDir>/chatgpt-plan/auth.json`, written
+  atomically with mode `0600`. It holds the host ID, the issued client ID,
+  the account subject and email, and the tokens. Signing out revokes the
+  refresh token and clears the tokens but keeps the client registration, so
+  the next sign-in is a re-authorization.
+- **Tokens**: access tokens last one hour and refresh tokens rotate. Refreshes
+  are serialized, replace the whole token set at once, and only a terminal
+  refresh error clears the tokens (a network failure does not).
+- **Inference** (`model.ts`): the AI SDK's OpenAI Responses model with a
+  `fetch` that sets the `Authorization` header per request and refuses any
+  host other than `api.openai.com`. The API requires `store: false` and
+  `stream: true`, so a middleware forces `store: false`, drops sampling
+  parameters, and builds non-streaming results by reading the stream to the
+  end; a stream that closes without a completion event is an error. Tools
+  run natively through the same `generateText` path as API-key providers
+  (unlike Copilot, which runs tools inside its SDK).
+- **Errors**: plan-usage error codes map to `CHATGPT_PLAN_AUTH_EXPIRED`,
+  `CHATGPT_PLAN_LIMIT_REACHED`, `CHATGPT_PLAN_NOT_ELIGIBLE`, and
+  `CHATGPT_PLAN_UNAVAILABLE`. A reached limit is reported as-is, with a
+  pointer to ChatGPT's usage settings; Graphium does not guess what is left
+  and does not switch to another billing path.
 
 ### 6.2 Seal routes (`/api/seal/*`)
 

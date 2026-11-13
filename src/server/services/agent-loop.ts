@@ -9,7 +9,7 @@ import { FINAL_ANSWER_NUDGE, runTextToolsLoop } from "./agent-loop-text-tools.js
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
 import { isLocalApiBase, isLocalCapacityError, isLocalUnavailableError } from "./local-model.js";
-import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
+import { isSubscriptionProvider, runsToolsThroughLanguageModel } from "../../lib/subscription-providers.js";
 import {
   nativeToolsCacheKey,
   getNativeToolsVerdict,
@@ -106,6 +106,13 @@ export function describeAuthError(
     msg.includes("unauthorized") ||
     /\b401\b/.test(msg);
   if (!isAuth) return null;
+  if (provider === "chatgpt-plan") {
+    // ChatGPT のサインイン切れ。API キーは無いので、再サインインを案内する。
+    return {
+      message: "Your ChatGPT sign-in is missing or has expired. Sign in again in Settings → AI.",
+      code: "CHATGPT_PLAN_AUTH_EXPIRED",
+    };
+  }
   if (provider === "copilot-subscription") {
     // GitHub Copilot CLI のログイン切れ・未ログイン。API キー再設定では直らない。
     return {
@@ -159,6 +166,13 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     // CodedError の code は各ルートの catch（errorBody）が JSON レスポンスへ通す。
     const friendly = describeAuthError(err, params.modelConfig?.provider);
     if (friendly) throw new CodedError(friendly.message, friendly.code);
+    // chatgpt-plan は 401 以外（利用上限・利用不可・対象外）も code 付きで案内する。
+    // 動的 import: Web ビルドに認証部品を巻き込まない（llm.ts と同じ理由）
+    if (params.modelConfig?.provider === "chatgpt-plan") {
+      const { describeChatGptPlanError } = await import("./chatgpt-plan/model.js");
+      const plan = describeChatGptPlanError(err);
+      if (plan) throw new CodedError(plan.message, plan.code);
+    }
     // このパソコンで動くモデルの文脈の枠が足りなかったらしい失敗は、設定の見直しを案内する
     if (isLocalApiBase(params.modelConfig?.apiBase) && isLocalCapacityError(err)) {
       throw new CodedError(
@@ -201,8 +215,10 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   if ((hasTools || hasBuiltinTools) && modelConfig?.provider === "copilot-subscription") {
     return runCopilotAgentLoop(safeParams);
   }
-  // 他のサブスク型が増えたときの既定: SDK が tools を通さない前提で text-tool-call へ。
-  if (hasTools && isSubscriptionProvider(modelConfig?.provider)) {
+  // 他のサブスク型の既定: SDK が tools を通さない前提で text-tool-call へ。
+  // chatgpt-plan は公開 Responses API を LanguageModel 経路で呼ぶので、関数ツールを
+  // ネイティブに実行できる（下の generateText 経路へ進む）。
+  if (hasTools && isSubscriptionProvider(modelConfig?.provider) && !runsToolsThroughLanguageModel(modelConfig?.provider)) {
     return runTextToolsLoop(safeParams);
   }
 

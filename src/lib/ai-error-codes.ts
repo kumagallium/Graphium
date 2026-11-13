@@ -10,6 +10,14 @@ export const AI_ERROR_CODES = {
   NO_MODEL_REGISTERED: "NO_MODEL_REGISTERED",
   /** copilot-subscription（GitHub Copilot CLI 経由）の認証切れ・未ログイン（401） */
   COPILOT_SUBSCRIPTION_AUTH_EXPIRED: "COPILOT_SUBSCRIPTION_AUTH_EXPIRED",
+  /** chatgpt-plan（Sign in with ChatGPT）のサインインが無い・切れた・プラン利用の許可が無い */
+  CHATGPT_PLAN_AUTH_EXPIRED: "CHATGPT_PLAN_AUTH_EXPIRED",
+  /** chatgpt-plan の利用上限に達した（429。アプリごとの上限のこともあるので、残量は推測しない） */
+  CHATGPT_PLAN_LIMIT_REACHED: "CHATGPT_PLAN_LIMIT_REACHED",
+  /** chatgpt-plan をこのアカウント・ワークスペース・地域では使えない（403。やり直しても変わらない） */
+  CHATGPT_PLAN_NOT_ELIGIBLE: "CHATGPT_PLAN_NOT_ELIGIBLE",
+  /** chatgpt-plan が一時的に使えない（503。サインインは保ったまま、あとでやり直す） */
+  CHATGPT_PLAN_UNAVAILABLE: "CHATGPT_PLAN_UNAVAILABLE",
   /** API キーが無効か期限切れ（401） */
   INVALID_API_KEY: "INVALID_API_KEY",
   /** API キーに権限が無い（403） */
@@ -66,6 +74,29 @@ export const COPILOT_CLI_ERROR_CODES = {
 } as const;
 
 export type CopilotCliErrorCode = keyof typeof COPILOT_CLI_ERROR_CODES;
+
+// Sign in with ChatGPT の API（/api/models/chatgpt/...）のコード。
+// 設定画面の専用 UI が直接扱うため、localizeAiError の対応表（AiErrorCode）には含めない。
+export const CHATGPT_SIGN_IN_ERROR_CODES = {
+  /** サインインが進行中（409） */
+  ALREADY_SIGNING_IN: "ALREADY_SIGNING_IN",
+  /** この実行形態では使えない（Web 版など。400） */
+  CHATGPT_UNAVAILABLE: "CHATGPT_UNAVAILABLE",
+  /** 最初の登録に要る 127.0.0.1:1455 を他のアプリが使っている（400） */
+  CHATGPT_PORT_IN_USE: "CHATGPT_PORT_IN_USE",
+  /** サインインしていない（models の ok:false） */
+  CHATGPT_NOT_SIGNED_IN: "CHATGPT_NOT_SIGNED_IN",
+  /** サインインはできたが、プラン利用の許可が付いていない */
+  CHATGPT_PLAN_USAGE_NOT_GRANTED: "CHATGPT_PLAN_USAGE_NOT_GRANTED",
+  /** このアカウントではプラン利用ができない */
+  CHATGPT_NOT_ELIGIBLE: "CHATGPT_NOT_ELIGIBLE",
+  /** 利用者がブラウザで断った */
+  CHATGPT_ACCESS_DENIED: "CHATGPT_ACCESS_DENIED",
+  /** 状態を確認できなかった（再試行を案内する） */
+  CHATGPT_CHECK_FAILED: "CHATGPT_CHECK_FAILED",
+} as const;
+
+export type ChatGptSignInErrorCode = keyof typeof CHATGPT_SIGN_IN_ERROR_CODES;
 
 /**
  * code プロパティ付き Error。

@@ -21,6 +21,7 @@ export default meta;
 const noop = () => {};
 const chooserArgs = {
   cloudProviders: CLOUD_PROVIDERS,
+  onConnectChatGpt: noop,
   onConnectCopilot: noop,
   onPickCloud: noop,
   onPickLocal: noop,

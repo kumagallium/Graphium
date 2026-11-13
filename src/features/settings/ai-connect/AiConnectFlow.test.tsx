@@ -124,6 +124,29 @@ describe("AiConnectFlow", () => {
     expect(screen.queryByText("GitHub アカウントで使う")).toBeNull();
   });
 
+  it("ChatGPT の行は、接続を始められるとき（デスクトップ）だけ出し、押すと流れを始める", () => {
+    const onConnectChatGpt = vi.fn();
+    setup({ onConnectChatGpt });
+    expect(screen.getByText("ChatGPT のプランで使う")).toBeTruthy();
+    // おすすめ表示は付けない
+    expect(screen.queryByText(/おすすめ/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
+    expect(onConnectChatGpt).toHaveBeenCalledTimes(1);
+  });
+
+  it("ブラウザ版（接続を始められない）では ChatGPT の行を出さない", () => {
+    setup();
+    expect(screen.queryByText("ChatGPT のプランで使う")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Continue with ChatGPT" })).toBeNull();
+  });
+
+  it("ChatGPT の行は GitHub の行より前（名前順）に並ぶ", () => {
+    setup({ onConnectChatGpt: vi.fn(), onConnectCopilot: vi.fn() });
+    const chatgpt = screen.getByText("ChatGPT のプランで使う");
+    const github = screen.getByText("GitHub アカウントで使う");
+    expect(chatgpt.compareDocumentPosition(github) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("一覧から選ぶと入力欄を見える位置に戻す（開いた直後は動かさない）", () => {
     const scroll = vi.fn();
     const original = HTMLElement.prototype.scrollIntoView;
