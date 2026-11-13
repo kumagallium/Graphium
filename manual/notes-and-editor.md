@@ -47,9 +47,11 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ![The ⋯ menu in a note's side peek: Markdown (.md), Copy link, Archive, and Move to trash](/screenshots/side-peek-menu.png)
 
-### Open in a separate window {#open-in-a-separate-window}
+### Open in a separate window <Badge type="tip" text="Added in v0.130.0 (2026-11-13)" /> {#open-in-a-separate-window}
 
 With two displays, press **Open in a separate window** in the side peek's header to put that note in its own window. Leave it on the other display and write there, or keep it open to read while you write in the main window.
+
+![A note in its own window. The header shows the note title, Saved, a Steps button and a ⋯ menu. The note fills the left side; the steps panel on the right shows the steps from Autolyse to Bake as a graph, with Tidy up, Parameters and Add step above it.](/screenshots/separate-window.png)
 
 - You can edit the note in the separate window. It saves on its own, like the side peek.
 - A note is editable in one place at a time. While the main window has the same note open (in the editor or a side peek), the separate window shows it as **View only — open in the main window**, and picks up each save from the main window while keeping your reading position. When the main window moves to another note, the separate window becomes editable again.
