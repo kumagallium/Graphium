@@ -30,6 +30,8 @@ export type ChatGptAuthFile = {
   account: ChatGptAccount | null;
   /** 初回の案内を見た印 */
   welcomed?: boolean;
+  /** 新規登録で発行されたが、まだサインインを完了できていないクライアント ID（次の承認で使う） */
+  pendingClientId?: string;
 };
 
 function authDir(): string {
@@ -72,6 +74,7 @@ function readFile(): ChatGptAuthFile {
       hostId: typeof parsed.hostId === "string" && parsed.hostId ? parsed.hostId : newHostId(),
       account,
       ...(parsed.welcomed ? { welcomed: true } : {}),
+      ...(typeof parsed.pendingClientId === "string" && parsed.pendingClientId ? { pendingClientId: parsed.pendingClientId } : {}),
     };
   } catch {
     const backup = `${authPath()}.broken-${Date.now()}`;

@@ -442,6 +442,88 @@ describe("chatgptPlanManager", () => {
     });
   });
 
+  describe("新規登録の途中で失敗したとき（発行された client_id を保つ）", () => {
+    const failExchange = (state: { tokenResponse: null | (() => Response) }, status: number, body: unknown) => {
+      state.tokenResponse = () => new Response(JSON.stringify(body), { status });
+    };
+    const pendingOf = () => JSON.parse(readFileSync(join(dir, "chatgpt-plan", "auth.json"), "utf-8")).pendingClientId;
+
+    it("invalid_grant は CHATGPT_NOT_ELIGIBLE・pendingClientId が残る・応答ページは失敗用の文面", async () => {
+      const { f, state } = makeFetch();
+      failExchange(state, 400, { error: "invalid_grant", error_description: "bad code" });
+      const m = mk(f);
+      const { authUrl } = await m.startSignIn();
+      const res = await callback(authUrl, { code: "abc", client_id: CLIENT_ID });
+      expect(res.status).toBe(400);
+      const html = await res.text();
+      expect(html).toContain("could not be completed");
+      expect(html).toContain("サインインを完了できませんでした");
+      expect(html).not.toContain("return to Graphium.");
+      await waitSettled(m);
+      expect(m.getStatus().signIn).toMatchObject({ state: "failed", errorCode: "CHATGPT_NOT_ELIGIBLE" });
+      expect(pendingOf()).toBe(CLIENT_ID);
+      expect(loadAuth().account).toBeNull();
+    });
+
+    it("次の startSignIn は保った ID で承認を始める（agent_name_hint なし・dynamic_agent_client でない）。成功で pendingClientId が消える", async () => {
+      const { f, state } = makeFetch();
+      failExchange(state, 400, { error: "invalid_grant" });
+      const m = mk(f);
+      const first = await m.startSignIn();
+      await callback(first.authUrl, { code: "abc", client_id: CLIENT_ID });
+      await waitSettled(m);
+
+      state.tokenResponse = null;
+      const { authUrl } = await m.startSignIn();
+      const u = new URL(authUrl);
+      expect(u.searchParams.get("client_id")).toBe(CLIENT_ID);
+      expect(u.searchParams.get("agent_name_hint")).toBeNull();
+      state.nonce = u.searchParams.get("nonce") as string;
+      await callback(authUrl, { code: "abc2", client_id: CLIENT_ID });
+      await waitSettled(m);
+      expect(m.getStatus().signIn.state).toBe("succeeded");
+      expect(loadAuth().account).toMatchObject({ clientId: CLIENT_ID, subject: "user-1", accessToken: "at-0" });
+      expect(pendingOf()).toBeUndefined();
+    });
+
+    it("再試行の callback が別の client_id を返したら拒否し、pendingClientId は保つ", async () => {
+      const { f, state } = makeFetch();
+      failExchange(state, 400, { error: "invalid_grant" });
+      const m = mk(f);
+      const first = await m.startSignIn();
+      await callback(first.authUrl, { code: "abc", client_id: CLIENT_ID });
+      await waitSettled(m);
+
+      state.tokenResponse = null;
+      const { authUrl } = await m.startSignIn();
+      state.nonce = new URL(authUrl).searchParams.get("nonce") as string;
+      await callback(authUrl, { code: "abc2", client_id: "oaiapp_other" });
+      await waitSettled(m);
+      expect(m.getStatus().signIn.state).toBe("failed");
+      expect(loadAuth().account).toBeNull();
+      expect(pendingOf()).toBe(CLIENT_ID);
+    });
+
+    it("invalid_grant 以外の交換失敗（500）は errorCode が null で、pendingClientId は保たれる", async () => {
+      const { f, state } = makeFetch();
+      failExchange(state, 500, { detail: "oops" });
+      const m = mk(f);
+      const { authUrl } = await m.startSignIn();
+      await callback(authUrl, { code: "abc", client_id: CLIENT_ID });
+      await waitSettled(m);
+      expect(m.getStatus().signIn).toMatchObject({ state: "failed", errorCode: null });
+      expect(pendingOf()).toBe(CLIENT_ID);
+    });
+
+    it("callback 前（拒否・時間切れ）の失敗では pendingClientId を作らない", async () => {
+      const m = mk(makeFetch().f);
+      const { authUrl } = await m.startSignIn();
+      await callback(authUrl, { error: "access_denied" });
+      await waitSettled(m);
+      expect(existsSync(join(dir, "chatgpt-plan", "auth.json")) ? pendingOf() : undefined).toBeUndefined();
+    });
+  });
+
   it("Web 実行の getStatus はファイルに触れず、available:false を返す", () => {
     setServerMode("vercel");
     const m = mk(makeFetch().f);

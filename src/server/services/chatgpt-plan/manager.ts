@@ -78,6 +78,12 @@ const CALLBACK_HTML =
   "<p>You can close this tab and return to Graphium.</p>" +
   "<p>このタブを閉じて、Graphium に戻ってください。</p></body></html>";
 
+// 完了できなかったとき用。成功と同じ文面を出すと、利用者には失敗したことが分からない
+const CALLBACK_FAILED_HTML =
+  '<!doctype html><html><head><meta charset="utf-8"><title>Graphium</title></head><body>' +
+  "<p>The sign-in could not be completed. Return to Graphium to see what to do next.</p>" +
+  "<p>サインインを完了できませんでした。Graphium に戻って、次にできることを確かめてください。</p></body></html>";
+
 function sendPage(res: ServerResponse, status: number): void {
   res.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
@@ -86,7 +92,7 @@ function sendPage(res: ServerResponse, status: number): void {
     "X-Content-Type-Options": "nosniff",
     Connection: "close",
   });
-  res.end(CALLBACK_HTML);
+  res.end(status === 200 ? CALLBACK_HTML : CALLBACK_FAILED_HTML);
 }
 
 function sendPlain(res: ServerResponse, status: number, text: string): void {
@@ -189,7 +195,11 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
       throw err;
     }
     const saved = auth.account;
-    const registering = !saved;
+    // 前回の新規登録で発行されたが、トークン交換に失敗して使えていないクライアント ID。
+    // OpenAI の手順は「失敗しても発行済みの ID は保ち、次の承認で使う」（毎回登録し直さない）
+    const pending = saved ? null : (auth.pendingClientId ?? null);
+    const registering = !saved && !pending;
+    const knownClientId = saved?.clientId ?? pending;
     const { verifier, challenge } = generatePkce();
     const state = randomUrlToken(24);
     const nonce = randomUrlToken(24);
@@ -258,7 +268,7 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
     // callback 受信後の処理（検証 → token 交換 → ID トークン検証 → 保存）。
     // 各 await のあとで、この試行がまだ生きているか確かめる（取り消し後に保存しない）
     const complete = async (r: Extract<CallbackResult, { kind: "code" }>): Promise<void> => {
-      const clientId = registering ? (r.clientId as string) : (saved as ChatGptAccount).clientId;
+      const clientId = registering ? (r.clientId as string) : (knownClientId as string);
       const tokens = await exchangeCode(
         deps.fetch,
         { clientId, code: r.code, codeVerifier: verifier, redirectUri },
@@ -281,7 +291,7 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
       }
       if (finished) return discard(tokens.refreshToken, clientId);
       const subject = claims.sub as string;
-      if (!registering && subject !== (saved as ChatGptAccount).subject) {
+      if (saved && subject !== saved.subject) {
         // 別のアカウントで承認された。新しく受け取ったトークンは使わず失効する
         await discard(tokens.refreshToken, clientId);
         const cur = loadAuth().account;
@@ -290,11 +300,11 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
           throw new OAuthError("You signed in with a different ChatGPT account. To switch accounts, sign out first.");
         }
         // 保存済みがサインアウト後なら、登録を捨てる。次のサインインは新規登録（dynamic_agent_client）で始まる
-        updateAuth((c) => (c.account?.subject === (saved as ChatGptAccount).subject ? { ...c, account: null } : c));
+        updateAuth((c) => (c.account?.subject === saved.subject ? { ...c, account: null } : c));
         throw new OAuthError("You signed in with a different ChatGPT account than before. Try again to connect this account.");
       }
       const scopes = tokens.scopes ?? (r.scope ? r.scope.split(/\s+/).filter(Boolean) : []);
-      updateAuth((cur) => ({
+      updateAuth(({ pendingClientId: _used, ...cur }) => ({
         ...cur,
         account: {
           email: typeof claims.email === "string" ? claims.email : (saved?.email ?? null),
@@ -324,7 +334,7 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
       const r = parseCallback(url.searchParams, {
         expectedState: state,
         registering,
-        savedClientId: saved?.clientId ?? null,
+        savedClientId: knownClientId,
       });
       // state が違う要求は無関係なものとして断り、本物の callback を待ち続ける
       if (r.kind === "state-mismatch") {
@@ -348,8 +358,25 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
         // 取り消し済みなら end() は何もしない（状態を succeeded で上書きしない）
         end({ state: "succeeded", error: null, errorCode: null });
       } catch (err) {
+        // 新規登録で ID は発行されたのに完了できなかった: ID を保ち、次の承認で使う
+        if (registering && r.clientId) {
+          const issued = r.clientId;
+          try {
+            updateAuth((c) => (c.account ? c : { ...c, pendingClientId: issued }));
+          } catch {
+            // 保存できなくても、失敗の表示は続ける
+          }
+        }
         sendPage(res, 400);
-        fail(err instanceof OAuthError || err instanceof ChatGptSignInError ? err.message : "Sign-in could not be completed.");
+        // 承認は通ったのに、コードの交換を invalid_grant で断られた。実アカウントで確かめた限り、
+        // 対象外のワークスペース・プラン（組織のワークスペース、無料プラン）でこうなる。
+        // OpenAI は理由を返さないので、「このアカウントでは使えないことがある」と案内する
+        // この経路で oauthCode が付くのはコードの交換だけ（ID トークンの検証失敗などには付かない）
+        const refused = err instanceof OAuthError && err.oauthCode === "invalid_grant";
+        fail(
+          err instanceof OAuthError || err instanceof ChatGptSignInError ? err.message : "Sign-in could not be completed.",
+          refused ? "CHATGPT_NOT_ELIGIBLE" : null,
+        );
       }
     }
 
@@ -359,7 +386,7 @@ export function createChatGptPlanManager(overrides: Partial<ChatGptPlanManagerDe
     timer.unref?.();
 
     const authUrl = buildAuthorizeUrl({
-      clientId: registering ? DYNAMIC_CLIENT_ID : (saved as ChatGptAccount).clientId,
+      clientId: registering ? DYNAMIC_CLIENT_ID : (knownClientId as string),
       registering,
       hostId: auth.hostId,
       redirectUri,

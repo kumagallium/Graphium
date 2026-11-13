@@ -4761,7 +4761,14 @@ from OpenAI's published documentation (`services/chatgpt-plan/`, routes under
   `node:crypto` against OpenAI's JWKS (signature, `iss`, `aud`, `exp`,
   `nonce`). Plan usage is on only when the granted scopes include
   `chatgpt.tokens.use.direct`. `GET status` reports the sign-in state and the
-  account; it never returns tokens or the authorize URL.
+  account; it never returns tokens or the authorize URL. If a first sign-in
+  gets an issued client ID but cannot finish, the ID is kept
+  (`pendingClientId`) and the next attempt authorizes with it instead of
+  registering again. A code exchange refused with `invalid_grant` is reported
+  as `CHATGPT_NOT_ELIGIBLE`: OpenAI gives no reason, and a workspace or plan
+  outside personal Plus / Pro is what produced it when checked against a real
+  account (2026-11-13). `GRAPHIUM_CHATGPT_DEBUG=1` logs the body of a failed
+  token response and the names and lengths of the fields sent, never values.
 - **Storage** (`store.ts`): `<dataDir>/chatgpt-plan/auth.json`, written
   atomically with mode `0600`. It holds the host ID, the issued client ID,
   the account subject and email, and the tokens. Signing out revokes the

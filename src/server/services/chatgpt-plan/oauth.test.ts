@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createHash, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
 import {
   buildAuthorizeUrl,
@@ -183,6 +183,44 @@ describe("token エンドポイント", () => {
     await revokeToken(f, { revocationEndpoint: "https://r", token: "t", clientId: "c" });
     expect(signals).toHaveLength(4);
     expect(signals.every((x) => x instanceof AbortSignal)).toBe(true);
+  });
+
+  it("失敗応答の error_description / error.message / detail をメッセージに含める", async () => {
+    const mk = (body: unknown) => (async () => jsonRes(400, body)) as unknown as typeof fetch;
+    const args = { clientId: "c", code: "c", codeVerifier: "v", redirectUri: "r" };
+    const e1 = await exchangeCode(mk({ error: "invalid_grant", error_description: "code was already used" }), args).catch((e) => e);
+    expect(e1.message).toContain("invalid_grant");
+    expect(e1.message).toContain("code was already used");
+    expect(e1.oauthCode).toBe("invalid_grant");
+    const e2 = await exchangeCode(mk({ error: { code: "x", message: "nested message" } }), args).catch((e) => e);
+    expect(e2.message).toContain("nested message");
+    const e3 = await refreshTokens(mk({ detail: "plain detail" }), { clientId: "c", refreshToken: "r" }).catch((e) => e);
+    expect(e3.message).toContain("plain detail");
+  });
+
+  it("GRAPHIUM_CHATGPT_DEBUG=1 のときだけ warn を出し、値は出さず長さだけを出す", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = (async () => jsonRes(400, { error: "invalid_grant" })) as unknown as typeof fetch;
+    const args = { clientId: "oaiapp_1", code: "SECRETCODE123", codeVerifier: "SECRETVERIFIER456", redirectUri: "http://127.0.0.1:1455/auth/callback" };
+    const prev = process.env.GRAPHIUM_CHATGPT_DEBUG;
+    try {
+      delete process.env.GRAPHIUM_CHATGPT_DEBUG;
+      await exchangeCode(f, args).catch(() => undefined);
+      expect(warn).not.toHaveBeenCalled();
+      process.env.GRAPHIUM_CHATGPT_DEBUG = "1";
+      await exchangeCode(f, args).catch(() => undefined);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const out = String(warn.mock.calls[0].join(" "));
+      expect(out).toContain("code(13)");
+      expect(out).toContain("code_verifier(17)");
+      expect(out).not.toContain("SECRETCODE123");
+      expect(out).not.toContain("SECRETVERIFIER456");
+      expect(out).toContain("invalid_grant");
+    } finally {
+      if (prev === undefined) delete process.env.GRAPHIUM_CHATGPT_DEBUG;
+      else process.env.GRAPHIUM_CHATGPT_DEBUG = prev;
+      warn.mockRestore();
+    }
   });
 
   it("revokeToken は 200 だけ成功", async () => {

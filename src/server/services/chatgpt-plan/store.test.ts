@@ -78,6 +78,25 @@ describe("chatgpt-plan store", () => {
     expect(JSON.parse(readFileSync(f, "utf-8")).hostId).toBe("urn:uuid:x");
   });
 
+  it("pendingClientId は保存・読み込みで保たれ、account があっても壊さない", () => {
+    updateAuth((c) => ({ ...c, pendingClientId: "oaiapp_pending" }));
+    expect(loadAuth().pendingClientId).toBe("oaiapp_pending");
+    expect(loadAuth().account).toBeNull();
+    updateAuth((c) => ({ ...c, account }));
+    const a = loadAuth();
+    expect(a.pendingClientId).toBe("oaiapp_pending");
+    expect(a.account).toMatchObject({ subject: "sub-1", clientId: "oaiapp_1" });
+    updateAuth(({ pendingClientId: _p, ...rest }) => rest);
+    expect(loadAuth().pendingClientId).toBeUndefined();
+    expect(loadAuth().account?.subject).toBe("sub-1");
+  });
+
+  it("pendingClientId が文字列でなければ無視する", () => {
+    mkdirSync(join(dir, "chatgpt-plan"), { recursive: true });
+    writeFileSync(join(dir, "chatgpt-plan", "auth.json"), JSON.stringify({ hostId: "urn:uuid:x", account: null, pendingClientId: 5 }));
+    expect(loadAuth().pendingClientId).toBeUndefined();
+  });
+
   it("withoutTokens は識別子だけを残す", () => {
     const w = withoutTokens(account);
     expect(w).toMatchObject({ email: "a@example.com", subject: "sub-1", clientId: "oaiapp_1" });

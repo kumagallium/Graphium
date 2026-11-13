@@ -176,6 +176,14 @@ async function postForm(
     body: new URLSearchParams(params).toString(),
   });
   const text = await res.text().catch(() => "");
+  // 切り分け用（GRAPHIUM_CHATGPT_DEBUG=1 のときだけ）。失敗応答の本文と、送った項目の名前・長さだけを出す。
+  // 値（code・verifier・トークン）は出さない
+  if (!res.ok && process.env.GRAPHIUM_CHATGPT_DEBUG === "1") {
+    const shape = Object.entries(params)
+      .map(([k, v]) => `${k}(${v.length}${/\s/.test(v) ? ",has-space" : ""})`)
+      .join(" ");
+    console.warn(`[chatgpt-plan] POST ${new URL(url).pathname} -> ${res.status} body=${text.slice(0, 600)} sent=${shape}`);
+  }
   let body: Record<string, unknown> | null = null;
   try {
     const parsed = text ? JSON.parse(text) : null;
@@ -184,6 +192,19 @@ async function postForm(
     body = null;
   }
   return { status: res.status, ok: res.ok, body };
+}
+
+/** 失敗応答の説明文（error_description など）。原因の切り分け用。失敗応答にトークンは含まれない */
+function errorDetailOf(body: Record<string, unknown> | null): string {
+  if (!body) return "";
+  const e = body.error;
+  const d =
+    (typeof body.error_description === "string" && body.error_description) ||
+    (e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string"
+      ? (e as { message: string }).message
+      : "") ||
+    (typeof body.detail === "string" ? body.detail : "");
+  return d ? ` ${d.slice(0, 300)}` : "";
 }
 
 function errorCodeOf(body: Record<string, unknown> | null): string | null {
@@ -228,7 +249,7 @@ export async function exchangeCode(
   });
   if (!r.ok) {
     const code = errorCodeOf(r.body);
-    throw new OAuthError(`Token exchange failed (${r.status}${code ? `, ${code}` : ""}).`, code, r.status);
+    throw new OAuthError(`Token exchange failed (${r.status}${code ? `, ${code}` : ""}).${errorDetailOf(r.body)}`, code, r.status);
   }
   return parseTokenResponse(r.body, now);
 }
@@ -247,7 +268,7 @@ export async function refreshTokens(
   });
   if (!r.ok) {
     const code = errorCodeOf(r.body);
-    throw new OAuthError(`Token refresh failed (${r.status}${code ? `, ${code}` : ""}).`, code, r.status);
+    throw new OAuthError(`Token refresh failed (${r.status}${code ? `, ${code}` : ""}).${errorDetailOf(r.body)}`, code, r.status);
   }
   return parseTokenResponse(r.body, now);
 }
