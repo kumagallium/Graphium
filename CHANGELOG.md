@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.130.1](https://github.com/kumagallium/Graphium/compare/v0.130.0...v0.130.1) - 2026-11-13
+
+- [docs] Manual: a topic page screenshot, and roadmap rows for v0.128.0 to v0.130.0 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1659
+- [docs] Manual: figure and v0.130.0 badge for "Open in a separate window" (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1662
+
 ## [v0.130.0](https://github.com/kumagallium/Graphium/compare/v0.129.19...v0.130.0) - 2026-11-13
 
 - [feat] Open a note from the side peek in a separate window (editable, with the steps panel) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1654
