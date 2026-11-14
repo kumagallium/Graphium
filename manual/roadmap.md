@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 10 more in November
+::: details 11 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -370,6 +370,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.128.0** | 2026-11-09 | [Seeing what the AI read and used](/ai-chat-and-ask#seeing-what-the-ai-read-and-used) — on a wide window the global graph sits beside the chat. For each answer, the pages the AI read and the pages it cited are colored apart, and the lines between the pages it touched stay green. The scope you chose shows in the graph too, and a page read outside the folder you asked in gets a red dashed ring <!--chip: What the AI read and used--> |
 | **v0.129.0** | 2026-11-10 | [Seeing a note inside the conversation](/mcp-server#note-preview-in-the-conversation) — in clients that support MCP Apps (such as Claude Desktop), a note can be shown inside the conversation as a read-only view instead of text, with step cards and PROV labels drawn as in the app. A note an outside AI has just saved appears in the same view, so you can check what was written without switching to Graphium |
 | **v0.130.0** | 2026-11-13 | [Open a note in a separate window](/notes-and-editor#open-in-a-separate-window) — **Open in a separate window** in the side peek header moves that note to its own window. With two screens you can put it on the other one and write there, or read it while writing in the main window. The note stays editable in the separate window, and the steps panel opens there too <!--chip: Open in a separate window--> |
+| **v0.133.0** | 2026-11-14 | [Each topic sentence keeps the passage it came from](/knowledge-layer#sources-behind-sentences) — when the AI rewrites a Topic or a Q&A page from a source, it copies, inside each citation, the passage of the source the sentence restates. Graphium checks it against the source text before saving and drops any it can't find, with no AI involved. Press the `@source` after a sentence and a PDF opens at that passage, marked. A new source no longer silently removes another source's sentences, and References marks a source the text no longer cites <!--chip: The passage behind each sentence--> |
 
 :::
 
