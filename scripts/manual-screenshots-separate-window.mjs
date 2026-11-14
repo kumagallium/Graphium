@@ -41,7 +41,7 @@ const context = await browser.newContext({
 await context.addInitScript(() => {
   try {
     localStorage.setItem("graphium_locale", "en");
-    localStorage.setItem("graphium:viewer-window:panel-open", "1");
+    localStorage.setItem("graphium:viewer-window:panel-tab", "prov");
   } catch {
     // 保存できなくても撮影は続ける
   }
@@ -62,7 +62,7 @@ await viewer.locator(".bn-editor").first().waitFor({ state: "visible" });
 // ステップのパネル（覚えた開閉が効かなかったときは押して開く）
 const panel = viewer.locator("[data-standalone-panel]");
 if ((await panel.count()) === 0) {
-  await viewer.locator("[data-standalone-panel-toggle]").click();
+  await viewer.locator('[data-standalone-panel-toggle="prov"]').click();
 }
 await panel.waitFor({ state: "visible" });
 await viewer.locator("[data-standalone-panel] .react-flow__node").first().waitFor({ state: "visible", timeout: 30000 });

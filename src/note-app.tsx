@@ -8,8 +8,9 @@ import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, us
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
-import { onOpenInMainRequest } from "./lib/viewer-window";
+import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
 import { installViewerMainBridge } from "./features/viewer-window/main-bridge";
+import type { ViewerMemoCreateRequest } from "./lib/viewer-window";
 import { relaunchApp } from "./lib/relaunch";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar, getSidecarState, subscribeSidecarState } from "./lib/sidecar";
@@ -10550,10 +10551,39 @@ export function NoteApp() {
   // 後処理（索引と doc キャッシュの更新・改名の伝播）に流す
   const handleViewerSavedRef = useRef(handleListPeekSaved);
   handleViewerSavedRef.current = handleListPeekSaved;
+  // グラフとメモのパネルの依頼（別ウィンドウは全ノートを読まず、メモの索引も書かない）も同じ橋で受ける。
+  // 実処理は最新のものを ref 経由で呼ぶ（橋は 1 度だけ掛ける）
+  const viewerGraphRef = useRef(fm.computeNoteGraph);
+  viewerGraphRef.current = fm.computeNoteGraph;
+  const viewerCreateMemoRef = useRef<(req: ViewerMemoCreateRequest) => Promise<boolean>>(async () => false);
+  viewerCreateMemoRef.current = (req) =>
+    // onCreateNoteMemo（ノートのメモの新規作成）と同じ形。接頭辞は外して保存する
+    saveMemo(
+      req.text,
+      undefined,
+      {
+        fileId: stripDocKeyPrefix(req.noteId),
+        title: req.title,
+        ...(req.block ? { blockId: req.block.blockId, blockText: req.block.blockText } : {}),
+      },
+      req.folder,
+    );
+  const viewerDeleteMemoRef = useRef(capture.handleDeleteCapture);
+  viewerDeleteMemoRef.current = capture.handleDeleteCapture;
   useEffect(
-    () => installViewerMainBridge({ onSaved: (id, doc) => handleViewerSavedRef.current(id, doc) }),
+    () =>
+      installViewerMainBridge({
+        onSaved: (id, doc) => handleViewerSavedRef.current(id, doc),
+        getNoteGraph: (id) => viewerGraphRef.current(id),
+        createMemo: (req) => viewerCreateMemoRef.current(req),
+        deleteMemo: (memoId) => viewerDeleteMemoRef.current(memoId),
+      }),
     [],
   );
+  // メモの索引が変わったら、別ウィンドウのメモのパネルへ知らせる（開いていなければ何も起きない）
+  useEffect(() => {
+    notifyViewerCapturesChanged();
+  }, [capture.captureIndex]);
 
   // 会議の録音: ブロックを経由せずに始まった録音（開始ダイアログ経由）の文字起こしブロックを、
   // いまのノートへ差し込む。実際の挿入は NoteEditorInner が登録した口（insertMeetingBlockRef）が行う。
