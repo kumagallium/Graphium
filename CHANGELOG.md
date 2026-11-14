@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.134.0](https://github.com/kumagallium/Graphium/compare/v0.133.0...v0.134.0) - 2026-11-14
+
+- [docs] Manual: v0.133.0 badges and roadmap row for source passages behind topic sentences by @kumagallium in https://github.com/kumagallium/Graphium/pull/1676
+- [feat] MCP: turn a material or note into a PROV procedure note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1680
+- [feat] MCP: extract topics from a source with the assistant's own model by @kumagallium in https://github.com/kumagallium/Graphium/pull/1681
+- [feat] MCP: step flows, lineage and the knowledge graph inside the conversation, lit by what the assistant touches by @kumagallium in https://github.com/kumagallium/Graphium/pull/1682
+- fix(deps): bundled Node.js v22.23.5, hono 4.13.18 and @hono/node-server 2.1.8 (security) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1660
+- fix(security): resolve CodeQL alerts in HTML sanitizing and text extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/1679
+
 ## [v0.133.0](https://github.com/kumagallium/Graphium/compare/v0.132.2...v0.133.0) - 2026-11-14
 
 - feat(topics): keep another source's sentences on revision, and mark sources the body no longer cites by @kumagallium in https://github.com/kumagallium/Graphium/pull/1672
