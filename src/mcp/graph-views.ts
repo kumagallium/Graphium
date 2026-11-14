@@ -14,6 +14,7 @@ import { generateProvDocument } from "../features/prov-generator/generator";
 import { pageToGeneratorInput } from "../features/prov-generator/page-input";
 import { provDocToFlowGraph, type FlowGraphData } from "../features/network-graph/activity-graph-adapter";
 import { buildGlobalGraph } from "../features/network-graph/graph-builder";
+import { kindOf, type GraphKind } from "../features/network-graph/graph-kind";
 import { collectFolderScopeIds, normalizeFolderScope } from "../features/note-context/folder-scope";
 import type { MediaIndex } from "../features/asset-browser/media-index";
 import type { LineageResult } from "./lineage";
@@ -54,6 +55,8 @@ export type GraphNode = {
   out?: boolean;
   /** 来歴の段（上流は負、下流は正、起点 0）。来歴の配置に使う */
   rank?: number;
+  /** アプリの全体グラフの種類（knowledge / lineage）。色・形・大きさをアプリと同じ関数で決めるのに使う */
+  graphKind?: GraphKind;
 };
 
 export type GraphEdgeKind = "used" | "generates" | "order" | "derived" | "reference" | "prov" | "knowledge" | "connection";
@@ -146,6 +149,13 @@ export function buildFlowPayload(doc: GraphiumDocument): GraphPayload | null {
 
 // ── lineage ──────────────────────────────────────────────────
 
+/** 来歴・全体グラフのノードの種類 → アプリの全体グラフの種類 */
+export function graphKindOf(kind: GraphNodeKind): GraphKind {
+  if (kind === "source") return "external";
+  if (kind === "claim" || kind === "topic" || kind === "answer" || kind === "atom" || kind === "summary") return kind;
+  return "note";
+}
+
 function kindOfNoteId(id: string): GraphNodeKind {
   if (isExternalSourceId(id)) return "source";
   const entry = allEntries().find((e) => e.noteId === id);
@@ -161,15 +171,18 @@ function labelOf(id: string, fallback?: string): string {
 
 export function buildLineagePayload(result: LineageResult, startTitle: string): GraphPayload {
   const nodes = new Map<string, GraphNode>();
-  nodes.set(result.noteId, { id: result.noteId, label: startTitle, kind: kindOfNoteId(result.noteId), focus: true, rank: 0 });
+  const startKind = kindOfNoteId(result.noteId);
+  nodes.set(result.noteId, { id: result.noteId, label: startTitle, kind: startKind, graphKind: graphKindOf(startKind), focus: true, rank: 0 });
   const edges = new Map<string, GraphEdge>();
   const add = (list: LineageResult["upstream"], sign: -1 | 1 | 0) => {
     for (const n of list) {
       if (!nodes.has(n.noteId)) {
+        const kind = kindOfNoteId(n.noteId);
         nodes.set(n.noteId, {
           id: n.noteId,
           label: labelOf(n.noteId, n.title),
-          kind: kindOfNoteId(n.noteId),
+          kind,
+          graphKind: graphKindOf(kind),
           rank: sign === 0 ? 0 : sign * n.depth,
         });
       }
@@ -235,7 +248,7 @@ export function buildKnowledgePayload(
     .filter((n) => n.external !== "media")
     .map((n) => {
       const out = scope ? !(scope.has(n.id) || sourceInScope.has(n.id)) : false;
-      return { id: n.id, label: n.title, kind: toKind(n), ...(out ? { out: true } : {}) };
+      return { id: n.id, label: n.title, kind: toKind(n), graphKind: kindOf(n), ...(out ? { out: true } : {}) };
     });
   const total = nodes.length;
   const maxNodes = options.maxNodes ?? MAX_KNOWLEDGE_NODES;

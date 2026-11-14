@@ -3994,7 +3994,7 @@ Tools:
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 | `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `_meta["graphium/preview"]` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
-| `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps). Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
+| `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps), in the process graph's colours. Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
 | `show_knowledge_graph` | draw the global graph (`buildGlobalGraph`, the app's own builder, without media leaves), `folder` fading what is outside it (`collectFolderScopeIds`), at most 1,200 nodes (outside-the-folder nodes dropped first, then the least connected). While it is open it highlights what the client touches through this MCP (see below) |
 | `graph_activity` | app-only (`_meta.ui.visibility: ["app"]`, never shown to the model): the graph view polls it for the activity events after a cursor |
@@ -4003,17 +4003,28 @@ Tools:
 `ui://graphium/graph.html` (`src/mcp/apps/graph-view.ts`, built by
 `scripts/build-mcp-app-html.mjs` with cytoscape and cytoscape-fcose inlined, empty CSP like
 the note preview), draws `_meta["graphium/graph"]` — a `GraphPayload` from
-`src/mcp/graph-views.ts` — for `show_steps` (breadthfirst, left to right),
-`show_lineage` (preset columns by depth) and `show_knowledge_graph` (fcose). The text
-result is a one-line summary. For the knowledge graph the view polls `graph_activity`
-every 2.5 s (8 s when hidden) and marks what the client touched in this MCP process:
-`src/mcp/activity.ts` keeps an in-memory log (2,000 events, nothing written to disk) fed
-by `get_note` / `get_topic` / `show_note` / `get_source_text` (read), `search_notes` hits
-(seen), `trace_lineage` / `show_lineage` (walked edges), and `create_note` /
-`submit_procedure` / `submit_topic_page` (written). The host starts one MCP process per
-connection and routes the view's calls to it, so the log is shared without a file. When
-the host lists `pip` or `fullscreen` in `availableDisplayModes`, the view offers buttons
-for them (`requestDisplayMode`), so the graph can float beside the chat.
+`src/mcp/graph-views.ts` — for `show_steps`, `show_lineage` and `show_knowledge_graph`. The
+text result is a one-line summary. The look is the app's, from shared definitions so the
+two cannot drift: the knowledge graph uses the app's global-graph stylesheet
+(`src/features/network-graph/global-graph-stylesheet.ts`, split out of
+`global-graph-view.tsx` and used by both) in the simple mode the chat-beside graph uses,
+with fcose as in the app's standard layout and the same zoom-dependent sizing
+(`applyZoomStyle`); the step flow uses the process graph's colours (`flow-palette.ts`, with
+the `--color-label-*-bg` values from `app.css`) and ranks nodes by the longest path along
+the edges (`src/mcp/apps/flow-layout.ts`, inputs and tools just before their first step);
+the lineage uses the global graph's kind colours and shapes in columns by depth. For the
+knowledge graph the view polls `graph_activity` every 2.5 s (8 s when hidden) and marks
+what the client touched in this MCP process with the chat-beside graph's rules: read pages
+`ai-read`, written pages `ai-used`, walked edges `ai-walked`, edges between touched pages
+and their relays `ai-link` (`evidence-links.ts`), untouched titles hidden (`label-muted`),
+and a one-off pulse (`graph-firing.ts`) when a page is first touched. `src/mcp/activity.ts`
+keeps an in-memory log (2,000 events, nothing written to disk) fed by `get_note` /
+`get_topic` / `show_note` / `get_source_text` (read), `trace_lineage` / `show_lineage`
+(walked edges), and `create_note` / `submit_procedure` / `submit_topic_page` (written);
+`search_notes` hits are logged as `seen` but not marked, as in the app. The host starts one
+MCP process per connection and routes the view's calls to it, so the log is shared without
+a file. When the host lists `pip` or `fullscreen` in `availableDisplayModes`, the view
+offers buttons for them (`requestDisplayMode`), so the graph can float beside the chat.
 
 **Previews inside the conversation (MCP Apps).** `src/mcp/app-tools.ts` registers
 one UI resource, `ui://graphium/note-preview.html` (MIME `text/html;profile=mcp-app`,
