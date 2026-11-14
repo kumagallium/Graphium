@@ -96,7 +96,7 @@ A knowledge page opens like any other note, and you can edit it like one. What m
 - **Epistemic status** (banner) — how firmly the statement is grounded, from speculation to established
 - **Derived from** (panel under **References**) — the page's provenance: source **Notes**, **Source claims** (for insights), and **Related insights**
 
-The body ends with a **References** section linking back to sources. Keep in mind that **Regenerate** rewrites the body from the sources — so make lasting corrections in the source notes where you can, and treat hand-edits to knowledge pages as provisional.
+The body ends with a **References** section linking back to sources. On a Topic, a Q&A page or a Summary it lists every source the page was built from. The ones the current text cites come first; a source that no sentence cites any more (for example, you re-imported it and it no longer says what the page quoted) stays in the list — it was read — but moves to the end with the note *read, but not cited in the current text*. When a new source disagrees with a sentence from another source, the old sentence is not dropped: both stay with their own sources, and the disagreement is listed under *Disagreements & open questions*. If the AI drops another source's sentences anyway, Graphium notices from the citations and asks it once more to keep them. Keep in mind that **Regenerate** rewrites the body from the sources — so make lasting corrections in the source notes where you can, and treat hand-edits to knowledge pages as provisional.
 
 ![A knowledge page with the banner showing Check world, Check sources and Regenerate, and the Derived from panel under References](/screenshots/knowledge-page-banner.png)
 

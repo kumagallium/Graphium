@@ -479,3 +479,13 @@ describe("Topic typer（既存トピックの種類付け）", () => {
     expect(prompt).toContain('"types"');
   });
 });
+
+describe("buildSourceTopicReviserUserMessage: 消えた文を残させる指示", () => {
+  it("keepSentences があれば、残す文と併記の指示を足す", async () => {
+    const { buildSourceTopicReviserUserMessage } = await import("./wiki-topic-writer");
+    const msg = buildSourceTopicReviserUserMessage("パン", "- a [[source:old]]", { id: "new", title: "t", text: "x" }, false, ["- a [[source:old]]"]);
+    expect(msg).toContain("A new source never removes what a different source says.");
+    expect(msg).toContain("- - a [[source:old]]");
+    expect(buildSourceTopicReviserUserMessage("パン", "", { id: "new", title: "t", text: "x" })).not.toContain("never removes");
+  });
+});
