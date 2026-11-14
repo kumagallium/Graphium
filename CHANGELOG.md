@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.132.1](https://github.com/kumagallium/Graphium/compare/v0.132.0...v0.132.1) - 2026-11-14
+
+- feat(source-check): open a PDF source at the quoted sentence by @kumagallium in https://github.com/kumagallium/Graphium/pull/1667
+- [docs] Manual: v0.132.0 badge for the separate window's Graph and Memos panels (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1669
+
 ## [v0.132.0](https://github.com/kumagallium/Graphium/compare/v0.131.0...v0.132.0) - 2026-11-14
 
 - [feat] Separate window: Graph and Memos panels, with the same icon rail as the main right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1664
