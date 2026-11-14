@@ -708,6 +708,8 @@ app.post("/revise-topic", async (c) => {
     /** このページが回答ページ（answer）か。true のとき「問いに答え続ける」規則を追加する */
     isAnswer?: boolean;
     knowledgeSchema?: string;
+    /** 前の試行で消えた、今回読んでいない資料の文（残させる。クライアントの書き直しの 2 回目） */
+    keepSentences?: string[];
   }>();
 
   if (!body.title || !body.source || typeof body.source.text !== "string" || isBlankText(body.source.text)) {
@@ -726,7 +728,10 @@ app.post("/revise-topic", async (c) => {
 
   let systemPrompt = buildSourceTopicReviserSystemPrompt(body.language || "en", body.isAnswer);
   systemPrompt += buildKnowledgeSchemaPromptSection(knowledgeSchema);
-  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited);
+  const keepSentences = Array.isArray(body.keepSentences)
+    ? body.keepSentences.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    : undefined;
+  const userMessage = buildSourceTopicReviserUserMessage(body.title, body.currentBody || "", body.source, body.previouslyCited, keepSentences);
 
   try {
     const model = await createModel(modelConfig);

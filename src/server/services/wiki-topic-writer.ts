@@ -369,6 +369,8 @@ export function buildSourceTopicReviserUserMessage(
   currentBody: string,
   newSource: { id: string; title: string; text: string },
   previouslyCited?: boolean,
+  /** 前の試行で、今回読んでいない資料の文がすべて消えた。その文（前の本文の行そのまま） */
+  keepSentences?: string[],
 ): string {
   const currentSection = currentBody
     ? `## Current body\n\n${currentBody}`
@@ -383,6 +385,16 @@ export function buildSourceTopicReviserUserMessage(
 This source was already cited on this page as [[source:${newSource.id}]] from an earlier version. Re-check every sentence that cites [[source:${newSource.id}]] against the new text below: keep it only if the new text still supports it, rewrite it if the new text states it differently, and remove it if the new text no longer says it.`
     : "";
 
+  // 前の試行が、今回読んでいない資料を引く文を丸ごと消した（書き直しの 2 回目）。新しい資料は
+  // 別の資料が言ったことを消せない — 食い違うなら両方を残し、食い違いの節に書く
+  const keepNote = keepSentences && keepSentences.length > 0
+    ? `
+
+A new source never removes what a different source says. Your previous attempt dropped every sentence that cites the sources below, although this revision does not re-read them. Keep each of these sentences with its citation (you may shorten its wording, never its citation). If the new source states something different for the same point, add the new source's statement as a separate sentence and list the disagreement under 食い違い・未解決 / Disagreements & open questions:
+
+${keepSentences.map((s) => `- ${s}`).join("\n")}`
+    : "";
+
   return `## Topic title: "${title}"
 
 ${currentSection}
@@ -393,7 +405,7 @@ ${currentSection}
 
 ${newSource.text}
 
-引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。${recheckNote}`;
+引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。${recheckNote}${keepNote}`;
 }
 
 /**

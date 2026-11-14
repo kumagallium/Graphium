@@ -2923,15 +2923,69 @@ export function stripEmptyMarkdownSections(markdown: string): string {
 }
 
 /**
+ * 本文（[[source:<id>]] 引用つきの markdown）が今引用している資料 id の集合。
+ * 引用の印が 1 つも無い本文（回答ページの未解決の [Source: "題"] だけ等）は null —
+ * 「どれも引用していない」と言い切れないので、References の注記を付けない側に倒す。
+ */
+export function citedSourceIds(markdown: string): Set<string> | null {
+  const ids = new Set<string>();
+  for (const m of markdown.matchAll(SOURCE_CITATION_RE)) ids.add(m[1].trim());
+  return ids.size > 0 ? ids : null;
+}
+
+/**
+ * 改訂の前後で、今回読んでいない資料（readSourceId 以外）のうち、前は引用していたのに
+ * 新しい本文では 1 か所も引用していないもの。あれば、その資料を引いていた前の本文の行も返す
+ * （書き直しで残させる文）。新しい資料は別の資料が言ったことを消せない — 食い違いは併記する
+ * 決まり（SOURCE_TOPIC_SENTENCE_RULES）を、指示だけでなく機械的に守らせるための検出。
+ */
+export function droppedOtherSourceCitations(
+  previousBody: string,
+  nextBody: string,
+  readSourceId: string,
+): { sourceIds: string[]; lines: string[] } {
+  const before = citedSourceIds(previousBody);
+  if (!before) return { sourceIds: [], lines: [] };
+  const after = citedSourceIds(nextBody) ?? new Set<string>();
+  const dropped = [...before].filter((id) => id !== readSourceId && !after.has(id));
+  if (dropped.length === 0) return { sourceIds: [], lines: [] };
+  const droppedSet = new Set(dropped);
+  const lines = previousBody
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^#{1,6}\s/.test(l) && [...l.matchAll(SOURCE_CITATION_RE)].some((m) => droppedSet.has(m[1].trim())));
+  return { sourceIds: dropped, lines };
+}
+
+/** References の「今の本文では引用していない」注記（ページの言語。無い言語は英語） */
+const UNCITED_REFERENCE_NOTE: Record<string, string> = {
+  ja: "（読んだ資料。今の本文では引用していない）",
+  en: " (read, but not cited in the current text)",
+  ko: " (읽었지만 현재 본문에서는 인용하지 않음)",
+};
+
+/**
  * 新形式トピック末尾の References ブロックを構築する。資料 1 件につき 1 行、
  * buildTopicReferenceBlocks（旧形式）と同じ見た目の @リンクにする。
  * 資料は必ずしも AI 生成 wiki ページではない（通常ノート・pdf・url 等）ため、
  * buildTopicReferenceBlocks と違い 🤖 プレフィックスは固定しない。
+ *
+ * References は「このページを作るのに読んだ資料」すべて（derivedFromNotes と同じ）。
+ * 改訂で、ある資料を引く文がすべて消えることがある（取り込み直した資料がもう言っていない等）。
+ * その資料も読んだ事実は残し（PROV の記録と揃える）、本文で引用中の資料を先に並べ、
+ * 引用していない資料には注記を付けて後ろに回す。一覧が本文より多くを裏づけて見えないように。
  */
-function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksResult {
+function buildSourceReferenceBlocks(
+  sources: TopicSourceRef[],
+  cited?: Set<string> | null,
+  language?: string,
+): RelationBlocksResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
   if (sources.length === 0) return { blocks, knowledgeLinks };
+  const isCited = (id: string) => !cited || cited.has(id);
+  const ordered = [...sources.filter((s) => isCited(s.id)), ...sources.filter((s) => !isCited(s.id))];
+  const uncitedNote = UNCITED_REFERENCE_NOTE[(language ?? "en").split("-")[0]] ?? UNCITED_REFERENCE_NOTE.en;
 
   blocks.push({
     id: crypto.randomUUID(),
@@ -2941,13 +2995,16 @@ function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksRe
     children: [],
   });
 
-  for (const source of sources) {
+  for (const source of ordered) {
     const blockId = crypto.randomUUID();
     blocks.push({
       id: blockId,
       type: "bulletListItem",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-      content: [{ type: "text", text: `@${source.title}`, styles: { textColor: "blue" } }],
+      content: [
+        { type: "text", text: `@${source.title}`, styles: { textColor: "blue" } },
+        ...(isCited(source.id) ? [] : [{ type: "text", text: uncitedNote, styles: { textColor: "gray" } }]),
+      ],
       children: [],
     });
     knowledgeLinks.push({
@@ -2989,7 +3046,7 @@ export function buildSourceBackedWikiDocument(
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
   const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
-  const refs = buildSourceReferenceBlocks(sources);
+  const refs = buildSourceReferenceBlocks(sources, citedSourceIds(stripped), language);
   const mentionLinks = buildTitleMentionLinks(kind, stripped, converted.blocks, title, noteIndex);
 
   const wikiMeta: WikiMeta = {
@@ -3072,7 +3129,11 @@ export function rebuildSourceBackedWikiDocument(
     existingDoc.title,
     sourceTitleToId,
   );
-  const refs = buildSourceReferenceBlocks(sources);
+  const refs = buildSourceReferenceBlocks(
+    sources,
+    citedSourceIds(stripped),
+    language ?? existingDoc.wikiMeta?.language,
+  );
   const page = existingDoc.pages[0];
   const mentionLinks = buildTitleMentionLinks(
     kind ?? existingDoc.wikiMeta?.kind ?? "topic",
@@ -3355,39 +3416,67 @@ export async function reviseTopicFromSource(
   /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
   timeoutMs: number = REVISE_TOPIC_CALL_TIMEOUT_MS,
 ): Promise<string | null> {
-  for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
-    // 試行ごとの AbortController。外の signal の中断を中継し、タイマーでも中断する
-    const ctrl = new AbortController();
-    let timedOut = false;
-    const onOuterAbort = () => ctrl.abort();
-    if (signal?.aborted) ctrl.abort();
-    else signal?.addEventListener("abort", onOuterAbort);
-    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
-    try {
-      return await reviseTopicOnce(ctrl.signal);
-    } catch (err) {
-      // 自分のタイマーで中断し、外の signal は中断されていないときだけ「時間切れ」
-      if (timedOut && !signal?.aborted) {
-        if (attempt < REVISE_TOPIC_RETRIES) {
-          console.warn("reviseTopicFromSource: timed out, retrying", { attempt: attempt + 1, timeoutMs });
-          continue;
-        }
-        const timeoutErr = new CodedError("revise-topic timed out", "AI_CALL_TIMEOUT");
-        console.warn("reviseTopicFromSource failed:", timeoutErr);
-        onError?.(timeoutErr);
-        return null;
-      }
-      console.warn("reviseTopicFromSource failed:", err);
-      onError?.(err);
-      return null;
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onOuterAbort);
-    }
+  // 書き直し（2 回目）の失敗は 1 回目の本文で済ませるので、onError に渡さない
+  let quiet = false;
+  const reportError = (err: unknown) => { if (!quiet) onError?.(err); };
+  const first = await reviseWithTimeoutRetry();
+  if (first === null || !currentBody) return first;
+  // 今回読んでいない資料の文が丸ごと消えていたら、その文を残すよう指示して 1 回だけ書き直させる。
+  // 2 回目も消えたら、消えた資料の少ない方を採る（References は引用していない資料に注記を付ける）
+  const dropped = droppedOtherSourceCitations(currentBody, first, source.id);
+  if (dropped.sourceIds.length === 0) return first;
+  console.warn("reviseTopicFromSource: revision dropped every sentence citing other sources, retrying", {
+    title,
+    dropped: dropped.sourceIds,
+  });
+  // 書き直しの失敗は、1 回目の本文を使うので利用者に知らせない
+  quiet = true;
+  const second = await reviseWithTimeoutRetry(dropped.lines);
+  if (second === null) return first;
+  const droppedAgain = droppedOtherSourceCitations(currentBody, second, source.id);
+  if (droppedAgain.sourceIds.length > 0) {
+    console.warn("reviseTopicFromSource: retry still dropped sentences citing other sources", {
+      title,
+      dropped: droppedAgain.sourceIds,
+    });
   }
-  return null;
+  return droppedAgain.sourceIds.length <= dropped.sourceIds.length ? second : first;
 
-  async function reviseTopicOnce(reqSignal: AbortSignal): Promise<string | null> {
+  async function reviseWithTimeoutRetry(keepSentences?: string[]): Promise<string | null> {
+    for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
+      // 試行ごとの AbortController。外の signal の中断を中継し、タイマーでも中断する
+      const ctrl = new AbortController();
+      let timedOut = false;
+      const onOuterAbort = () => ctrl.abort();
+      if (signal?.aborted) ctrl.abort();
+      else signal?.addEventListener("abort", onOuterAbort);
+      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+      try {
+        return await reviseTopicOnce(ctrl.signal, keepSentences);
+      } catch (err) {
+        // 自分のタイマーで中断し、外の signal は中断されていないときだけ「時間切れ」
+        if (timedOut && !signal?.aborted) {
+          if (attempt < REVISE_TOPIC_RETRIES) {
+            console.warn("reviseTopicFromSource: timed out, retrying", { attempt: attempt + 1, timeoutMs });
+            continue;
+          }
+          const timeoutErr = new CodedError("revise-topic timed out", "AI_CALL_TIMEOUT");
+          console.warn("reviseTopicFromSource failed:", timeoutErr);
+          reportError(timeoutErr);
+          return null;
+        }
+        console.warn("reviseTopicFromSource failed:", err);
+        reportError(err);
+        return null;
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onOuterAbort);
+      }
+    }
+    return null;
+  }
+
+  async function reviseTopicOnce(reqSignal: AbortSignal, keepSentences?: string[]): Promise<string | null> {
     const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/revise-topic`, {
       method: "POST",
@@ -3398,13 +3487,14 @@ export async function reviseTopicFromSource(
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
+        ...(keepSentences && keepSentences.length > 0 ? { keepSentences } : {}),
       }),
       signal: reqSignal,
     });
     if (!res.ok) {
       const err = await aiErrorFromResponse(res, `revise-topic failed (${res.status})`);
       console.warn("reviseTopicFromSource failed:", err);
-      onError?.(err);
+      reportError(err);
       return null;
     }
     const data = await res.json() as { body?: string };
@@ -3413,7 +3503,7 @@ export async function reviseTopicFromSource(
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
     console.warn("reviseTopicFromSource failed:", err);
-    onError?.(err);
+    reportError(err);
     return null;
   }
 }
