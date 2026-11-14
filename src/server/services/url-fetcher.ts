@@ -2,6 +2,8 @@
 // 外部 URL を取得し、HTML からタイトル・OGP・本文テキストを抽出する
 // /api/wiki/fetch-url と /api/prov/ingest-url の両方から使う共通処理
 
+import { parseHTML } from "linkedom";
+
 const USER_AGENT = "Graphium/1.0 (Knowledge Layer)";
 const ACCEPT = "text/html,application/xhtml+xml,text/plain,application/pdf";
 const FETCH_TIMEOUT_MS = 15_000;
@@ -76,6 +78,9 @@ export async function fetchPageAsText(
   };
 }
 
+/** 本文テキストに含めない要素（実行物・装飾・ページの枠）。 */
+const NON_CONTENT_SELECTOR = "script, style, noscript, template, nav, header, footer";
+
 /**
  * HTML 文字列からタイトル・説明・本文を抽出する
  */
@@ -92,19 +97,33 @@ export function extractFromHtml(
   const metaDescription =
     html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "";
 
-  let bodyText = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-    .replace(/<header[\s\S]*?<\/header>/gi, "")
-    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-    .replace(/<[^>]+>/g, "\n")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  // 本文は DOM（linkedom）で取り出す。正規表現でのタグ除去は `</script >` や
+  // 入れ子で分断された形を取りこぼす。テキストノードを改行でつなぐので、
+  // 「タグの位置で改行する」従来の見た目は保つ。エンティティは DOM がデコードする
+  // （`&amp;lt;` は `&lt;` のまま。二重デコードしない）。
+  // linkedom は文書の形をしていない断片を body に入れないので、包んでから解析する。
+  const docHtml = /<html[\s>]/i.test(html)
+    ? html
+    : `<!doctype html><html><head></head><body>${html}</body></html>`;
+  const { document: doc } = parseHTML(docHtml);
+  for (const el of Array.from(doc.querySelectorAll(NON_CONTENT_SELECTOR))) el.remove();
+  const root = doc.body ?? doc.documentElement;
+  // 改行は要素の境目（開きと閉じ）にだけ入れる。linkedom はエンティティの位置で
+  // テキストノードを分けることがあるので、テキスト同士の間には入れない。
+  const texts: string[] = [];
+  type WalkNode = { nodeType: number; nodeValue: string | null; childNodes: ArrayLike<unknown> };
+  const walk = (node: WalkNode) => {
+    if (node.nodeType === 3) {
+      texts.push((node.nodeValue ?? "").replace(/\u00a0/g, " "));
+      return;
+    }
+    texts.push("\n");
+    for (const child of Array.from(node.childNodes)) walk(child as WalkNode);
+    texts.push("\n");
+  };
+  if (root) for (const child of Array.from(root.childNodes)) walk(child as unknown as WalkNode);
+  let bodyText = texts
+    .join("")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 

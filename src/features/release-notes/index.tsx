@@ -103,7 +103,12 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
 function renderBody(body: string): React.ReactNode[] {
   // GitHub の自動生成リリースノートが差し込む <!-- ... --> トラッカーを除去。
   // 簡易パーサは HTML コメントを不可視化しないため、事前に剥がしておく。
-  const stripped = body.replace(/<!--[\s\S]*?-->/g, "");
+  // 変化がなくなるまで繰り返す（除去で別のコメントが組み上がる形を残さない）。
+  let stripped = body;
+  for (let prev = ""; prev !== stripped; ) {
+    prev = stripped;
+    stripped = stripped.replace(/<!--[\s\S]*?-->/g, "");
+  }
   const lines = stripped.split(/\r?\n/);
   const blocks: React.ReactNode[] = [];
   let listBuffer: string[] = [];

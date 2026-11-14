@@ -239,37 +239,54 @@ export function extractLeadImage(contentHtml: string, baseUrl: string): string |
  *
  * Readability 自体が JSDOMParser ベースで `<script>` 等の危険要素を落としているが、
  * 念のため:
- *   - script / style / iframe / object / embed / link は削除
+ *   - script / style / iframe / object / embed / link 等は DOM 上で削除
  *   - on* 属性（onclick 等）は削除
- *   - javascript: で始まる href / src を `#` に置換
+ *   - javascript: / vbscript: / data:（img 以外）で始まる URL 属性を `#` に置換
  *
- * ここは文字列置換なので閉じタグを前提にした形しか落とせない（`<iframe src=x>` が
- * 閉じられていないと素通りする）。Readability の出力はシリアライズ済みで必ず閉じるが、
- * 取りこぼしは後段の `rewriteReaderMedia` が DOM 上でもう一度落とす。
+ * すべて `rewriteReaderMedia` が linkedom の DOM 上で行う（正規表現は使わない）。
  * baseUrl は相対 URL 解決用。省略時は絶対 URL の画像だけが残る。
  *
  * Reader 表示は本文のテキストを読ませるのが目的なので、外部リソースを過剰に許可しない。
  */
 export function sanitizeReaderHtml(html: string, baseUrl?: string): string {
-  // 危険なタグを丸ごと除去
-  let out = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed[\s\S]*?>/gi, "")
-    .replace(/<link[\s\S]*?>/gi, "");
+  // 危険要素・属性の除去は正規表現でなく DOM 上（rewriteReaderMedia）で行う。
+  // 正規表現は `</script >` や入れ子の分断（`<scr<script>ipt>`）で取りこぼすため。
+  return rewriteReaderMedia(html, baseUrl);
+}
 
-  // on* イベントハンドラ属性
-  out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
-  out = out.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
-  out = out.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "");
+/** 実行・外部読み込みにつながる要素。DOM 上で丸ごと落とす。 */
+const DANGEROUS_ELEMENTS_SELECTOR =
+  "script, style, iframe, object, embed, link, track, meta, noscript, template, base, form";
 
-  // javascript: URL
-  out = out.replace(/(href|src)\s*=\s*"javascript:[^"]*"/gi, '$1="#"');
-  out = out.replace(/(href|src)\s*=\s*'javascript:[^']*'/gi, "$1='#'");
+/** URL を取る属性。 */
+const URL_ATTRS = new Set(["href", "src", "xlink:href", "action", "formaction"]);
 
-  return rewriteReaderMedia(out, baseUrl);
+/** 空白・制御文字を除いて小文字化（`java\tscript:` や `JaVaScRiPt:` を同じ形に寄せる）。 */
+function normalizeUrlForScheme(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\u0000- \u007f-\u009f]+/g, "").toLowerCase();
+}
+
+/**
+ * on* 属性の削除と、危険なスキーム（javascript: / vbscript: / data:）の URL 属性の無害化。
+ * img / image の data: 画像は後段で扱うのでここでは触らない。
+ */
+function stripDangerousAttrs(el: SweepElement): void {
+  const tag = el.tagName.toLowerCase();
+  for (const name of el.getAttributeNames()) {
+    const lower = name.toLowerCase();
+    if (lower.startsWith("on")) {
+      el.removeAttribute(name);
+      continue;
+    }
+    if (!URL_ATTRS.has(lower)) continue;
+    const norm = normalizeUrlForScheme(el.getAttribute(name) ?? "");
+    if (norm.startsWith("javascript:") || norm.startsWith("vbscript:")) {
+      el.setAttribute(name, "#");
+    } else if (norm.startsWith("data:") && tag !== "img" && tag !== "image") {
+      el.setAttribute(name, "#");
+    }
+  }
 }
 
 /**
@@ -288,7 +305,8 @@ export function sanitizeReaderHtml(html: string, baseUrl?: string): string {
  *      poster は img-src の fetch として生きており計測に使える
  *   6. 外部 `url(...)` を引く属性値と `background` 属性を落とす（`stripRemoteUrlAttrs`）
  *   7. インライン `<svg>` の href / xlink:href の外部参照を落とす（`stripSvgRemoteRefs`）
- *   8. `iframe` / `object` / `embed` / `link` / `track` / `meta` を落とす
+ *   8. `script` / `style` / `iframe` / `object` / `embed` / `link` / `track` / `meta` 等を落とし、
+ *      on* 属性と危険スキームの URL 属性を無害化する
  *
  * 対象は `<img>` だけでなく `<image>` も含む。`<image>` は 2 通りの意味を持つ:
  *   - `<svg>` の中: SVG の画像要素。src ではなく href / xlink:href を読む
@@ -317,14 +335,14 @@ function rewriteReaderMedia(html: string, baseUrl?: string): string {
   for (const el of Array.from(doc.querySelectorAll("video, audio"))) el.remove();
   // <picture><source srcset> は <img src> より優先されるので、<img> をフォールバックに残して落とす。
   for (const el of Array.from(doc.querySelectorAll("source"))) el.remove();
-  // sanitizeReaderHtml の文字列置換は閉じタグを前提にしているので、閉じられていない
-  // `<iframe src=x>` 等が素通りする。DOM 上ではその区別が無いのでここで落とし切る。
+  // DOM 上では閉じられていない `<iframe src=x>` 等も区別なく落とせる。
   // <track> は media 要素の子でなければ読み込まれず、その親は上で消しているので
   // ここに残るのは孤児だけだが、宙に浮いた参照を残さないよう一緒に落とす。
   // <meta> は本文に居る理由が無い一方、http-equiv="refresh" は挿入時に処理する実装がある。
-  for (const el of Array.from(doc.querySelectorAll("iframe, object, embed, link, track, meta"))) {
+  for (const el of Array.from(doc.querySelectorAll(DANGEROUS_ELEMENTS_SELECTOR))) {
     el.remove();
   }
+  for (const el of Array.from(doc.querySelectorAll("*"))) stripDangerousAttrs(el);
 
   // 外部リソースを引く属性値。Readability の _cleanStyles も同じものを落とすが、
   // あれは svg で早期 return するのでインライン SVG の中には効かない。

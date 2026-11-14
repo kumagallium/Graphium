@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { detectPastedTable } from "./paste";
 
+describe("detectPastedTable（エンティティ）", () => {
+  it("&amp;lt; を二重デコードせず &lt; のまま残す", () => {
+    const html = "<table><tr><td>a</td><td>b</td></tr><tr><td>&amp;lt;</td><td>&lt;</td></tr></table>";
+    expect(detectPastedTable({ html })?.tsv).toBe("a\tb\n&lt;\t<");
+  });
+});
+
 describe("detectPastedTable", () => {
   it("HTML の <table> を行・列に読み、タグと実体参照を剥がして TSV にする", () => {
     const html =

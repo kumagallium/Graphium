@@ -28,6 +28,9 @@ on:
       - "package.json"
       - "src-tauri/tauri.conf.json"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
