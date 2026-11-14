@@ -426,7 +426,7 @@ import { buildDisagreements, buildUnbacked } from "./features/source-check/disag
 import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
 import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
-import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage } from "./features/wiki/wiki-service";
+import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage, setSourceDateLookup } from "./features/wiki/wiki-service";
 import { relinkTopicMentions } from "./features/wiki/topic-mention-links";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -12048,6 +12048,24 @@ export function NoteApp() {
       onUpdateWikiMeta={(patch) => void updateWikiMetaPatch(wikiId, patch)}
     />
   );
+
+  // 食い違いの節で引用に添える資料の日付（ノートは作成日、論文は出どころ情報の年）。
+  // トピックの組み立て（wiki-service）が引く。ノート一覧・素材一覧が変わるたびに渡し直す
+  useEffect(() => {
+    const notes = new Map((fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n.createdAt]));
+    const media = new Map((fm.mediaIndex?.media ?? []).map((m) => [m.fileId, m.sourceInfo?.year]));
+    setSourceDateLookup((sourceId) => {
+      const ext = parseExternalSource(sourceId);
+      if (ext) {
+        if (ext.kind !== "pdf" && ext.kind !== "document") return undefined;
+        const year = media.get(ext.key);
+        return year ? String(year) : undefined;
+      }
+      const created = notes.get(sourceId);
+      return created ? created.slice(0, 10) : undefined;
+    });
+    return () => setSourceDateLookup(null);
+  }, [fm.noteIndex, fm.mediaIndex]);
 
   // 資料 id → { resolveSource, resolveSourceTitle } の解決経路（出典照合と同じ入口）。
   // runSourceTopicStageForNoteApp・話題の統合・話題の手動再生成が共通して使う。

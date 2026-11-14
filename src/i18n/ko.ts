@@ -4287,6 +4287,7 @@ export const ko: Record<string, string> = {
   "sourceCheck.quoteLocation.pageRange": "{page}–{pageEnd}쪽",
   "sourceCheck.quoteLocation.paragraph": "{paragraph}번째 단락",
   "sourceCheck.quoteLocation.srPrefix": "출처 안의 위치:",
+  "sourceCheck.passageNotFound": "이 문장을 쓸 때 AI가 옮긴 다음 구절은 자료에서 찾지 못했습니다:",
   "sourceCheck.sourceKind.note": "노트",
   "sourceCheck.sourceKind.pdf": "PDF",  // 영어 유지
   "sourceCheck.sourceKind.document": "문서",

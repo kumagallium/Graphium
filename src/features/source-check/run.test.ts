@@ -392,6 +392,21 @@ describe("runSourceCheck", () => {
       expect(entry.quote).toBe("融点は 800℃ だった");
     });
 
+    it("文に印の付いた一節があれば、詳細に出すため entry に載せる（判定は AI のまま）", async () => {
+      const c1 = { ...claim("c1", ["pdf:doc-1"]), unverifiedPassages: { "pdf:doc-1": "融点は 810℃ だった" } };
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      const deps = pdfDeps("実験結果として融点は800℃だった。", [0]);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({ claimId: c.id, verdict: "contradicted" as const, rationale: "800℃", quote: "融点は800℃だった" })),
+      }));
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      const entry = result.profiles.get("c1")!.entries[0];
+      expect(entry.verdict).toBe("contradicted");
+      expect(entry.passageNotFound).toBe("融点は 810℃ だった");
+    });
+
     it("「出典に書かれていない」には一節を付けない", async () => {
       const c1 = { ...claim("c1", ["pdf:doc-1"]), passages: { "pdf:doc-1": "融点は800℃だった" } };
       const plan = planSourceCheck([c1]);

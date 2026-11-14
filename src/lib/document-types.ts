@@ -794,6 +794,9 @@ export type SourceCheckEntry = {
   blockId?: string;
   /** PDF のページ・Word の段落。quote があり位置が一意に分かるときだけ */
   quoteLocation?: SourceQuoteLocation;
+  /** その文を書いたとき AI が写したが、資料の文字に見つからなかった一節（本文の `|?|` の印）。
+   *  読む人に見せるためだけに持つ。判定には使わない */
+  passageNotFound?: string;
   /** verdict が "source-missing" のときの理由 */
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";

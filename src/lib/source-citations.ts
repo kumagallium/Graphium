@@ -4,6 +4,9 @@
 // - `|<一節>` は省略できる。その文が言い換えた資料の一節を、原文のまま控えたもの
 //   （書いた AI に写させ、保存前に資料の文字と照らして、見つからない一節は外す）
 // 一節の無い `[[source:<id>]]`（以前の本文・一節を控えない書き手）もそのまま読める。
+// - `|?|<一節>` は「資料に見つからなかった一節」。AI が写した一節が資料の文字に無かったとき、
+//   黙って消さずに印を付けて残す（読む人に見せ、出典照合で確かめる対象にする）。
+//   印の付いた一節は、資料の位置へ開く手がかり（targetQuote）や出典照合の抜粋には使わない。
 
 /**
  * 引用 1 つ。m[1] = id、m[2] = 一節（無ければ undefined）。
@@ -17,24 +20,39 @@ export type SourceCitation = {
   /** 本文中の引用の文字列そのまま */
   raw: string;
   sourceId: string;
-  /** 控えた一節（無ければ undefined） */
+  /** 控えた一節（無ければ undefined。印 `?|` は外した中身） */
   passage?: string;
+  /** 資料に見つからなかった一節か（`|?|<一節>`） */
+  unverified?: boolean;
 };
+
+const UNVERIFIED_PREFIX = "?|";
+
+/** 正規表現の m[2]（一節の部分）を、一節と「見つからなかった」の印に分ける */
+export function splitPassage(raw: string | undefined): { passage?: string; unverified?: boolean } {
+  const t = raw?.trim();
+  if (!t) return {};
+  if (t.startsWith(UNVERIFIED_PREFIX)) {
+    const p = t.slice(UNVERIFIED_PREFIX.length).trim();
+    return p ? { passage: p, unverified: true } : {};
+  }
+  return { passage: t };
+}
 
 /** 本文中の引用をすべて取り出す（出てきた順） */
 export function parseSourceCitations(text: string): SourceCitation[] {
   const out: SourceCitation[] = [];
   for (const m of text.matchAll(SOURCE_CITATION_RE)) {
-    const passage = m[2]?.trim();
-    out.push({ raw: m[0], sourceId: m[1].trim(), ...(passage ? { passage } : {}) });
+    out.push({ raw: m[0], sourceId: m[1].trim(), ...splitPassage(m[2]) });
   }
   return out;
 }
 
-/** 引用の書き方をそろえる（一節が空なら付けない） */
-export function formatSourceCitation(sourceId: string, passage?: string): string {
+/** 引用の書き方をそろえる（一節が空なら付けない。unverified なら「見つからなかった」の印を付ける） */
+export function formatSourceCitation(sourceId: string, passage?: string, unverified?: boolean): string {
   const p = passage ? sanitizePassage(passage) : "";
-  return p ? `[[source:${sourceId}|${p}]]` : `[[source:${sourceId}]]`;
+  if (!p) return `[[source:${sourceId}]]`;
+  return unverified ? `[[source:${sourceId}|${UNVERIFIED_PREFIX}${p}]]` : `[[source:${sourceId}|${p}]]`;
 }
 
 /** 一節に入れられない文字列（引用の終わりの印 `]]`）を外し、空白を 1 つに畳む */

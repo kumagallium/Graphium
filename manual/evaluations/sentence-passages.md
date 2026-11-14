@@ -44,6 +44,9 @@ The same string match the app uses decided whether a passage was "found". It ign
 - Clicking the `@source` mention after a sentence opens a PDF at that passage. In the source check, the stored passage becomes the quote when three things hold. The AI returned no quote. The verdict is not *Not in source*. And the passage is found in the source text. The verdict itself is not changed.
 - Because of the token cost, only these revisions ask for passages. Source summaries and the first write of a Q&A page from a chat answer don't ask for them.
 
+
+**Changed later.** In the next release, a passage that can't be found is no longer removed. It is kept with a mark, the page shows *(the passage the AI copied isn't in the source)* after the sentence, and the source check details show it. Passages are now also checked against the source's whole text, so a passage from a note that was edited afterwards is caught too.
+
 ## Limits
 
 - One model only (`gpt-oss-120b`). Claude and Copilot models were not measured.

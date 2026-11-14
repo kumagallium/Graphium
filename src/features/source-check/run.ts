@@ -232,6 +232,9 @@ export async function runSourceCheck(
         rationale: modelItem.rationale,
         quote,
         blockId,
+        ...(statement.unverifiedPassages?.[group.sourceId]
+          ? { passageNotFound: statement.unverifiedPassages[group.sourceId] }
+          : {}),
         sourceTextOrigin: resolved.origin,
         ...(quoteLocation ? { quoteLocation } : {}),
       }]);

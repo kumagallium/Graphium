@@ -1825,17 +1825,22 @@ type WikiMeta = {
   // resource the sentence restates, copied verbatim:
   // `[[source:<id>|<passage>]]` (`src/lib/source-citations.ts`). The Topic
   // reviser asks for one on every citation; before the body is saved,
-  // `verifyCitationPassages` keeps a passage already in the previous body
-  // for the same source (a long source is read window by window, so an
-  // earlier window's passage is not in the current window's text), checks
-  // each new passage of the source just read against that source's text
-  // (NFKC, case, whitespace, dash forms, a hyphen between two Latin
-  // letters, reference numbers like [8] and trailing punctuation ignored;
-  // at least 8 characters after that) and removes any it cannot find, and
-  // drops a new passage of any other source. A merge (`mergeTopicBodies`)
-  // keeps only passages present in one of the merged bodies
-  // (`keepKnownPassages`). Every stored passage was therefore found in its
-  // source when it was first written. A passage may contain `]` and `|`
+  // `verifyCitationPassages` checks every passage of the source just read
+  // against that source's full text (passed as `fullText`, not sent to the
+  // model; a long source is read window by window) — NFKC, case,
+  // whitespace, dash forms, a hyphen between two Latin letters, reference
+  // numbers like [8] and trailing punctuation ignored; at least 8
+  // characters after that. A passage of another source counts as checked
+  // only if the previous body had the same passage, checked. A passage that
+  // fails is not removed but kept with a mark: `[[source:<id>|?|<passage>]]`
+  // (the model changed it, or the note was edited and no longer says it).
+  // A marked passage is shown after the sentence as "the passage the AI
+  // copied isn't in the source", is never used as `targetQuote` or as a
+  // source-check quote, and reaches the source check entry as
+  // `passageNotFound`. When a later read finds it in the source again, the
+  // mark is lifted. A merge (`mergeTopicBodies`) keeps a passage checked
+  // only if it was checked in one of the merged bodies, and marks the rest
+  // (`keepKnownPassages`). A passage may contain `]` and `|`
   // (including a trailing `]`, as in `…[14]]]`); only `]]` cannot appear
   // inside it. `[[source:<id>]]` without a passage stays valid
   // (older bodies, writers that don't ask for one). When present, this is the authoritative body: for
@@ -2709,6 +2714,7 @@ type SourceCheckEntry = {
   quote?: string;                   // kept only when verified verbatim against the source text
   blockId?: string;                 // set only when quote resolves to exactly one note block
   quoteLocation?: SourceQuoteLocation; // PDF page or Word paragraph; set only when the quote's position is unambiguous
+  passageNotFound?: string; // new-format pages only: the passage the AI copied for this sentence (marked `|?|` in topicMarkdown) that was not found in the source. Shown to the reader; never affects the verdict
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
   statement?: string;               // the sentence checked (topics only; a claim's whole body is

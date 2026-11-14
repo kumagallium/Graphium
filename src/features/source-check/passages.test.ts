@@ -15,6 +15,14 @@ describe("出典照合の文に一節が付く", () => {
     expect(st.claimIds).toEqual(["pdf:a", "n2"]);
     expect(st.passages).toEqual({ "pdf:a": "焼成は 230 度で 35 分" });
   });
+
+  it("印の付いた一節は照合済みの一節と分けて控える", () => {
+    const doc: any = { title: "t", pages: [], wikiMeta: { kind: "topic", topicMarkdown: "- 湿度は 70%。[[source:n1|?|湿度は 70% だった]]" } };
+    const [st] = extractSourceTopicStatements(doc);
+    expect(st.text).toBe("- 湿度は 70%。");
+    expect(st.passages).toBeUndefined();
+    expect(st.unverifiedPassages).toEqual({ n1: "湿度は 70% だった" });
+  });
 });
 
 describe("@資料 のクリックで PDF を一節の位置で開く", () => {
