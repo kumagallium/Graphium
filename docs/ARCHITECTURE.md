@@ -1699,7 +1699,20 @@ Notes:
   not an append, in the style of an incrementally-revised wiki. Citations
   are `[[source:<id>]]` (the source id, not a Claim id), stored verbatim in
   `wikiMeta.topicMarkdown` (see [DATA_MODEL.md §3.1b](DATA_MODEL.md)) so the
-  next revision and source-check both read the same text. Claims are no
+  next revision and source-check both read the same text. The reviser also
+  copies, inside each citation, the passage of the source that the
+  sentence restates (`[[source:<id>|<passage>]]`, `SOURCE_PASSAGE_RULES`):
+  one continuous stretch, verbatim. Before saving, `verifyCitationPassages`
+  string-matches each new passage against the source text it was written
+  from and removes the ones it can't find — no model call, the same result
+  every time. Passages already on the page for the same source are kept
+  (later windows of a long source don't contain earlier windows' text), a
+  rewritten passage of another source is removed, and a merge keeps only
+  passages found in one of the merged bodies (`keepKnownPassages`), so
+  every passage on a page was found in its source when it was written. The passage travels
+  with the sentence through later revisions (kept verbatim like the id),
+  becomes the link's `targetQuote` so the `@source` mention opens a PDF at
+  that passage, and is the source check's fallback quote (below). Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
   before (Topics never did). **Existing Claim-derived Topics** (no
@@ -2674,7 +2687,13 @@ claims, so there is no single source text to hold it against.
   conversion, the same reason rule (d) above needs the raw text — and
   turns each non-heading line that carries at least one `[[source:<id>]]`
   citation into a statement, with the citation stripped and its ids used
-  as-is. `buildSourceCheckStatements`
+  as-is. A passage stored in a citation
+  (`[[source:<id>|<passage>]]`) is kept on the statement as `passages`.
+  When the model returns no quote for a statement, `runSourceCheck` uses
+  that passage as the entry's `quote` (and resolves its page or
+  paragraph), provided it is found in the source text and the verdict is
+  not `not-in-source`. The verdict itself is never changed by it.
+  `buildSourceCheckStatements`
   (`src/features/source-check/build-statements.ts`) picks this extractor
   over `extractTopicStatements` whenever `topicMarkdown` is set, and,
   critically, does **not** wrap the resulting ids with `toClaimSourceId`

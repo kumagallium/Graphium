@@ -22,6 +22,7 @@ import { resolveSourceText, type ResolveSourceTextDeps } from "./resolve-source-
 import { parseExternalSource } from "../network-graph/external-source";
 import type { PlanSourceCheckStatement, SourceCheckPlan } from "./plan";
 import { wikiLog } from "../wiki/wiki-log";
+import { passageAppearsIn } from "../../lib/source-citations";
 
 /** wiki-log への記録。テストでモックできるよう注入式（既定は wikiLog.append） */
 export type SourceCheckLogger = (
@@ -212,19 +213,24 @@ export async function runSourceCheck(
         }]);
         continue;
       }
-      const blockId = findBlockIdForQuote(resolved.blocks, modelItem.quote);
+      // AI が抜粋を返さなかったとき、その文を書いたときに控えた一節が原文にあれば、それを抜粋にする
+      // （判定は AI のまま変えない。「出典に書かれていない」には一節を付けない — 根拠に見えるため）
+      const passage = statement.passages?.[group.sourceId];
+      const quote = modelItem.quote
+        ?? (passage && modelItem.verdict !== "not-in-source" && passageAppearsIn(passage, resolved.text) ? passage : undefined);
+      const blockId = findBlockIdForQuote(resolved.blocks, quote);
       // quote の位置（PDF のページ・Word の段落）を、判定に使ったのと同じ原文から機械的に解く。
       // verdict には一切影響しない（位置が解けなくても quoteLocation を付けないだけ）。
       const quoteLocation = resolveQuoteLocation(
         { kind: resolved.kind, text: resolved.text, pageStarts: resolved.pageStarts },
-        modelItem.quote,
+        quote,
       );
       entries.push([statementId, {
         sourceId: group.sourceId,
         sourceKind: resolved.kind,
         verdict: modelItem.verdict,
         rationale: modelItem.rationale,
-        quote: modelItem.quote,
+        quote,
         blockId,
         sourceTextOrigin: resolved.origin,
         ...(quoteLocation ? { quoteLocation } : {}),

@@ -78,4 +78,10 @@ export type BlockLink = {
   targetEntityLabel?: string;
   targetNoteTitle?: string;
   targetStepTitle?: string;
+  /**
+   * 出典つきナレッジページの本文の引用（`[[source:<id>|<一節>]]`）から作ったリンクのとき、
+   * その文が言い換えた資料の一節（原文のまま・保存前に資料の文字と照合済み）。
+   * PDF の資料なら、押すとこの一節の位置へ開く
+   */
+  targetQuote?: string;
 };
