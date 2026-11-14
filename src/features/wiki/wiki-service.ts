@@ -71,9 +71,9 @@ function buildTitleMentionLinks(
  * モード別に適切な認証情報を送る必要がある。モード名は wikiBodyModel と揃えてあり、
  * mode 引数だけを渡す呼び出し（呼び出し元が model 名を渡さない工程）はこの 2 関数が
  * 常にペアで同じモデルを解決する。
- * - "light":     デフォルトモデル（点検・トピックの統合）
- * - "standard":  標準の処理（ingest / rewrite / cross-update / トピック）。未設定なら default
- * - "precise":   精密な処理（atomize / transfer 判定 / relift / 重複判定）。未設定なら standard → default
+ * - "light":     デフォルトモデル（点検・トピックの統合・トピックの振り分け・重複判定）
+ * - "standard":  標準の処理（ingest / rewrite / cross-update / トピックの改訂）。未設定なら default
+ * - "precise":   精密な処理（atomize / transfer 判定 / relift）。未設定なら standard → default
  * - "embedding": Embedding 用モデル（未設定なら default）
  *
  * 呼び出し元が model 名を明示する工程（mergeTopicBodies など）は、この 2 関数を
@@ -92,10 +92,10 @@ function buildTitleMentionLinks(
  * サーバーが引けず「モデル未登録」（NO_MODEL_REGISTERED）で断る。
  *
  * モデルは難しさ別の 3 段（設定 → AI → モデルの割り当て）から選ぶ:
- * - "light":     デフォルトモデル（点検・トピックの統合）
- * - "standard":  標準の処理（ナレッジ化 / 関連ページの更新 / トピックの振り分け・改訂・見取り図・
+ * - "light":     デフォルトモデル（点検・トピックの統合・トピックの振り分け・洞察の重複判定）
+ * - "standard":  標準の処理（ナレッジ化 / 関連ページの更新 / トピックの改訂・見取り図・
  *                本文統合・種類付与）。未設定時はデフォルト
- * - "precise":   精密な処理（洞察の発見・移し替え判定・重複判定）。未設定時は標準 → デフォルト
+ * - "precise":   精密な処理（洞察の発見・移し替え判定）。未設定時は標準 → デフォルト
  * - "embedding": Embedding 用途は body.embedding_model を別途使うので空
  */
 type WikiModelMode = "light" | "standard" | "precise";
@@ -2206,7 +2206,8 @@ export async function judgeAtomDuplicates(
     // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
     // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
     // 別モデルへ黙って回ってしまう）
-    const { headers, body: modelBody } = wikiModelRequest("precise", options?.model);
+    // 重複の判定は軽い処理の段（2026-11-14 に高度から移した。10B 級でも正答率 1.00）
+    const { headers, body: modelBody } = wikiModelRequest("light", options?.model);
     const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
       method: "POST",
       headers,
@@ -3258,7 +3259,8 @@ export async function routeTopicsForSource(
   signal?: AbortSignal,
   knowledgeSchema?: string,
 ): Promise<TopicRouteResult> {
-  const { headers, body: modelBody } = wikiModelRequest("standard", model);
+  // トピックの振り分けは軽い処理の段（2026-11-14 に標準から移した。10B 級でも基準点の 9 割以上）
+  const { headers, body: modelBody } = wikiModelRequest("light", model);
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers,
