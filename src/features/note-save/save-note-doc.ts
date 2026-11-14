@@ -30,6 +30,7 @@
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { BlockLink } from "../../lib/block-link-types";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { notifyViewerNoteSaved } from "../../lib/viewer-window";
 
 /**
  * linkStore などから保存時のリンクを取り出すための最小インターフェース。
@@ -157,4 +158,6 @@ export async function saveNoteDoc({
   }
   // 保存成功後のみ onSaved を呼ぶ（#514: 保存後 reindex 漏れの再発防止）。
   onSaved?.(noteId, doc);
+  // 別ウィンドウで同じノートを出していれば読み直してもらう（開いていなければ何も起きない）
+  notifyViewerNoteSaved(noteId);
 }

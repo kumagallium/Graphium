@@ -46,6 +46,8 @@ export const KEYLESS_PLACEHOLDER = "local";
 const CHECK_DELAY_MS = 600;
 
 export type AiConnectFlowProps = {
+  /** ChatGPT のプランでつなぐ流れを始める（デスクトップのみ。無ければ行を出さない） */
+  onConnectChatGpt?: () => void;
   /** GitHub Copilot のワンクリック接続を始める（デスクトップのみ。無ければ行を出さない） */
   onConnectCopilot?: () => void;
   /** URL を自分で入れる今のフォームへ */
@@ -60,6 +62,7 @@ export type AiConnectFlowProps = {
 };
 
 export function AiConnectFlow({
+  onConnectChatGpt,
   onConnectCopilot,
   onPickCustom,
   fetchModels,
@@ -151,6 +154,7 @@ export function AiConnectFlow({
     return wrap(
       <ConnectChooserView
         cloudProviders={CLOUD_PROVIDERS}
+        onConnectChatGpt={onConnectChatGpt}
         onConnectCopilot={onConnectCopilot}
         onPickCloud={openCloud}
         onPickLocal={(id) => open(LOCAL_TARGETS[id])}

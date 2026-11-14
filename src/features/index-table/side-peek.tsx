@@ -6,7 +6,8 @@
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, PictureInPicture2 } from "lucide-react";
+import { openViewerWindow } from "../../lib/viewer-window";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
@@ -326,6 +327,35 @@ type SidePeekProps = {
    * 部品とハンドラは note-app 側が持ち、ピークは最新の wikiMeta と開き方だけを渡す。
    */
   renderWikiContext?: (args: PeekWikiContextArgs) => ReactNode;
+  /**
+   * 別ウィンドウ（features/viewer-window）の中身として、ウィンドウいっぱいに出す。
+   * 閉じる・別ウィンドウで開くのボタンと幅のつまみは出さず、本文は中央に寄せる。
+   * 「フルスクリーンで開く」は「メインのウィンドウで開く」になる（onNavigate）
+   */
+  standalone?: boolean;
+  /**
+   * 別ウィンドウ（standalone）で本文の右に出すパネル。ヘッダーに開閉のボタンが付く。
+   * 中身はこのピークのストア（ラベル・リンク）の内側で描かれるので、同じノートのストアを読める
+   */
+  standalonePanel?: {
+    label: string;
+    render: (args: PeekStandalonePanelArgs) => ReactNode;
+  };
+  /** 保存の状態が変わるたびに呼ぶ（別ウィンドウが、未保存の有無をメインへ知らせるのに使う） */
+  onSaveStatusChange?: (status: "saving" | "saved" | "dirty") => void;
+};
+
+/** standalonePanel.render に渡す引数 */
+export type PeekStandalonePanelArgs = {
+  noteId: string;
+  /** このピークのエディタ（パネルからの追加・改名・削除はここへ書き、ピークの自動保存に乗る） */
+  editorRef: { current: any };
+  /** いまの文脈ラベル（フォルダ） */
+  noteContexts: string[];
+  /** 開いた doc（来歴など、ピークが編集しない項目を読む） */
+  doc: GraphiumDocument;
+  /** 本文が変わるたびに呼ばれる口を登録する。戻り値で外す */
+  subscribeChange: (fn: () => void) => () => void;
 };
 
 /** renderWikiContext に渡す引数 */
@@ -405,6 +435,8 @@ function SidePeekSideMenu() {
 // 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
 // まま auto-save されてデータが壊れる。children を持つブロック（step / カラム）
 // では親が落ちると子孫ごと消えるため、損失はさらに大きい。
+const STANDALONE_PANEL_OPEN_KEY = "graphium:viewer-window:panel-open";
+
 function sanitizeBlocks(blocks: any[]): any[] {
   return sanitizeBlocksForLoad(blocks);
 }
@@ -416,7 +448,7 @@ function SidePeekInner({
   mediaIndex, captureIndex, onRecordMemoUsage, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef,
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
-  renderWikiContext, files, onRefreshFiles,
+  renderWikiContext, files, onRefreshFiles, standalone = false, onSaveStatusChange, standalonePanel,
   reopenWithDoc, forceOpenDoc,
 }: SidePeekProps & SidePeekReopen) {
   const t = useT();
@@ -497,6 +529,37 @@ function SidePeekInner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
+  // 別ウィンドウの右のパネル。開閉は次に開いたときも同じにする（このウィンドウだけの好み）
+  const [standalonePanelOpen, setStandalonePanelOpen] = useState(() => {
+    try {
+      return localStorage.getItem(STANDALONE_PANEL_OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleStandalonePanel = useCallback(() => {
+    setStandalonePanelOpen((open) => {
+      try {
+        localStorage.setItem(STANDALONE_PANEL_OPEN_KEY, open ? "0" : "1");
+      } catch {
+        // 覚えられなくても開閉はできる
+      }
+      return !open;
+    });
+  }, []);
+  // 本文の変更を、右のパネルへ知らせる口（state にすると打つたびにピーク全体を描き直す）
+  const changeListenersRef = useRef(new Set<() => void>());
+  const subscribeChange = useCallback((fn: () => void) => {
+    changeListenersRef.current.add(fn);
+    return () => {
+      changeListenersRef.current.delete(fn);
+    };
+  }, []);
+  const onSaveStatusChangeRef = useRef(onSaveStatusChange);
+  onSaveStatusChangeRef.current = onSaveStatusChange;
+  useEffect(() => {
+    onSaveStatusChangeRef.current?.(saveStatus);
+  }, [saveStatus]);
   // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
   const [peekContexts, setPeekContexts] = useState<string[]>([]);
   const [peekContextPickerPos, setPeekContextPickerPos] = useState<DropdownPosition | null>(null);
@@ -1750,6 +1813,7 @@ function SidePeekInner({
     // 未保存は後片付けで書き出し済みで、ここで自動保存を張ると外されたエディタの古い本文を
     // 後から書き、開き直したピークの編集を上書きしうる
     if (unmountedRef.current || replacingRef.current) return;
+    for (const fn of changeListenersRef.current) fn();
     // 取り込みは保存状態の判定より前に呼ぶ。取り込めた分は本文がローカル参照になり、
     // 「外部画像を読み込む」の対象から外れる。
     scanRemoteImages();
@@ -2030,6 +2094,16 @@ function SidePeekInner({
     leavePeek(() => onNavigate(noteId, docRef.current ?? undefined));
   }, [leavePeek, noteId, onNavigate]);
 
+  // 「別ウィンドウで開く」: 別ウィンドウに出し、このピークは保存し終えて閉じる
+  // （同じノートを 2 か所に出さない）。ウィンドウを先に開くのは、Web 版で利用者の操作として
+  // 扱われるように。未保存の編集は、閉じる前の保存が終わると別ウィンドウへ届く
+  // （save-note-doc の notifyViewerNoteSaved）。開けなかったらピークは閉じない
+  const handlePopOut = useCallback(() => {
+    void openViewerWindow({ kind: "note", id: noteId }).then((opened) => {
+      if (opened) leavePeek(onClose);
+    });
+  }, [leavePeek, noteId, onClose]);
+
   const statusText = saveStatus === "saving" ? t("common.saving")
     : saveStatus === "dirty" ? t("common.unsaved")
     : t("common.saved");
@@ -2037,7 +2111,19 @@ function SidePeekInner({
   const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
     : "var(--color-text-tertiary)";
 
-  const containerStyle: React.CSSProperties = inline && !floating
+  const containerStyle: React.CSSProperties = standalone
+    ? {
+        // 別ウィンドウ: ウィンドウいっぱい。幅のつまみも差し込みの動きも無い
+        position: "relative",
+        flex: 1,
+        minHeight: 0,
+        minWidth: 0,
+        width: "100%",
+        background: "var(--color-card)",
+        display: "flex",
+        flexDirection: "column",
+      }
+    : inline && !floating
     ? {
         // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される。
         // 狭いデスクトップ（768〜1100px）で固定 480px だとエディタが極端に細るため、
@@ -2088,7 +2174,7 @@ function SidePeekInner({
       style={containerStyle}
     >
       {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
-      {isDesktop && (
+      {isDesktop && !standalone && (
         <ResizeHandle
           handleProps={peekResize.handleProps}
           isResizing={peekResize.isResizing}
@@ -2107,7 +2193,7 @@ function SidePeekInner({
           flexShrink: 0,
         }}
       >
-        <button
+        {!standalone && <button
           onClick={handleClose}
           data-tooltip={t("sidePeek.close")}
           aria-label={t("sidePeek.close")}
@@ -2135,15 +2221,16 @@ function SidePeekInner({
             <polyline points="13 17 18 12 13 7" />
             <polyline points="6 17 11 12 6 7" />
           </svg>
-        </button>
+        </button>}
 
         {/* 版スナップショットは通常ノートとしてフル画面で開けない（index に無い ID のため）。
             拡大ボタンは隠し、閲覧はピーク内で完結させる。 */}
         {!noteId.startsWith("snapshot:") && (
           <button
             onClick={handleNavigate}
-            data-tooltip={t("sidePeek.fullscreen")}
-            aria-label={t("sidePeek.fullscreen")}
+            data-tooltip={standalone ? t("viewerWindow.openInMainHint") : t("sidePeek.fullscreen")}
+            aria-label={standalone ? t("viewerWindow.openInMain") : t("sidePeek.fullscreen")}
+            data-viewer-open-in-main={standalone ? "" : undefined}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2170,6 +2257,38 @@ function SidePeekInner({
               <polyline points="9 21 3 21 3 15" />
               <line x1="10" y1="14" x2="3" y2="21" />
             </svg>
+          </button>
+        )}
+
+        {/* 別ウィンドウで開く（2 枚目の画面に出して、見ながら書く）。ウィンドウを並べられる
+            デスクトップ幅のときだけ出す */}
+        {isDesktop && !standalone && (
+          <button
+            onClick={handlePopOut}
+            data-tooltip={t("sidePeek.popOut")}
+            aria-label={t("sidePeek.popOut")}
+            data-side-peek-pop-out
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
+          >
+            <PictureInPicture2 size={16} />
           </button>
         )}
 
@@ -2207,6 +2326,27 @@ function SidePeekInner({
           {statusText}
         </span>
 
+        {standalone && standalonePanel && (
+          <button
+            type="button"
+            onClick={toggleStandalonePanel}
+            aria-pressed={standalonePanelOpen}
+            data-standalone-panel-toggle
+            style={{
+              flexShrink: 0,
+              padding: "3px 8px",
+              borderRadius: 4,
+              border: "1px solid var(--color-border-subtle)",
+              background: standalonePanelOpen ? "var(--color-surface-hover)" : "transparent",
+              cursor: "pointer",
+              fontSize: 11,
+              color: "var(--color-text-secondary, var(--color-foreground))",
+            }}
+          >
+            {standalonePanel.label}
+          </button>
+        )}
+
         {/* 右端の ⋯（素材のピークと同じ位置。項目は peek-note-menu.tsx） */}
         <PeekNoteMenu
           link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)}
@@ -2217,7 +2357,9 @@ function SidePeekInner({
       </div>
 
       {/* コンテンツ */}
-      <div ref={setWrapperEl} data-label-wrapper style={{ flex: 1, overflow: "auto", background: "var(--color-background)", position: "relative" }}>
+      {/* 本文と、別ウィンドウの右のパネルを横に並べる枠（パネルが無ければ本文だけ） */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+      <div ref={setWrapperEl} data-label-wrapper style={{ flex: 1, minWidth: 0, overflow: "auto", background: "var(--color-background)", position: "relative" }}>
         {loading && (
           <div
             style={{
@@ -2299,6 +2441,8 @@ function SidePeekInner({
               style={{
                 padding: "16px 24px",
                 paddingRight: labelStore.labels.size > 0 ? 80 : 24,
+                // 別ウィンドウ: 広げても読みやすい幅で中央に寄せる
+                ...(standalone ? { maxWidth: 860, marginInline: "auto" } : null),
               }}
             >
               {/* 手動で残した版（snapshot:）の状態表示。エディタは read-only。 */}
@@ -2664,6 +2808,31 @@ function SidePeekInner({
           </>
         )}
       </div>
+      {standalone && standalonePanel && standalonePanelOpen && effectiveDoc && !loading && !error && (
+        <aside
+          data-standalone-panel
+          aria-label={standalonePanel.label}
+          style={{
+            width: "clamp(300px, 42vw, 520px)",
+            flexShrink: 0,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            borderLeft: "1px solid var(--color-border-subtle)",
+            background: "var(--color-muted)",
+          }}
+        >
+          {standalonePanel.render({
+            noteId,
+            editorRef,
+            noteContexts: peekContexts,
+            doc: effectiveDoc,
+            subscribeChange,
+          })}
+        </aside>
+      )}
+      </div>
 
       <style>{`
         @keyframes sidePeekSlideIn {
@@ -2752,6 +2921,6 @@ function SidePeekInner({
     </div>
   );
 
-  if (inline) return body;
+  if (inline || standalone) return body;
   return createPortal(body, document.body);
 }

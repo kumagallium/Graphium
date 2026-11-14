@@ -26,6 +26,8 @@ type RowId = "cloud" | "local";
 export type ConnectChooserViewProps = {
   /** API キーでつなぐクラウドの接続先（無料枠の有無を問わず、英語名の順） */
   cloudProviders: readonly FreeProvider[];
+  /** ChatGPT のプランでつなぐ（Sign in with ChatGPT。デスクトップのみ。無ければ行を出さない） */
+  onConnectChatGpt?: () => void;
   /** GitHub Copilot のワンクリック接続（デスクトップのみ。無ければ行を出さない） */
   onConnectCopilot?: () => void;
   onPickCloud: (provider: FreeProvider) => void;
@@ -52,6 +54,7 @@ const chip =
 
 export function ConnectChooserView({
   cloudProviders,
+  onConnectChatGpt,
   onConnectCopilot,
   onPickCloud,
   onPickLocal,
@@ -107,6 +110,19 @@ export function ConnectChooserView({
             ))}
           </div>
         </div>
+      )}
+
+      {/* ChatGPT のプラン: ボタン 1 つでつなぐ（並びは名前順なので GitHub より前）。おすすめ表示は付けない */}
+      {onConnectChatGpt && (
+      <div className={`${rowClass} flex items-start justify-between gap-3 p-3`}>
+        <div className="min-w-0 pl-5">
+          <span className="block text-xs font-semibold text-foreground">{t("settings.aiConnect.chatgpt.title")}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{t("settings.aiConnect.chatgpt.summary")}</span>
+        </div>
+        <button type="button" onClick={onConnectChatGpt} className={rowPrimary}>
+          {t("settings.chatgptPlan.button")}
+        </button>
+      </div>
       )}
 
       {/* GitHub Copilot: ボタン 1 つでつなぐ（今のワンクリック接続） */}

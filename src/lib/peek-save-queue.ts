@@ -29,6 +29,18 @@ export type PeekSaveOutcome = {
   saved: boolean;
 };
 
+/**
+ * write が「書けなかった。どこにも保存されていない編集はこの doc」と伝えるための失敗。
+ * 列に並べた時点では書く doc が決まっていない保存（別ウィンドウの代理。書こうとした doc は
+ * 別ウィンドウが返事で教える）が使う。投げると、その doc が「書けずに残った編集」になる
+ */
+export class PeekSaveFailed extends Error {
+  constructor(readonly doc: GraphiumDocument) {
+    super("peek save failed");
+    this.name = "PeekSaveFailed";
+  }
+}
+
 const tails = new Map<string, Promise<PeekSaveOutcome>>();
 
 // 書き出しに失敗し、まだ誰も引き取っていない doc（どこにも保存されていない編集）。
@@ -56,9 +68,10 @@ export function queuePeekSave(
       unsavedDocs.delete(noteId);
       return { doc: written ?? doc, saved: true };
     },
-    (): PeekSaveOutcome => {
-      unsavedDocs.set(noteId, doc);
-      return { doc, saved: false };
+    (err): PeekSaveOutcome => {
+      const failed = err instanceof PeekSaveFailed ? err.doc : doc;
+      unsavedDocs.set(noteId, failed);
+      return { doc: failed, saved: false };
     },
   );
   tails.set(noteId, tail);
@@ -126,20 +139,108 @@ export type LivePeek = {
    * メインエディタはこの口を持たない（呼び出し側が開き直す）。
    */
   applyExternalDoc?: (doc: GraphiumDocument) => boolean;
+  /**
+   * 別ウィンドウで開いているエディタの代理（features/viewer-window/main-bridge.ts）。
+   * このウィンドウの中のエディタではないので、「このウィンドウがこのノートを開いているか」
+   * （localLivePeekIds）には数えない
+   */
+  remote?: boolean;
 };
 
 const livePeeks = new Map<string, Set<LivePeek>>();
+
+// 登録の増減を知りたい相手（別ウィンドウとの橋）。このウィンドウが開いているノートが
+// 変わったら、別ウィンドウへ知らせる
+const livePeekListeners = new Set<() => void>();
+
+function notifyLivePeeksChanged(): void {
+  for (const fn of [...livePeekListeners]) {
+    try {
+      fn();
+    } catch (e) {
+      console.error("[peek-save-queue] live peek listener failed", e);
+    }
+  }
+}
 
 /** 開いているピークを登録する。戻り値で登録を外す */
 export function registerLivePeek(noteId: string, peek: LivePeek): () => void {
   let peeks = livePeeks.get(noteId);
   if (!peeks) livePeeks.set(noteId, (peeks = new Set()));
   peeks.add(peek);
+  if (!peek.remote) notifyLivePeeksChanged();
   return () => {
     const current = livePeeks.get(noteId);
     if (!current) return;
+    // 列に並ばない保存（メインエディタのふだんの自動保存）が書き込み中なら、登録が外れた後も
+    // 終わるまで追えるように控える（pendingLocalSaves）
+    if (!peek.remote) {
+      const saving = peek.pendingSaves?.();
+      if (saving) trackClosingSave(noteId, saving);
+    }
     current.delete(peek);
     if (current.size === 0) livePeeks.delete(noteId);
+    if (!peek.remote) notifyLivePeeksChanged();
+  };
+}
+
+// 登録を外した時点で書き込み中だった、列に並ばない保存
+const closingSaves = new Map<string, Set<Promise<void>>>();
+
+function trackClosingSave(noteId: string, saving: Promise<void>): void {
+  let set = closingSaves.get(noteId);
+  if (!set) closingSaves.set(noteId, (set = new Set()));
+  const tracked = saving.then(
+    () => {},
+    () => {},
+  );
+  set.add(tracked);
+  void tracked.then(() => {
+    const cur = closingSaves.get(noteId);
+    if (!cur) return;
+    cur.delete(tracked);
+    if (cur.size === 0) closingSaves.delete(noteId);
+  });
+}
+
+/**
+ * このウィンドウがこのノートへ書き込んでいる最中の保存（列に並んだ保存と、エディタを閉じた時点で
+ * 書き込み中だった自動保存）がすべて終わったら解決する Promise。無ければ null。
+ * 別ウィンドウへ「このノートを手放した」と知らせる前に待つ
+ */
+export function pendingLocalSaves(noteId: string): Promise<void> | null {
+  const waits: Promise<unknown>[] = [];
+  const tail = tails.get(noteId);
+  if (tail) waits.push(tail);
+  for (const saving of closingSaves.get(noteId) ?? []) waits.push(saving);
+  for (const peek of livePeeks.get(noteId) ?? []) {
+    if (peek.remote) continue;
+    const saving = peek.pendingSaves?.();
+    if (saving) waits.push(saving.then(() => {}, () => {}));
+  }
+  if (waits.length === 0) return null;
+  return Promise.allSettled(waits).then(() => {});
+}
+
+/** このウィンドウの中のエディタ（メイン・サイドピーク）が開いているノートの ID。代理は数えない */
+export function localLivePeekIds(): string[] {
+  const ids: string[] = [];
+  for (const [noteId, peeks] of livePeeks) {
+    for (const peek of peeks) {
+      if (!peek.remote) {
+        ids.push(noteId);
+        break;
+      }
+    }
+  }
+  return ids;
+}
+
+/** このウィンドウの中のエディタの登録が増減したときに呼ぶ。戻り値で解除する */
+export function onLocalLivePeeksChange(fn: () => void): () => void {
+  livePeekListeners.add(fn);
+  return () => {
+    livePeekListeners.delete(fn);
   };
 }
 

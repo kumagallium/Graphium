@@ -121,6 +121,13 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
         modelId: config.modelId,
       });
     }
+    case "chatgpt-plan": {
+      // Sign in with ChatGPT（利用者の ChatGPT プランで Responses API を呼ぶ）。
+      // API キーは使わず、サインイン済みのアクセストークンを毎回の要求に付ける。
+      // 動的 import: node:http / node:crypto を使う認証部品を Web ビルドに巻き込まない。
+      const { createChatGptPlanModel } = await import("./chatgpt-plan/model.js");
+      return createChatGptPlanModel(config.modelId);
+    }
     default:
       throw new Error(`Unknown provider: ${config.provider}`);
   }
@@ -146,6 +153,12 @@ export async function fetchAvailableModels(
       );
     }
     return listCopilotModels(binaryPath);
+  }
+
+  // chatgpt-plan はサインイン済みのトークンで公式の一覧（visibility が list のもの）を取る
+  if (provider === "chatgpt-plan") {
+    const { listChatGptPlanModels } = await import("./chatgpt-plan/model.js");
+    return (await listChatGptPlanModels()).map((m) => m.id);
   }
 
   const base = apiBase || DEFAULT_API_BASE[provider];
