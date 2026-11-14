@@ -8,13 +8,19 @@
 // 個別のモデル名や提供者は出さない（おすすめで特定の会社を推さない。providers の方針と同じ）。
 // 区分の中でも差はある（世界照合では luna が 16 件中 7 件を判定できず、Opus 5 は 15/16）ので、断定でなく「目安」として出す。
 // 世界照合は v0.125 から専用の選択欄を外し、デフォルト（軽い処理）の段で動く。
-// 測り直したら、ここと検証の記録のページを同じ PR で直す。
+// 測り直したら、ここと検証の記録のページを同じ PR で直す。リンク（modelFitEvaluationUrl）はいちばん新しい測定のページを指す。
 //
 // 2026-11-12 に、公開されている 9 つのモデルと基準点（gpt-5.6-luna）を、同じ 18 作業・架空の題材・3 回ずつで測り直した
 // （manual/evaluations/open-models-by-feature.md）。精密の段のオープンな大型だけを「向かない」から「条件つき」に上げた。
 // 条件つきは、段の作業の一部だけが基準点に近い、の意味。
 // ローカル 30B 級と音声ノートの欄は変えていない: 30B 級は API 経由でしか測っておらず（前回パソコン上で測った結果が残る）、
 // 清書の訂正率は基準点 0.60 に対してオープンな大型で 0.18〜0.36 と遠かった。10B 級は測っていない。
+//
+// 2026-11-14 に、上位のクラウド 2 つ（gpt-5.6-luna を 3 回・gpt-6.1-sol を 3 回）と、パソコン上（LM Studio、M1 Max 64 GB）の
+// gemma-4-31b-qat・qwen3.6-35b-a3b・qwen3.5-9b（1 回ずつ）を同じ 18 作業で足した（manual/evaluations/cloud-and-local-models-by-feature.md）。
+// 軽い処理のローカル 30B 級だけを「向く」から「条件つき」に下げた（6 作業のうち基準点の 9 割以上は gemma 3・qwen3.6 4）。
+// ほかのマスは変えていない: 測る前に決めた決め方（段の全作業で 9 割以上なら向く、一部なら条件つき）では、ほぼ全マスが
+// 条件つきになり差を示せないため（オープンな大型の軽い処理、上位のクラウドの高度な処理・音声も、この決め方では条件つきだが good のまま）。モデルの差は段ではなく「照らし合わせる仕事」と「書く仕事」で出た（段の組み替えは別に設計する）。
 
 /** 割り当て枠。default・standard・precise が難しさ別の 3 段、meeting は音声ノートの欄 */
 export type ModelSlot = "default" | "standard" | "precise" | "meeting";
@@ -29,8 +35,11 @@ export const MODEL_CLASSES: readonly ModelClass[] = ["frontier", "openLarge", "l
 
 export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
   // 軽い処理（チャットの回答・点検・出典照合・題付け・トピックの統合・世界照合）。世界照合は 30B 級が Opus 5 と同じ 15/16。品質ならどの大きさでもほぼ足りた
-  // （10B 級も回答 10/10）。10B 級は題付け約 3 分・出典照合約 4 分と遅いので条件つき
-  default: { frontier: "good", openLarge: "good", local30b: "good", local10b: "partial" },
+  // （10B 級も回答 10/10）。10B 級は題付け約 3 分・出典照合約 4 分と遅いので条件つき。
+  // ただし「品質ならどの大きさでも足りた」は 2026-11-07 の少ない件数での話で、2026-11-14 の 18 作業では下の注のとおり
+  // 2026-11-14: パソコン上で直接測ると、gemma-4-31b-qat は点検が時間切れで 0・世界照合 .35、qwen3.6-35b-a3b は回答と
+  // トピックの統合が届かず、local30b を条件つきに下げた
+  default: { frontier: "good", openLarge: "good", local30b: "partial", local10b: "partial" },
   // 標準の処理（ナレッジ化・翻訳・トピックの振り分けと改訂）。オープンな大型はナレッジ化 4/5・翻訳 3/4・
   // トピック 5/8。30B 級はナレッジ化 3/5・トピック 4/8 で 1 件 1〜3 分。10B 級はナレッジ化 2/5・翻訳 1/4
   // 2026-11-12 に知見づくりを 20 本で測り直し（manual/evaluations/claim-scope.md）、オープンな大型を条件つきに下げた。
@@ -50,5 +59,5 @@ export const MODEL_FIT: Record<ModelSlot, Record<ModelClass, FitLevel>> = {
 
 /** 検証の記録のページ（設定画面から開く） */
 export function modelFitEvaluationUrl(locale: string): string {
-  return `https://kumagallium.github.io/Graphium/manual/${locale === "ja" ? "ja/" : ""}evaluations/model-tiers-by-feature`;
+  return `https://kumagallium.github.io/Graphium/manual/${locale === "ja" ? "ja/" : ""}evaluations/cloud-and-local-models-by-feature`;
 }
