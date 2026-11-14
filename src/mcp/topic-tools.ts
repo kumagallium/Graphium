@@ -595,8 +595,8 @@ export async function submitTopicPage(input: SubmitTopicPageInput, ctx: ToolCont
         ].join("\n");
       }
     }
-    // 引用の一節を資料の文字と照らす（見つからない一節は外す。アプリの finish と同じ）
-    const checked = verifyCitationPassages(currentBody, parsed.body, source);
+    // 引用の一節を資料の文字と照らす（見つからない一節は印を付けて残す。アプリの finish と同じ）
+    const checked = verifyCitationPassages(currentBody, parsed.body, { ...source, fullText: source.text });
 
     const client = ctx.getClientName?.();
     const model = input.model?.trim() || null;
@@ -669,7 +669,7 @@ export async function submitTopicPage(input: SubmitTopicPageInput, ctx: ToolCont
       const items = await setItem(root, task.taskId, item.ref, { status: "done", savedId }, true);
       return [
         `${existing ? "改訂" : "作成"}しました: 「${doc.title}」 (id: ${savedId})`,
-        ...(checked.removed > 0 ? [`  資料に見つからなかった引用の一節 ${checked.removed} 件を外しました（文と出典は残しています）`] : []),
+        ...(checked.unverified.length > 0 ? [`  資料に見つからなかった引用の一節 ${checked.unverified.length} 件に印を付けました（文・出典・一節は残し、ページと出典照合で見えるようにしています）`] : []),
         ...(ended.recorded
           ? [`  runId: ${ended.runId}`, `  operationId: ${ended.operationId}`]
           : ["  注意: 操作の記録を書けませんでした。undo_operation では取り消せません。"]),

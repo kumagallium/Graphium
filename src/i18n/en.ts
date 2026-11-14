@@ -4326,6 +4326,7 @@ export const en: Record<string, string> = {
   "sourceCheck.quoteLocation.pageRange": "Pages {page}–{pageEnd}",
   "sourceCheck.quoteLocation.paragraph": "Paragraph {paragraph}",
   "sourceCheck.quoteLocation.srPrefix": "Location in source:",
+  "sourceCheck.passageNotFound": "When the AI wrote this sentence, it copied this passage, which is not in the source:",
   "sourceCheck.sourceKind.note": "Note",
   "sourceCheck.sourceKind.pdf": "PDF",
   "sourceCheck.sourceKind.document": "Document",

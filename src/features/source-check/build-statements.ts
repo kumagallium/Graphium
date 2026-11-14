@@ -85,6 +85,7 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
     statement: st.text,
     statementBlockId: st.blockId,
     ...(st.passages ? { passages: st.passages } : {}),
+    ...(st.unverifiedPassages ? { unverifiedPassages: st.unverifiedPassages } : {}),
   }));
 }
 

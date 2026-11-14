@@ -1703,16 +1703,25 @@ Notes:
   copies, inside each citation, the passage of the source that the
   sentence restates (`[[source:<id>|<passage>]]`, `SOURCE_PASSAGE_RULES`):
   one continuous stretch, verbatim. Before saving, `verifyCitationPassages`
-  string-matches each new passage against the source text it was written
-  from and removes the ones it can't find — no model call, the same result
-  every time. Passages already on the page for the same source are kept
-  (later windows of a long source don't contain earlier windows' text), a
-  rewritten passage of another source is removed, and a merge keeps only
-  passages found in one of the merged bodies (`keepKnownPassages`), so
-  every passage on a page was found in its source when it was written. The passage travels
+  string-matches every passage of the source just read against that
+  source's full text (`fullText`, kept on the client; the model only sees
+  the window) — no model call, the same result every time. A passage it
+  can't find is kept with a mark (`[[source:<id>|?|<passage>]]`) instead of
+  being removed quietly: the page shows "the passage the AI copied isn't in
+  the source" after the sentence, and the source check entry carries it as
+  `passageNotFound`. This also catches a note that was edited after the
+  topic was written: on re-ingest its passages are checked against the new
+  text. A passage of another source stays checked only if it is unchanged
+  from the previous body, and a merge marks passages that weren't checked
+  in a merged body (`keepKnownPassages`). The passage travels
   with the sentence through later revisions (kept verbatim like the id),
   becomes the link's `targetQuote` so the `@source` mention opens a PDF at
-  that passage, and is the source check's fallback quote (below). Claims are no
+  that passage, and is the source check's fallback quote (below). Under
+  *Disagreements & open questions*, each citation is followed by the
+  source's date — a note's creation date, or a paper's year from its
+  source info — added mechanically when the body is rendered
+  (`setSourceDateLookup`, set by `note-app`), so a reader can tell which
+  figure came later. Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
   before (Topics never did). **Existing Claim-derived Topics** (no

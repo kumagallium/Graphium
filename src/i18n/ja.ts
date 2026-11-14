@@ -4328,6 +4328,7 @@ export const ja: Record<string, string> = {
   "sourceCheck.quoteLocation.pageRange": "{page}〜{pageEnd} ページ",
   "sourceCheck.quoteLocation.paragraph": "第 {paragraph} 段落",
   "sourceCheck.quoteLocation.srPrefix": "出典中の位置:",
+  "sourceCheck.passageNotFound": "この文を書いたとき AI が写した次の一節は、資料に見つかりませんでした:",
   "sourceCheck.sourceKind.note": "ノート",
   "sourceCheck.sourceKind.pdf": "PDF",
   "sourceCheck.sourceKind.document": "文書",

@@ -35,6 +35,7 @@ import {
   formatSourceCitation,
   parseSourceCitations,
   passageAppearsIn,
+  splitPassage,
 } from "../../lib/source-citations";
 
 /** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
@@ -817,16 +818,20 @@ function pushCitation(
    *  資料一覧（sources）から作る。noteIndex で解決できなかったときだけのフォールバック */
   extraTitleToId?: Map<string, string>,
   /** resolveSourceCitationsWithPassages が控えた一節（引用の題の ⟦P:n⟧ が指す） */
-  passages?: string[],
+  passages?: PassageMark[],
 ): void {
-  // 一節の目印を外し、その一節をリンク記録に載せる
-  let quote: string | undefined;
+  // 一節の目印を外し、照合済みの一節はリンク記録に載せる。資料に見つからなかった一節は
+  // リンクに載せず、引用の後ろに注記を出す（読む人に見せる）
+  let passageMark: PassageMark | undefined;
   const mark = PASSAGE_MARK_RE.exec(citedTitle);
   if (mark) {
-    quote = passages?.[Number(mark[1])];
+    passageMark = passages?.[Number(mark[1])];
     citedTitle = citedTitle.slice(0, mark.index);
   }
-  const quoteField = quote ? { targetQuote: quote } : {};
+  const quoteField = passageMark?.quote ? { targetQuote: passageMark.quote } : {};
+  const pushPassageNote = () => {
+    if (passageMark?.note) inlineContent.push({ type: "text", text: passageMark.note, styles: { textColor: "gray" } });
+  };
   // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
   // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
   // そのまま resolve すると「自分が自分の根拠」という循環リンクになる。
@@ -877,6 +882,7 @@ function pushCitation(
       createdBy: "ai",
       ...quoteField,
     });
+    pushPassageNote();
     return;
   }
 
@@ -899,6 +905,7 @@ function pushCitation(
       createdBy: "ai",
       ...quoteField,
     });
+    pushPassageNote();
     return;
   }
 
@@ -923,7 +930,7 @@ export function parseInlineCitations(
   /** convertSectionsToBlocks が節ごとに退避した数式。省略時はこの行の数式をここで退避する */
   math?: MathStash[],
   /** resolveSourceCitationsWithPassages が控えた一節 */
-  passages?: string[],
+  passages?: PassageMark[],
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -1124,7 +1131,7 @@ function convertSectionsToBlocks(
   /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
   extraTitleToId?: Map<string, string>,
   /** resolveSourceCitationsWithPassages が控えた一節 */
-  passages?: string[],
+  passages?: PassageMark[],
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -2863,7 +2870,36 @@ export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemb
 // ── 新形式トピック（2026-09〜。資料 id を直接引用。取り込み・再生成・作り直しの全経路で使用） ──
 
 /** 話題ページの本文・References 構築に渡す資料の最小情報（ノート id / "pdf:" 等の外部プレフィックス付き id） */
-export type TopicSourceRef = { id: string; title: string };
+export type TopicSourceRef = {
+  id: string;
+  title: string;
+  /** 食い違いの節で引用の後ろに添える資料の日付（ノートは作成日 YYYY-MM-DD、論文は年）。
+   *  無ければ sourceDateLookup で引く。引けなければ添えない */
+  date?: string;
+};
+
+/** 引用の題に付けた ⟦P:n⟧ が指すもの。quote = 照合済みの一節、note = 引用の後ろに出す注記 */
+export type PassageMark = { quote?: string; note?: string };
+
+/**
+ * 資料 id → 日付（ノートの作成日・論文の年）。食い違いの節で、どちらの数字が後に出たかを読む人が
+ * 分かるように添える。ノート一覧・素材一覧を持つ note-app が setSourceDateLookup で渡す
+ * （資料の題の解決と違い、改訂の経路ごとに配線しないで済むように 1 か所で持つ）。
+ */
+let sourceDateLookup: ((sourceId: string) => string | undefined) | null = null;
+export function setSourceDateLookup(fn: ((sourceId: string) => string | undefined) | null): void {
+  sourceDateLookup = fn;
+}
+
+/** 「食い違い・未解決」の節の見出し（日英韓。改訂の指示が書かせる見出しと同じ） */
+const DISAGREEMENT_HEADING_RE = /^#{1,6}\s*(食い違い|disagreements|견해\s*차이)/i;
+
+/** 資料に見つからなかった一節の注記（ページの言語。無い言語は英語） */
+const UNVERIFIED_PASSAGE_NOTE: Record<string, string> = {
+  ja: "（AI が写した一節が資料に見つからない）",
+  en: " (the passage the AI copied isn't in the source)",
+  ko: " (AI가 옮긴 구절이 자료에 없음)",
+};
 
 /** 引用の題の後ろに付ける一節の目印（`[[題⟦P:n⟧]]`）。一節の文字（* や $ 等）を本文の書式の
  *  解釈に通さないよう、本文には番号だけを置き、一節そのものは別の配列で渡す */
@@ -2890,19 +2926,31 @@ export function resolveSourceCitations(body: string, sources: TopicSourceRef[]):
 export function resolveSourceCitationsWithPassages(
   body: string,
   sources: TopicSourceRef[],
-): { text: string; passages: string[] } {
-  const passages: string[] = [];
+  /** 注記の言語（資料に見つからなかった一節の注記） */
+  language?: string,
+): { text: string; passages: PassageMark[] } {
+  const passages: PassageMark[] = [];
   if (!body) return { text: body, passages };
-  const titleById = new Map(sources.map((s) => [s.id, s.title]));
-  const text = body.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
-    const id = rawId.trim();
-    const title = titleById.get(id);
-    if (!title) return `[[source:${id}]]`;
-    const passage = rawPassage?.trim();
-    if (!passage) return `[[${title}]]`;
-    passages.push(passage);
-    return `[[${title}\u27E6P:${passages.length - 1}\u27E7]]`;
-  });
+  const refById = new Map(sources.map((s) => [s.id, s]));
+  const unverifiedNote = UNVERIFIED_PASSAGE_NOTE[(language ?? "en").split("-")[0]] ?? UNVERIFIED_PASSAGE_NOTE.en;
+  let inDisagreements = false;
+  const text = body.split("\n").map((line) => {
+    const heading = /^#{1,6}\s/.test(line.trim());
+    if (heading) inDisagreements = DISAGREEMENT_HEADING_RE.test(line.trim());
+    return line.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
+      const id = rawId.trim();
+      const ref = refById.get(id);
+      if (!ref) return `[[source:${id}]]`;
+      // 食い違いの節だけ、資料の日付を添える（並んだ数字のどちらが後に出たかが分かるように）
+      const date = inDisagreements && !heading ? (ref.date ?? sourceDateLookup?.(id)) : undefined;
+      // 引用が続くとき日付と次の引用が詰まらないよう後ろにも空白を置く（行末の空白は下で落とす）
+      const dateText = date ? ` (${date}) ` : "";
+      const { passage, unverified } = splitPassage(rawPassage);
+      if (!passage) return `[[${ref.title}]]${dateText}`;
+      passages.push(unverified ? { note: unverifiedNote } : { quote: passage });
+      return `[[${ref.title}\u27E6P:${passages.length - 1}\u27E7]]${dateText}`;
+    }).replace(/ +$/, "");
+  }).join("\n");
   return { text, passages };
 }
 
@@ -2918,26 +2966,37 @@ export function resolveSourceCitationsWithPassages(
 export function verifyCitationPassages(
   previousBody: string,
   body: string,
-  source: { id: string; text: string },
-): { body: string; removed: number; kept: number } {
-  const known = new Set(
-    parseSourceCitations(previousBody)
-      .filter((c) => c.passage)
-      .map((c) => `${c.sourceId}\u0000${c.passage}`),
-  );
-  let removed = 0;
+  /** text = AI に渡した文字（窓）。fullText = 資料の全文（あれば、今読んだ資料の一節はこれと照らす） */
+  source: { id: string; text: string; fullText?: string },
+): { body: string; unverified: Array<{ sourceId: string; passage: string }>; kept: number } {
+  const prevCitations = parseSourceCitations(previousBody).filter((c) => c.passage);
+  const key = (id: string, p: string) => `${id}\u0000${p}`;
+  const knownVerified = new Set(prevCitations.filter((c) => !c.unverified).map((c) => key(c.sourceId, c.passage!)));
+  const knownUnverified = new Set(prevCitations.filter((c) => c.unverified).map((c) => key(c.sourceId, c.passage!)));
+  const unverified: Array<{ sourceId: string; passage: string }> = [];
   let kept = 0;
   const next = body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
     const id = rawId.trim();
-    const passage = rawPassage?.trim();
+    const { passage } = splitPassage(rawPassage);
     if (!passage) return formatSourceCitation(id);
-    const ok = known.has(`${id}\u0000${passage}`)
-      || (id === source.id && passageAppearsIn(passage, source.text));
+    let ok: boolean;
+    if (id === source.id) {
+      // 今読んだ資料: 全文があれば全文と照らす（取り込み直しでノートから消えた一節も、ここで外れる）。
+      // 全文が無ければ、前の本文で照合済みの一節（前の窓の分）か、今の窓の文字にあるか
+      ok = source.fullText !== undefined
+        ? passageAppearsIn(passage, source.fullText)
+        : knownVerified.has(key(id, passage)) || passageAppearsIn(passage, source.text);
+    } else {
+      // 他の資料: 読んでいないので、前の本文で照合済みの同じ一節だけを照合済みとして残す
+      ok = knownVerified.has(key(id, passage));
+    }
     if (ok) { kept++; return formatSourceCitation(id, passage); }
-    removed++;
-    return formatSourceCitation(id);
+    // 見つからない一節は消さずに印を付けて残す（読む人に見せ、出典照合で確かめる）。
+    // 前の本文から持ち越した印は数えない（新しく見つからなくなったものだけを数える）
+    if (!knownUnverified.has(key(id, passage))) unverified.push({ sourceId: id, passage });
+    return formatSourceCitation(id, passage, true);
   });
-  return { body: next, removed, kept };
+  return { body: next, unverified, kept };
 }
 
 /**
@@ -3037,15 +3096,14 @@ export function droppedOtherSourceCitations(
  * だけに絞る。書き換わった一節は確かめようがないので外す（引用は残す）。
  */
 export function keepKnownPassages(previousBodies: string[], body: string): string {
-  const known = new Set(
-    previousBodies.flatMap((b) => parseSourceCitations(b))
-      .filter((c) => c.passage)
-      .map((c) => `${c.sourceId}\u0000${c.passage}`),
-  );
+  const prev = previousBodies.flatMap((b) => parseSourceCitations(b)).filter((c) => c.passage);
+  const verified = new Set(prev.filter((c) => !c.unverified).map((c) => `${c.sourceId}\u0000${c.passage}`));
   return body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
     const id = rawId.trim();
-    const passage = rawPassage?.trim();
-    return formatSourceCitation(id, passage && known.has(`${id}\u0000${passage}`) ? passage : undefined);
+    const { passage } = splitPassage(rawPassage);
+    if (!passage) return formatSourceCitation(id);
+    // 元の本文で照合済みの一節だけを照合済みとして残す。それ以外（書き換わった・元から見つからなかった）は印を付ける
+    return formatSourceCitation(id, passage, !verified.has(`${id}\u0000${passage}`));
   });
 }
 
@@ -3133,7 +3191,7 @@ export function buildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources, language);
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
@@ -3211,7 +3269,11 @@ export function rebuildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(
+    stripped,
+    sources,
+    language ?? existingDoc.wikiMeta?.language,
+  );
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
@@ -3495,7 +3557,8 @@ export const REVISE_TOPIC_RETRIES = 1;
 export async function reviseTopicFromSource(
   title: string,
   currentBody: string,
-  source: { id: string; title: string; text: string },
+  /** text = AI に渡す文字（長い資料なら窓）。fullText = 資料の全文（一節の照合に使う。サーバーには送らない） */
+  source: { id: string; title: string; text: string; fullText?: string },
   language: string,
   /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
@@ -3513,13 +3576,13 @@ export async function reviseTopicFromSource(
   // 書き直し（2 回目）の失敗は 1 回目の本文で済ませるので、onError に渡さない
   let quiet = false;
   const reportError = (err: unknown) => { if (!quiet) onError?.(err); };
-  // 返す本文は、控えた一節を資料の文字と照らしてから返す（見つからない一節は外す）
+  // 返す本文は、控えた一節を資料の文字と照らしてから返す（見つからない一節は印を付けて残す）
   const finish = (revised: string): string => {
     const checked = verifyCitationPassages(currentBody, revised, source);
-    if (checked.removed > 0) {
-      console.warn("reviseTopicFromSource: removed passages not found in the source", {
+    if (checked.unverified.length > 0) {
+      console.warn("reviseTopicFromSource: passages not found in the source (kept with a mark)", {
         title,
-        removed: checked.removed,
+        unverified: checked.unverified.length,
         kept: checked.kept,
       });
     }
@@ -3589,7 +3652,9 @@ export async function reviseTopicFromSource(
       method: "POST",
       headers,
       body: JSON.stringify({
-        title, language, currentBody, source,
+        title, language, currentBody,
+        // 全文はサーバーに送らない（AI に渡すのは窓の文字だけ。全文は手元の照合用）
+        source: { id: source.id, title: source.title, text: source.text },
         ...modelBody,
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),

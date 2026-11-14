@@ -1057,7 +1057,7 @@ export async function runSourceTopicStage(
           const revisedBody = await reviseTopicFromSource(
             topicDoc.title,
             currentBody,
-            { id: source.id, title: source.title, text: windowText },
+            { id: source.id, title: source.title, text: windowText, fullText: source.text },
             deps.locale,
             deps.model,
             previouslyCited,
@@ -1098,7 +1098,7 @@ export async function runSourceTopicStage(
             const revisedBody = await reviseTopicFromSource(
               name,
               state?.body ?? "",
-              { id: source.id, title: source.title, text: windowText },
+              { id: source.id, title: source.title, text: windowText, fullText: source.text },
               deps.locale,
               deps.model,
               false,
@@ -1119,7 +1119,7 @@ export async function runSourceTopicStage(
           const revisedBody = await reviseTopicFromSource(
             name,
             "",
-            { id: source.id, title: source.title, text: windowText },
+            { id: source.id, title: source.title, text: windowText, fullText: source.text },
             deps.locale,
             deps.model,
             undefined,
@@ -1313,7 +1313,7 @@ export async function rebuildTopicFromSources(
       const revised = await reviseTopicFromSource(
         topicDoc.title,
         body,
-        { id: sourceId, title: resolved.title, text: windowText },
+        { id: sourceId, title: resolved.title, text: windowText, fullText: resolved.text },
         deps.locale,
         deps.model,
         undefined,

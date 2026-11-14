@@ -305,7 +305,7 @@ export const SOURCE_PASSAGE_RULES = `## Keep the passage each sentence comes fro
 - Copy the passage character-for-character from the source text you were given — same characters, numbers, units and symbols. Do not translate, paraphrase, shorten words, or fix typos in it. It stays in the source's language even when the body is written in another language.
 - Copy ONE continuous stretch of the source. Never skip words with "…" or "...", and never join two places of the source into one passage — if a sentence draws on two places, cite the one that carries its main point.
 - Keep it to the clause or sentence that carries the point (about 200 characters at most), not a whole paragraph. It must not contain \`]]\` or \`|\` — end the passage before them.
-- Graphium checks every passage against the source text before saving and removes any it cannot find there.
+- Graphium checks every passage against the source text before saving. A passage it cannot find there is kept but marked: \`[[source:<id>|?|<passage>]]\`. Keep such a citation exactly as it is, mark included, unless you rewrite that sentence from the new source.
 - When a sentence cites two sources, each citation carries its own passage from its own source.
 - Citations already in the current body: keep them exactly as they are, passage included.
 - If you cannot point to a passage the sentence states, write \`[[source:<id>]]\` without one — never make one up.`;

@@ -235,6 +235,24 @@ function EntryRow({
           {locationText}
         </div>
       )}
+      {entry.passageNotFound && (
+        // この文を書いたとき AI が写した一節が、資料に見つからなかった（AI が語を直した等）。
+        // 黙って直さず読む人に見せる。判定には使わない
+        <div style={{ color: "var(--ink-3)", fontSize: 12, marginTop: 2 }}>
+          {t("sourceCheck.passageNotFound")}
+          <blockquote
+            style={{
+              margin: "2px 0 0",
+              padding: "4px 8px",
+              borderLeft: "2px dashed var(--rule)",
+              color: "var(--ink-3)",
+              fontSize: 13,
+            }}
+          >
+            <ScriptText text={entry.passageNotFound} />
+          </blockquote>
+        </div>
+      )}
       {entry.blockId && onOpenSource && (
         <button
           type="button"

@@ -19,7 +19,7 @@
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import { inlineContentToText } from "../markdown-export/inline-text";
-import { SOURCE_CITATION_RE } from "../../lib/source-citations";
+import { SOURCE_CITATION_RE, splitPassage } from "../../lib/source-citations";
 
 export type TopicStatement = {
   /** 照合する文（プレーンテキスト。引用部分は除く） */
@@ -30,6 +30,8 @@ export type TopicStatement = {
   claimIds: string[];
   /** 新形式の本文の引用に控えた一節（出典 id → 一節）。書いたときに資料の文字と照合済み */
   passages?: Record<string, string>;
+  /** AI が写したが資料に見つからなかった一節（出典 id → 一節。`|?|` の印の付いたもの） */
+  unverifiedPassages?: Record<string, string>;
 };
 
 /**
@@ -199,11 +201,13 @@ export function extractSourceTopicStatements(doc: GraphiumDocument): TopicStatem
 
     const sourceIds: string[] = [];
     const passages: Record<string, string> = {};
+    const unverifiedPassages: Record<string, string> = {};
     const text = line.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
       const id = rawId.trim();
       sourceIds.push(id);
-      const passage = rawPassage?.trim();
-      if (passage && !passages[id]) passages[id] = passage;
+      const { passage, unverified } = splitPassage(rawPassage);
+      const into = unverified ? unverifiedPassages : passages;
+      if (passage && !into[id]) into[id] = passage;
       return "";
     }).trim();
 
@@ -213,6 +217,7 @@ export function extractSourceTopicStatements(doc: GraphiumDocument): TopicStatem
       blockId: `line-${index}`,
       claimIds: sourceIds,
       ...(Object.keys(passages).length > 0 ? { passages } : {}),
+      ...(Object.keys(unverifiedPassages).length > 0 ? { unverifiedPassages } : {}),
     });
   });
   return statements;

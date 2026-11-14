@@ -33,6 +33,8 @@ export type PlanSourceCheckStatement = {
   statementBlockId?: string;
   /** その文を書いたときに控えた資料の一節（出典 id → 一節）。AI が抜粋を返さなかったときの抜粋に使う */
   passages?: Record<string, string>;
+  /** その文を書いたとき AI が写したが、資料に見つからなかった一節（出典 id → 一節）。詳細に出す */
+  unverifiedPassages?: Record<string, string>;
   /**
    * 解決を試みるまでもなく分かっている「照合できない」理由（1-c）。
    * 設定されている場合、resolveSourceText / LLM 呼び出しを行わず、sourceIds の各要素ごとに
