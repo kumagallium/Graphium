@@ -25,6 +25,7 @@ const KIND_ICONS: Record<MaintenanceOperationKind, typeof Undo2> = {
   restore_version: RotateCcw,
   mcp_generate: Sparkles,
   mcp_generate_insights: Sparkles,
+  mcp_generate_topics: Sparkles,
   undo: Undo2,
 };
 

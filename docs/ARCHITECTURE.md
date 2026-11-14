@@ -3976,6 +3976,10 @@ Tools:
 | `submit_insight_review` | take the client's answers to the review task (transfer / fold / relift / duplicate / reinforce) and save the insights; recorded (`mcp_generate_insights`) |
 | `start_procedure_task` | hand out a procedure-extraction task for one material (PDF, `.docx`, registered URL) or note: the system prompt the app's "Extract steps into a note" sends (`buildProvIngesterSystemPrompt` with the vault's label vocabulary from `collectLabelVocabulary`) and a user message in the shape of `buildProvIngesterUserMessage`. Sources up to 12,000 characters are inlined; longer ones are read by the client through `get_source_text`. See "Procedures made through MCP" below |
 | `submit_procedure` | take the client's answer to a procedure task, run it through the app's checks and create the procedure note (a new file only; works while the app runs) |
+| `start_topic_task` | hand out the routing task of the app's topic stage for one source (note, PDF, `.docx`, registered URL): `buildTopicRouterSystemPrompt` + the knowledge schema section, and `buildTopicRouterUserMessage` with the existing topics and answer pages (id, title, one-liner, type). See "Topics made through MCP" below |
+| `submit_topic_routes` | take the routing answer (`parseTopicRouterOutput`) and turn it into numbered write items (`w1`, `w2`, …) with the app's rules; returns the reviser system prompt(s) once |
+| `get_topic_write_task` | the user message for one write item (`buildSourceTopicReviserUserMessage`: current body, source, re-check and keep-sentences notes) |
+| `submit_topic_page` | take one item's body (`parseSourceTopicReviserOutput`), check it as the app does and save the topic; one recorded operation per page (`mcp_generate_topics`), `skip: true` to leave an item out |
 | `submit_rewrite` | take the client's answer to the tidy-up task `submit_claims` returns for a merged claim (`buildRewritePrompt`, shared with `/rewrite`) and replace that page's body; recorded |
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
@@ -4182,6 +4186,29 @@ procedure folder, the material's own folders and the optional `folder`), stamped
 media index's `usedIn` is not written (the MCP never writes `media-index.json`): the
 material lists the note under "used in" only after the note is first saved in the app,
 which runs `syncUsedIn`.
+
+**Topics made through MCP** (`src/mcp/topic-tools.ts`). The app's topic stage
+(`runSourceTopicStage`: `/route-topics`, then `/revise-topic` per topic) as four tools,
+because one answer holding every topic's prompt would pass the MCP output limit.
+`start_topic_task` lists the active topics and answer pages the way the app's
+`existingTopicRefs` does and records a `topics` task (stage `route`).
+`submit_topic_routes` keeps only ids that were shown, sends a new title equal to an
+existing one to that topic (`rerouteSameTitleCreates`), always adds the topics already
+citing this source, skips old-format topics (no `topicMarkdown`; the app's "rebuild from
+sources" migrates them) and stores the items on the task (stage `write`), with each
+update target's content hash. `get_topic_write_task` builds one item's user message, so
+items can go to sub-agents one by one. `submit_topic_page` runs under the upkeep write
+guard (refused while the app runs): it refuses a target that changed since the items were
+made (`TASK_STALE`, the item is skipped), asks once for a rewrite when every sentence
+citing another source was dropped (`droppedOtherSourceCitations`; the item's next user
+message carries `keepSentences`, and the next answer is saved as is, where the app keeps
+whichever of its two attempts dropped fewer sources), checks the passages with
+`verifyCitationPassages`, and saves through `rebuildSourceBackedWikiDocument` /
+`buildSourceTopicDocument` + `applyTopicType` (`wiki_cross_update` / `wiki_ingest`), one
+`mcp_generate_topics` operation per page. Differences from the app: the source is not cut
+into windows and no survey is made — the client reads the whole source (long ones through
+`get_source_text`) — and embeddings and the wiki log are not written (the app's embedding
+backfill catches up on its next start).
 
 **Running app.** The app treats its in-memory index as the truth and has no
 file watching, so a wiki page or a `note-index.json` flag written from outside

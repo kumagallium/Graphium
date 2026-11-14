@@ -25,6 +25,7 @@ export type MaintenanceTrigger =
   | "restore_version"
   | "mcp_generate"
   | "mcp_generate_insights"
+  | "mcp_generate_topics"
   | "undo";
 
 export type MaintenanceActor = { via: "app" | "mcp"; client?: string; model?: string };
@@ -40,6 +41,7 @@ export type MaintenanceOperationKind =
   | "restore_version"
   | "mcp_generate"
   | "mcp_generate_insights"
+  | "mcp_generate_topics"
   | "undo";
 
 /** 読み込み時に既知として扱う操作の kind（これ以外の操作は読み込み時に除く） */
@@ -53,6 +55,7 @@ export const MAINTENANCE_OPERATION_KINDS: readonly MaintenanceOperationKind[] = 
   "restore_version",
   "mcp_generate",
   "mcp_generate_insights",
+  "mcp_generate_topics",
   "undo",
 ];
 
@@ -80,7 +83,7 @@ export type MaintenanceOperation = {
   related: { wikiId: string; title: string; role: "absorbed" | "archived" }[];
   /**
    * この操作が新しく作ったページ（写しは無い）。取り消しはゴミ箱へ移す。
-   * mcp_generate / mcp_generate_insights だけが持つ。古い版の記録には無い（optional）
+   * mcp_generate / mcp_generate_insights / mcp_generate_topics だけが持つ。古い版の記録には無い（optional）
    */
   created?: {
     wikiId: string;

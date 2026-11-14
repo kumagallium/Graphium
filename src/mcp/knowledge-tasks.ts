@@ -14,6 +14,7 @@ import { writeFileAtomic } from "./upkeep/atomic-write";
 import { acquireWriteLock } from "./upkeep/guard";
 import { appDataDir } from "./vault";
 import type { ProcedureTaskData } from "./procedure-tools";
+import type { TopicTaskData } from "./topic-tools";
 
 /** 課題の期限（ミリ秒）。過ぎた課題は TASK_EXPIRED */
 export const TASK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -25,9 +26,10 @@ export const TASK_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * insights: 洞察を作る課題（束の知見を配る）／insight_review: 作った洞察候補の審査の課題／
- * procedure: 資料から PROV 付きの手順ノートを作る課題（procedure-tools.ts）
+ * procedure: 資料から PROV 付きの手順ノートを作る課題（procedure-tools.ts）／
+ * topics: 資料からトピックを作る・改訂する課題（topic-tools.ts。振り分け → 件ごとの本文）
  */
-export type KnowledgeTaskKind = "claims" | "rewrite" | "insights" | "insight_review" | "procedure";
+export type KnowledgeTaskKind = "claims" | "rewrite" | "insights" | "insight_review" | "procedure" | "topics";
 
 /** insights の課題: 配った束。parse（id・status・rebuttal）と審査（タイトル・プレビュー）に要る分 */
 export type InsightTaskData = {
@@ -105,6 +107,8 @@ export type KnowledgeTask = {
   insightReview?: InsightReviewData;
   /** procedure: 元の資料と、直しの頼みを出したか */
   procedure?: ProcedureTaskData;
+  /** topics: 元の資料・段階・書く件の一覧 */
+  topics?: TopicTaskData;
 };
 
 export type KnowledgeTaskLedger = { version: 1; tasks: Record<string, KnowledgeTask> };
@@ -254,6 +258,25 @@ export function updateTask(
  */
 export function addTaskHoldingLock(root: string, task: KnowledgeTask, now: Date = new Date()): Promise<void> {
   return enqueue(() => mutate(root, (l) => void (l.tasks[task.taskId] = task), now));
+}
+
+/**
+ * 呼び出し元がすでに書き込みロック（withWriteGuard）を持っているときの課題の更新（updateTask のロック無し版）。
+ * 課題が無い・done・期限切れのときは code を返す。fn が null を返したら書かない
+ */
+export function updateTaskHoldingLock(
+  root: string,
+  taskId: string,
+  fn: (task: KnowledgeTask) => KnowledgeTask | null,
+  now: Date = new Date(),
+): Promise<{ ok: true; task: KnowledgeTask } | { ok: false; code: "TASK_NOT_FOUND" | "TASK_EXPIRED" | "TASK_DONE" }> {
+  return enqueue(async () => {
+    const found = lookupTask(root, taskId, now);
+    if (!found.ok) return found;
+    const next = fn(found.task);
+    if (next) await mutate(root, (l) => void (l.tasks[taskId] = next), now);
+    return { ok: true as const, task: next ?? found.task };
+  });
 }
 
 /** 課題を done にする（ロックを持っている呼び出し元用）。台帳に無ければ何もしない */

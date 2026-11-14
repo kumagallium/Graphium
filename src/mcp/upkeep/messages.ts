@@ -30,6 +30,8 @@ export function describeOperationJa(op: MaintenanceOperation): string {
       return `MCP で知見を作成（${count} 件）`;
     case "maintenance.op.mcp_generate_insights":
       return `MCP で洞察を作成（${count} 件）`;
+    case "maintenance.op.mcp_generate_topics":
+      return `MCP でトピックを作成・改訂（${count} 件）`;
     case "maintenance.op.archive_one":
       return `「${title}」をアーカイブしました`;
     case "maintenance.op.archive_many":
