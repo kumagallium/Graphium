@@ -474,6 +474,7 @@ export function registerProcedureTools(server: McpServer, ctx: ToolContext = {})
       try {
         const r = await submitProcedure(input, ctx, root());
         if (!r.noteId || !r.doc) return text(r.message);
+        ctx.activity?.push("wrote", r.noteId);
         const preview = buildNotePreview({ noteId: r.noteId, doc: r.doc as never, modifiedAt: r.doc.modifiedAt });
         return { ...text(r.message), _meta: { [PREVIEW_META_KEY]: preview } };
       } catch (e) {

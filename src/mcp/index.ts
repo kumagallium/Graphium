@@ -22,6 +22,7 @@ import { registerReadTools } from "./read-tools";
 import { registerTools, type ToolContext } from "./tools";
 import { cleanupTempFiles } from "./upkeep/cleanup";
 import { createMcpUsageRecorder } from "./usage-recorder";
+import { createActivityLog } from "./activity";
 import { registerUpkeepTools } from "./upkeep/tools";
 import { resolveGraphiumRoot, vaultExists } from "./vault";
 
@@ -49,10 +50,20 @@ async function main(): Promise<void> {
       return undefined;
     }
   };
+  // このプロセスの中で触れたもの（全体グラフの画面が光らせる）。読んだ記録はこれにも積む
+  const activity = createActivityLog();
+  const recorder = createMcpUsageRecorder({ getClientName });
   const ctx: ToolContext = {
     getClientName,
     // 外の AI にページが読まれたことを appdata に記録する（このプロセス専用のファイル）
-    usage: createMcpUsageRecorder({ getClientName }),
+    usage: {
+      session: recorder.session,
+      recordRead(id, opts) {
+        activity.push("read", id);
+        return recorder.recordRead(id, opts);
+      },
+    },
+    activity,
   };
   registerTools(server, ctx);
   registerReadTools(server, ctx);

@@ -34,7 +34,7 @@ function vaultMissing() {
   );
 }
 
-export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): void {
+export function registerReadTools(server: McpServer, ctx: ToolContext = {}): void {
   // ── PROV-DM の書き出し ─────────────────────────────────────
   server.registerTool(
     "export_prov",
@@ -160,7 +160,10 @@ export function registerReadTools(server: McpServer, _ctx: ToolContext = {}): vo
     async ({ sourceId, window, page, windowChars }) => {
       if (!vaultExists()) return vaultMissing();
       try {
-        return text(await getSourceText({ sourceId, window, page, windowChars }));
+        const body = await getSourceText({ sourceId, window, page, windowChars });
+        // 断りの文（UNKNOWN_SOURCE: など）でなければ、読んだものとして全体グラフに渡す
+        if (!/^[A-Z_]+: /.test(body)) ctx.activity?.push("read", sourceId);
+        return text(body);
       } catch (err) {
         return text(`EXTRACT_FAILED: ${err instanceof Error ? err.message : String(err)}`);
       }

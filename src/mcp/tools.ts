@@ -28,6 +28,7 @@ import { listFolders } from "./folders";
 import { getTopicDetail, listTopics } from "./topics";
 import { readNote, resolveGraphiumRoot, vaultExists } from "./vault";
 import type { McpUsageRecorder } from "./usage-recorder";
+import type { ActivityLog } from "./activity";
 
 /** search_notes / list_topics の folder 引数の説明（同じ規則なので 1 か所に置く） */
 const FOLDER_SCOPE_DESCRIPTION =
@@ -70,6 +71,8 @@ export type ToolContext = {
   getClientName?: () => string | undefined;
   /** ページが読まれたことを appdata に記録する書き手（usage-recorder.ts）。無ければ記録しない */
   usage?: McpUsageRecorder;
+  /** このプロセスの中で触れたものの記録（activity.ts）。全体グラフの画面が光らせるのに使う */
+  activity?: ActivityLog;
 };
 
 export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
@@ -110,6 +113,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         );
       }
 
+      for (const h of hits) ctx.activity?.push("seen", h.noteId);
       const lines = hits.map(
         (h, i) =>
           `${i + 1}. ${h.title}\n   noteId: ${h.noteId}  (${h.kind}, score ${h.score})\n   ${h.snippet}`,
@@ -541,6 +545,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       const startTitle = doc ? (doc.title ?? noteId) : describeSource(noteId).title;
 
       const result = traceLineage(noteId, { direction, depth });
+      // 全体グラフの画面に「たどった線」として渡す
+      for (const n of [...result.upstream, ...result.downstream]) ctx.activity?.push("walk", n.noteId, n.fromId ?? noteId);
       const fmt = (nodes: typeof result.upstream) =>
         nodes.length === 0
           ? "  （なし）"
@@ -653,6 +659,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
         addCreatedNoteToIndex(result.noteId, result.doc);
+        ctx.activity?.push("wrote", result.noteId);
         const preview = buildNotePreview({
           noteId: result.noteId,
           doc: result.doc as any,
