@@ -7,7 +7,7 @@
 // 出続け、使うたびに失敗する。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isAgenticSearchEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getAgenticSearchModelName, getChatSynthesisModelName, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
+import { applyColorMode, getLLMModels, addLLMModel, loadSettings, normalizeAsterismSettings, fillAsterismRecommendedIfEmpty, DEFAULT_CLAIM_BASE_IRI, ASTERISM_RECOMMENDED, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isAgenticSearchEnabled, isWorldGroundingEnabled, isAutoFullCheckEnabled, isAsterismEnabled, getMeetingSettings, setMeetingSettings, getMeetingAiModelName, isAutoGroundingEnabled, getStandardModelName, getPreciseModelName, getTranslateModelName, getProcedureModelName, isTranslateEnabled, isProcedureExtractionEnabled, migrateModelTiers, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, MODEL_NAME_SETTING_KEYS, DUPLICATE_MODEL_NAME_ERROR, getDefaultLLMModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getAgenticSearchModelName, getChatSynthesisModelName, getPreciseLLMModel, getStandardLLMModel, getEmbeddingLLMModel, getGroundingLLMModel, type LLMModelConfig } from "./store";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
@@ -229,6 +229,40 @@ describe("難しさ別の 3 段（デフォルト → 標準 → 精密）", () 
     save({ model: "small", standardModel: "mid", preciseModel: "strong" });
     expect(getStandardModelName()).toBe("mid");
     expect(getPreciseModelName()).toBe("strong");
+  });
+});
+
+describe("段を移した機能（2026-11-14）: 翻訳は高度、手順の抽出は標準。移った先がオフなら元の段", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  const save = (v: Record<string, unknown>) =>
+    localStorage.setItem("graphium-settings", JSON.stringify({ modelTiersV1: true, model: "small", standardModel: "mid", preciseModel: "strong", ...v }));
+
+  it("両方の段がオンなら、翻訳は高度・手順の抽出は標準のモデル", () => {
+    save({});
+    expect(getTranslateModelName()).toBe("strong");
+    expect(getProcedureModelName()).toBe("mid");
+    expect(isTranslateEnabled()).toBe(true);
+    expect(isProcedureExtractionEnabled()).toBe(true);
+  });
+
+  it("高度がオフでも翻訳は出たまま、標準のモデルで動く（これまで標準で見えていた人から消さない）", () => {
+    save({ preciseTierEnabled: false });
+    expect(isTranslateEnabled()).toBe(true);
+    expect(getTranslateModelName()).toBe("mid");
+  });
+
+  it("標準がオフでも手順の抽出は出たまま、高度のモデルで動く（これまで高度で見えていた人から消さない）", () => {
+    save({ standardTierEnabled: false });
+    expect(isProcedureExtractionEnabled()).toBe(true);
+    expect(getProcedureModelName()).toBe("strong");
+  });
+
+  it("両方の段がオフなら、翻訳も手順の抽出も出さない", () => {
+    save({ standardTierEnabled: false, preciseTierEnabled: false });
+    expect(isTranslateEnabled()).toBe(false);
+    expect(isProcedureExtractionEnabled()).toBe(false);
   });
 });
 

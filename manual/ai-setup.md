@@ -134,7 +134,7 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 ## Model assignment <Badge type="tip" text="Changed in v0.125.0 (2026-11-08)" /> {#model-assignment}
 
-**Model assignment** sits right below **Registered Models** and starts open (press the heading to close it; it then shows the current model of each tier on one line). It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by how hard the work is, not by feature.
+**Model assignment** sits right below **Registered Models** and starts open (press the heading to close it; it then shows the current model of each tier on one line). It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by the nature of the work, not by feature (light = checking and judging, standard = summarizing your notes, advanced = writing at length without adding what the source does not say).
 
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
@@ -142,9 +142,9 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Assignment | Used for |
 |---|---|
-| **Light work model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging, titles and world grounding. Every other tier falls back to it when left empty (AI Chat can be set separately with **Chat model**). A fast model, or a local one (LM Studio or similar), is enough |
-| **Standard work model** | Adding to Knowledge, translation, topic routing and revision, and topic-type tagging. Left empty, it uses the light work model |
-| **Advanced work model** | Building procedure notes from URLs, PDFs and Word files and aligning their names, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on (unless you picked a chat model). Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
+| **Light work model** | Light work: [AI Chat](/ai-chat-and-ask), lint (AI analysis), source checks, topic merging and routing, judging duplicate insights, titles and world grounding. Every other tier falls back to it when left empty (AI Chat can be set separately with **Chat model**). A fast model, or a local one (LM Studio or similar), is enough |
+| **Standard work model** | Adding to Knowledge, topic revision and organizing, extracting procedures from URLs, PDFs and Word files, and topic-type tagging. Left empty, it uses the light work model |
+| **Advanced work model** | Translating PDFs and web pages, aligning names in procedure notes, drafting experiment plans from answers and checking what they rest on, insight discovery, voice-note clean-up and summaries (unless set separately), and chat replies while [Research before answering](/ai-chat-and-ask#letting-the-ai-search-again) is on (unless you picked a chat model). Left empty, it uses the standard work model, then the light work model. A strong model is a good fit |
 | **Embedding model** | Semantic search over notes and Knowledge. Requires an OpenAI or OpenAI-compatible provider; leave empty for a text-match fallback. Use **Test embedding** to verify the model actually supports embeddings before saving. If this field ever shows a name followed by "(cannot be used for embeddings)" — typically after hand-editing settings — that model exists but isn't from an OpenAI-compatible provider; choose another one, or save as is to set it back to empty |
 
 **Chat model** <Badge type="tip" text="Added in v0.129.8 (2026-11-10)" /> sits apart from the tiers, in the **Chat** group under Settings → AI. Left empty, ordinary answers use the light work model, and answers while **Research before answering** is on use the advanced work model. When you pick a model, chat answers come from it, including while Research before answering is on. Chat and note titles still use the light work model whichever you pick. It is not one of the difficulty tiers because the choice runs the other way: bulk jobs suit a cheap model, while a conversation you read and think through suits a smart one.
@@ -155,9 +155,10 @@ Assignments remember a model by its display name. Rename a model and the assignm
 
 | Tier turned off | What no longer appears |
 |---|---|
-| **Standard work** | Add to Knowledge (notes, memos, materials, chats, and "add all" after intake), translation, regenerate, merging and rebuilding topics, Auto-tidy, and topic-type tagging. Claims, and the insights built on them, are not used either |
-| **Advanced work** | Procedure notes from URLs, PDFs and Word files, experiment plans from answers, insights (including discovery during ingest), voice-note clean-up and summaries, and **Research before answering** |
+| **Standard work** | Add to Knowledge (notes, memos, materials, chats, and "add all" after intake), regenerate, merging and rebuilding topics, Auto-tidy, and topic-type tagging. Claims, and the insights built on them, are not used either |
+| **Advanced work** | Experiment plans from answers, insights (including discovery during ingest), voice-note clean-up and summaries, and **Research before answering** |
 
+- Translation and procedure extraction work while either tier is on. With standard off, procedure extraction runs on the advanced work model; with advanced off, translation runs on the standard work model. With both off, neither appears.
 - Turning a tier off does not delete anything. The pages, notes and clean copies you made stay readable, and the entry points come back when you turn the tier on again.
 - The model you chose for that tier is kept.
 - **Light work model** has no switch. If you use AI at all, this tier always runs.

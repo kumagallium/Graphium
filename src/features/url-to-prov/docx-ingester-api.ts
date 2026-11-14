@@ -9,7 +9,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { extractDocxText } from "../../lib/docx-text";
-import { getPreciseLLMModel, getPreciseModelName } from "../settings/store";
+import { getProcedureLLMModel, getProcedureModelName } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 import type { ProvVocabulary } from "./label-vocabulary";
 import { t } from "../../i18n";
@@ -26,7 +26,7 @@ export type IngestDocxResult = {
 function provHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getPreciseLLMModel(); // 手順の抽出は精密な処理の段
+    const model = getProcedureLLMModel(); // 手順の抽出は標準の処理の段（2026-11-14 に高度から移した。標準がオフなら高度）
     if (model) {
       h["X-LLM-API-Key"] = toAsciiJson({
         provider: model.provider,
@@ -68,7 +68,7 @@ export async function ingestDocxToProv(
       title,
       language,
       ...(vocabulary ? { vocabulary } : {}),
-      ...(getPreciseModelName() ? { model: getPreciseModelName() } : {}),
+      ...(getProcedureModelName() ? { model: getProcedureModelName() } : {}),
     }),
   });
 

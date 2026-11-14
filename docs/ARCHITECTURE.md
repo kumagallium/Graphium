@@ -1858,19 +1858,23 @@ Notes:
   resource-from-scratch rebuild (any old-format side). The default model
   (the light tier) is used for both the full Lint analysis
   (`POST /api/wiki/lint`) and Topic consolidation
-  (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
-  (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
-  and the Topic Merger (`POST /api/wiki/merge-topics`) use the standard
-  tier (see "Models are chosen by difficulty" below).
-- **Models are chosen by difficulty, not by feature (v0.125).** Settings →
+  (`POST /api/wiki/consolidate-topics`), and ingest-time Topic routing
+  (`POST /api/wiki/route-topics`, moved to the light tier 2026-11-14);
+  revision (`POST /api/wiki/revise-topic`) and the Topic Merger
+  (`POST /api/wiki/merge-topics`) use the standard
+  tier (see "Models are chosen by tier, not by feature" below).
+- **Models are chosen by tier, not by feature (v0.125; tiers regrouped by the nature of the work in 2026-11).** Settings →
   AI assigns models in three tiers, each falling back to the one below
   when left empty: the **default** model (light work: chat, Lint, source
-  checks, Topic consolidation, titles, world grounding), the **standard**
-  model (`standardModel`: ingest, cross-updates, Topic routing / revision /
-  survey / merge / typing, translation) and the **precise** model
-  (`preciseModel`: procedures from URL / PDF / Word, label alignment, plan
-  drafting and the plan grounding check, Insight discovery, voice note
-  clean-up and summaries). Only voice (`meetingAiModel`) keeps a
+  checks, Topic consolidation and routing, Insight duplicate judgment,
+  titles, world grounding), the **standard** model (`standardModel`:
+  ingest, cross-updates, Topic revision / survey / merge / typing,
+  procedure extraction from URL / PDF / Word) and the **precise** model
+  (`preciseModel`: translation, label alignment, plan drafting and the plan
+  grounding check, Insight discovery, voice note clean-up and summaries).
+  The tiers follow the nature of the work: light = checking and judging,
+  standard = summarizing what the notes say, precise = writing at length
+  without adding what the source does not say. Only voice (`meetingAiModel`) keeps a
   per-feature override. Chat always answers on the default model, except
   that a chat with Research before answering (agentic search) on answers on
   the precise tier — `runAgent` (`src/features/ai-assistant/api.ts`) swaps
@@ -1879,7 +1883,8 @@ Notes:
   gpt-oss-120b. World grounding likewise has no model choice of its own and
   runs on the default model (`chatSynthesisModel` and `groundingModel` are
   no longer read; v0.125.1). In `wiki-service.ts` the modes of `wikiHeaders` /
-  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`.
+  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`;
+  Topic routing and `judgeAtomDuplicates` now request `light`.
   The split follows a measurement of every AI feature on five models
   (manual: *Which model size each AI feature needs*, 2026-11-07): chat-tier
   work held up even on a ~10B local model, while procedures, plans,
@@ -1895,13 +1900,21 @@ Notes:
   `isPreciseTierEnabled` in `src/features/settings/store.ts`). Off hides the
   tier's entry points rather than routing the work elsewhere: `note-app.tsx`
   derives `standardUiEnabled` / `preciseUiEnabled` from `aiUiEnabled` and
-  passes `undefined` handlers for ingest, translation, regenerate, Topic
-  merge / rebuild, Auto-tidy and typing (standard) and procedure extraction,
-  plans, Insights and voice-note clean-up / summaries (precise); the ingest
+  passes `undefined` handlers for ingest, regenerate, Topic
+  merge / rebuild, Auto-tidy and typing (standard) and plans, Insights and
+  voice-note clean-up / summaries (precise); the ingest
   and plan entry functions also return early as a guard. `isClaimsEnabled`
   requires the standard tier, `isAtomLayerEnabled` both tiers and
   `isAgenticSearchEnabled` the precise tier, so the existing feature gates
   follow. Nothing already made is deleted, and the tier's model name is kept.
+  Two features moved across tiers are exceptions to "off hides it":
+  procedure extraction (standard) and translation (precise).
+  `procedureUiEnabled` / `translateUiEnabled` in `note-app.tsx` are on when
+  either tier is on, and `getProcedureModelName` / `getTranslateModelName`
+  in the store fall back to the other tier when the home tier is off
+  (standard off: procedures run on the precise model; precise off:
+  translation runs on the standard model). With both tiers off, neither
+  appears. Label alignment stays on the precise tier.
   The MCP feature-flags mirror (`feature-flags-mirror.ts`) deliberately
   ignores the tiers: MCP tools never call Graphium's models — the connected
   assistant does the work with its own.

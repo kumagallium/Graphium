@@ -152,3 +152,18 @@ I decided on this split after seeing the results. Some tasks are hard to place (
 - I pointed the "What we measured" link in Settings to this page.
 - **I did not change the other cells.** By the rule I fixed before measuring, almost every cell becomes "conditional". Open large on Light work (1 to 5 of 6 tasks), and top cloud on Advanced work and the Voice note slot, also become "conditional" by this rule. Even so, the guide keeps them as "good fit". The rule is coarse and cannot tell a model close on 1 of 6 tasks from one close on 5 of 6, so I did not move cells on the strength of this result alone. Local ~30B on Light work is the one exception. I had few measurements on a computer until now, and this time I could measure it directly on the same 18 tasks. Both ~30B models were close to the reference point on only about half of the 6 tasks.
 - **I did not change how the tiers are split this time.** In the data, splitting into checking work and writing work shows the differences between models better. But the tiers are part of how the app decides which feature uses which model. When I change the split, I will design it separately, together with a way to carry over today's settings.
+
+## Afterwards (2026-11-14)
+
+I looked at the same data again, task by task. The gap between checking work and writing work is not explained by how it was graded: procedure steps from papers, graded by AI, stayed close to the reference point on open models, and clean copy, graded automatically, stayed far. In writing work, the gap sat in the faithfulness criteria (not adding what the source does not say).
+
+So I kept the tiers as they are and moved only the four features whose needs did not match their tier.
+
+| Feature | Moved | Why |
+|---|---|---|
+| Judging duplicate insights | Advanced → Light | Even a ~10B model scored 1.00 |
+| Topic routing | Standard → Light | Even a ~10B model scored .90 (reference point .87) |
+| Extracting procedures from URLs, PDFs and Word files | Advanced → Standard | On step F1, 3 of the 5 ~30B models came within 90% of the reference point |
+| Translation | Standard → Advanced | Only one open model came within 90%; models differed on whether the whole text was translated |
+
+The tier descriptions now follow the nature of the work (light = checking and judging, standard = summarizing what the notes say, advanced = writing at length without adding what the source does not say). Translation and procedure extraction stay available while either tier is on. When the tier they moved to is off, they run on the model of the tier they came from.

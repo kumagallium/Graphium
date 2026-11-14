@@ -403,21 +403,21 @@ export type Settings = {
    * AI の見逃しに備え、清書・要約の文から機械で置き換える
    */
   meetingMaskTerms?: string;
-  /** デフォルトモデル（軽い処理: チャット・点検・出典照合・題付け・世界照合）。
+  /** デフォルトモデル（軽い処理: チャット・点検・出典照合・題付け・世界照合・トピックの統合と振り分け・洞察の重複判定）。
    *  空文字 = サーバーデフォルト（登録の先頭）。標準・精密の段が空欄なら、最後はこれを使う */
   model: string;
-  /** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名。空文字 = `model` と同じ */
+  /** 標準の処理（ナレッジ化・トピックの改訂・手順の抽出）のモデル名。空文字 = `model` と同じ */
   standardModel?: string;
-  /** 精密な処理（手順の抽出・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名。
+  /** 精密な処理（翻訳・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名。
    *  空文字 = `standardModel`、それも空なら `model` */
   preciseModel?: string;
   /** 難しさ別の 3 段（v0.125）へ設定を移し替え済みか。無ければ読み込み時に 1 回だけ移し替える */
   modelTiersV1?: boolean;
-  /** 標準の処理の段を使うか。false にすると、その段の機能（ナレッジ化・翻訳・トピックの整理）を
-   *  UI から隠し、自動の取り込みも走らせない。未保存（undefined）はオン。作ったページは消さない */
+  /** 標準の処理の段を使うか。false にすると、その段の機能（ナレッジ化・トピックの整理）を
+   *  UI から隠し、自動の取り込みも走らせない。手順の抽出は高度の段のモデルで動く。未保存（undefined）はオン。作ったページは消さない */
   standardTierEnabled?: boolean;
-  /** 精密な処理の段を使うか。false にすると、その段の機能（手順の抽出・計画・洞察・清書と要約・
-   *  じっくり調べてから答える）を UI から隠し、自動では走らせない。未保存（undefined）はオン */
+  /** 精密な処理の段を使うか。false にすると、その段の機能（計画・洞察・清書と要約・
+   *  じっくり調べてから答える）を UI から隠し、自動では走らせない。翻訳は標準の段のモデルで動く。未保存（undefined）はオン */
   preciseTierEnabled?: boolean;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
@@ -1129,7 +1129,7 @@ export function getAgenticSearchLLMModel(): LLMModelConfig | undefined {
   return getChatModel() ? getChatSynthesisLLMModel() : getPreciseLLMModel();
 }
 
-/** 標準の処理（ナレッジ化・翻訳・トピックの整理）のモデル名（空文字 = デフォルトと同じ） */
+/** 標準の処理（ナレッジ化・トピックの改訂・手順の抽出）のモデル名（空文字 = デフォルトと同じ） */
 export function getStandardModel(): string {
   return loadSettings().standardModel ?? "";
 }
@@ -1147,7 +1147,7 @@ export function getStandardLLMModel(): LLMModelConfig | undefined {
   return getLLMModels().find((m) => m.name === name);
 }
 
-/** 精密な処理（手順の抽出・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名（空文字 = 標準と同じ） */
+/** 精密な処理（翻訳・名寄せ・計画とその根拠の確認・洞察・清書と要約）のモデル名（空文字 = 標準と同じ） */
 export function getPreciseModel(): string {
   return loadSettings().preciseModel ?? "";
 }
@@ -1162,6 +1162,45 @@ export function getPreciseLLMModel(): LLMModelConfig | undefined {
   const name = getPreciseModel();
   if (!name) return getStandardLLMModel();
   return getLLMModels().find((m) => m.name === name);
+}
+
+/*
+ * 段をまたいで移した機能（2026-11-14 の測定、manual/evaluations/cloud-and-local-models-by-feature.md）。
+ * - 手順の抽出（URL・PDF・Word から手順ノートを作る）: 高度 → 標準。30B 級でも工程の F1 が基準点に近かった
+ * - 翻訳: 標準 → 高度。訳の完全さで差が出て、オープンなモデルで基準点に近いのは 1 つだけだった
+ * 段のオンオフで、これまで見えていた機能が消えないよう、移した機能は「移った先の段がオフなら元の段」で動き、
+ * どちらかの段がオンなら画面に出す（isProcedureExtractionEnabled / isTranslateEnabled）。
+ * 重複の判定（高度 → 軽い）とトピックの振り分け（標準 → 軽い）は裏の処理なので、wiki-service の mode だけ変えた。
+ */
+
+/** 手順の抽出（URL・PDF・Word → 手順ノート）を画面に出すか。標準か高度のどちらかの段がオンなら出す */
+export function isProcedureExtractionEnabled(): boolean {
+  return isStandardTierEnabled() || isPreciseTierEnabled();
+}
+
+/** 手順の抽出のモデル名（body.model 用）。標準の段がオンなら標準（→ デフォルト）、オフなら高度の段 */
+export function getProcedureModelName(): string {
+  return isStandardTierEnabled() ? getStandardModelName() : getPreciseModelName();
+}
+
+/** 手順の抽出の LLMModelConfig（Web 版のヘッダー用）。名前があって一覧に無ければ undefined */
+export function getProcedureLLMModel(): LLMModelConfig | undefined {
+  return isStandardTierEnabled() ? getStandardLLMModel() : getPreciseLLMModel();
+}
+
+/** 翻訳（PDF・URL）を画面に出すか。標準か高度のどちらかの段がオンなら出す */
+export function isTranslateEnabled(): boolean {
+  return isStandardTierEnabled() || isPreciseTierEnabled();
+}
+
+/** 翻訳のモデル名（body.model 用）。高度の段がオンなら高度（→ 標準 → デフォルト）、オフなら標準の段 */
+export function getTranslateModelName(): string {
+  return isPreciseTierEnabled() ? getPreciseModelName() : getStandardModelName();
+}
+
+/** 翻訳の LLMModelConfig（Web 版のヘッダー用）。名前があって一覧に無ければ undefined */
+export function getTranslateLLMModel(): LLMModelConfig | undefined {
+  return isPreciseTierEnabled() ? getPreciseLLMModel() : getStandardLLMModel();
 }
 
 /** 世界照合（一般知識での照合）のモデル。v0.125 からは軽い処理として、いつもデフォルトモデルを使う
@@ -1221,13 +1260,13 @@ export function isClaimsEnabled(): boolean {
   return isStandardTierEnabled() && loadSettings().features?.claims === true;
 }
 
-/** 標準の処理の段がオンか（未保存はオン）。オフのとき、ナレッジ化・翻訳・トピックの整理を隠す */
+/** 標準の処理の段がオンか（未保存はオン）。オフのとき、ナレッジ化・トピックの整理を隠す（手順の抽出は isProcedureExtractionEnabled） */
 export function isStandardTierEnabled(): boolean {
   return loadSettings().standardTierEnabled !== false;
 }
 
-/** 精密な処理の段がオンか（未保存はオン）。オフのとき、手順の抽出・計画・洞察・清書と要約・
- *  じっくり調べてから答えるを隠す */
+/** 精密な処理の段がオンか（未保存はオン）。オフのとき、計画・洞察・清書と要約・
+ *  じっくり調べてから答えるを隠す（翻訳は isTranslateEnabled） */
 export function isPreciseTierEnabled(): boolean {
   return loadSettings().preciseTierEnabled !== false;
 }

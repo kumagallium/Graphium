@@ -1880,7 +1880,7 @@ async function applyAtomDiscoveryResults(opts: {
 
   const { kept, duplicates } = await partitionCandidatesByEmbedding(opts.atoms, opts.existingAtomDocIds);
 
-  // 判定のモデルは渡さない — judgeAtomDuplicates が atomize と同じ設定の洞察モデル（表示名）を送る。
+  // 判定のモデルは渡さない — judgeAtomDuplicates が設定の軽い処理のモデル（表示名）を送る（2026-11-14 に高度から移した）。
   // opts.model（モデル ID）を送ると、ヘッダーの無いデスクトップ版では表示名とモデル ID が
   // 違うモデルで判定が断られ、重複の候補がすべて「別物」として新しい洞察になっていた。
   const resolved = await resolveAtomDuplicates(
@@ -8523,9 +8523,13 @@ export function NoteApp() {
   // AI UI が見えるちらつきを防ぐ。設定でモデルを追加/削除するとモーダル閉時の
   // checkAiReadiness 再実行で反映される。
   const aiUiEnabled = (aiAvailable ?? false) && agentConfigured;
-  // 段ごとの入口の出し分け。標準 = ナレッジ化・翻訳・トピックの整理、精密 = 手順の抽出・計画・洞察
+  // 段ごとの入口の出し分け。標準 = ナレッジ化・トピックの整理、精密 = 計画・洞察。
+  // 手順の抽出（高度 → 標準）と翻訳（標準 → 高度）は 2026-11-14 に段を移したので、これまで見えていた
+  // 人から消えないよう、どちらかの段がオンなら出す（モデルは store の getProcedure* / getTranslate* が選ぶ）
   const standardUiEnabled = aiUiEnabled && tierFlags.standard;
   const preciseUiEnabled = aiUiEnabled && tierFlags.precise;
+  const procedureUiEnabled = aiUiEnabled && (tierFlags.standard || tierFlags.precise);
+  const translateUiEnabled = aiUiEnabled && (tierFlags.standard || tierFlags.precise);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // `graphium-open-settings` で開いたときに最初に表示するタブ。AI 未設定バナーの
   // 「Set up AI」からは "ai" を渡して AI Setup タブへ直接誘導する。
@@ -16393,7 +16397,7 @@ export function NoteApp() {
             }}
             onIngestMedia={standardUiEnabled ? ingestMediaEntry : undefined}
             onIngestMediaBulk={standardUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
-            onCreateProvNote={preciseUiEnabled ? (entry) => {
+            onCreateProvNote={procedureUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
@@ -16508,7 +16512,7 @@ export function NoteApp() {
                 return;
               }
             } : undefined}
-            onTranslatePdf={standardUiEnabled ? (entry) => {
+            onTranslatePdf={translateUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
