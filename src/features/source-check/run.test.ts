@@ -376,6 +376,35 @@ describe("runSourceCheck", () => {
       expect(entry.quoteLocation).toEqual({ page: 1 });
     });
 
+    it("AI が抜粋を返さないとき、文に控えた一節が原文にあれば抜粋と位置に使う", async () => {
+      const c1 = { ...claim("c1", ["pdf:doc-1"]), passages: { "pdf:doc-1": "融点は 800℃ だった" } };
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      const text = "1ページ目。\n\n実験結果として融点は800℃だった。";
+      const deps = pdfDeps(text, [0, text.indexOf("実験結果")]);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({ claimId: c.id, verdict: "unclear" as const, rationale: "判断つかない" })),
+      }));
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      const entry = result.profiles.get("c1")!.entries[0];
+      expect(entry.verdict).toBe("unclear");
+      expect(entry.quote).toBe("融点は 800℃ だった");
+    });
+
+    it("「出典に書かれていない」には一節を付けない", async () => {
+      const c1 = { ...claim("c1", ["pdf:doc-1"]), passages: { "pdf:doc-1": "融点は800℃だった" } };
+      const plan = planSourceCheck([c1]);
+      const statementsById = new Map([[c1.id, c1]]);
+      const deps = pdfDeps("実験結果として融点は800℃だった。", [0]);
+      const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+        model: "m",
+        results: claims.map((c) => ({ claimId: c.id, verdict: "not-in-source" as const, rationale: "無い" })),
+      }));
+      const result = await runSourceCheck(plan, { statementsById, deps, language: "ja", callApi, logger: noopLogger });
+      expect(result.profiles.get("c1")!.entries[0].quote).toBeUndefined();
+    });
+
     it("位置が解けないとき quoteLocation キー自体が無い", async () => {
       const c1 = claim("c1", ["pdf:doc-1"]);
       const plan = planSourceCheck([c1]);

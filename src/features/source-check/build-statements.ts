@@ -84,6 +84,7 @@ function buildTopicStatements(target: SourceCheckTarget): PlanSourceCheckStateme
     sourceIds: isSourceFormat ? st.claimIds : st.claimIds.map((claimId) => toClaimSourceId(claimId)),
     statement: st.text,
     statementBlockId: st.blockId,
+    ...(st.passages ? { passages: st.passages } : {}),
   }));
 }
 

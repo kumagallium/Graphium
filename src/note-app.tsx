@@ -195,6 +195,7 @@ import {
   openPeekTarget,
   readMentionAt,
   resolveMentionClickTarget,
+  mentionClickFocus,
 } from "./features/block-link/mention-click";
 import { buildKnowledgeLink, buildNoteLink } from "./features/block-link/graphium-link";
 import { canArchiveFromPeek, type PeekNoteActions } from "./features/index-table/peek-note-menu";
@@ -2935,14 +2936,21 @@ function NoteEditorInner({
   // 本文の @メンション・インデックステーブル・グラフのパラメータ ↗ が同じ経路を通る。
   // 振り分け本体はサイドピークと共通（openPeekTarget）。開けたら true
   // （chat:/shared: など実体の無い ID は false で何もしない）
+  // 素材ピークを開く。focus（PDF の引用の一節）があれば、引用ブロックの「出典を開く」と同じ
+  // materialPeekFocus に載せて、その位置へ送る。focus の無い入口から開いたら前の位置を捨てる
+  // （同じ PDF を開き直したとき、前に開いた一節の印が残らないように）
+  const openMaterialPeekAt = useCallback((entry: MediaIndexEntry, focus?: MaterialFocus) => {
+    setMaterialPeekFocus(focus ? { fileId: entry.fileId, focus } : null);
+    setMaterialSidePeekEntry(entry);
+  }, []);
   const openPeekTargetId = useCallback(
-    (id: string, indexOverride?: import("./features/asset-browser").MediaIndex | null): boolean =>
+    (id: string, indexOverride?: import("./features/asset-browser").MediaIndex | null, focus?: MaterialFocus): boolean =>
       openPeekTarget(id, indexOverride ?? mediaIndex, {
         openNote: setSidePeekNoteId,
-        openMaterial: setMaterialSidePeekEntry,
+        openMaterial: openMaterialPeekAt,
         openMemo: onOpenMemoSource,
-      }),
-    [mediaIndex, onOpenMemoSource]
+      }, focus),
+    [mediaIndex, onOpenMemoSource, openMaterialPeekAt]
   );
 
   // 本文の画像ブロック（ツールバーのボタン・ダブルクリック）→ 素材のサイドピークで開く。
@@ -5278,7 +5286,7 @@ function NoteEditorInner({
     // focus は出典照合の「出典を開く」から（PDF の照合済みの抜粋とページ）。引用ブロックの
     // 「出典を開く」と同じ materialPeekFocus に載せる
     openMaterialPeekRef.current = (entry: MediaIndexEntry, focus?: MaterialFocus) => {
-      if (focus) setMaterialPeekFocus({ fileId: entry.fileId, focus });
+      setMaterialPeekFocus(focus ? { fileId: entry.fileId, focus } : null);
       setMaterialSidePeekEntry(entry);
     };
     return () => {
@@ -6142,9 +6150,10 @@ function NoteEditorInner({
       if (!mention) return;
       // 解決は SidePeek と共通（resolveMentionClickTarget）。記録済みリンク → タイトル →
       // 素材名 → 知見の派生元 の順で、同名のノート・素材があっても厳密な ID に届く
+      const mentionLinks = linkStore.getAllLinks();
       const peekId = resolveMentionClickTarget({
         ...mention,
-        links: linkStore.getAllLinks(),
+        links: mentionLinks,
         noteIndex,
         media: mediaIndex?.media,
         files,
@@ -6158,7 +6167,8 @@ function NoteEditorInner({
       // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
       // References の「Source: @ラベル」等の外部ソース ID（url:/pdf:/document:/data:/image:）は
       // 素材ピークへ振り分ける（chat: は開ける実体が無いので何も起きない）
-      openPeekTargetId(peekId);
+      // トピック等の本文の引用は、控えた一節の位置で PDF を開く
+      openPeekTargetId(peekId, undefined, mentionClickFocus({ blockId: mention.blockId, links: mentionLinks }, peekId));
     };
     document.addEventListener("click", handleClick, true);
     return () => {
@@ -7801,7 +7811,7 @@ function NoteEditorInner({
             files={files}
             onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
-            onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMaterialPeek={openMaterialPeekAt}
             onOpenMemoSource={onOpenMemoSource}
             onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
@@ -7845,7 +7855,7 @@ function NoteEditorInner({
             files={files}
             onRefreshFiles={onRefreshFiles}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
-            onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMaterialPeek={openMaterialPeekAt}
             onOpenMemoSource={onOpenMemoSource}
             onRecordMemoUsage={onRecordMemoUsage}
             archived={isArchived?.(sidePeekNoteId) ?? false}
@@ -11980,7 +11990,7 @@ export function NoteApp() {
           } else {
             setListSidePeekNoteId(null);
             dropPeekFromUrl();
-            if (focus) setListMaterialPeekFocus({ fileId: entry.fileId, focus });
+            setListMaterialPeekFocus(focus ? { fileId: entry.fileId, focus } : null);
             setListMaterialPeekEntry(entry);
           }
           return;
@@ -16100,10 +16110,11 @@ export function NoteApp() {
             getCachedDoc={fm.getCachedDoc}
             onSaved={handleListPeekSaved}
             renderWikiContext={renderPeekWikiContext}
-            onOpenMaterialPeek={(entry) => {
+            onOpenMaterialPeek={(entry, focus) => {
               // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
               setListSidePeekNoteId(null);
               dropPeekFromUrl();
+              setListMaterialPeekFocus(focus ? { fileId: entry.fileId, focus } : null);
               setListMaterialPeekEntry(entry);
             }}
             onOpenMemoSource={handleOpenMemoSource}

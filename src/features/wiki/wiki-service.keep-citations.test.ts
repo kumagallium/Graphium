@@ -106,3 +106,54 @@ describe("reviseTopicFromSource: 他の資料の文を消したら 1 回だけ�
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+import { verifyCitationPassages, resolveSourceCitationsWithPassages } from "./wiki-service";
+
+describe("一節の照合（verifyCitationPassages）", () => {
+  const source = { id: "s", text: "焼成は 230 度で 35 分とした。湿度は 65% だった。" };
+  it("今回の資料に見つからない一節は外し、引用は残す", () => {
+    const body = "- 焼成は 230 度。[[source:s|焼成は 230 度で 35 分とした]]\n- 湿度は 70%。[[source:s|湿度は 70% だった]]";
+    const out = verifyCitationPassages("", body, source);
+    expect(out.body).toBe("- 焼成は 230 度。[[source:s|焼成は 230 度で 35 分とした]]\n- 湿度は 70%。[[source:s]]");
+    expect(out).toMatchObject({ removed: 1, kept: 1 });
+  });
+  it("他の資料の一節は前の本文と同じなら残し、書き換わっていたら外す", () => {
+    const prev = "- a [[source:o|古い記録の一節]]";
+    expect(verifyCitationPassages(prev, "- a [[source:o|古い記録の一節]]", source).body).toBe("- a [[source:o|古い記録の一節]]");
+    expect(verifyCitationPassages(prev, "- a [[source:o|作り直した一節]]", source).body).toBe("- a [[source:o]]");
+  });
+});
+
+describe("一節はリンク記録（targetQuote）に載る", () => {
+  it("資料の題に解決し、一節を番号の目印で運ぶ", () => {
+    const r = resolveSourceCitationsWithPassages("文 *強調*。[[source:p|式 $x*y$ の一節]]", [{ id: "p", title: "論文" }]);
+    expect(r.passages).toEqual(["式 $x*y$ の一節"]);
+    expect(r.text).toBe("文 *強調*。[[論文⟦P:0⟧]]");
+  });
+  it("組み立てた本文のリンクに一節が付き、表示の文字には出ない", () => {
+    const doc = buildSourceBackedWikiDocument("topic", "パン", "## 要点\n- 焼成は 230 度。[[source:pdf:f|焼成は 230 度で 35 分]]", [{ id: "pdf:f", title: "焼成の論文" }], null, undefined, "ja");
+    const page = doc.pages[0];
+    const bodyBlock = (page.blocks as any[]).find((b) => (b.content as any[])?.some((c: any) => c.text === "@焼成の論文"));
+    expect(bodyBlock).toBeDefined();
+    const link = page.knowledgeLinks.find((l) => l.sourceBlockId === bodyBlock.id);
+    expect(link?.targetQuote).toBe("焼成は 230 度で 35 分");
+    expect(JSON.stringify(bodyBlock.content)).not.toContain("⟦");
+    // 正本の markdown には一節ごと残る（次の改訂・出典照合が読む）
+    expect(doc.wikiMeta?.topicMarkdown).toContain("[[source:pdf:f|焼成は 230 度で 35 分]]");
+  });
+});
+
+import { keepKnownPassages } from "./wiki-service";
+
+describe("窓をまたぐ一節と統合の一節", () => {
+  it("前の窓で控えた同じ資料の一節は、今の窓の文字に無くても残す", () => {
+    const prev = "- a [[source:s|窓 1 だけにある一節の文]]";
+    const out = verifyCitationPassages(prev, `${prev}\n- b [[source:s|窓 2 にある一節の文]]`, { id: "s", text: "ここは窓 2 にある一節の文です。" });
+    expect(out.body).toBe(`${prev}\n- b [[source:s|窓 2 にある一節の文]]`);
+    expect(out.removed).toBe(0);
+  });
+  it("統合では、元の本文にあった一節だけを残す", () => {
+    const out = keepKnownPassages(["- a [[source:s|元の一節その一]]", "- b [[source:t|元の一節その二]]"], "- ab [[source:s|元の一節その一]][[source:t|書き換えた一節]]");
+    expect(out).toBe("- ab [[source:s|元の一節その一]][[source:t]]");
+  });
+});

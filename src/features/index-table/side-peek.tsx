@@ -75,6 +75,7 @@ import {
   buildUrlPeekEntry,
 } from "@features/asset-browser";
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
+import type { MaterialFocus } from "@features/asset-browser/pdf-quote-anchor";
 import { parseExternalSource } from "@features/network-graph/external-source";
 import { openExternalUrl } from "../../lib/external-link";
 import {
@@ -154,6 +155,7 @@ import {
   openPeekTarget,
   readMentionAt,
   resolveMentionClickTarget,
+  mentionClickFocus,
 } from "@features/block-link/mention-click";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildNewNoteSlashItem } from "@features/block-link/new-note-slash-item";
@@ -220,7 +222,8 @@ type SidePeekProps = {
    * （外部ソース ID をノートピークとして開き直すと「読み込みに失敗しました」になるため、
    * どちらの場合も onOpenNoteInPeek には渡さない）。
    */
-  onOpenMaterialPeek?: (entry: MediaIndexEntry) => void;
+  /** focus は PDF を開いたときに見せる場所（本文の引用に控えた一節） */
+  onOpenMaterialPeek?: (entry: MediaIndexEntry, focus?: MaterialFocus) => void;
   /**
    * ピーク内のメンションが memo:<captureId> に解決されたとき、メモギャラリーの
    * 該当メモ詳細を開く。未指定なら memo: は無反応（chat: と同じ扱い）。
@@ -1201,9 +1204,10 @@ function SidePeekInner({
       const mention = readMentionAt(target);
       if (!mention) return;
       const peekDoc = docRef.current;
+      const peekLinks = linkStoreRef.current.getAllLinks();
       const peekId = resolveMentionClickTarget({
         ...mention,
-        links: linkStoreRef.current.getAllLinks(),
+        links: peekLinks,
         noteIndex,
         media: mediaIndex?.media,
         citedAssetFileIds: peekDoc?.citedAssetFileIds,
@@ -1220,11 +1224,11 @@ function SidePeekInner({
       const openMemo = onOpenMemoSource;
       openPeekTarget(peekId, mediaIndex, {
         openNote: (id) => leavePeek(() => onOpenNoteInPeek(id)),
-        openMaterial: openMaterial && ((entry) => leavePeek(() => openMaterial(entry))),
+        openMaterial: openMaterial && ((entry, focus) => leavePeek(() => openMaterial(entry, focus))),
         openUrlFallback: (url) => void openExternalUrl(url),
         // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
         openMemo: openMemo && ((captureId) => leavePeek(() => openMemo(captureId))),
-      });
+      }, mentionClickFocus({ blockId: mention.blockId, links: peekLinks }, peekId));
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);

@@ -14,6 +14,7 @@ import {
 } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
 import { MENTIONABLE_ASSET_TYPES, resolveMentionTargetFromLinks } from "./mention-menu";
+import type { MaterialFocus } from "../asset-browser/pdf-quote-anchor";
 
 /** リンク記録のうち、解決に使う部分だけ */
 type LinkLike = {
@@ -22,6 +23,8 @@ type LinkLike = {
   type?: string;
   /** 表のセルに入れた @リンクの行（mention-insert.ts の recordMentionLink が控える） */
   sourceRowIdentity?: string;
+  /** 出典つきナレッジページの引用から作ったリンクに控えた、資料の一節 */
+  targetQuote?: string;
 };
 
 /** 素材一覧の要素のうち、解決に使う部分だけ */
@@ -178,11 +181,29 @@ export function resolveMentionClickTarget(input: MentionClickInput): string | nu
   return null;
 }
 
+/**
+ * クリックした @資料 のリンク記録に一節が控えてあれば、PDF をその一節の位置で開くための focus を返す。
+ * トピック・問答・要約の本文の引用（`[[source:<id>|<一節>]]`）から作ったリンクだけが一節を持つ。
+ * PDF 以外の行き先・一節の無いリンクは undefined（今までどおり素材を頭から開く）。
+ */
+export function mentionClickFocus(
+  input: Pick<MentionClickInput, "blockId" | "links">,
+  targetId: string,
+): MaterialFocus | undefined {
+  if (!input.blockId || parseExternalSource(targetId)?.kind !== "pdf") return undefined;
+  const quote = input.links.find(
+    (l) => l.sourceBlockId === input.blockId && l.targetNoteId === targetId && l.targetQuote,
+  )?.targetQuote;
+  if (!quote) return undefined;
+  return { key: `mention:${input.blockId}:${Date.now()}`, quote: { exact: quote.replace(/\s+/g, " ").trim() } };
+}
+
 export type PeekOpeners = {
   /** ノート・知見（"wiki:<id>"）をピークで開く */
   openNote: (peekId: string) => void;
-  /** 素材（PDF・文書・データ・画像・URL）をピークで開く。素材ピークの無い画面では省略 */
-  openMaterial?: (entry: MediaIndexEntry) => void;
+  /** 素材（PDF・文書・データ・画像・URL）をピークで開く。素材ピークの無い画面では省略。
+   *  focus は PDF を開いたときに見せる場所（引用の一節） */
+  openMaterial?: (entry: MediaIndexEntry, focus?: MaterialFocus) => void;
   /** openMaterial が無い画面での URL の開き先（外部ブラウザ等）。省略時は開かない */
   openUrlFallback?: (url: string) => void;
   /** メモ（memo:<captureId>）を開く */
@@ -197,6 +218,8 @@ export function openPeekTarget(
   id: string,
   mediaIndex: MediaIndex | null | undefined,
   openers: PeekOpeners,
+  /** PDF を開いたときに見せる場所（mentionClickFocus） */
+  focus?: MaterialFocus,
 ): boolean {
   const ext = parseExternalSource(id);
   if (!ext) {
@@ -220,7 +243,8 @@ export function openPeekTarget(
     case "image": {
       const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
       if (!entry || !openers.openMaterial) return false;
-      openers.openMaterial(entry);
+      if (ext.kind === "pdf" && focus) openers.openMaterial(entry, focus);
+      else openers.openMaterial(entry);
       return true;
     }
     case "memo":

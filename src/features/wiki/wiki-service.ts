@@ -30,6 +30,12 @@ import type { ReconcileInput, ReconcileOutput } from "./reconcile-types";
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
 import { buildTopicMentionLinks, findTopicMentions } from "./topic-mention-links";
+import {
+  SOURCE_CITATION_RE,
+  formatSourceCitation,
+  parseSourceCitations,
+  passageAppearsIn,
+} from "../../lib/source-citations";
 
 /** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
 const API_BASE = `${apiBase()}/wiki`;
@@ -810,7 +816,17 @@ function pushCitation(
   /** noteIndex に載らない資料（pdf/url 等の素材）のタイトル→id。References の行と同じ
    *  資料一覧（sources）から作る。noteIndex で解決できなかったときだけのフォールバック */
   extraTitleToId?: Map<string, string>,
+  /** resolveSourceCitationsWithPassages が控えた一節（引用の題の ⟦P:n⟧ が指す） */
+  passages?: string[],
 ): void {
+  // 一節の目印を外し、その一節をリンク記録に載せる
+  let quote: string | undefined;
+  const mark = PASSAGE_MARK_RE.exec(citedTitle);
+  if (mark) {
+    quote = passages?.[Number(mark[1])];
+    citedTitle = citedTitle.slice(0, mark.index);
+  }
+  const quoteField = quote ? { targetQuote: quote } : {};
   // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
   // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
   // そのまま resolve すると「自分が自分の根拠」という循環リンクになる。
@@ -859,6 +875,7 @@ function pushCitation(
       type: "reference",
       layer: "knowledge",
       createdBy: "ai",
+      ...quoteField,
     });
     return;
   }
@@ -880,6 +897,7 @@ function pushCitation(
       type: "reference",
       layer: "knowledge",
       createdBy: "ai",
+      ...quoteField,
     });
     return;
   }
@@ -904,6 +922,8 @@ export function parseInlineCitations(
   extraTitleToId?: Map<string, string>,
   /** convertSectionsToBlocks が節ごとに退避した数式。省略時はこの行の数式をここで退避する */
   math?: MathStash[],
+  /** resolveSourceCitationsWithPassages が控えた一節 */
+  passages?: string[],
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -933,7 +953,7 @@ export function parseInlineCitations(
 
     if (match[1] !== undefined) {
       // 引用のタイトルは数式にできないので、目印を元の表記に戻してから照合する
-      pushCitation(inlineContent, knowledgeLinks, blockId, restoreMathText(match[1], stash), noteIndex, selfTitle, extraTitleToId);
+      pushCitation(inlineContent, knowledgeLinks, blockId, restoreMathText(match[1], stash), noteIndex, selfTitle, extraTitleToId, passages);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       // リンクの中身は書式付きの文字だけ（inlineMath は入れられない）ので、数式は元の表記に戻す
       const content: any[] = [];
@@ -1103,6 +1123,8 @@ function convertSectionsToBlocks(
   selfTitle?: string,
   /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
   extraTitleToId?: Map<string, string>,
+  /** resolveSourceCitationsWithPassages が控えた一節 */
+  passages?: string[],
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -1175,7 +1197,7 @@ function convertSectionsToBlocks(
       const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
       if (bullet !== null || numbered !== null) {
         const itemText = bullet !== null ? bullet : (numbered as string);
-        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId, math);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId, math, passages);
         blocks.push({
           id: parsedItem.blockId,
           type: bullet !== null ? "bulletListItem" : "numberedListItem",
@@ -1191,7 +1213,7 @@ function convertSectionsToBlocks(
         continue;
       }
 
-      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId, math);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId, math, passages);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -2842,8 +2864,9 @@ export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemb
 /** 話題ページの本文・References 構築に渡す資料の最小情報（ノート id / "pdf:" 等の外部プレフィックス付き id） */
 export type TopicSourceRef = { id: string; title: string };
 
-/** `[[source:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
-const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
+/** 引用の題の後ろに付ける一節の目印（`[[題⟦P:n⟧]]`）。一節の文字（* や $ 等）を本文の書式の
+ *  解釈に通さないよう、本文には番号だけを置き、一節そのものは別の配列で渡す */
+const PASSAGE_MARK_RE = /\u27E6P:(\d+)\u27E7$/;
 
 /**
  * 新形式 Topic Writer が `[[source:<id>]]` 形式で出した引用を、資料の現在のタイトルへ
@@ -2855,14 +2878,65 @@ const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
  * id を含む文字列として残し、目に見える形にする。
  */
 export function resolveSourceCitations(body: string, sources: TopicSourceRef[]): string {
-  if (!body) return body;
+  return resolveSourceCitationsWithPassages(body, sources).text;
+}
+
+/**
+ * resolveSourceCitations と同じ書き換えをし、控えた一節を番号付きの目印（`[[題⟦P:n⟧]]`）で
+ * 残す。passages[n] がその一節。convertSectionsToBlocks に passages を渡すと、引用から作る
+ * リンク記録（knowledgeLinks）に targetQuote として載る。
+ */
+export function resolveSourceCitationsWithPassages(
+  body: string,
+  sources: TopicSourceRef[],
+): { text: string; passages: string[] } {
+  const passages: string[] = [];
+  if (!body) return { text: body, passages };
   const titleById = new Map(sources.map((s) => [s.id, s.title]));
-  return body.replace(SOURCE_CITATION_RE, (_match, rawId: string) => {
+  const text = body.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
     const id = rawId.trim();
     const title = titleById.get(id);
-    if (title) return `[[${title}]]`;
-    return `[[source:${id}]]`;
+    if (!title) return `[[source:${id}]]`;
+    const passage = rawPassage?.trim();
+    if (!passage) return `[[${title}]]`;
+    passages.push(passage);
+    return `[[${title}\u27E6P:${passages.length - 1}\u27E7]]`;
   });
+  return { text, passages };
+}
+
+/**
+ * 改訂で返った本文の一節を、資料の文字と照らす（AI を使わない）。
+ * - 前の本文に同じ資料・同じ一節があれば、そのまま残す（書いたときに照合済み。長い資料を窓に
+ *   分けて読むとき、前の窓で控えた一節は今の窓の文字には無いので、前の本文で確かめる）
+ * - 今回読んだ資料（source）の新しい一節: source.text に見つからなければ外す
+ *   （引用は残す。その文は出典照合で AI が判定する）
+ * - 他の資料の新しい一節（AI が写し直して変わった）: 確かめようがないので外す
+ * 保存される一節は、すべて資料の文字に実在する — 出典照合の「抜粋は原文と照合済みのものだけ」と同じ約束。
+ */
+export function verifyCitationPassages(
+  previousBody: string,
+  body: string,
+  source: { id: string; text: string },
+): { body: string; removed: number; kept: number } {
+  const known = new Set(
+    parseSourceCitations(previousBody)
+      .filter((c) => c.passage)
+      .map((c) => `${c.sourceId}\u0000${c.passage}`),
+  );
+  let removed = 0;
+  let kept = 0;
+  const next = body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
+    const id = rawId.trim();
+    const passage = rawPassage?.trim();
+    if (!passage) return formatSourceCitation(id);
+    const ok = known.has(`${id}\u0000${passage}`)
+      || (id === source.id && passageAppearsIn(passage, source.text));
+    if (ok) { kept++; return formatSourceCitation(id, passage); }
+    removed++;
+    return formatSourceCitation(id);
+  });
+  return { body: next, removed, kept };
 }
 
 /**
@@ -2957,6 +3031,23 @@ export function droppedOtherSourceCitations(
   return { sourceIds: dropped, lines };
 }
 
+/**
+ * 資料を読まずに本文を書き直す経路（統合）で、一節を「元の本文のどれかにあった同じ資料・同じ一節」
+ * だけに絞る。書き換わった一節は確かめようがないので外す（引用は残す）。
+ */
+export function keepKnownPassages(previousBodies: string[], body: string): string {
+  const known = new Set(
+    previousBodies.flatMap((b) => parseSourceCitations(b))
+      .filter((c) => c.passage)
+      .map((c) => `${c.sourceId}\u0000${c.passage}`),
+  );
+  return body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
+    const id = rawId.trim();
+    const passage = rawPassage?.trim();
+    return formatSourceCitation(id, passage && known.has(`${id}\u0000${passage}`) ? passage : undefined);
+  });
+}
+
 /** References の「今の本文では引用していない」注記（ページの言語。無い言語は英語） */
 const UNCITED_REFERENCE_NOTE: Record<string, string> = {
   ja: "（読んだ資料。今の本文では引用していない）",
@@ -3041,11 +3132,11 @@ export function buildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
-  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId, passages);
   const refs = buildSourceReferenceBlocks(sources, citedSourceIds(stripped), language);
   const mentionLinks = buildTitleMentionLinks(kind, stripped, converted.blocks, title, noteIndex);
 
@@ -3119,7 +3210,7 @@ export function rebuildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
@@ -3128,6 +3219,7 @@ export function rebuildSourceBackedWikiDocument(
     noteIndex,
     existingDoc.title,
     sourceTitleToId,
+    passages,
   );
   const refs = buildSourceReferenceBlocks(
     sources,
@@ -3419,12 +3511,25 @@ export async function reviseTopicFromSource(
   // 書き直し（2 回目）の失敗は 1 回目の本文で済ませるので、onError に渡さない
   let quiet = false;
   const reportError = (err: unknown) => { if (!quiet) onError?.(err); };
+  // 返す本文は、控えた一節を資料の文字と照らしてから返す（見つからない一節は外す）
+  const finish = (revised: string): string => {
+    const checked = verifyCitationPassages(currentBody, revised, source);
+    if (checked.removed > 0) {
+      console.warn("reviseTopicFromSource: removed passages not found in the source", {
+        title,
+        removed: checked.removed,
+        kept: checked.kept,
+      });
+    }
+    return checked.body;
+  };
   const first = await reviseWithTimeoutRetry();
-  if (first === null || !currentBody) return first;
+  if (first === null) return null;
+  if (!currentBody) return finish(first);
   // 今回読んでいない資料の文が丸ごと消えていたら、その文を残すよう指示して 1 回だけ書き直させる。
   // 2 回目も消えたら、消えた資料の少ない方を採る（References は引用していない資料に注記を付ける）
   const dropped = droppedOtherSourceCitations(currentBody, first, source.id);
-  if (dropped.sourceIds.length === 0) return first;
+  if (dropped.sourceIds.length === 0) return finish(first);
   console.warn("reviseTopicFromSource: revision dropped every sentence citing other sources, retrying", {
     title,
     dropped: dropped.sourceIds,
@@ -3432,7 +3537,7 @@ export async function reviseTopicFromSource(
   // 書き直しの失敗は、1 回目の本文を使うので利用者に知らせない
   quiet = true;
   const second = await reviseWithTimeoutRetry(dropped.lines);
-  if (second === null) return first;
+  if (second === null) return finish(first);
   const droppedAgain = droppedOtherSourceCitations(currentBody, second, source.id);
   if (droppedAgain.sourceIds.length > 0) {
     console.warn("reviseTopicFromSource: retry still dropped sentences citing other sources", {
@@ -3440,7 +3545,7 @@ export async function reviseTopicFromSource(
       dropped: droppedAgain.sourceIds,
     });
   }
-  return droppedAgain.sourceIds.length <= dropped.sourceIds.length ? second : first;
+  return finish(droppedAgain.sourceIds.length <= dropped.sourceIds.length ? second : first);
 
   async function reviseWithTimeoutRetry(keepSentences?: string[]): Promise<string | null> {
     for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
@@ -3597,7 +3702,8 @@ export async function mergeTopicBodies(
       return null;
     }
     const data = await res.json() as { body?: string };
-    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 統合は資料を読まないので、一節は元の本文のどれかにあったものだけ残す（書き換わった一節は外す）
+    if (typeof data.body === "string" && data.body.trim()) return keepKnownPassages(bodies, data.body);
     // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("merge-topics returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
