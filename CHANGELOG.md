@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.133.0](https://github.com/kumagallium/Graphium/compare/v0.132.2...v0.133.0) - 2026-11-14
+
+- feat(topics): keep another source's sentences on revision, and mark sources the body no longer cites by @kumagallium in https://github.com/kumagallium/Graphium/pull/1672
+- [feat] Move four AI features to the tier that fits the work by @kumagallium in https://github.com/kumagallium/Graphium/pull/1674
+- feat(topics): keep the source passage behind each sentence, checked by string match before saving by @kumagallium in https://github.com/kumagallium/Graphium/pull/1673
+
 ## [v0.132.2](https://github.com/kumagallium/Graphium/compare/v0.132.1...v0.132.2) - 2026-11-14
 
 - [docs] Model guide: local ~30B is conditional for light work; add the cloud and local evaluation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1670
