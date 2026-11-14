@@ -16,6 +16,7 @@ const allIdle: AssistantConnectViewProps["rows"] = {
   "claude-desktop": { kind: "idle" },
   "claude-code": { kind: "idle" },
   codex: { kind: "idle" },
+  chatgpt: { kind: "idle" },
 };
 
 const meta: Meta<typeof AssistantConnectView> = {
@@ -40,7 +41,7 @@ export default meta;
 
 type Story = StoryObj<typeof AssistantConnectView>;
 
-/** 初期: 3 つのクライアントに「登録する」。ほかのアシスタントは畳んでおく */
+/** 初期: 4 つのクライアントに「登録する」。ほかのアシスタントは畳んでおく */
 export const Initial: Story = {};
 
 /** 登録の途中と、登録済み（使い始め方の 1 行が出る） */
@@ -50,6 +51,7 @@ export const RegisteringAndRegistered: Story = {
       "claude-desktop": { kind: "registered" },
       "claude-code": { kind: "working" },
       codex: { kind: "registered" },
+      chatgpt: { kind: "registered" },
     },
   },
 };
@@ -65,16 +67,17 @@ export const Outdated: Story = {
     rows: {
       "claude-desktop": { kind: "outdated" },
       "claude-code": { kind: "outdated" },
-      codex: { kind: "idle" },
+      codex: { kind: "outdated" },
+      chatgpt: { kind: "outdated" },
     },
   },
 };
 
-/** CLI が見つからない: コマンドをコピーしてターミナルで実行（コピー直後） */
+/** Claude Code の CLI が見つからない: コマンドをコピーしてターミナルで実行（コピー直後）。Codex / ChatGPT は CLI 無しでも登録できる */
 export const NoCli: Story = {
   args: {
-    rows: { "claude-desktop": { kind: "registered" }, "claude-code": { kind: "no-cli" }, codex: { kind: "no-cli" } },
-    copied: "codex",
+    rows: { "claude-desktop": { kind: "registered" }, "claude-code": { kind: "no-cli" }, codex: { kind: "idle" }, chatgpt: { kind: "idle" } },
+    copied: "claude-code",
   },
 };
 

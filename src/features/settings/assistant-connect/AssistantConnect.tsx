@@ -37,10 +37,11 @@ export function AssistantConnect() {
         "claude-desktop": toRow(data.rows["claude-desktop"]),
         "claude-code": toRow(data.rows["claude-code"]),
         codex: toRow(data.rows.codex),
+        chatgpt: toRow(data.rows.chatgpt),
       });
     } catch {
       // サーバーに届かない（Web 版など）は「デスクトップ版でだけ」の案内にする
-      setStatus({ available: false, rows: { "claude-desktop": "idle", "claude-code": "idle", codex: "idle" }, snippets: { "claude-code": "", codex: "", json: "" } });
+      setStatus({ available: false, rows: { "claude-desktop": "idle", "claude-code": "idle", codex: "idle", chatgpt: "idle" }, snippets: { "claude-code": "", codex: "", json: "" } });
     }
   }, []);
 
@@ -62,14 +63,21 @@ export function AssistantConnect() {
     } catch (err) {
       next = { kind: "error", message: err instanceof Error ? err.message : String(err) };
     }
-    setRows((prev) => (prev ? { ...prev, [id]: next } : prev));
+    // Codex と ChatGPT（デスクトップアプリ）は同じ config.toml を読むので、登録できたら両方の行を揃える
+    const shared: AssistantClientId[] = id === "codex" || id === "chatgpt" ? ["codex", "chatgpt"] : [id];
+    setRows((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, [id]: next };
+      if (next.kind === "registered") for (const k of shared) updated[k] = next;
+      return updated;
+    });
   }, []);
 
   const onCopy = useCallback(
     async (id: Exclude<AssistantClientId, "claude-desktop"> | "json") => {
       if (!status) return;
       try {
-        await navigator.clipboard.writeText(status.snippets[id]);
+        await navigator.clipboard.writeText(status.snippets[id === "chatgpt" ? "codex" : id]);
         setCopied(id);
         setTimeout(() => setCopied((cur) => (cur === id ? null : cur)), 2000);
       } catch {
@@ -83,7 +91,7 @@ export function AssistantConnect() {
   return (
     <AssistantConnectView
       available={status.available}
-      rows={rows ?? { "claude-desktop": { kind: "idle" }, "claude-code": { kind: "idle" }, codex: { kind: "idle" } }}
+      rows={rows ?? { "claude-desktop": { kind: "idle" }, "claude-code": { kind: "idle" }, codex: { kind: "idle" }, chatgpt: { kind: "idle" } }}
       snippets={status.snippets}
       copied={copied}
       onRegister={onRegister}

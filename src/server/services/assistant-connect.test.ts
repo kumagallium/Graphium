@@ -2,7 +2,18 @@
 // 設定ファイルは一時 home に置き、CLI と Claude の起動判定は差し替える。
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -187,6 +198,173 @@ describe("assistant-connect", () => {
 
       writeFileSync(join(codexDir, "config.toml"), 'model = "gpt-5"\n', "utf8");
       expect((await getAssistantConnectStatus(makeEnv())).rows.codex).toBe("idle");
+    });
+  });
+
+  describe("Codex / ChatGPT（CLI 無しで config.toml を直接書く）", () => {
+    const noCli = () => makeEnv({ findCli: async () => undefined });
+    const node = "/Applications/Graphium.app/Contents/Resources/sidecar/node";
+    const configPath = () => join(home, ".codex", "config.toml");
+
+    it("CLI 無しで新規に書く（ディレクトリも作る）。no-cli にはならない", async () => {
+      expect(await registerAssistant("chatgpt", noCli())).toBe("registered");
+      expect(runs).toEqual([]);
+      expect(readFileSync(configPath(), "utf8")).toBe(
+        `[mcp_servers.graphium]\ncommand = '${node}'\nargs = ['${script}']\n`,
+      );
+      const rows = (await getAssistantConnectStatus(noCli())).rows;
+      expect(rows.codex).toBe("registered");
+      expect(rows.chatgpt).toBe("registered");
+    });
+
+    it("CLI が無くても状態は no-cli でなく idle", async () => {
+      const rows = (await getAssistantConnectStatus(noCli())).rows;
+      expect(rows.codex).toBe("idle");
+      expect(rows.chatgpt).toBe("idle");
+    });
+
+    it("command と args だけを書き換え、節の中のほかの設定・下位の表・ほかの節・コメントは残す。バックアップを残す", async () => {
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      const original = [
+        "# 私の設定",
+        'model = "gpt-5"',
+        "",
+        "[mcp_servers.first]",
+        'command = "a"',
+        "",
+        "# graphium の古い登録",
+        "[mcp_servers.graphium] # 見出しの後ろのコメント",
+        'command = "node"',
+        "args = [",
+        '  "/old/graphium-mcp.mjs", # 古い場所',
+        "]",
+        "enabled = false",
+        "",
+        "[mcp_servers.graphium.env]",
+        'FOO = "bar"',
+        "",
+        "# --- 次の節 ---",
+        "[mcp_servers.last]",
+        "# 末尾のコメント",
+        'command = "z"',
+        "",
+      ].join("\n");
+      writeFileSync(configPath(), original, "utf8");
+
+      expect(await registerAssistant("codex", noCli())).toBe("registered");
+      expect(readFileSync(configPath(), "utf8")).toBe(
+        [
+          "# 私の設定",
+          'model = "gpt-5"',
+          "",
+          "[mcp_servers.first]",
+          'command = "a"',
+          "",
+          "# graphium の古い登録",
+          "[mcp_servers.graphium] # 見出しの後ろのコメント",
+          `command = '${node}'`,
+          `args = ['${script}']`,
+          "enabled = false",
+          "",
+          "[mcp_servers.graphium.env]",
+          'FOO = "bar"',
+          "",
+          "# --- 次の節 ---",
+          "[mcp_servers.last]",
+          "# 末尾のコメント",
+          'command = "z"',
+          "",
+        ].join("\n"),
+      );
+      expect(readFileSync(`${configPath()}.graphium-backup`, "utf8")).toBe(original);
+      expect((await getAssistantConnectStatus(noCli())).rows.chatgpt).toBe("registered");
+    });
+
+    it("graphium を 1 行の表やドット付きのキーで書いた設定は書き換えずに断る", async () => {
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      for (const original of [
+        '[mcp_servers]\ngraphium = { command = "x" }\n',
+        'mcp_servers.graphium.command = "x"\n',
+      ]) {
+        writeFileSync(configPath(), original, "utf8");
+        await expect(registerAssistant("codex", noCli())).rejects.toMatchObject({ code: "CONFIG_UNSUPPORTED" });
+        expect(readFileSync(configPath(), "utf8")).toBe(original);
+      }
+    });
+
+    it.skipIf(process.platform === "win32")("元のファイルの権限（0600）を引き継ぎ、新しく作るときも 0600 にする", async () => {
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      writeFileSync(configPath(), 'model = "gpt-5"\n', { encoding: "utf8", mode: 0o600 });
+      chmodSync(configPath(), 0o600);
+      await registerAssistant("codex", noCli());
+      expect(statSync(configPath()).mode & 0o777).toBe(0o600);
+
+      rmSync(configPath());
+      await registerAssistant("codex", noCli());
+      expect(statSync(configPath()).mode & 0o777).toBe(0o600);
+    });
+
+    it.skipIf(process.platform === "win32")("シンボリックリンクはリンクのまま、リンク先を書き換える", async () => {
+      const real = join(home, "dotfiles", "config.toml");
+      mkdirSync(join(home, "dotfiles"), { recursive: true });
+      writeFileSync(real, 'model = "gpt-5"\n', "utf8");
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      symlinkSync(real, configPath());
+      await registerAssistant("codex", noCli());
+      expect(lstatSync(configPath()).isSymbolicLink()).toBe(true);
+      expect(readFileSync(real, "utf8")).toContain("[mcp_servers.graphium]");
+    });
+
+    it("既存の内容の末尾に足す（ほかは変えない）", async () => {
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      writeFileSync(configPath(), 'model = "gpt-5"\n[mcp_servers.other]\ncommand = "x"', "utf8");
+      await registerAssistant("codex", noCli());
+      expect(readFileSync(configPath(), "utf8")).toBe(
+        `model = "gpt-5"\n[mcp_servers.other]\ncommand = "x"\n\n[mcp_servers.graphium]\ncommand = '${node}'\nargs = ['${script}']\n`,
+      );
+    });
+
+    it("Windows のバックスラッシュのパスがリテラル文字列でそのまま入る", async () => {
+      const winNode = "C:\\Program Files\\Graphium\\sidecar\\node.exe";
+      const env = makeEnv({ platform: "win32", node: winNode, findCli: async () => undefined });
+      await registerAssistant("codex", env);
+      const text = readFileSync(configPath(), "utf8");
+      expect(text).toContain(`command = '${winNode}'`);
+      expect(text).toContain(`args = ['${script}']`);
+    });
+
+    it("' を含むパスは基本文字列にして \\ と \" をエスケープする", async () => {
+      const odd = "C:\\Users\\O'Brien\\a \"b\"\\node.exe";
+      await registerAssistant("codex", makeEnv({ node: odd, findCli: async () => undefined }));
+      expect(readFileSync(configPath(), "utf8")).toContain(
+        'command = "C:\\\\Users\\\\O\'Brien\\\\a \\"b\\"\\\\node.exe"',
+      );
+    });
+
+    it("CODEX_HOME を尊重する", async () => {
+      const codexHome = join(home, "custom-codex");
+      await registerAssistant("chatgpt", makeEnv({ codexHome, findCli: async () => undefined }));
+      expect(existsSync(join(codexHome, "config.toml"))).toBe(true);
+      expect(existsSync(join(home, ".codex"))).toBe(false);
+    });
+
+    it("CLI があれば CLI を使い、設定ファイルは直接書かない（chatgpt も同じ）", async () => {
+      expect(await registerAssistant("chatgpt", makeEnv())).toBe("registered");
+      expect(runs).toEqual([
+        ["/opt/homebrew/bin/codex", "mcp", "remove", "graphium"],
+        ["/opt/homebrew/bin/codex", "mcp", "add", "graphium", "--", node, script],
+      ]);
+      expect(existsSync(configPath())).toBe(false);
+    });
+
+    it("chatgpt の状態は codex と同じ節を見る", async () => {
+      mkdirSync(join(home, ".codex"), { recursive: true });
+      writeFileSync(configPath(), `[mcp_servers.graphium]\ncommand = "node"\nargs = ["/old/graphium-mcp.mjs"]\n`, "utf8");
+      let rows = (await getAssistantConnectStatus(makeEnv())).rows;
+      expect([rows.codex, rows.chatgpt]).toEqual(["outdated", "outdated"]);
+      writeFileSync(configPath(), `[mcp_servers.graphium]\ncommand = "node"\nargs = ['${script}']\n`, "utf8");
+      rows = (await getAssistantConnectStatus(makeEnv())).rows;
+      expect([rows.codex, rows.chatgpt]).toEqual(["registered", "registered"]);
     });
   });
 });

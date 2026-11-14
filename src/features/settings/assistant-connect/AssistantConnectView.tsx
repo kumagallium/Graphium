@@ -1,7 +1,7 @@
 // 「外の AI からノートを使う」の見た目だけの部品。状態は props で受けて描くだけ。
 //
 // デスクトップ版に同梱した Graphium の MCP サーバーを、外の AI アシスタント（Claude Desktop /
-// Claude Code / Codex / その他の MCP クライアント）に登録する。利用者が Node.js を入れたり
+// Claude Code / Codex / ChatGPT / その他の MCP クライアント）に登録する。利用者が Node.js を入れたり
 // ソースをビルドしたりしなくて済むようにするのが目的。
 //
 // 行ごとに 1 つのクライアント。ボタンで登録できるもの（設定ファイルを書く・CLI を呼ぶ）は
@@ -13,7 +13,7 @@ import { useState, type ReactNode } from "react";
 import { useT } from "../../../i18n";
 import { SETTINGS_CARD_CLASS } from "../SettingsGroup";
 
-export type AssistantClientId = "claude-desktop" | "claude-code" | "codex";
+export type AssistantClientId = "claude-desktop" | "claude-code" | "codex" | "chatgpt";
 
 /** 1 つのクライアントの登録状態 */
 export type AssistantRowState =
@@ -52,7 +52,13 @@ const rowPrimary = `${rowBtn} bg-primary text-primary-foreground hover:bg-primar
 const rowSecondary = `${rowBtn} border border-border text-foreground hover:bg-accent`;
 const rowClass = `${SETTINGS_CARD_CLASS} p-3 text-left`;
 
-const ROW_ORDER: AssistantClientId[] = ["claude-desktop", "claude-code", "codex"];
+/** 行ごとの貼り付け用コマンド（ChatGPT は Codex と同じ設定なので Codex のものを使う） */
+function snippetFor(id: AssistantClientId, snippets: AssistantConnectViewProps["snippets"]): string | null {
+  if (id === "claude-desktop") return null;
+  return id === "chatgpt" ? snippets.codex : snippets[id];
+}
+
+const ROW_ORDER: AssistantClientId[] = ["claude-desktop", "claude-code", "codex", "chatgpt"];
 
 export function AssistantConnectView({
   available,
@@ -78,7 +84,7 @@ export function AssistantConnectView({
           key={id}
           id={id}
           state={rows[id]}
-          snippet={id === "claude-desktop" ? null : snippets[id]}
+          snippet={snippetFor(id, snippets)}
           copied={copied === id}
           onRegister={() => onRegister(id)}
           onCopy={id === "claude-desktop" ? undefined : () => onCopy(id)}
