@@ -14,6 +14,7 @@ import fcose from "cytoscape-fcose";
 
 import type { GraphNodeKind, GraphPayload } from "../graph-views";
 import { INLINE_LABEL_COLORS } from "../../features/inline-label/colors";
+import { flowPositions } from "./flow-layout";
 
 cytoscape.use(fcose);
 
@@ -130,7 +131,7 @@ function elementsOf(p: GraphPayload): ElementDefinition[] {
       fill: KIND_FILL[n.kind] ?? "#999",
       rank: n.rank ?? 0,
     },
-    classes: [n.kind, n.focus ? "focus" : "", n.out ? "out" : ""].filter(Boolean).join(" "),
+    classes: [n.kind, n.focus ? "focus" : "", n.out ? "out" : "", p.mode === "knowledge" ? "kg" : ""].filter(Boolean).join(" "),
   }));
   const edges: ElementDefinition[] = p.edges.map((e) => ({
     group: "edges",
@@ -155,15 +156,9 @@ function layoutOf(p: GraphPayload): cytoscape.LayoutOptions {
     for (const [r, ids] of byRank) ids.forEach((id, i) => pos.set(id, { x: r * 230, y: (i - (ids.length - 1) / 2) * 70 }));
     return { name: "preset", positions: (node: cytoscape.NodeSingular) => pos.get(node.id()) ?? { x: 0, y: 0 }, animate: false } as cytoscape.LayoutOptions;
   }
-  // 手順の流れ: 左から右へ（入力の無いものを根に）。会話の中の画面は横に広いので、
-  // breadthfirst の段（縦）を横に倒す。縦のままだと手順が多いと縮んで文字が読めない
-  return {
-    name: "breadthfirst",
-    directed: true,
-    spacingFactor: 0.9,
-    animate: false,
-    transform: (_node: cytoscape.NodeSingular, pos: cytoscape.Position) => ({ x: pos.y * 1.2, y: pos.x * 0.7 }),
-  } as cytoscape.LayoutOptions;
+  // 手順の流れ: 線の向きに沿った最長経路で段を決め、左から右へ並べる（flow-layout.ts）
+  const pos = flowPositions(p.nodes, p.edges);
+  return { name: "preset", positions: (node: cytoscape.NodeSingular) => pos.get(node.id()) ?? { x: 0, y: 0 }, animate: false } as cytoscape.LayoutOptions;
 }
 
 const STYLE: cytoscape.StylesheetJson = [
@@ -210,6 +205,24 @@ const STYLE: cytoscape.StylesheetJson = [
   { selector: "node.step.read", style: { "background-color": "#dcebd9", width: 170, height: 44 } },
   { selector: "node.wrote", style: { "border-width": 3, "border-color": AMBER, opacity: 1 } },
   { selector: "node.selected", style: { "border-width": 3, "border-color": "#2c3b2f" } },
+  // 全体グラフは 1,000 件を超えると縮尺が 0.3 前後になり、上の大きさでは光っても見えない（実データで確認）。
+  // 触れたものはアプリのチャットの横と同じく大きくし、題名を常に出す
+  {
+    selector: "node.kg.read, node.kg.wrote, node.kg.selected",
+    style: {
+      width: 42,
+      height: 42,
+      "font-size": 28,
+      "font-weight": 600,
+      "text-max-width": "420px",
+      "text-outline-color": "#fbfcf8",
+      "text-outline-width": 4,
+      "min-zoomed-font-size": 0,
+      "z-index": 20,
+    },
+  },
+  { selector: "node.kg.seen", style: { width: 26, height: 26, "border-width": 5 } },
+  { selector: "edge.kg-walked", style: { width: 8 } },
   {
     selector: "edge",
     style: {
@@ -312,7 +325,10 @@ function render(p: GraphPayload): void {
 type ActivityEvent = { seq: number; kind: "read" | "seen" | "walk" | "wrote"; id: string; from?: string };
 
 function pulse(node: cytoscape.NodeSingular): void {
-  node.animate({ style: { width: 30, height: 30 } }, { duration: 250 }).animate({ style: { width: 18, height: 18 } }, { duration: 350 });
+  // 終わったら style の上書きを外し、クラスの大きさ（node.kg.read など）に戻す
+  node
+    .animate({ style: { width: 64, height: 64 } }, { duration: 250 })
+    .animate({ style: { width: 42, height: 42 } }, { duration: 350, complete: () => void node.removeStyle("width height") });
 }
 
 function applyEvents(events: ActivityEvent[]): void {
@@ -321,7 +337,7 @@ function applyEvents(events: ActivityEvent[]): void {
     const node = cy.getElementById(e.id);
     if (e.kind === "walk" && e.from) {
       const edge = cy.edges().filter((x) => (x.source().id() === e.from && x.target().id() === e.id) || (x.source().id() === e.id && x.target().id() === e.from));
-      edge.addClass("walked");
+      edge.addClass(current?.mode === "knowledge" ? "walked kg-walked" : "walked");
     }
     if (node.empty()) continue;
     if (e.kind === "seen") {
