@@ -47,6 +47,7 @@ import { loadSettings } from "../settings/store";
 import { SynthesisModeModal } from "./SynthesisModeModal";
 import { SourceCheckBadge } from "../source-check/ui/SourceCheckBadge";
 import { SourceCheckDetailSection } from "../source-check/ui/SourceCheckDetailSection";
+import type { SourceCheckOpenAt } from "../asset-browser/pdf-quote-anchor";
 
 function TypeBadge({
   label,
@@ -706,7 +707,7 @@ export function WikiContextDrawer({
   onDismissSourceCheck?: () => void;
   onClearSourceCheck?: () => void;
   /** 出典を開く（ノート・素材を SidePeek 等で表示する想定） */
-  onOpenSourceCheckSource?: (sourceId: string, blockId?: string) => void;
+  onOpenSourceCheckSource?: (sourceId: string, blockId?: string, at?: SourceCheckOpenAt) => void;
   /** sourceId → 表示名（noteIndex / mediaIndex / wikiMetas から呼び出し側が解決する） */
   sourceCheckSourceTitles?: Record<string, string>;
   /** 照合後に本文が変わったか */

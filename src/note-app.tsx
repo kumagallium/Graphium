@@ -648,7 +648,7 @@ import type { NoteGraphData, LineageNode, LineageSources } from "./features/netw
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 import { SelectionQuoteProvider } from "./features/asset-browser/selection-quote-context";
 import { buildSelectionSourceAsset } from "./features/asset-browser/selection-memo";
-import type { MaterialFocus } from "./features/asset-browser/pdf-quote-anchor";
+import { focusFromSourceCheck, type MaterialFocus, type SourceCheckOpenAt } from "./features/asset-browser/pdf-quote-anchor";
 
 // URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）は共有チョークポイント
 // url-text-loader.ts の loadUrlText を使う（PDF URL は pdf-proxy 経由でテキスト抽出）。
@@ -1585,7 +1585,7 @@ type NoteEditorProps = {
    * NoteApp 側から素材サイドピークを開くための命令口（openSidePeekRef と同じ流儀）。
    * memo: ソースのその場プレビュー（メモピーク）で使う。
    */
-  openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
+  openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry, focus?: MaterialFocus) => void) | null>;
   /**
    * ⌘⇧M（クイックメモ）の付け先を決めるために、NoteApp が「いまの編集面の状況」を読む口
    * （openMaterialPeekRef と同じ流儀）。エディタにカーソルがあるか・素材のサイドピークを開いているかは
@@ -5275,7 +5275,12 @@ function NoteEditorInner({
   // リスト用素材ピークにフォールバックする）。
   useEffect(() => {
     if (!openMaterialPeekRef) return;
-    openMaterialPeekRef.current = (entry: MediaIndexEntry) => setMaterialSidePeekEntry(entry);
+    // focus は出典照合の「出典を開く」から（PDF の照合済みの抜粋とページ）。引用ブロックの
+    // 「出典を開く」と同じ materialPeekFocus に載せる
+    openMaterialPeekRef.current = (entry: MediaIndexEntry, focus?: MaterialFocus) => {
+      if (focus) setMaterialPeekFocus({ fileId: entry.fileId, focus });
+      setMaterialSidePeekEntry(entry);
+    };
     return () => {
       if (openMaterialPeekRef.current) openMaterialPeekRef.current = null;
     };
@@ -8682,7 +8687,7 @@ export function NoteApp() {
   const openSidePeekRef = useRef<((noteId: string | null) => void) | null>(null);
   // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
   // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
-  const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
+  const openMaterialPeekRef = useRef<((entry: MediaIndexEntry, focus?: MaterialFocus) => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
   // ⌘K の共有欄から引用カードを挿す命令口。NoteEditorInner が登録する（同じ流儀）。
@@ -8726,6 +8731,15 @@ export function NoteApp() {
   // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
   // 片方を開くとき他方を閉じる（切替式）。
   const [listMaterialPeekEntry, setListMaterialPeekEntry] = useState<MediaIndexEntry | null>(null);
+  // 一覧側の素材ピークを開いたときに見せる場所（出典照合の「出典を開く」から）。
+  // エディタ内ピークの materialPeekFocus と同じく、ピークが閉じた・別の素材に変わったら捨てる
+  const [listMaterialPeekFocus, setListMaterialPeekFocus] = useState<{ fileId: string; focus: MaterialFocus } | null>(null);
+  useEffect(() => {
+    if (!listMaterialPeekFocus) return;
+    if (!listMaterialPeekEntry || listMaterialPeekEntry.fileId !== listMaterialPeekFocus.fileId) {
+      setListMaterialPeekFocus(null);
+    }
+  }, [listMaterialPeekEntry, listMaterialPeekFocus]);
   const [ingestToast, setIngestToastRaw] = useState<IngestToastState>(null);
   // トーストの更新はすべてここを通す（チョークポイント）。状態遷移に startedAt / endedAt を刻み、
   // 各段・各項目の所要時間をトーストに出す。更新側の 99 か所は時刻を意識しない
@@ -11931,7 +11945,7 @@ export function NoteApp() {
   // openNote を渡すと、ノート・知見はその開き方で開く（サイドピーク内の文脈欄から
   // 開くとき、同じピークの中で開き直すため）。素材・URL・メモの開き先は変わらない。
   const handleOpenSourceCheckSource = useCallback(
-    (sourceId: string, _blockId?: string, openNote?: (noteId: string) => void) => {
+    (sourceId: string, _blockId?: string, openNote?: (noteId: string) => void, at?: SourceCheckOpenAt) => {
       const openTarget = (target: string) => {
         if (openNote) {
           openNote(target);
@@ -11959,11 +11973,14 @@ export function NoteApp() {
         if (ext.kind === "pdf" || ext.kind === "document") {
           const entry = fm.mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (!entry) return;
+          // PDF は照合済みの抜粋の文へ送る（無ければページへ。どちらも無ければ頭から）
+          const focus = ext.kind === "pdf" ? focusFromSourceCheck(`check:${sourceId}:${Date.now()}`, at) : undefined;
           if (openMaterialPeekRef.current) {
-            openMaterialPeekRef.current(entry);
+            openMaterialPeekRef.current(entry, focus);
           } else {
             setListSidePeekNoteId(null);
             dropPeekFromUrl();
+            if (focus) setListMaterialPeekFocus({ fileId: entry.fileId, focus });
             setListMaterialPeekEntry(entry);
           }
           return;
@@ -12001,7 +12018,7 @@ export function NoteApp() {
       onRunSourceCheck={aiUiEnabled ? () => void sourceCheck.runOne(wikiId) : undefined}
       onDismissSourceCheck={() => void sourceCheck.dismiss(wikiId)}
       onClearSourceCheck={() => void sourceCheck.clear(wikiId)}
-      onOpenSourceCheckSource={(sourceId, blockId) => handleOpenSourceCheckSource(sourceId, blockId, openNote)}
+      onOpenSourceCheckSource={(sourceId, blockId, at) => handleOpenSourceCheckSource(sourceId, blockId, openNote, at)}
       sourceCheckSourceTitles={
         wikiMeta.sourceCheck
           ? resolveSourceCheckTitles(wikiMeta.sourceCheck.entries, {
@@ -17436,7 +17453,7 @@ export function NoteApp() {
                         onClearSourceCheck={
                           wikiIdForDrawer ? () => void sourceCheck.clear(wikiIdForDrawer) : undefined
                         }
-                        onOpenSourceCheckSource={handleOpenSourceCheckSource}
+                        onOpenSourceCheckSource={(sourceId, blockId, at) => handleOpenSourceCheckSource(sourceId, blockId, undefined, at)}
                         sourceCheckSourceTitles={
                           fm.activeDoc.wikiMeta.sourceCheck
                             ? resolveSourceCheckTitles(fm.activeDoc.wikiMeta.sourceCheck.entries, {
@@ -17847,6 +17864,7 @@ export function NoteApp() {
           noteFolderLookup={noteFolderLookup}
           onEditFolders={fm.editMediaContexts}
           entry={listMaterialPeekEntry}
+          focus={listMaterialPeekFocus?.fileId === listMaterialPeekEntry.fileId ? listMaterialPeekFocus.focus : undefined}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}
           captureIndex={capture.captureIndex}
