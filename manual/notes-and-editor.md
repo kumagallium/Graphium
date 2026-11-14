@@ -58,7 +58,7 @@ With two displays, press **Open in a separate window** in the side peek's header
 - **Open in the main window** moves the note to the main window. Edits you just made in the separate window are saved first.
 - Clicking a link to another note inside the separate window opens that note in the same window.
 - There is one separate window. Pressing **Open in a separate window** on another note replaces what it shows.
-- The icons on the right edge of the separate window open a panel beside the note, the same way as the main window's right panel: **Graph**, **Steps** and **Memos**, one at a time. Press the open one again to close it.
+- The icons on the right edge of the separate window open a panel beside the note, the same way as the main window's right panel: **Graph**, **Steps** and **Memos**, one at a time. Press the open one again to close it. <Badge type="tip" text="Graph and Memos added in v0.132.0 (2026-11-14)" />
   - **Steps** is the same panel as in the main window's right panel. Adding, renaming, or connecting steps there writes to the note. Memos on connections are shown in the main window only.
   - **Graph** shows the notes and Knowledge pages around this note (**Neighbors**) and where it came from (**Lineage**). Click a note to open it in the same window. The **Genealogy** view, and opening materials or memos from the graph, are in the main window.
   - **Memos** lists the memos on this note. You can write a new one or delete one there.
