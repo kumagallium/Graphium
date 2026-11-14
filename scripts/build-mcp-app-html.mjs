@@ -126,7 +126,8 @@ header { padding: 12px 16px 8px; border-bottom: 1px solid var(--rule-2); display
 .graph { width: 100%; background: var(--paper); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 16px; border-top: 1px solid var(--rule-2); font-size: 12px; color: var(--ink-3); }
 .legend-item { display: inline-flex; align-items: center; gap: 5px; }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 1.5px solid transparent; }
+.bar { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
 .info { padding: 0 16px 10px; font-size: 12px; overflow-wrap: anywhere; }
 .muted { color: var(--ink-3); }
 `;
