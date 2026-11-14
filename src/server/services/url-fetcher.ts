@@ -79,6 +79,16 @@ export async function fetchPageAsText(
 /**
  * HTML 文字列からタイトル・説明・本文を抽出する
  */
+/** デコード対象のエンティティ表（1 パス置換用）。 */
+const ENTITY_MAP: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
+
 export function extractFromHtml(
   html: string,
   maxTextChars: number = DEFAULT_MAX_TEXT_CHARS,
@@ -92,19 +102,22 @@ export function extractFromHtml(
   const metaDescription =
     html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "";
 
-  let bodyText = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-    .replace(/<header[\s\S]*?<\/header>/gi, "")
-    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-    .replace(/<[^>]+>/g, "\n")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  // 変化がなくなるまでブロック・タグを除去する（入れ子で分断された形の取りこぼし防止）。
+  // 閉じタグの空白（`</script >`）も許す。
+  let stripped = html;
+  for (let prev = ""; prev !== stripped; ) {
+    prev = stripped;
+    stripped = stripped
+      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
+      .replace(/<style\b[\s\S]*?<\/style\s*>/gi, "")
+      .replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, "")
+      .replace(/<header\b[\s\S]*?<\/header\s*>/gi, "")
+      .replace(/<footer\b[\s\S]*?<\/footer\s*>/gi, "")
+      .replace(/<[^>]+>/g, "\n");
+  }
+  // エンティティは 1 パスでデコードする（`&amp;lt;` を `<` に二重デコードしない）。
+  let bodyText = stripped
+    .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITY_MAP[m] ?? m)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 

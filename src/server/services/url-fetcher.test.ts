@@ -2,6 +2,17 @@ import { describe, it, expect } from "vitest";
 import { extractFromHtml } from "./url-fetcher";
 
 describe("extractFromHtml", () => {
+  it("&amp;lt; を二重デコードせず &lt; のまま残す", () => {
+    const { text } = extractFromHtml("<body><p>a &amp;lt; b &lt; c</p></body>");
+    expect(text).toContain("a &lt; b < c");
+  });
+
+  it("`</script >` でも script ブロックを除去する", () => {
+    const { text } = extractFromHtml("<body><script>evil()</script ><p>keep</p></body>");
+    expect(text).not.toContain("evil");
+    expect(text).toContain("keep");
+  });
+
   it("<title> からタイトルを抽出する", () => {
     const html = "<html><head><title>Page Title</title></head><body><p>body</p></body></html>";
     const { title } = extractFromHtml(html);

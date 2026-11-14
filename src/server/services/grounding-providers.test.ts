@@ -21,6 +21,16 @@ function stubFetch(routes: (url: string) => unknown) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("searchWikipedia（エンティティ）", () => {
+  it("&amp;lt; を二重デコードせず &lt; のまま残す", async () => {
+    stubFetch(() => ({
+      query: { search: [{ title: "T", snippet: "a &amp;lt; b &lt; c" }] },
+    }));
+    const out = await searchWikipedia("T", "en");
+    expect(out[0].snippet).toBe("a &lt; b < c");
+  });
+});
+
 describe("searchWikipedia", () => {
   it("検索ヒットを記事 URL + 抜粋（HTML 除去）に整形する", async () => {
     stubFetch((url) =>

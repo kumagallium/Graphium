@@ -17,16 +17,25 @@ export type PastedTable = {
   tsv: string;
 };
 
+const CELL_ENTITIES: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
+
 function cleanCell(raw: string): string {
-  return raw
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  // 変化がなくなるまでタグを除去（入れ子で分断された形の取りこぼし防止）
+  let t = raw.replace(/<br\s*\/?>/gi, " ");
+  for (let prev = ""; prev !== t; ) {
+    prev = t;
+    t = t.replace(/<[^>]+>/g, "");
+  }
+  // エンティティは 1 パスでデコード（`&amp;lt;` を `<` に二重デコードしない）
+  return t
+    .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, (m) => CELL_ENTITIES[m] ?? m)
     .replace(/\s+/g, " ")
     .trim();
 }

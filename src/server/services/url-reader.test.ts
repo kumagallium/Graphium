@@ -1,3 +1,4 @@
+import { parseHTML } from "linkedom";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   extractReaderFromHtml,
@@ -166,6 +167,40 @@ describe("sanitizeReaderHtml", () => {
     expect(out).not.toContain("<object");
     expect(out).not.toContain("track.example.net");
     expect(out).toContain("<p>keep</p>");
+  });
+
+  it("`</script >`（閉じタグに空白）でも script を除去する", () => {
+    const out = sanitizeReaderHtml("<p>ok</p><script>alert(1)</script ><p>after</p>");
+    expect(out).not.toContain("alert(1)");
+    expect(out).not.toContain("<script");
+    expect(out).toContain("<p>after</p>");
+  });
+
+  it("入れ子で分断した `<scr<script>ipt>` から script が復活しない", () => {
+    const out = sanitizeReaderHtml("<p>x</p><scr<script>ipt>alert(1)</scr</script>ipt>");
+    // 再パースしても script 要素が存在しない（`scr<script` という無害なタグ名になる）
+    const { document: doc } = parseHTML(`<body>${out}</body>`);
+    expect(doc.querySelectorAll("script").length).toBe(0);
+  });
+
+  it("属性値に onclick を含む入れ子でも on* 属性が残らない", () => {
+    const out = sanitizeReaderHtml(
+      '<a title=" onclick=alert(1)" onclick="alert(2)" onmouseover=alert(3)>t</a>',
+    );
+    // 属性値の中の文字列は残ってよい。on* 属性として存在しないことを DOM で確かめる
+    const { document: doc } = parseHTML(`<body>${out}</body>`);
+    const a = doc.querySelector("a")!;
+    expect(a.getAttributeNames().filter((n: string) => /^on/i.test(n))).toEqual([]);
+  });
+
+  it("大文字・空白混じりの javascript: / vbscript: / data: を無害化する", () => {
+    const out = sanitizeReaderHtml(
+      '<a href="JaVaScRiPt:alert(1)">a</a><a href=" java\tscript:alert(2)">b</a>' +
+        '<a href="VBScript:x">c</a><a href="data:text/html,<b>x</b>">d</a>',
+    );
+    expect(out).not.toMatch(/javascript:/i);
+    expect(out).not.toMatch(/vbscript:/i);
+    expect(out).not.toMatch(/data:/i);
   });
 });
 

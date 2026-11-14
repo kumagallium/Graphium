@@ -35,15 +35,25 @@ const MAX_ITEMS_PER_PROVIDER = 5;
 const MAX_SNIPPET_CHARS = 320;
 const MAX_EVIDENCE_CHARS = 4000;
 
+const HTML_ENTITIES: Record<string, string> = {
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&#39;": "'",
+};
+
 /** HTML タグを落として 1 行に均す（Wikipedia の snippet は <span> を含む）。 */
 function stripHtml(s: string): string {
-  return s
-    .replace(/<[^>]+>/g, "")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'")
+  // 変化がなくなるまでタグを除去（入れ子で分断された形の取りこぼし防止）
+  let t = s;
+  for (let prev = ""; prev !== t; ) {
+    prev = t;
+    t = t.replace(/<[^>]+>/g, "");
+  }
+  // エンティティは 1 パスでデコード（`&amp;lt;` を `<` に二重デコードしない）
+  return t
+    .replace(/&(?:amp|lt|gt|quot|#39);/g, (m) => HTML_ENTITIES[m] ?? m)
     .replace(/\s+/g, " ")
     .trim();
 }
