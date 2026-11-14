@@ -3974,6 +3974,8 @@ Tools:
 | `start_insight_task` | hand out an insight-discovery task: the server picks a bundle of 50 claims and builds the prompt `/atomize` would send (`buildAtomizePrompt`, shared with the route). See "Insights made through MCP" below |
 | `submit_insights` | take the client's insight candidates (`parseAtomizeOutput`); nothing is saved yet — returns one review task |
 | `submit_insight_review` | take the client's answers to the review task (transfer / fold / relift / duplicate / reinforce) and save the insights; recorded (`mcp_generate_insights`) |
+| `start_procedure_task` | hand out a procedure-extraction task for one material (PDF, `.docx`, registered URL) or note: the system prompt the app's "Extract steps into a note" sends (`buildProvIngesterSystemPrompt` with the vault's label vocabulary from `collectLabelVocabulary`) and a user message in the shape of `buildProvIngesterUserMessage`. Sources up to 12,000 characters are inlined; longer ones are read by the client through `get_source_text`. See "Procedures made through MCP" below |
+| `submit_procedure` | take the client's answer to a procedure task, run it through the app's checks and create the procedure note (a new file only; works while the app runs) |
 | `submit_rewrite` | take the client's answer to the tidy-up task `submit_claims` returns for a merged claim (`buildRewritePrompt`, shared with `/rewrite`) and replace that page's body; recorded |
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
@@ -4156,6 +4158,30 @@ with `conflictsWith` written on both sides — as one `mcp_generate_insights` op
 `derivedFromClaims` can only hold claims in the bundle, and `epistemicStatus` is the
 lowest of them, as `parseAtomizerOutput` enforces. The tools refuse when the app's
 insights setting is off (`INSIGHTS_DISABLED`).
+
+**Procedures made through MCP** (`src/mcp/procedure-tools.ts`). The counterpart of the
+app's "Extract steps into a note" (`/api/prov/ingest-url` / `ingest-pdf`), with the
+client's model in place of the app's. `start_procedure_task` resolves the full source
+text with `resolveFullSourceText` (the resolver `get_source_text` uses, shared cache),
+refuses text under 50 characters as the routes do, and records a `procedure` task in
+`appdata/mcp-knowledge-tasks.json`. `submit_procedure` parses the answer with
+`parseProvIngesterOutput` and applies the route's retry checks to the parsed blocks in
+the same order (`hasHeadingLanguageMismatch`, `findMergedParallelSteps`,
+`looksLikeReplicatedChains`): when one fires, nothing is saved and the client gets the
+same nudge text once (`NEEDS_REVISION`); the next submission is saved as is, so there
+is at most one extra round, like the route's single retry. Names are aligned to the
+vault's spelling (`alignBySpelling` + `applyLabelMapping`, stage 1 of
+`alignExtractedBlocks`); the AI stage 2 is not run, since the prompt already carries
+the existing names. The note is built by `buildProvNoteDocument` (sources: `sourceUrl`
+/ `sourcePdfFileId` / `sourceDocumentFileId`; a note source gets a leading `Source:`
+paragraph with an `@` link instead), filed by `buildGeneratedNoteFolders` (the
+procedure folder, the material's own folders and the optional `folder`), stamped with
+`generatedBy.agent = graphium-mcp (<client>)`, recorded with
+`recordRevision(…, "ai_derivation", { sources: [sourceId] })` like
+`handleCreateNoteFromDocument`, written to `notes/` and added to the search index. The
+media index's `usedIn` is not written (the MCP never writes `media-index.json`): the
+material lists the note under "used in" only after the note is first saved in the app,
+which runs `syncUsedIn`.
 
 **Running app.** The app treats its in-memory index as the truth and has no
 file watching, so a wiki page or a `note-index.json` flag written from outside

@@ -71,6 +71,8 @@ const EXPECTED_TOOLS = [
   // 知見を外の AI に作らせる（課題を配って答えを受け取る）
   "start_claim_task", "find_claims_for_task", "submit_claims", "submit_rewrite",
   "start_insight_task", "submit_insights", "submit_insight_review",
+  // 手順の PROV 化を外の AI に任せる（資料 → 手順ノート）
+  "start_procedure_task", "submit_procedure",
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
   // Asterism 連携（知見を型ごとの JSON に書き出す）

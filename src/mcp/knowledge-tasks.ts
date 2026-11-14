@@ -13,6 +13,7 @@ import type { ClaimSnapshot } from "../server/services/wiki-types";
 import { writeFileAtomic } from "./upkeep/atomic-write";
 import { acquireWriteLock } from "./upkeep/guard";
 import { appDataDir } from "./vault";
+import type { ProcedureTaskData } from "./procedure-tools";
 
 /** 課題の期限（ミリ秒）。過ぎた課題は TASK_EXPIRED */
 export const TASK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -22,8 +23,11 @@ export const TASK_TTL_MS = 24 * 60 * 60 * 1000;
  */
 export const TASK_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
 
-/** insights: 洞察を作る課題（束の知見を配る）／insight_review: 作った洞察候補の審査の課題 */
-export type KnowledgeTaskKind = "claims" | "rewrite" | "insights" | "insight_review";
+/**
+ * insights: 洞察を作る課題（束の知見を配る）／insight_review: 作った洞察候補の審査の課題／
+ * procedure: 資料から PROV 付きの手順ノートを作る課題（procedure-tools.ts）
+ */
+export type KnowledgeTaskKind = "claims" | "rewrite" | "insights" | "insight_review" | "procedure";
 
 /** insights の課題: 配った束。parse（id・status・rebuttal）と審査（タイトル・プレビュー）に要る分 */
 export type InsightTaskData = {
@@ -99,6 +103,8 @@ export type KnowledgeTask = {
   insights?: InsightTaskData;
   /** insight_review: 審査待ちの候補 */
   insightReview?: InsightReviewData;
+  /** procedure: 元の資料と、直しの頼みを出したか */
+  procedure?: ProcedureTaskData;
 };
 
 export type KnowledgeTaskLedger = { version: 1; tasks: Record<string, KnowledgeTask> };
