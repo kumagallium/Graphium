@@ -666,6 +666,11 @@ block holds every cell's links, so the row is what tells apart two cells
 with the same label — each sample's own `data.txt`. A row that has not
 been saved yet is numbered on the spot. Links recorded before this carry
 no row and still resolve per block.
+A `reference` link built from a citation in a source-backed knowledge
+page's body (`[[source:<id>|<passage>]]`, see `topicMarkdown`) carries
+that passage as `targetQuote` (optional on `BlockLink`). Clicking the
+`@source` mention of a PDF opens the PDF at that passage and highlights
+it. Links without a passage open the source from the top, as before.
 Copy and paste carries these `reference` links too. They point outside
 the copied range (at a note or a material), so the clipboard payload holds
 them separately from the block-to-block `links`, as `mentionLinks` that
@@ -1815,7 +1820,24 @@ type WikiMeta = {
   // "pdf:"/"document:"/"url:"/"chat:"/"memo:" prefixed, or — for Answers,
   // where the resource can be a note/asset/shared-entry surfaced during
   // chat — "note:"/"asset:"/"shared:" prefixed; same id space as
-  // `derivedFromNotes`). When present, this is the authoritative body: for
+  // `derivedFromNotes`). A citation may also carry the passage of that
+  // resource the sentence restates, copied verbatim:
+  // `[[source:<id>|<passage>]]` (`src/lib/source-citations.ts`). The Topic
+  // reviser asks for one on every citation; before the body is saved,
+  // `verifyCitationPassages` keeps a passage already in the previous body
+  // for the same source (a long source is read window by window, so an
+  // earlier window's passage is not in the current window's text), checks
+  // each new passage of the source just read against that source's text
+  // (NFKC, case, whitespace, dash forms, a hyphen between two Latin
+  // letters, reference numbers like [8] and trailing punctuation ignored;
+  // at least 8 characters after that) and removes any it cannot find, and
+  // drops a new passage of any other source. A merge (`mergeTopicBodies`)
+  // keeps only passages present in one of the merged bodies
+  // (`keepKnownPassages`). Every stored passage was therefore found in its
+  // source when it was first written. A passage may contain `]` and `|`
+  // (including a trailing `]`, as in `…[14]]]`); only `]]` cannot appear
+  // inside it. `[[source:<id>]]` without a passage stays valid
+  // (older bodies, writers that don't ask for one). When present, this is the authoritative body: for
   // Topics, the next re-ingest is handed this text as "the previous body" to
   // revise, and source-check reads its statements straight from here (one
   // hop: statement -> resource, no intermediate Claim layer). Answer pages do

@@ -74,6 +74,8 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Source passages behind sentences', link: '/evaluations/sentence-passages' },
+      { text: 'Cloud and local models by feature', link: '/evaluations/cloud-and-local-models-by-feature' },
       { text: 'Open models by feature', link: '/evaluations/open-models-by-feature' },
       { text: 'Claims within the note', link: '/evaluations/claim-scope' },
       { text: 'Reinforcing existing insights', link: '/evaluations/insight-reinforcement' },
@@ -154,6 +156,8 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '文ごとに元の一節を控える', link: '/ja/evaluations/sentence-passages' },
+      { text: 'クラウド・手元のモデルと AI 機能', link: '/ja/evaluations/cloud-and-local-models-by-feature' },
       { text: '公開モデルと AI 機能', link: '/ja/evaluations/open-models-by-feature' },
       { text: '知見の範囲', link: '/ja/evaluations/claim-scope' },
       { text: '既存の洞察への支持追加', link: '/ja/evaluations/insight-reinforcement' },

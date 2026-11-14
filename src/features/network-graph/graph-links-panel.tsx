@@ -27,6 +27,7 @@ export function GraphLinksPanel({
   onOpenMemo,
   onOpenMemoGroup,
   onOpenSharedEntry,
+  hideGenealogy = false,
 }: {
   data: NoteGraphData;
   lineageTree: LineageNode | null;
@@ -50,6 +51,11 @@ export function GraphLinksPanel({
    * クリックしても何も起きない（グラフ側でカーソルも変わらない）。
    */
   onOpenSharedEntry?: (sharedId: string) => void;
+  /**
+   * 系譜のタブを出さない。系譜は全ノートの本文（lineageSources）から組み立てるので、
+   * それを持たない場所（別ウィンドウ）では空になる
+   */
+  hideGenealogy?: boolean;
 }) {
   // 既定は近傍（開いてすぐ、つながりがひと目で分かる）。系譜は右隣のタブ
   const [subTab, setSubTab] = useState<SubTab>("graph");
@@ -63,7 +69,7 @@ export function GraphLinksPanel({
           { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
           { key: "genealogy" as const, icon: <Workflow size={14} />, label: t("panel.graph.genealogy") },
           { key: "lineage" as const, icon: <ListTree size={14} />, label: t("panel.graph.lineage") },
-        ]).map((tab) => (
+        ]).filter((tab) => !(hideGenealogy && tab.key === "genealogy")).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setSubTab(tab.key)}

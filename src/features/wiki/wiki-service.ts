@@ -30,6 +30,12 @@ import type { ReconcileInput, ReconcileOutput } from "./reconcile-types";
 import type { GraphiumIndex } from "../navigation";
 import { extractDocxText } from "../../lib/docx-text";
 import { buildTopicMentionLinks, findTopicMentions } from "./topic-mention-links";
+import {
+  SOURCE_CITATION_RE,
+  formatSourceCitation,
+  parseSourceCitations,
+  passageAppearsIn,
+} from "../../lib/source-citations";
 
 /** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
 const API_BASE = `${apiBase()}/wiki`;
@@ -71,9 +77,9 @@ function buildTitleMentionLinks(
  * モード別に適切な認証情報を送る必要がある。モード名は wikiBodyModel と揃えてあり、
  * mode 引数だけを渡す呼び出し（呼び出し元が model 名を渡さない工程）はこの 2 関数が
  * 常にペアで同じモデルを解決する。
- * - "light":     デフォルトモデル（点検・トピックの統合）
- * - "standard":  標準の処理（ingest / rewrite / cross-update / トピック）。未設定なら default
- * - "precise":   精密な処理（atomize / transfer 判定 / relift / 重複判定）。未設定なら standard → default
+ * - "light":     デフォルトモデル（点検・トピックの統合・トピックの振り分け・重複判定）
+ * - "standard":  標準の処理（ingest / rewrite / cross-update / トピックの改訂）。未設定なら default
+ * - "precise":   精密な処理（atomize / transfer 判定 / relift）。未設定なら standard → default
  * - "embedding": Embedding 用モデル（未設定なら default）
  *
  * 呼び出し元が model 名を明示する工程（mergeTopicBodies など）は、この 2 関数を
@@ -92,10 +98,10 @@ function buildTitleMentionLinks(
  * サーバーが引けず「モデル未登録」（NO_MODEL_REGISTERED）で断る。
  *
  * モデルは難しさ別の 3 段（設定 → AI → モデルの割り当て）から選ぶ:
- * - "light":     デフォルトモデル（点検・トピックの統合）
- * - "standard":  標準の処理（ナレッジ化 / 関連ページの更新 / トピックの振り分け・改訂・見取り図・
+ * - "light":     デフォルトモデル（点検・トピックの統合・トピックの振り分け・洞察の重複判定）
+ * - "standard":  標準の処理（ナレッジ化 / 関連ページの更新 / トピックの改訂・見取り図・
  *                本文統合・種類付与）。未設定時はデフォルト
- * - "precise":   精密な処理（洞察の発見・移し替え判定・重複判定）。未設定時は標準 → デフォルト
+ * - "precise":   精密な処理（洞察の発見・移し替え判定）。未設定時は標準 → デフォルト
  * - "embedding": Embedding 用途は body.embedding_model を別途使うので空
  */
 type WikiModelMode = "light" | "standard" | "precise";
@@ -810,7 +816,17 @@ function pushCitation(
   /** noteIndex に載らない資料（pdf/url 等の素材）のタイトル→id。References の行と同じ
    *  資料一覧（sources）から作る。noteIndex で解決できなかったときだけのフォールバック */
   extraTitleToId?: Map<string, string>,
+  /** resolveSourceCitationsWithPassages が控えた一節（引用の題の ⟦P:n⟧ が指す） */
+  passages?: string[],
 ): void {
+  // 一節の目印を外し、その一節をリンク記録に載せる
+  let quote: string | undefined;
+  const mark = PASSAGE_MARK_RE.exec(citedTitle);
+  if (mark) {
+    quote = passages?.[Number(mark[1])];
+    citedTitle = citedTitle.slice(0, mark.index);
+  }
+  const quoteField = quote ? { targetQuote: quote } : {};
   // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
   // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
   // そのまま resolve すると「自分が自分の根拠」という循環リンクになる。
@@ -859,6 +875,7 @@ function pushCitation(
       type: "reference",
       layer: "knowledge",
       createdBy: "ai",
+      ...quoteField,
     });
     return;
   }
@@ -880,6 +897,7 @@ function pushCitation(
       type: "reference",
       layer: "knowledge",
       createdBy: "ai",
+      ...quoteField,
     });
     return;
   }
@@ -904,6 +922,8 @@ export function parseInlineCitations(
   extraTitleToId?: Map<string, string>,
   /** convertSectionsToBlocks が節ごとに退避した数式。省略時はこの行の数式をここで退避する */
   math?: MathStash[],
+  /** resolveSourceCitationsWithPassages が控えた一節 */
+  passages?: string[],
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -933,7 +953,7 @@ export function parseInlineCitations(
 
     if (match[1] !== undefined) {
       // 引用のタイトルは数式にできないので、目印を元の表記に戻してから照合する
-      pushCitation(inlineContent, knowledgeLinks, blockId, restoreMathText(match[1], stash), noteIndex, selfTitle, extraTitleToId);
+      pushCitation(inlineContent, knowledgeLinks, blockId, restoreMathText(match[1], stash), noteIndex, selfTitle, extraTitleToId, passages);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       // リンクの中身は書式付きの文字だけ（inlineMath は入れられない）ので、数式は元の表記に戻す
       const content: any[] = [];
@@ -1103,6 +1123,8 @@ function convertSectionsToBlocks(
   selfTitle?: string,
   /** noteIndex に載らない資料（pdf/url 等）のタイトル→id。pushCitation 参照 */
   extraTitleToId?: Map<string, string>,
+  /** resolveSourceCitationsWithPassages が控えた一節 */
+  passages?: string[],
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -1175,7 +1197,7 @@ function convertSectionsToBlocks(
       const numbered = bullet === null ? parseMarkdownNumbered(para) : null;
       if (bullet !== null || numbered !== null) {
         const itemText = bullet !== null ? bullet : (numbered as string);
-        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId, math);
+        const parsedItem = parseInlineCitations(itemText, noteIndex, selfTitle, extraTitleToId, math, passages);
         blocks.push({
           id: parsedItem.blockId,
           type: bullet !== null ? "bulletListItem" : "numberedListItem",
@@ -1191,7 +1213,7 @@ function convertSectionsToBlocks(
         continue;
       }
 
-      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId, math);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle, extraTitleToId, math, passages);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -2206,7 +2228,8 @@ export async function judgeAtomDuplicates(
     // ヘッダーと body.model を同じモデルから作る（#1082 と同じ形。呼び出し元が
     // options.model を渡すのに、ヘッダーだけ設定の洞察モデルのままだと Web 版で
     // 別モデルへ黙って回ってしまう）
-    const { headers, body: modelBody } = wikiModelRequest("precise", options?.model);
+    // 重複の判定は軽い処理の段（2026-11-14 に高度から移した。10B 級でも正答率 1.00）
+    const { headers, body: modelBody } = wikiModelRequest("light", options?.model);
     const res = await fetch(`${API_BASE}/judge-atom-duplicates`, {
       method: "POST",
       headers,
@@ -2842,8 +2865,9 @@ export function resolveTopicClaimCitations(body: string, memberClaims: TopicMemb
 /** 話題ページの本文・References 構築に渡す資料の最小情報（ノート id / "pdf:" 等の外部プレフィックス付き id） */
 export type TopicSourceRef = { id: string; title: string };
 
-/** `[[source:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
-const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
+/** 引用の題の後ろに付ける一節の目印（`[[題⟦P:n⟧]]`）。一節の文字（* や $ 等）を本文の書式の
+ *  解釈に通さないよう、本文には番号だけを置き、一節そのものは別の配列で渡す */
+const PASSAGE_MARK_RE = /\u27E6P:(\d+)\u27E7$/;
 
 /**
  * 新形式 Topic Writer が `[[source:<id>]]` 形式で出した引用を、資料の現在のタイトルへ
@@ -2855,14 +2879,65 @@ const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
  * id を含む文字列として残し、目に見える形にする。
  */
 export function resolveSourceCitations(body: string, sources: TopicSourceRef[]): string {
-  if (!body) return body;
+  return resolveSourceCitationsWithPassages(body, sources).text;
+}
+
+/**
+ * resolveSourceCitations と同じ書き換えをし、控えた一節を番号付きの目印（`[[題⟦P:n⟧]]`）で
+ * 残す。passages[n] がその一節。convertSectionsToBlocks に passages を渡すと、引用から作る
+ * リンク記録（knowledgeLinks）に targetQuote として載る。
+ */
+export function resolveSourceCitationsWithPassages(
+  body: string,
+  sources: TopicSourceRef[],
+): { text: string; passages: string[] } {
+  const passages: string[] = [];
+  if (!body) return { text: body, passages };
   const titleById = new Map(sources.map((s) => [s.id, s.title]));
-  return body.replace(SOURCE_CITATION_RE, (_match, rawId: string) => {
+  const text = body.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
     const id = rawId.trim();
     const title = titleById.get(id);
-    if (title) return `[[${title}]]`;
-    return `[[source:${id}]]`;
+    if (!title) return `[[source:${id}]]`;
+    const passage = rawPassage?.trim();
+    if (!passage) return `[[${title}]]`;
+    passages.push(passage);
+    return `[[${title}\u27E6P:${passages.length - 1}\u27E7]]`;
   });
+  return { text, passages };
+}
+
+/**
+ * 改訂で返った本文の一節を、資料の文字と照らす（AI を使わない）。
+ * - 前の本文に同じ資料・同じ一節があれば、そのまま残す（書いたときに照合済み。長い資料を窓に
+ *   分けて読むとき、前の窓で控えた一節は今の窓の文字には無いので、前の本文で確かめる）
+ * - 今回読んだ資料（source）の新しい一節: source.text に見つからなければ外す
+ *   （引用は残す。その文は出典照合で AI が判定する）
+ * - 他の資料の新しい一節（AI が写し直して変わった）: 確かめようがないので外す
+ * 保存される一節は、すべて資料の文字に実在する — 出典照合の「抜粋は原文と照合済みのものだけ」と同じ約束。
+ */
+export function verifyCitationPassages(
+  previousBody: string,
+  body: string,
+  source: { id: string; text: string },
+): { body: string; removed: number; kept: number } {
+  const known = new Set(
+    parseSourceCitations(previousBody)
+      .filter((c) => c.passage)
+      .map((c) => `${c.sourceId}\u0000${c.passage}`),
+  );
+  let removed = 0;
+  let kept = 0;
+  const next = body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
+    const id = rawId.trim();
+    const passage = rawPassage?.trim();
+    if (!passage) return formatSourceCitation(id);
+    const ok = known.has(`${id}\u0000${passage}`)
+      || (id === source.id && passageAppearsIn(passage, source.text));
+    if (ok) { kept++; return formatSourceCitation(id, passage); }
+    removed++;
+    return formatSourceCitation(id);
+  });
+  return { body: next, removed, kept };
 }
 
 /**
@@ -2923,15 +2998,86 @@ export function stripEmptyMarkdownSections(markdown: string): string {
 }
 
 /**
+ * 本文（[[source:<id>]] 引用つきの markdown）が今引用している資料 id の集合。
+ * 引用の印が 1 つも無い本文（回答ページの未解決の [Source: "題"] だけ等）は null —
+ * 「どれも引用していない」と言い切れないので、References の注記を付けない側に倒す。
+ */
+export function citedSourceIds(markdown: string): Set<string> | null {
+  const ids = new Set<string>();
+  for (const m of markdown.matchAll(SOURCE_CITATION_RE)) ids.add(m[1].trim());
+  return ids.size > 0 ? ids : null;
+}
+
+/**
+ * 改訂の前後で、今回読んでいない資料（readSourceId 以外）のうち、前は引用していたのに
+ * 新しい本文では 1 か所も引用していないもの。あれば、その資料を引いていた前の本文の行も返す
+ * （書き直しで残させる文）。新しい資料は別の資料が言ったことを消せない — 食い違いは併記する
+ * 決まり（SOURCE_TOPIC_SENTENCE_RULES）を、指示だけでなく機械的に守らせるための検出。
+ */
+export function droppedOtherSourceCitations(
+  previousBody: string,
+  nextBody: string,
+  readSourceId: string,
+): { sourceIds: string[]; lines: string[] } {
+  const before = citedSourceIds(previousBody);
+  if (!before) return { sourceIds: [], lines: [] };
+  const after = citedSourceIds(nextBody) ?? new Set<string>();
+  const dropped = [...before].filter((id) => id !== readSourceId && !after.has(id));
+  if (dropped.length === 0) return { sourceIds: [], lines: [] };
+  const droppedSet = new Set(dropped);
+  const lines = previousBody
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^#{1,6}\s/.test(l) && [...l.matchAll(SOURCE_CITATION_RE)].some((m) => droppedSet.has(m[1].trim())));
+  return { sourceIds: dropped, lines };
+}
+
+/**
+ * 資料を読まずに本文を書き直す経路（統合）で、一節を「元の本文のどれかにあった同じ資料・同じ一節」
+ * だけに絞る。書き換わった一節は確かめようがないので外す（引用は残す）。
+ */
+export function keepKnownPassages(previousBodies: string[], body: string): string {
+  const known = new Set(
+    previousBodies.flatMap((b) => parseSourceCitations(b))
+      .filter((c) => c.passage)
+      .map((c) => `${c.sourceId}\u0000${c.passage}`),
+  );
+  return body.replace(SOURCE_CITATION_RE, (_whole, rawId: string, rawPassage?: string) => {
+    const id = rawId.trim();
+    const passage = rawPassage?.trim();
+    return formatSourceCitation(id, passage && known.has(`${id}\u0000${passage}`) ? passage : undefined);
+  });
+}
+
+/** References の「今の本文では引用していない」注記（ページの言語。無い言語は英語） */
+const UNCITED_REFERENCE_NOTE: Record<string, string> = {
+  ja: "（読んだ資料。今の本文では引用していない）",
+  en: " (read, but not cited in the current text)",
+  ko: " (읽었지만 현재 본문에서는 인용하지 않음)",
+};
+
+/**
  * 新形式トピック末尾の References ブロックを構築する。資料 1 件につき 1 行、
  * buildTopicReferenceBlocks（旧形式）と同じ見た目の @リンクにする。
  * 資料は必ずしも AI 生成 wiki ページではない（通常ノート・pdf・url 等）ため、
  * buildTopicReferenceBlocks と違い 🤖 プレフィックスは固定しない。
+ *
+ * References は「このページを作るのに読んだ資料」すべて（derivedFromNotes と同じ）。
+ * 改訂で、ある資料を引く文がすべて消えることがある（取り込み直した資料がもう言っていない等）。
+ * その資料も読んだ事実は残し（PROV の記録と揃える）、本文で引用中の資料を先に並べ、
+ * 引用していない資料には注記を付けて後ろに回す。一覧が本文より多くを裏づけて見えないように。
  */
-function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksResult {
+function buildSourceReferenceBlocks(
+  sources: TopicSourceRef[],
+  cited?: Set<string> | null,
+  language?: string,
+): RelationBlocksResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
   if (sources.length === 0) return { blocks, knowledgeLinks };
+  const isCited = (id: string) => !cited || cited.has(id);
+  const ordered = [...sources.filter((s) => isCited(s.id)), ...sources.filter((s) => !isCited(s.id))];
+  const uncitedNote = UNCITED_REFERENCE_NOTE[(language ?? "en").split("-")[0]] ?? UNCITED_REFERENCE_NOTE.en;
 
   blocks.push({
     id: crypto.randomUUID(),
@@ -2941,13 +3087,16 @@ function buildSourceReferenceBlocks(sources: TopicSourceRef[]): RelationBlocksRe
     children: [],
   });
 
-  for (const source of sources) {
+  for (const source of ordered) {
     const blockId = crypto.randomUUID();
     blocks.push({
       id: blockId,
       type: "bulletListItem",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-      content: [{ type: "text", text: `@${source.title}`, styles: { textColor: "blue" } }],
+      content: [
+        { type: "text", text: `@${source.title}`, styles: { textColor: "blue" } },
+        ...(isCited(source.id) ? [] : [{ type: "text", text: uncitedNote, styles: { textColor: "gray" } }]),
+      ],
       children: [],
     });
     knowledgeLinks.push({
@@ -2984,12 +3133,12 @@ export function buildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
-  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId);
-  const refs = buildSourceReferenceBlocks(sources);
+  const converted = convertSectionsToBlocks([{ heading: "", content: resolvedBody }], noteIndex, title, sourceTitleToId, passages);
+  const refs = buildSourceReferenceBlocks(sources, citedSourceIds(stripped), language);
   const mentionLinks = buildTitleMentionLinks(kind, stripped, converted.blocks, title, noteIndex);
 
   const wikiMeta: WikiMeta = {
@@ -3062,7 +3211,7 @@ export function rebuildSourceBackedWikiDocument(
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const stripped = stripEmptyMarkdownSections(markdown);
-  const resolvedBody = resolveSourceCitations(stripped, sources);
+  const { text: resolvedBody, passages } = resolveSourceCitationsWithPassages(stripped, sources);
   // References の行と同じ資料一覧から、noteIndex に載らない素材（pdf/url 等）も
   // 本文側の [[タイトル]] 引用をリンク化できるようにする（References とのズレ防止）
   const sourceTitleToId = new Map(sources.map((s) => [s.title, s.id]));
@@ -3071,8 +3220,13 @@ export function rebuildSourceBackedWikiDocument(
     noteIndex,
     existingDoc.title,
     sourceTitleToId,
+    passages,
   );
-  const refs = buildSourceReferenceBlocks(sources);
+  const refs = buildSourceReferenceBlocks(
+    sources,
+    citedSourceIds(stripped),
+    language ?? existingDoc.wikiMeta?.language,
+  );
   const page = existingDoc.pages[0];
   const mentionLinks = buildTitleMentionLinks(
     kind ?? existingDoc.wikiMeta?.kind ?? "topic",
@@ -3258,7 +3412,8 @@ export async function routeTopicsForSource(
   signal?: AbortSignal,
   knowledgeSchema?: string,
 ): Promise<TopicRouteResult> {
-  const { headers, body: modelBody } = wikiModelRequest("standard", model);
+  // トピックの振り分けは軽い処理の段（2026-11-14 に標準から移した。10B 級でも基準点の 9 割以上）
+  const { headers, body: modelBody } = wikiModelRequest("light", model);
   const res = await fetch(`${API_BASE}/route-topics`, {
     method: "POST",
     headers,
@@ -3355,39 +3510,80 @@ export async function reviseTopicFromSource(
   /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
   timeoutMs: number = REVISE_TOPIC_CALL_TIMEOUT_MS,
 ): Promise<string | null> {
-  for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
-    // 試行ごとの AbortController。外の signal の中断を中継し、タイマーでも中断する
-    const ctrl = new AbortController();
-    let timedOut = false;
-    const onOuterAbort = () => ctrl.abort();
-    if (signal?.aborted) ctrl.abort();
-    else signal?.addEventListener("abort", onOuterAbort);
-    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
-    try {
-      return await reviseTopicOnce(ctrl.signal);
-    } catch (err) {
-      // 自分のタイマーで中断し、外の signal は中断されていないときだけ「時間切れ」
-      if (timedOut && !signal?.aborted) {
-        if (attempt < REVISE_TOPIC_RETRIES) {
-          console.warn("reviseTopicFromSource: timed out, retrying", { attempt: attempt + 1, timeoutMs });
-          continue;
-        }
-        const timeoutErr = new CodedError("revise-topic timed out", "AI_CALL_TIMEOUT");
-        console.warn("reviseTopicFromSource failed:", timeoutErr);
-        onError?.(timeoutErr);
-        return null;
-      }
-      console.warn("reviseTopicFromSource failed:", err);
-      onError?.(err);
-      return null;
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onOuterAbort);
+  // 書き直し（2 回目）の失敗は 1 回目の本文で済ませるので、onError に渡さない
+  let quiet = false;
+  const reportError = (err: unknown) => { if (!quiet) onError?.(err); };
+  // 返す本文は、控えた一節を資料の文字と照らしてから返す（見つからない一節は外す）
+  const finish = (revised: string): string => {
+    const checked = verifyCitationPassages(currentBody, revised, source);
+    if (checked.removed > 0) {
+      console.warn("reviseTopicFromSource: removed passages not found in the source", {
+        title,
+        removed: checked.removed,
+        kept: checked.kept,
+      });
     }
+    return checked.body;
+  };
+  const first = await reviseWithTimeoutRetry();
+  if (first === null) return null;
+  if (!currentBody) return finish(first);
+  // 今回読んでいない資料の文が丸ごと消えていたら、その文を残すよう指示して 1 回だけ書き直させる。
+  // 2 回目も消えたら、消えた資料の少ない方を採る（References は引用していない資料に注記を付ける）
+  const dropped = droppedOtherSourceCitations(currentBody, first, source.id);
+  if (dropped.sourceIds.length === 0) return finish(first);
+  console.warn("reviseTopicFromSource: revision dropped every sentence citing other sources, retrying", {
+    title,
+    dropped: dropped.sourceIds,
+  });
+  // 書き直しの失敗は、1 回目の本文を使うので利用者に知らせない
+  quiet = true;
+  const second = await reviseWithTimeoutRetry(dropped.lines);
+  if (second === null) return finish(first);
+  const droppedAgain = droppedOtherSourceCitations(currentBody, second, source.id);
+  if (droppedAgain.sourceIds.length > 0) {
+    console.warn("reviseTopicFromSource: retry still dropped sentences citing other sources", {
+      title,
+      dropped: droppedAgain.sourceIds,
+    });
   }
-  return null;
+  return finish(droppedAgain.sourceIds.length <= dropped.sourceIds.length ? second : first);
 
-  async function reviseTopicOnce(reqSignal: AbortSignal): Promise<string | null> {
+  async function reviseWithTimeoutRetry(keepSentences?: string[]): Promise<string | null> {
+    for (let attempt = 0; attempt <= REVISE_TOPIC_RETRIES; attempt++) {
+      // 試行ごとの AbortController。外の signal の中断を中継し、タイマーでも中断する
+      const ctrl = new AbortController();
+      let timedOut = false;
+      const onOuterAbort = () => ctrl.abort();
+      if (signal?.aborted) ctrl.abort();
+      else signal?.addEventListener("abort", onOuterAbort);
+      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+      try {
+        return await reviseTopicOnce(ctrl.signal, keepSentences);
+      } catch (err) {
+        // 自分のタイマーで中断し、外の signal は中断されていないときだけ「時間切れ」
+        if (timedOut && !signal?.aborted) {
+          if (attempt < REVISE_TOPIC_RETRIES) {
+            console.warn("reviseTopicFromSource: timed out, retrying", { attempt: attempt + 1, timeoutMs });
+            continue;
+          }
+          const timeoutErr = new CodedError("revise-topic timed out", "AI_CALL_TIMEOUT");
+          console.warn("reviseTopicFromSource failed:", timeoutErr);
+          reportError(timeoutErr);
+          return null;
+        }
+        console.warn("reviseTopicFromSource failed:", err);
+        reportError(err);
+        return null;
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onOuterAbort);
+      }
+    }
+    return null;
+  }
+
+  async function reviseTopicOnce(reqSignal: AbortSignal, keepSentences?: string[]): Promise<string | null> {
     const { headers, body: modelBody } = wikiModelRequest("standard", model);
     const res = await fetch(`${API_BASE}/revise-topic`, {
       method: "POST",
@@ -3398,13 +3594,14 @@ export async function reviseTopicFromSource(
         ...(previouslyCited ? { previouslyCited } : {}),
         ...(isAnswer ? { isAnswer } : {}),
         ...(knowledgeSchema ? { knowledgeSchema } : {}),
+        ...(keepSentences && keepSentences.length > 0 ? { keepSentences } : {}),
       }),
       signal: reqSignal,
     });
     if (!res.ok) {
       const err = await aiErrorFromResponse(res, `revise-topic failed (${res.status})`);
       console.warn("reviseTopicFromSource failed:", err);
-      onError?.(err);
+      reportError(err);
       return null;
     }
     const data = await res.json() as { body?: string };
@@ -3413,7 +3610,7 @@ export async function reviseTopicFromSource(
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");
     console.warn("reviseTopicFromSource failed:", err);
-    onError?.(err);
+    reportError(err);
     return null;
   }
 }
@@ -3507,7 +3704,8 @@ export async function mergeTopicBodies(
       return null;
     }
     const data = await res.json() as { body?: string };
-    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    // 統合は資料を読まないので、一節は元の本文のどれかにあったものだけ残す（書き換わった一節は外す）
+    if (typeof data.body === "string" && data.body.trim()) return keepKnownPassages(bodies, data.body);
     // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("merge-topics returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");

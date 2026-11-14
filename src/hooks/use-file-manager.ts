@@ -838,6 +838,25 @@ export function useFileManager(authenticated: boolean) {
     [collectGraphSources]
   );
 
+  // 別ウィンドウのグラフのパネル用。開いているノートとは別のノートのグラフを作って返すだけで、
+  // state は書き換えない（メインが開いているノートのグラフを壊さない）。
+  // 一覧は ref で最新を引く（橋は 1 度だけ掛けるので、閉じ込めた古い一覧を使わないため）
+  const graphListsRef = useRef({ files, wikiFiles });
+  graphListsRef.current = { files, wikiFiles };
+  const computeNoteGraph = useCallback(
+    async (noteId: string): Promise<{ data: NoteGraphData; lineageTree: LineageNode | null } | null> => {
+      const { files: noteList, wikiFiles: wikiList } = graphListsRef.current;
+      // 一覧がまだ読めていない（起動直後）なら作らない
+      if (!noteId || (noteList.length === 0 && wikiList.length === 0)) return null;
+      const { files: allFiles, docs, mediaIndex: mIndex } = await collectGraphSources(noteList, wikiList);
+      return {
+        data: buildNoteGraph(noteId, allFiles, docs, mIndex),
+        lineageTree: buildLineageTree(noteId, allFiles, docs, mIndex),
+      };
+    },
+    [collectGraphSources],
+  );
+
   // 全体グラフから来歴を出すための素データを用意する。ノートを開く前に全体グラフを
   // 開いたときは lineageSources が null のままなので、ここで一度だけ作る
   const lineageSourcesLoadingRef = useRef(false);
@@ -4005,6 +4024,7 @@ export function useFileManager(authenticated: boolean) {
     lineageTree,
     lineageSources,
     ensureLineageSources,
+    computeNoteGraph,
     sourceDoc,
     setSourceDoc,
     showNoteList,

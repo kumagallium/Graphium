@@ -12,6 +12,9 @@
 
 import type { GraphiumDocument } from "./document-types";
 import { isTauri } from "./platform";
+// グラフの中身はメインが作って別ウィンドウへ渡す（型だけ参照する。実行時の依存は作らない）
+import type { NoteGraphData } from "../features/network-graph/graph-builder";
+import type { LineageNode } from "../features/network-graph/lineage-builder";
 
 /** 別ウィンドウに出すもの。id はピークの行き先 ID（`wiki:` / `skill:` / `snapshot:` 付きのまま） */
 export type ViewerTarget = { kind: "note"; id: string };
@@ -207,6 +210,24 @@ export function requestOpenInMain(id: string): void {
 /** 本文の幅（features/paper-mode/body-width の BodyWidth と同じ形。lib から features を参照しない） */
 type BusBodyWidth = { fullWidth: boolean; paperSize: GraphiumDocument["paperSize"] };
 
+/** メインが作って別ウィンドウへ渡すグラフ（近傍グラフと来歴のツリー） */
+export type ViewerNoteGraph = { data: NoteGraphData; lineageTree: LineageNode | null };
+
+/** メモを作る依頼の中身。block はノートのブロックに付けるときだけ（素材は送らない） */
+export type ViewerMemoCreateRequest = {
+  noteId: string;
+  title?: string;
+  text: string;
+  block?: { blockId: string; blockText?: string };
+  folder?: string;
+};
+
+// グラフとメモ（別ウィンドウの右パネル）の決まりごと:
+//   - 別ウィンドウは全ノートの本文を読まない。グラフはメインが作って返す（graph-request → graph-data）
+//   - メモの索引を書くのはメインだけ。別ウィンドウは読むだけで、作成・削除はメインに頼む
+//     （memo-create / memo-delete → memo-result）。索引が変わったら captures-changed で知らせる
+//   - 依頼は nonce で返事と突き合わせる（返事が来なければ、別ウィンドウ側が時間切れとして扱う）
+
 /** 別ウィンドウ → メイン */
 export type ViewerToMainMessage =
   /** 別ウィンドウが起きた・行き先が変わった。メインは holds を送り直す */
@@ -225,7 +246,13 @@ export type ViewerToMainMessage =
    * flush の返事。saved なら doc はいま保存先にある形。書けなかったら saved=false で、
    * doc は書こうとした（どこにも保存されていない）形
    */
-  | { type: "flushed"; nonce: string; id: string; saved: boolean; doc: GraphiumDocument | null };
+  | { type: "flushed"; nonce: string; id: string; saved: boolean; doc: GraphiumDocument | null }
+  /** このノートのグラフを作ってほしい（返事は graph-data） */
+  | { type: "graph-request"; nonce: string; id: string }
+  /** メモを作ってほしい（返事は memo-result） */
+  | ({ type: "memo-create"; nonce: string } & ViewerMemoCreateRequest)
+  /** メモを消してほしい（返事は memo-result） */
+  | { type: "memo-delete"; nonce: string; memoId: string };
 
 /** メイン → 別ウィンドウ */
 export type MainToViewerMessage =
@@ -250,7 +277,13 @@ export type MainToViewerMessage =
       includeWikiLabels: boolean;
     }
   | { type: "body-width"; id: string; width: BusBodyWidth; doc: GraphiumDocument }
-  | { type: "external-doc"; id: string; doc: GraphiumDocument };
+  | { type: "external-doc"; id: string; doc: GraphiumDocument }
+  /** graph-request の返事。作れなかったときは data が null */
+  | { type: "graph-data"; nonce: string; id: string; data: NoteGraphData | null; lineageTree: LineageNode | null }
+  /** memo-create / memo-delete の返事 */
+  | { type: "memo-result"; nonce: string; ok: boolean }
+  /** メモの索引が変わった（別ウィンドウは読み直す） */
+  | { type: "captures-changed" };
 
 const EVT_BUS_TO_MAIN = "viewer-bus-to-main";
 const EVT_BUS_TO_VIEWER = "viewer-bus-to-viewer";
@@ -307,6 +340,11 @@ export function sendToMain(msg: ViewerToMainMessage): void {
 /** メイン側: 別ウィンドウへ送る（開いていなければ何も起きない） */
 export function sendToViewer(msg: MainToViewerMessage): void {
   sendBus({ dir: "to-viewer", msg });
+}
+
+/** メイン側: メモの索引が変わったことを別ウィンドウへ知らせる */
+export function notifyViewerCapturesChanged(): void {
+  sendToViewer({ type: "captures-changed" });
 }
 
 /** メイン側: 別ウィンドウからの連絡を受ける */

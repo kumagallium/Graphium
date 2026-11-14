@@ -42,6 +42,7 @@ import { createMcpMaintenanceHost } from "./host";
 import { getFlags, readIndexStrict, setFlag } from "./index-store";
 import { describeActorJa, describeOperationJa, describeRefusalJa, describeStateJa } from "./messages";
 import { resolveSourceRefs } from "./source-refs";
+import { SOURCE_CITATION_RE } from "../../lib/source-citations";
 
 // ── 共通部品 ────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ function resolveLenient(ids: string[], root: string): TopicSourceRef[] {
 
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const BODY_SOURCE_RE = /\[\[source:([^\]]+?)\]\]/g;
+const BODY_SOURCE_RE = SOURCE_CITATION_RE;
 
 function unknownSourceMessage(ids: string[]): string {
   return `UNKNOWN_SOURCE: ${ids.join(", ")}（Graphium に存在しない資料です。search_media / get_topic で id を確かめてください）`;

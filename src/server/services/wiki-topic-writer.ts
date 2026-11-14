@@ -296,6 +296,21 @@ export const SOURCE_TOPIC_SENTENCE_RULES = `## Sentence discipline (critical)
 - "食い違い・未解決" entries require sources that EXPLICITLY conflict (a different number for the same measured quantity, an opposite stated conclusion). Do not infer a disagreement between sources that simply address different things or that you construct by comparing your own paraphrases.`;
 
 /**
+ * 文ごとに、その文が言い換えた資料の一節をそのまま控えさせる規則。保存時に一節が資料に
+ * 実在するかを文字列で確かめ（AI を使わない・再現できる）、PDF ではその一節の位置へ開く。
+ */
+export const SOURCE_PASSAGE_RULES = `## Keep the passage each sentence comes from (critical)
+
+- Inside every citation, after the id, write \`|\` and then the passage of that source the sentence states: \`[[source:<id>|<passage>]]\`.
+- Copy the passage character-for-character from the source text you were given — same characters, numbers, units and symbols. Do not translate, paraphrase, shorten words, or fix typos in it. It stays in the source's language even when the body is written in another language.
+- Copy ONE continuous stretch of the source. Never skip words with "…" or "...", and never join two places of the source into one passage — if a sentence draws on two places, cite the one that carries its main point.
+- Keep it to the clause or sentence that carries the point (about 200 characters at most), not a whole paragraph. It must not contain \`]]\` or \`|\` — end the passage before them.
+- Graphium checks every passage against the source text before saving and removes any it cannot find there.
+- When a sentence cites two sources, each citation carries its own passage from its own source.
+- Citations already in the current body: keep them exactly as they are, passage included.
+- If you cannot point to a passage the sentence states, write \`[[source:<id>]]\` without one — never make one up.`;
+
+/**
  * Source Topic Reviser 用のシステムプロンプトを構築する。
  * 前の本文（新規なら空）と新しい資料 1 本の全文を受け取り、次の版の本文（全文書き直し）を返す。
  */
@@ -333,9 +348,11 @@ Do not impose a sentence count or character limit. Length should follow from how
 ## Structure (keep it short per point, but no overall limit)
 
 - **定義 / Definition**: 1-3 sentences, each citing its source(s). Omit this section when no source defines the concept.
-- **要点 / Key points**: the load-bearing points, one point per sentence, each citing its source(s) with \`[[source:<id>]]\` placed at the END of the sentence (never mid-sentence). Use the exact id given in the "(id: ...)" annotation for the new source, or preserve existing \`[[source:<id>]]\` citations already in the current body verbatim.
+- **要点 / Key points**: the load-bearing points, one point per sentence, each citing its source(s) with \`[[source:<id>|<passage>]]\` placed at the END of the sentence (never mid-sentence). Use the exact id given in the "(id: ...)" annotation for the new source, or preserve existing citations already in the current body verbatim (passage included).
 - **食い違い・未解決 / Disagreements & open questions**: only if genuine disagreement exists per the rules above. If there is nothing to report, OMIT this heading entirely — never output the heading with no content under it.${language === "ko" ? `
 - In Korean, use the headings 정의 / 요점 / 견해 차이·미해결.` : ""}
+
+${SOURCE_PASSAGE_RULES}
 
 Do NOT add a References / 関連 section — the caller appends that separately.
 
@@ -345,10 +362,10 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 {
   "body": "${ja
-    ? "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123]]\\n\\n## 食い違い・未解決\\n..."
+    ? "## 定義\\n...\\n\\n## 要点\\n...[[source:abc123|<元の一節>]]\\n\\n## 食い違い・未解決\\n..."
     : language === "ko"
-    ? "## 정의\\n...\\n\\n## 요점\\n...[[source:abc123]]\\n\\n## 견해 차이·미해결\\n..."
-    : "## Definition\\n...\\n\\n## Key points\\n...[[source:abc123]]\\n\\n## Disagreements & open questions\\n..."}"
+    ? "## 정의\\n...\\n\\n## 요점\\n...[[source:abc123|<passage>]]\\n\\n## 견해 차이·미해결\\n..."
+    : "## Definition\\n...\\n\\n## Key points\\n...[[source:abc123|<passage>]]\\n\\n## Disagreements & open questions\\n..."}"
 }
 
 ## Voice
@@ -369,6 +386,8 @@ export function buildSourceTopicReviserUserMessage(
   currentBody: string,
   newSource: { id: string; title: string; text: string },
   previouslyCited?: boolean,
+  /** 前の試行で、今回読んでいない資料の文がすべて消えた。その文（前の本文の行そのまま） */
+  keepSentences?: string[],
 ): string {
   const currentSection = currentBody
     ? `## Current body\n\n${currentBody}`
@@ -383,6 +402,16 @@ export function buildSourceTopicReviserUserMessage(
 This source was already cited on this page as [[source:${newSource.id}]] from an earlier version. Re-check every sentence that cites [[source:${newSource.id}]] against the new text below: keep it only if the new text still supports it, rewrite it if the new text states it differently, and remove it if the new text no longer says it.`
     : "";
 
+  // 前の試行が、今回読んでいない資料を引く文を丸ごと消した（書き直しの 2 回目）。新しい資料は
+  // 別の資料が言ったことを消せない — 食い違うなら両方を残し、食い違いの節に書く
+  const keepNote = keepSentences && keepSentences.length > 0
+    ? `
+
+A new source never removes what a different source says. Your previous attempt dropped every sentence that cites the sources below, although this revision does not re-read them. Keep each of these sentences with its citation (you may shorten its wording, never its citation). If the new source states something different for the same point, add the new source's statement as a separate sentence and list the disagreement under 食い違い・未解決 / Disagreements & open questions:
+
+${keepSentences.map((s) => `- ${s}`).join("\n")}`
+    : "";
+
   return `## Topic title: "${title}"
 
 ${currentSection}
@@ -393,7 +422,7 @@ ${currentSection}
 
 ${newSource.text}
 
-引用は文末に [[source:<id>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。${recheckNote}`;
+引用は文末に [[source:<id>|<その文が言っている資料の一節（原文のまま）>]] の形式で、与えられた id をそのまま使う（タイトルを書き換えない）。${recheckNote}${keepNote}`;
 }
 
 /**
@@ -535,7 +564,7 @@ You will be given the target topic title and two or more existing topic bodies a
 
 ## Merge rules
 
-- Keep every existing [[source:<id>]] citation verbatim on the sentence it supports. Never invent, drop, or rewrite an id.
+- Keep every existing [[source:<id>]] citation verbatim on the sentence it supports — including the passage after \`|\` when it has one (\`[[source:<id>|<passage>]]\`). Never invent, drop, or rewrite an id or a passage.
 - Do not add anything that is not already stated in at least one of the given bodies. You are not reading the sources again.
 - When two bodies state the same point, write it once and place the citations of both at the end of that sentence — but only if the sentence discipline below still holds for every cited source. Otherwise keep separate sentences.
 - When the bodies state conflicting values or conclusions for the same point, keep both sentences with their own citations and list the conflict under 食い違い・未解決 / Disagreements & open questions.

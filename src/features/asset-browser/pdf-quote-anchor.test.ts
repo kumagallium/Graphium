@@ -6,7 +6,7 @@
 // を確かめる。
 
 import { describe, expect, it } from "vitest";
-import { locateQuoteInPages, quoteAnchorForRange } from "./pdf-quote-anchor";
+import { focusFromSourceCheck, locateQuoteInPages, quoteAnchorForRange } from "./pdf-quote-anchor";
 
 function makePage(lines: string[]): HTMLElement {
   const page = document.createElement("div");
@@ -86,5 +86,38 @@ describe("locateQuoteInPages", () => {
   it("どこにも無ければ null", () => {
     const page = makePage(["Bake at 220 C."]);
     expect(locateQuoteInPages([[1, page]], { exact: "proof overnight" }, 1)).toBeNull();
+  });
+});
+
+// 出典照合の抜粋（pdf-text-extractor が文字片を空白でつないだ原文から取ったもの）で PDF を開く
+describe("出典照合の抜粋から開く場所", () => {
+  it("抜粋の空白を畳む", () => {
+    expect(focusFromSourceCheck("k", { quote: "  the  value was\n 1.2  " })?.quote).toEqual({ exact: "the value was 1.2" });
+  });
+
+  it("欧文は空白の位置が違えば見つけない（予備の照合は和文の境目だけ）", () => {
+    const page = makePage(["the value was 1.2"]);
+    expect(locateQuoteInPages([[1, page]], { exact: "thevalue was 1.2" })).toBeNull();
+  });
+
+  it("予備の照合で見つけた範囲は、元の文と同じ文字を指す", () => {
+    const page = makePage(["前置き。焼成温度は 220", "度で 30 分とした。"]);
+    const match = locateQuoteInPages([[1, page]], { exact: "焼成温度は 220 度で 30 分とした" });
+    expect(match?.range.toString().replace(/\s+/g, "")).toBe("焼成温度は220度で30分とした");
+  });
+
+  it("行をまたぐ和文の抜粋が text-layer で見つかる", () => {
+    const page = makePage(["焼成温度は 220", "度で 30 分とした。"]);
+    const focus = focusFromSourceCheck("k", { quote: "焼成温度は 220 度で 30 分とした", page: 1 });
+    expect(focus?.quote).toBeDefined();
+    const match = locateQuoteInPages([[1, page]], focus!.quote!, focus!.pageNumber);
+    expect(match?.pageNumber).toBe(1);
+  });
+
+  it("抜粋が無くページだけならページだけ、どちらも無ければ undefined", () => {
+    expect(focusFromSourceCheck("k", { page: 3 })).toEqual({ key: "k", pageNumber: 3 });
+    expect(focusFromSourceCheck("k", { quote: "  " })).toBeUndefined();
+    expect(focusFromSourceCheck("k", undefined)).toBeUndefined();
+    expect(focusFromSourceCheck("k", { quote: "abc", page: 0 })).toEqual({ key: "k", quote: { exact: "abc" } });
   });
 });

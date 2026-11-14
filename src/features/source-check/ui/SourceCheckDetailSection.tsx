@@ -27,6 +27,7 @@ import type {
   SourceQuoteLocation,
 } from "../../../lib/document-types";
 import { useT } from "../../../i18n";
+import type { SourceCheckOpenAt } from "../../asset-browser/pdf-quote-anchor";
 import { ExperimentalMark } from "../../../ui/experimental-mark";
 import { sourceCheckVerdictPalette } from "./SourceCheckBadge";
 import { ScriptText } from "./ScriptText";
@@ -117,6 +118,16 @@ function EntryVerdictChip({ verdict }: { verdict: SourceCheckEntry["verdict"] })
 // この理由の source-missing は原文どころか「開ける場所」自体が無い
 // （記録が無い／AI 回答由来で元発言が残らない／チャットは参照キーを持たない）。
 // リンクを出すと「開けるはず」という誤った期待を与えるため、出典名をリンクにしない。
+// PDF は照合済みの抜粋とページを渡し、開いたときにその文へ送る（ノートは blockId で足りる）。
+// 抜粋は原文と照合済みのものだけが entry に残る（不変条件 3）ので、そのまま使える。
+function openAtFor(entry: SourceCheckEntry): SourceCheckOpenAt | undefined {
+  if (entry.sourceKind !== "pdf" || !entry.quote) return undefined;
+  return {
+    quote: entry.quote,
+    ...(entry.quoteLocation?.page !== undefined ? { page: entry.quoteLocation.page } : {}),
+  };
+}
+
 const UNOPENABLE_MISSING_REASONS = new Set(["not-recorded", "ai-answer", "no-reference"]);
 
 function EntryRow({
@@ -126,7 +137,7 @@ function EntryRow({
 }: {
   entry: SourceCheckEntry;
   sourceTitles?: Record<string, string>;
-  onOpenSource?: (sourceId: string, blockId?: string) => void;
+  onOpenSource?: (sourceId: string, blockId?: string, at?: SourceCheckOpenAt) => void;
 }) {
   const t = useT();
   const sourceLabel = sourceTitles?.[entry.sourceId] ?? entry.sourceId;
@@ -176,7 +187,7 @@ function EntryRow({
         {canNavigate ? (
           <button
             type="button"
-            onClick={() => onOpenSource?.(entry.sourceId, entry.blockId)}
+            onClick={() => onOpenSource?.(entry.sourceId, entry.blockId, openAtFor(entry))}
             style={{
               background: "transparent",
               border: "none",
@@ -267,7 +278,7 @@ export function SourceCheckDetailSection({
   /** sourceId → 表示名。無ければ sourceId をそのまま出す */
   sourceTitles?: Record<string, string>;
   /** 出典を開く（ノート・素材を SidePeek 等で表示する想定）。blockId は該当箇所 */
-  onOpenSource?: (sourceId: string, blockId?: string) => void;
+  onOpenSource?: (sourceId: string, blockId?: string, at?: SourceCheckOpenAt) => void;
   onRecheck?: () => void;
   onDismiss?: () => void;
   onClear?: () => void;

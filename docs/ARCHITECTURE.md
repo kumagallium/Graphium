@@ -1505,7 +1505,7 @@ string-match link from a Topic body to another Topic's title (see
 | **Topic typer** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`assignTopicTypes`) | `POST /api/wiki/type-topics`. Powers "Assign topic types" (Settings → Maintenance): untyped Topics are sent 50 at a time as title + one-line definition only (no bodies) and come back as id → type; the client writes `topicType` and saves without touching the body. Human-started, with the call count shown first. The type is editable on the page banner and drives the Type column / filter of the Knowledge list and the "Topics: …" toggles in the global graph's display menu |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. A second, name-first path needs no new candidate: existing Insights are sent with refs (`[a1]`…), and a bundle Claim that is one more instance of an existing Insight's rule is returned as `reinforcements: [{ atomRef, sourceConceptIds }]` instead of a new Insight (`parseAtomizerReinforcements`); a separate skeptical judge (`buildReinforceJudgeSystemPrompt`, `POST /api/wiki/judge-atom-reinforcements`) confirms each before the Claims are added. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including Topics whose titles are the same under the topic-title key above, the same rule the router's reroute uses; the page with more sources is kept), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. The LLM pass also asks for `questions` — open research questions the corpus doesn't yet answer, separate from `issues` and never counted in `summary` — each with `why`, `affectedWikiIds` (filtered against real ids to guard against hallucination), and `needs: "internal" \| "external"`. `buildLinterWindowMessages` cuts the LLM's input by structure, not by a numeric cutoff: it drops `kind: "summary"` pages entirely (a discontinued kind kept only for display) and sends Claims as title-only (a Claim's title already is the proposition, so its `bodyPreview` would be a duplicate) while Topics/Answers/Insights keep their preview. On failure (`POST /api/wiki/lint`'s try/catch), the route falls back to the Quick-only report and adds `lintError` (raw upstream error text) so the UI can say AI analysis failed instead of silently showing "no issues" |. On a Full check only, `lintWikis` (`wiki-service.ts`) formats the last 7 days of `wikiLog` via `formatRecentForLLM` and sends it as `recentLog`; the `/lint` route passes it through to `buildLinterWindowMessages(wikis, recentLog, …)`, which appends it as a trailing "## Recent activity" section (cut by time, not by count) used only to prioritize which `questions` to surface. Pages are referred to by a short ordinal (`#1`…`#N`, assigned by `numberWikis` in send order) instead of their UUID, and timestamps are sent as dates only — on a real-sized vault (892 pages) that cut the input from ~124k to ~46k tokens, which is what keeps `questions` from being dropped near the context limit. `parseLinterOutput` resolves whatever the model wrote back (`#N`, a bare number, a real id, or a page title) to the real id via the `numberToId` / title maps the route builds, and drops anything it cannot resolve (a `redundant` issue whose `keepId`/`absorbId` cannot be resolved is dropped whole). The system prompt states the output language (`ja`/`en`) explicitly for every user-facing field; page titles are quoted verbatim. Because a grown vault no longer fits one call (~5,000 pages reached ~360k input tokens, which failed on every 128K-context model), `buildLinterWindowMessages` splits the pages into windows of `LINT_INPUT_BUDGET_TOKENS` (72,000 by `estimateTokens`, the same budget as ingest, system prompt included) and the route calls the model once per window, in order. Every page is sent exactly once; a Topic and its member Claims go into the same window (a large Topic is split with the Topic first), other pages follow grouped by kind, and the `#N` ordinals stay global so one `numberToId` resolves every window's answer. Each window's header says which part of how many it is and that pages outside it exist. The recent-activity log goes into every window when it is at most a quarter of the budget, otherwise into the first only. Issues are merged across windows (`mergeWindowIssues`: same type with overlapping pages → first one kept) and questions de-duplicated by text. A failed window does not discard the others: the report carries `lintParts: { total, failed }`, and `lintErrorKind: "context"` when the failure was the model's context limit (`isContextOverflowError`), so the UI can explain it and suggest a larger chat model. With one window the message is byte-for-byte the old single call. All windows run inside the one request, so a caller that wants to show progress sends a `progressId` and polls `GET /api/wiki/lint/progress/:id` (`src/server/services/lint-progress.ts`: in memory, `{ done, total }` windows, forgotten after 10 minutes) while the request runs; `lintWikis` does this every 2 s when given an `onProgress` callback, and Tidy up for me shows it as "Checking your Knowledge (n / m)" with the time elapsed (2026-11-05 — on a 2,316-page vault the check is 4 windows of 35–67 s, which used to be a bare spinner) |
-| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. For a source that spans multiple windows, this is one revision call per window that touches the Topic, each folding into the body the previous window left — not one call for the whole source. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
+| **Topic reviser** | `src/server/services/wiki-topic-writer.ts` | Rewrites a Topic page's body from its **current body** (empty for a brand-new Topic) plus **one new source's text** — an incremental (Karpathy-style) revision, not a from-scratch synthesis of member Claims. For a source that spans multiple windows, this is one revision call per window that touches the Topic, each folding into the body the previous window left — not one call for the whole source. Cites the source by id (`[[source:<id>]]`, resolved to the source's current title before rendering), and the caller always appends a References section listing every source touched so far (the same list as `derivedFromNotes`). Sources the current body still cites come first; a source no sentence cites any more stays listed — it was read, and the provenance record keeps it — but moves to the end with a "read, but not cited in the current text" note. A new source must not remove what a different source says: after each revision `reviseTopicFromSource` (`src/features/wiki/wiki-service.ts`) compares the citations before and after, and when every sentence citing a source it did not re-read is gone, it asks for the revision once more with those sentences passed as `keepSentences` (kept with their citations; a differing statement goes in as a separate sentence and under Disagreements & open questions). If the retry still drops them it keeps whichever attempt dropped fewer sources. The legacy **Topic writer / Topic Namer** (`POST /api/wiki/compose-topic`, `/name-topics`), which built Topic bodies from member Claims, were removed 2026-09-17 together with the Claim→Topic assignment path (`matchTopicsByTitle`, `resolveTopicsForClaim`, `linkClaimAndTopic`, `buildTopicDocument`, `rebuildTopicDocument`) — Topics are now only ever created or revised by the Topic router/reviser above, reading source text directly |
 | **Topic Consolidator** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`consolidateExistingTopics`) | `POST /api/wiki/consolidate-topics`. Given only the titles of every existing Topic page (no bodies), the model proposes a suggested-title → canonical-title mapping; `planExistingTopicMerges` groups Topics by canonical title and picks a merge target, then `applyTopicMerges` executes the merge (see Topic Merger below). Powers "Organize topics" (Settings → Maintenance), and also runs once at the start of Upkeep → "Tidy up for me" (one call with the title list; each pair it judges the same becomes a Redundant merge recommendation via `topicConsolidationIssues` in `src/features/wiki/auto-tidy.ts`, and is merged by the same `planAutoTidy` step as the Linter's recommendations). The Linter's redundant-Topic one-click Merge button is a separate path. Its granularity guidance is a separate constant, `TOPIC_CONSOLIDATION_GRANULARITY_RULES`, which stays at the conventional material × property level. It is deliberately not the same rule as the router's: in the measurement, the router's rule made the consolidator point 41 of 401 titles at 11 merge targets that do not exist as pages, and the merge keeps the first page of such a group without retitling it (see the manual's evaluations/topic-granularity). |
 | **Topic Merger** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`mergeTopicBodies`) | `POST /api/wiki/merge-topics`. Merges two or more **new-format** Topic bodies into one in a single call, keeping every existing `[[source:<id>]]` citation verbatim and not inventing content beyond what the input bodies already say. Used by `applyTopicMerges` only when the merge target and every absorbed Topic are new-format; if any side is still old-format (Claim-derived), `applyTopicMerges` instead collects the full set of source ids (via member Claims for old-format sides) and rebuilds through `rebuildTopicFromSources`, migrating the result to new-format |
 | **Group by thing** (mechanical, no AI to find groups) | `src/features/wiki/thing-groups.ts` (`planThingGroups`, `composeThingBody`) / `src/features/wiki/ThingGroupsSection.tsx` / `src/note-app.tsx` (`mergeThingGroups`) | A pure function over the titles of new-format Topics (no Claim members, at least one source; archived excluded). A title in the Japanese form `X の Y` (NFKC; X is everything before the first `の`, at least 3 code points) joins the group keyed by `topicTitleParts(X).base` from `src/lib/topic-title-key.ts` (spacing, case, hyphens and a trailing parenthetical ignored). A group needs two or more `X の Y` pages, or one plus a page that is itself not in the `X の Y` form and has the same key. The kept page is that X page (most sources, ties by input order), or, when none exists, the `X の Y` page with the most sources, which is retitled to the most common spelling of X (`retitle: true`). English titles (`X of Y`) are out of scope. Groups are sorted by absorbed count, then by title. Nothing runs on its own: the Upkeep tab lists them in a folded section (not counted in the sidebar Upkeep badge or in Tidy up for me), and pressing **Group** confirms, then runs one maintenance run (`group_by_thing`) in which each group is one operation through the same `mergeTopicsFromSelection` → `applyTopicMerges` path, but **no AI is called**: the bodies are concatenated mechanically (`composeThingBody`, injected as `composeBodyByTargetId`; no chunking). The kept page's body comes first as it is (or, when retitled, as a `## Y` section), then each absorbed page becomes a `## Y` section (Y cut from the original `X の Y` title, ordered by title, a repeated Y gets `（2）`), with the headings inside each body lowered one level (code fences untouched) and `[[source:…]]` marks unchanged. The retitle goes through `retitleByTargetId`, which also clears `topicType`. A failing group does not stop the rest, and each merge is undoable from the Upkeep history |
@@ -1699,7 +1699,20 @@ Notes:
   not an append, in the style of an incrementally-revised wiki. Citations
   are `[[source:<id>]]` (the source id, not a Claim id), stored verbatim in
   `wikiMeta.topicMarkdown` (see [DATA_MODEL.md §3.1b](DATA_MODEL.md)) so the
-  next revision and source-check both read the same text. Claims are no
+  next revision and source-check both read the same text. The reviser also
+  copies, inside each citation, the passage of the source that the
+  sentence restates (`[[source:<id>|<passage>]]`, `SOURCE_PASSAGE_RULES`):
+  one continuous stretch, verbatim. Before saving, `verifyCitationPassages`
+  string-matches each new passage against the source text it was written
+  from and removes the ones it can't find — no model call, the same result
+  every time. Passages already on the page for the same source are kept
+  (later windows of a long source don't contain earlier windows' text), a
+  rewritten passage of another source is removed, and a merge keeps only
+  passages found in one of the merged bodies (`keepKnownPassages`), so
+  every passage on a page was found in its source when it was written. The passage travels
+  with the sentence through later revisions (kept verbatim like the id),
+  becomes the link's `targetQuote` so the `@source` mention opens a PDF at
+  that passage, and is the source check's fallback quote (below). Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
   before (Topics never did). **Existing Claim-derived Topics** (no
@@ -1858,19 +1871,23 @@ Notes:
   resource-from-scratch rebuild (any old-format side). The default model
   (the light tier) is used for both the full Lint analysis
   (`POST /api/wiki/lint`) and Topic consolidation
-  (`POST /api/wiki/consolidate-topics`); ingest-time Topic routing
-  (`POST /api/wiki/route-topics`), revision (`POST /api/wiki/revise-topic`),
-  and the Topic Merger (`POST /api/wiki/merge-topics`) use the standard
-  tier (see "Models are chosen by difficulty" below).
-- **Models are chosen by difficulty, not by feature (v0.125).** Settings →
+  (`POST /api/wiki/consolidate-topics`), and ingest-time Topic routing
+  (`POST /api/wiki/route-topics`, moved to the light tier 2026-11-14);
+  revision (`POST /api/wiki/revise-topic`) and the Topic Merger
+  (`POST /api/wiki/merge-topics`) use the standard
+  tier (see "Models are chosen by tier, not by feature" below).
+- **Models are chosen by tier, not by feature (v0.125; tiers regrouped by the nature of the work in 2026-11).** Settings →
   AI assigns models in three tiers, each falling back to the one below
   when left empty: the **default** model (light work: chat, Lint, source
-  checks, Topic consolidation, titles, world grounding), the **standard**
-  model (`standardModel`: ingest, cross-updates, Topic routing / revision /
-  survey / merge / typing, translation) and the **precise** model
-  (`preciseModel`: procedures from URL / PDF / Word, label alignment, plan
-  drafting and the plan grounding check, Insight discovery, voice note
-  clean-up and summaries). Only voice (`meetingAiModel`) keeps a
+  checks, Topic consolidation and routing, Insight duplicate judgment,
+  titles, world grounding), the **standard** model (`standardModel`:
+  ingest, cross-updates, Topic revision / survey / merge / typing,
+  procedure extraction from URL / PDF / Word) and the **precise** model
+  (`preciseModel`: translation, label alignment, plan drafting and the plan
+  grounding check, Insight discovery, voice note clean-up and summaries).
+  The tiers follow the nature of the work: light = checking and judging,
+  standard = summarizing what the notes say, precise = writing at length
+  without adding what the source does not say. Only voice (`meetingAiModel`) keeps a
   per-feature override. Chat always answers on the default model, except
   that a chat with Research before answering (agentic search) on answers on
   the precise tier — `runAgent` (`src/features/ai-assistant/api.ts`) swaps
@@ -1879,7 +1896,8 @@ Notes:
   gpt-oss-120b. World grounding likewise has no model choice of its own and
   runs on the default model (`chatSynthesisModel` and `groundingModel` are
   no longer read; v0.125.1). In `wiki-service.ts` the modes of `wikiHeaders` /
-  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`.
+  `wikiBodyModel` / `wikiModelRequest` are `light` / `standard` / `precise`;
+  Topic routing and `judgeAtomDuplicates` now request `light`.
   The split follows a measurement of every AI feature on five models
   (manual: *Which model size each AI feature needs*, 2026-11-07): chat-tier
   work held up even on a ~10B local model, while procedures, plans,
@@ -1895,13 +1913,21 @@ Notes:
   `isPreciseTierEnabled` in `src/features/settings/store.ts`). Off hides the
   tier's entry points rather than routing the work elsewhere: `note-app.tsx`
   derives `standardUiEnabled` / `preciseUiEnabled` from `aiUiEnabled` and
-  passes `undefined` handlers for ingest, translation, regenerate, Topic
-  merge / rebuild, Auto-tidy and typing (standard) and procedure extraction,
-  plans, Insights and voice-note clean-up / summaries (precise); the ingest
+  passes `undefined` handlers for ingest, regenerate, Topic
+  merge / rebuild, Auto-tidy and typing (standard) and plans, Insights and
+  voice-note clean-up / summaries (precise); the ingest
   and plan entry functions also return early as a guard. `isClaimsEnabled`
   requires the standard tier, `isAtomLayerEnabled` both tiers and
   `isAgenticSearchEnabled` the precise tier, so the existing feature gates
   follow. Nothing already made is deleted, and the tier's model name is kept.
+  Two features moved across tiers are exceptions to "off hides it":
+  procedure extraction (standard) and translation (precise).
+  `procedureUiEnabled` / `translateUiEnabled` in `note-app.tsx` are on when
+  either tier is on, and `getProcedureModelName` / `getTranslateModelName`
+  in the store fall back to the other tier when the home tier is off
+  (standard off: procedures run on the precise model; precise off:
+  translation runs on the standard model). With both tiers off, neither
+  appears. Label alignment stays on the precise tier.
   The MCP feature-flags mirror (`feature-flags-mirror.ts`) deliberately
   ignores the tiers: MCP tools never call Graphium's models — the connected
   assistant does the work with its own.
@@ -2661,7 +2687,13 @@ claims, so there is no single source text to hold it against.
   conversion, the same reason rule (d) above needs the raw text — and
   turns each non-heading line that carries at least one `[[source:<id>]]`
   citation into a statement, with the citation stripped and its ids used
-  as-is. `buildSourceCheckStatements`
+  as-is. A passage stored in a citation
+  (`[[source:<id>|<passage>]]`) is kept on the statement as `passages`.
+  When the model returns no quote for a statement, `runSourceCheck` uses
+  that passage as the entry's `quote` (and resolves its page or
+  paragraph), provided it is found in the source text and the verdict is
+  not `not-in-source`. The verdict itself is never changed by it.
+  `buildSourceCheckStatements`
   (`src/features/source-check/build-statements.ts`) picks this extractor
   over `extractTopicStatements` whenever `topicMarkdown` is set, and,
   critically, does **not** wrap the resulting ids with `toClaimSourceId`
@@ -3285,8 +3317,14 @@ The same `src/` tree is built four different ways.
   flush-before-open (`flushPeekSaves`), mention rename, body-width changes,
   maintenance undo, flush on exit — reach the other window, and the viewer's
   saves run the same post-save step as a side peek's (index and doc cache).
-  The viewer can show the steps panel (`ProvGraphPanel`) beside the note,
-  rendered inside the side peek's stores (`standalonePanel`); the other
+  The viewer can show one panel beside the note — steps, graph or memos —
+  rendered inside the side peek's stores (`standalonePanels`). Steps
+  (`ProvGraphPanel`) runs on the note's own stores. The viewer does not
+  load every note or write the memo index: the graph is built by `main`
+  and sent over (`graph-request` → `graph-data`, `computeNoteGraph` in
+  `use-file-manager.ts`), and memos are read from the capture index but
+  created and deleted by `main` (`memo-create` / `memo-delete`, with
+  `captures-changed` telling the viewer to re-read). The other
   right-panel tabs depend on `NoteApp` state and stay in `main`.
   When `main` closes a note it stays "held" until its closing save has
   left the save queue. Messages travel as Tauri events

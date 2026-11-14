@@ -22,7 +22,7 @@ import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
 import { normalizePdfSelectionText } from "./pdf-selection-text";
 import { locateQuoteInPages, quoteAnchorForRange, type MaterialFocus } from "./pdf-quote-anchor";
-import { applyHighlights } from "./pdf-search";
+import { applyHighlights, clearHighlights } from "./pdf-search";
 import { usePdfSearch } from "./use-pdf-search";
 import { SearchBar } from "../document-search/SearchBar";
 
@@ -273,6 +273,16 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProp
   // あると、そちらで確定してしまう）。描画完了は連続で来るので、検索と同じく少し待って 1 回にまとめる。
   const focusScrolledRef = useRef<string | null>(null);
   const searchOpen = search.state.open;
+  // 見せる場所が無くなった（一節の無いリンクから同じ PDF を開き直した等）ら、前の印を消す。
+  // 検索バーを開いている間は検索の印なので触らない
+  const hadFocusRef = useRef(false);
+  useEffect(() => {
+    if (focus) { hadFocusRef.current = true; return; }
+    if (!hadFocusRef.current || searchOpen) return;
+    hadFocusRef.current = false;
+    focusScrolledRef.current = null;
+    clearHighlights();
+  }, [focus, searchOpen]);
   useEffect(() => {
     if (!focus || numPages === 0) return;
     // 検索バーを開いている間は検索の印を優先する（付け直して上書きしない）

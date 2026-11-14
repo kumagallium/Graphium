@@ -19,6 +19,7 @@
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import { inlineContentToText } from "../markdown-export/inline-text";
+import { SOURCE_CITATION_RE } from "../../lib/source-citations";
 
 export type TopicStatement = {
   /** 照合する文（プレーンテキスト。引用部分は除く） */
@@ -27,6 +28,8 @@ export type TopicStatement = {
   blockId: string;
   /** そのブロックが引いている知見 ID（derivedFromClaims に含まれるもののみ） */
   claimIds: string[];
+  /** 新形式の本文の引用に控えた一節（出典 id → 一節）。書いたときに資料の文字と照合済み */
+  passages?: Record<string, string>;
 };
 
 /**
@@ -167,9 +170,6 @@ function extractStatementFromBlock(
   return { text: finalText, claimIds: [...claimIds] };
 }
 
-/** `[[source:<id>]]` を検出する正規表現（id は空白・`]` を含まない） */
-const SOURCE_CITATION_RE = /\[\[source:([^\]]+?)\]\]/g;
-
 /**
  * 新形式トピック（wikiMeta.topicMarkdown あり）から「照合する文」を取り出す（純関数）。
  * 資料の全文を直接読んで改訂する取り込み（PR 3b）向けの土台。
@@ -198,13 +198,22 @@ export function extractSourceTopicStatements(doc: GraphiumDocument): TopicStatem
     if (/^#{1,6}\s/.test(line)) return; // 見出し行は対象外
 
     const sourceIds: string[] = [];
-    const text = line.replace(SOURCE_CITATION_RE, (_match, rawId: string) => {
-      sourceIds.push(rawId.trim());
+    const passages: Record<string, string> = {};
+    const text = line.replace(SOURCE_CITATION_RE, (_match, rawId: string, rawPassage?: string) => {
+      const id = rawId.trim();
+      sourceIds.push(id);
+      const passage = rawPassage?.trim();
+      if (passage && !passages[id]) passages[id] = passage;
       return "";
     }).trim();
 
     if (sourceIds.length === 0 || !text) return;
-    statements.push({ text, blockId: `line-${index}`, claimIds: sourceIds });
+    statements.push({
+      text,
+      blockId: `line-${index}`,
+      claimIds: sourceIds,
+      ...(Object.keys(passages).length > 0 ? { passages } : {}),
+    });
   });
   return statements;
 }

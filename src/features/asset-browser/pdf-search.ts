@@ -36,7 +36,7 @@ const WHITESPACE = /\s/;
 // 単語を空白で区切らないので、境界の両側がこれなら繋げたまま扱う。
 // pdf.js は日本語 PDF の text-layer を 1〜2 文字ずつの span に割ることが多く、
 // 一律に空白を挟むと「ス タ ー タ ー」になって検索が当たらない。
-const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef\u2e80-\u2fdf\u31f0-\u31ff]/u;
+export const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef\u2e80-\u2fdf\u31f0-\u31ff]/u;
 
 /**
  * text-layer 要素（1 ページ分）から検索用インデックスを作る。

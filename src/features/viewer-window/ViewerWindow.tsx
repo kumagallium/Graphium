@@ -13,9 +13,14 @@
 //   - メインがこのノートを保存した（onViewerNoteSaved）
 //   - このウィンドウが手前に来た（連絡が届かなかったときの保険）
 // 読み直して中身が同じなら描き直さない（読んでいる位置が飛ばないように）。
+//
+// 編集の出し方では、本文の右に「ステップ」「グラフ」「メモ」のパネルを開ける（1 つだけ。タブで切り替える）。
+// 全ノートの本文はここでは読まない:
+//   - グラフはメインが作って返す（viewer-requests.ts の requestNoteGraph）
+//   - メモの索引はここで読むだけ。作成・削除はメインに頼む（書くのはメインだけ）
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { PanelsTopLeft } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ListChecks, Network, PanelsTopLeft, StickyNote } from "lucide-react";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { loadViewerDoc, viewerDocSignature } from "./load-viewer-doc";
 import { SandboxEditor } from "../../base/editor";
@@ -54,6 +59,11 @@ import { useProvGeneration } from "../../hooks/use-prov-generation";
 import { useLabelStore } from "../context-label/store";
 import { isProvLabelsEnabled } from "../settings";
 import { useMediaInlineLabelStore } from "../inline-label/media-store";
+import { GraphLinksPanel } from "../network-graph";
+import { NoteMemosSection } from "../asset-browser/NoteMemosSection";
+import { readCaptureIndex, resolveMemoBlockLabel, type CaptureIndex } from "../mobile-capture";
+import type { ViewerNoteGraph } from "../../lib/viewer-window";
+import { requestMemoCreate, requestMemoDelete, requestNoteGraph } from "./viewer-requests";
 
 type LoadState =
   | { phase: "loading" }
@@ -287,10 +297,13 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
     });
   }, [noteId, ready]);
 
+  // このウィンドウがノートを保存するたびに進める番号（グラフのパネルが読み直す合図）
+  const [savedTick, setSavedTick] = useState(0);
   const handleSaved = useCallback((id: string, savedDoc: GraphiumDocument) => {
     viewerDocCache.set(id, savedDoc);
     setTitle(savedDoc.title ?? "");
     sendToMain({ type: "saved", id, doc: savedDoc });
+    setSavedTick((n) => n + 1);
   }, []);
   const handleSaveStatus = useCallback(
     (status: "saving" | "saved" | "dirty") => {
@@ -317,14 +330,36 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
     );
   }
   const entry = noteIndex?.notes.find((n) => n.noteId === noteId);
-  // ステップ（工程）の右パネル。ラベルの機能を切っているときと、ナレッジのページには出さない
-  const standalonePanel =
-    isProvLabelsEnabled() && !noteId.includes(":")
-      ? {
-          label: t("panel.prov"),
-          render: (args: PeekStandalonePanelArgs) => <ViewerProvPanel args={args} index={noteIndex} />,
-        }
-      : undefined;
+  // 右のパネル（タブ）。アイコンと並びは本体の右パネルと同じ（グラフ → ステップ → メモ）。
+  // ナレッジのページ（id に `:` を含む）には出さない。ステップはラベルの機能を切っているときも出さない
+  const standalonePanels: {
+    id: string;
+    label: string;
+    icon: ReactNode;
+    render: (args: PeekStandalonePanelArgs) => ReactNode;
+  }[] = [];
+  if (!noteId.includes(":")) {
+    standalonePanels.push({
+      id: "graph",
+      label: t("panel.graph"),
+      icon: <Network size={18} />,
+      render: () => <ViewerGraphPanel noteId={noteId} savedTick={savedTick} onOpenNote={onOpenNote} />,
+    });
+    if (isProvLabelsEnabled()) {
+      standalonePanels.push({
+        id: "prov",
+        label: t("panel.prov"),
+        icon: <ListChecks size={18} />,
+        render: (args) => <ViewerProvPanel args={args} index={noteIndex} />,
+      });
+    }
+    standalonePanels.push({
+      id: "memos",
+      label: t("panel.memos"),
+      icon: <StickyNote size={18} />,
+      render: (args) => <ViewerMemosPanel args={args} noteId={noteId} noteTitle={title} />,
+    });
+  }
   return (
     <MediaInlineLabelProvider>
       <AiAssistantProvider aiAvailable={false}>
@@ -342,7 +377,7 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
           noteIndex={noteIndex}
           archived={!!entry?.archivedAt}
           trashed={!!entry?.deletedAt}
-          standalonePanel={standalonePanel}
+          standalonePanels={standalonePanels}
         />
       </AiAssistantProvider>
     </MediaInlineLabelProvider>
@@ -351,7 +386,7 @@ function ViewerEditable({ noteId, onOpenNote }: { noteId: string; onOpenNote: (i
 
 /**
  * 別ウィンドウの右のパネル「ステップ」。メインの右パネルと同じ部品を、このノートのストアと
- * エディタにつないで出す。SidePeek のストアの内側で描かれる（standalonePanel）。
+ * エディタにつないで出す。SidePeek のストアの内側で描かれる（standalonePanels）。
  * 線のメモは出さない（メモの一覧と作成はメインが持つ）
  */
 function ViewerProvPanel({
@@ -381,6 +416,140 @@ function ViewerProvPanel({
         noteId={args.noteId}
         noteContexts={args.noteContexts}
         index={index}
+      />
+    </div>
+  );
+}
+
+/** 保存が続くときに、グラフの読み直しをまとめる時間 */
+const GRAPH_RELOAD_DEBOUNCE_MS = 1000;
+
+/**
+ * 別ウィンドウの右のパネル「グラフ」。グラフはメインが作って返す（全ノートはここで読まない）。
+ * 開いたときと、このウィンドウがノートを保存したあと（続けて来る保存は 1 秒ほどまとめる）に頼み直す。
+ * 共有ライブラリ由来のノードとメモの引用ノードは足さない（メインの NoteGraphTabPanel は使わない）。
+ * 素材・URL・メモを開く口は渡さない（それらを開く画面はこのウィンドウに無い）
+ */
+function ViewerGraphPanel({
+  noteId,
+  savedTick,
+  onOpenNote,
+}: {
+  noteId: string;
+  savedTick: number;
+  onOpenNote: (id: string) => void;
+}) {
+  const t = useT();
+  // loaded=false の間は読み込み中。読み直しの失敗では、出ているグラフを消さない
+  const [state, setState] = useState<{ loaded: boolean; graph: ViewerNoteGraph | null }>({
+    loaded: false,
+    graph: null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    // 最初は待たずに頼む。保存のあとはまとめる
+    const timer = setTimeout(
+      () => {
+        void requestNoteGraph(noteId).then((graph) => {
+          if (!cancelled) setState((prev) => ({ loaded: true, graph: graph ?? prev.graph }));
+        });
+      },
+      savedTick === 0 ? 0 : GRAPH_RELOAD_DEBOUNCE_MS,
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [noteId, savedTick]);
+
+  if (!state.loaded) {
+    return (
+      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
+  const { graph } = state;
+  if (!graph || (graph.data.nodes.length <= 1 && (graph.lineageTree?.parents.length ?? 0) === 0)) {
+    return (
+      <div className="flex items-center justify-center h-48 px-4 text-center text-sm text-muted-foreground">
+        {t("panel.graph.empty")}
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 min-h-0">
+      <GraphLinksPanel
+        data={graph.data}
+        lineageTree={graph.lineageTree}
+        // 系譜の素データ（全ノートの本文）はここへ持ち込まない。系譜のタブも出さない（空になるため）
+        lineageSources={null}
+        hideGenealogy
+        onNavigate={onOpenNote}
+        onPeek={onOpenNote}
+      />
+    </div>
+  );
+}
+
+/**
+ * 別ウィンドウの右のパネル「メモ」。メモの索引は読むだけ（書くのはメイン）。
+ * 作成・削除はメインに頼み、返事のあとと、メインから索引の変更が知らされたときに読み直す
+ */
+function ViewerMemosPanel({
+  args,
+  noteId,
+  noteTitle,
+}: {
+  args: PeekStandalonePanelArgs;
+  noteId: string;
+  noteTitle: string;
+}) {
+  const [captureIndex, setCaptureIndex] = useState<CaptureIndex | null>(null);
+  const reload = useCallback(() => {
+    readCaptureIndex()
+      .then(setCaptureIndex)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    reload();
+    return onMessageFromMain((msg) => {
+      if (msg.type === "captures-changed") reload();
+    });
+  }, [reload]);
+
+  const { editorRef } = args;
+  const handleCreate = useCallback(
+    async (text: string) => {
+      const ok = await requestMemoCreate({ noteId, title: noteTitle || undefined, text });
+      reload();
+      // 書く欄が書いた文を残せるよう、失敗は reject で返す（知らせは書く欄が出す）
+      if (!ok) throw new Error("memo save failed");
+    },
+    [noteId, noteTitle, reload],
+  );
+  const handleDelete = useCallback(
+    (memoId: string) => {
+      void requestMemoDelete(memoId).then(reload);
+    },
+    [reload],
+  );
+  const resolveBlockLabel = useCallback(
+    (blockId: string) => {
+      const block = editorRef.current?.getBlock(blockId);
+      return block ? resolveMemoBlockLabel(block) || null : null;
+    },
+    [editorRef],
+  );
+  return (
+    <div className="flex-1 min-h-0 overflow-auto">
+      <NoteMemosSection
+        noteFileId={noteId}
+        noteTitle={noteTitle}
+        captureIndex={captureIndex}
+        onCreateMemo={handleCreate}
+        onDeleteMemo={handleDelete}
+        resolveBlockLabel={resolveBlockLabel}
       />
     </div>
   );

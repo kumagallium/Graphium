@@ -30,7 +30,8 @@ vi.mock("../../lib/platform", async (importOriginal) => ({
 vi.mock("../settings/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../settings/store")>()),
   getSelectedModel: () => h.selectedModel,
-  // トピック段・ナレッジ化は標準の処理、洞察の重複判定は精密な処理の段（どちらも設定の表示名）
+  // ナレッジ化・トピックの改訂は標準の処理、振り分けと洞察の重複判定は軽い処理（どちらも設定の表示名）。
+  // このテストでは軽い処理と標準の処理を同じ名前にしてある（先頭のモデルに落ちないことを確かめるため）
   getStandardModelName: () => h.selectedModel,
   getPreciseModelName: () => h.insightModel,
 }));
@@ -353,7 +354,7 @@ describe("同じ原因の他の経路", () => {
     expect(call.body.skills).toEqual([{ title: "ja voice", prompt: "JA" }]);
   });
 
-  it("洞察の重複判定は、モデルを渡さなければ設定の精密な処理のモデル（表示名）で頼む", async () => {
+  it("洞察の重複判定は、モデルを渡さなければ設定の軽い処理のモデル（表示名）で頼む（2026-11-14 に高度から移した）", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ verdicts: [{ index: 1, verdict: "same" }] }),
@@ -368,7 +369,7 @@ describe("同じ原因の他の経路", () => {
     expect(result.same).toHaveLength(1);
     const [call] = fetchCalls();
     expect(call.url).toContain("/judge-atom-duplicates");
-    expect(call.body.model).toBe("Insight (verify)");
-    expect(resolvedModelId(call)).toBe("m-insight");
+    expect(call.body.model).toBe("Mock (verify)");
+    expect(resolvedModelId(call)).toBe("m-verify");
   });
 });

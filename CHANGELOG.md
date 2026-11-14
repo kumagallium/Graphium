@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.133.0](https://github.com/kumagallium/Graphium/compare/v0.132.2...v0.133.0) - 2026-11-14
+
+- feat(topics): keep another source's sentences on revision, and mark sources the body no longer cites by @kumagallium in https://github.com/kumagallium/Graphium/pull/1672
+- [feat] Move four AI features to the tier that fits the work by @kumagallium in https://github.com/kumagallium/Graphium/pull/1674
+- feat(topics): keep the source passage behind each sentence, checked by string match before saving by @kumagallium in https://github.com/kumagallium/Graphium/pull/1673
+
+## [v0.132.2](https://github.com/kumagallium/Graphium/compare/v0.132.1...v0.132.2) - 2026-11-14
+
+- [docs] Model guide: local ~30B is conditional for light work; add the cloud and local evaluation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1670
+
+## [v0.132.1](https://github.com/kumagallium/Graphium/compare/v0.132.0...v0.132.1) - 2026-11-14
+
+- feat(source-check): open a PDF source at the quoted sentence by @kumagallium in https://github.com/kumagallium/Graphium/pull/1667
+- [docs] Manual: v0.132.0 badge for the separate window's Graph and Memos panels (en/ja) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1669
+
+## [v0.132.0](https://github.com/kumagallium/Graphium/compare/v0.131.0...v0.132.0) - 2026-11-14
+
+- [feat] Separate window: Graph and Memos panels, with the same icon rail as the main right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1664
+
 ## [v0.131.0](https://github.com/kumagallium/Graphium/compare/v0.130.1...v0.131.0) - 2026-11-13
 
 - feat: connect with a ChatGPT plan (Sign in with ChatGPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1663
