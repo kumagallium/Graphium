@@ -9,6 +9,7 @@
 
 import type { TextQuoteAnchor } from "../mobile-capture";
 import {
+  CJK,
   buildPageTextIndex,
   findMatchOffsets,
   rangeForOffsets,
@@ -75,6 +76,50 @@ function commonPrefixLength(a: string, b: string): number {
 }
 
 /**
+ * 和文の隣の空白を抜いた文字列と、抜いた後の各文字が元の何文字目だったか。
+ * 1 文字ずつ NFKC にかける（長さが変わる文字はそのまま。pdf-search の foldForSearch と同じ扱い）。
+ */
+function stripSpacesNextToCjk(text: string): { text: string; map: number[] } {
+  let out = "";
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (/\s/.test(ch)) {
+      const before = text[i - 1] ?? "";
+      const after = text[i + 1] ?? "";
+      if (!before || !after || CJK.test(before) || CJK.test(after)) continue;
+      out += " ";
+      map.push(i);
+      continue;
+    }
+    const folded = ch.normalize("NFKC");
+    out += folded.length === ch.length ? folded : ch;
+    map.push(i);
+  }
+  return { text: out, map };
+}
+
+/**
+ * 和文の隣の空白を両側とも無視して探す（予備）。照合の原文（pdf-text-extractor）は文字片を
+ * 必ず空白でつなぎ、text-layer の索引は和文どうしの境目に空白を入れないので、同じ文でも
+ * 空白の位置がずれる。見つかれば索引上の [start, end) を返す。
+ */
+function findLooseOffsets(indexText: string, exact: string): Array<[number, number]> {
+  const hay = stripSpacesNextToCjk(indexText);
+  const needle = stripSpacesNextToCjk(exact.replace(/\s+/g, " ").trim()).text;
+  if (!needle) return [];
+  const found: Array<[number, number]> = [];
+  let from = 0;
+  for (;;) {
+    const at = hay.text.indexOf(needle, from);
+    if (at === -1) break;
+    found.push([hay.map[at], hay.map[at + needle.length - 1] + 1]);
+    from = at + needle.length;
+  }
+  return found;
+}
+
+/**
  * ページ群から文を探し直す。preferredPage（メモに残したページ）を先に見て、
  * そこに無ければ残りのページを順に見る（ページ番号がずれた版の PDF でも当たるように）。
  * 同じ文が何か所もあれば、前後がいちばん長く一致する 1 か所を選ぶ。見つからなければ null。
@@ -94,7 +139,14 @@ export function locateQuoteInPages(
     const index = buildPageTextIndex(el);
     if (!index.text) continue;
     const offsets = findMatchOffsets(index, anchor.exact, true);
-    if (offsets.length === 0) continue;
+    if (offsets.length === 0) {
+      // 空白の位置だけ違う同じ文（和文の境目）を拾う。前後の照合はしない（最初の 1 か所）
+      const loose = findLooseOffsets(index.text, anchor.exact);
+      if (loose.length === 0) continue;
+      const looseRange = rangeForOffsets(index, loose[0][0], loose[0][1]);
+      if (looseRange) return { pageNumber, start: loose[0][0], range: looseRange };
+      continue;
+    }
     let best = offsets[0];
     let bestScore = -1;
     for (const at of offsets) {
@@ -122,3 +174,27 @@ export type MaterialFocus = {
   pageNumber?: number;
   quote?: TextQuoteAnchor;
 };
+
+/** 出典照合の結果から PDF を開くときに渡す、抜粋とページ（SourceCheckEntry の quote / quoteLocation.page） */
+export type SourceCheckOpenAt = {
+  quote?: string;
+  page?: number;
+};
+
+/**
+ * 出典照合の「出典を開く」で PDF を開くときの見せる場所。抜粋もページも無ければ undefined
+ * （素材を頭から開くだけ）。前後の文脈は持っていないので、同じ文が何か所もあれば
+ * ページ（あれば）の中の最初の 1 か所になる。
+ */
+export function focusFromSourceCheck(key: string, at: SourceCheckOpenAt | undefined): MaterialFocus | undefined {
+  if (!at) return undefined;
+  // 和文の境目の空白のずれは locateQuoteInPages の予備の照合が吸収する
+  const exact = at.quote ? at.quote.replace(/\s+/g, " ").trim() : "";
+  const pageNumber = at.page !== undefined && at.page >= 1 ? at.page : undefined;
+  if (!exact && pageNumber === undefined) return undefined;
+  return {
+    key,
+    ...(pageNumber !== undefined ? { pageNumber } : {}),
+    ...(exact ? { quote: { exact } } : {}),
+  };
+}
