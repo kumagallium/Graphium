@@ -4,6 +4,7 @@ export function Faq() {
   const { t } = useI18n();
   const items = [
     { q: t("faq.ai.q"), a: t("faq.ai.a") },
+    { q: t("faq.connect.q"), a: t("faq.connect.a") },
     { q: t("faq.scope.q"), a: t("faq.scope.a") },
     { q: t("faq.zettel.q"), a: t("faq.zettel.a") },
     { q: t("faq.data.q"), a: t("faq.data.a") },
