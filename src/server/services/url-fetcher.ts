@@ -103,18 +103,21 @@ export function extractFromHtml(
     html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "";
 
   // 変化がなくなるまでブロック・タグを除去する（入れ子で分断された形の取りこぼし防止）。
-  // 閉じタグの空白（`</script >`）も許す。
+  // 閉じタグの空白や余計な属性（`</script >`・`</script\tfoo>`）も許す。
   let stripped = html;
   for (let prev = ""; prev !== stripped; ) {
     prev = stripped;
     stripped = stripped
-      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
-      .replace(/<style\b[\s\S]*?<\/style\s*>/gi, "")
-      .replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, "")
-      .replace(/<header\b[\s\S]*?<\/header\s*>/gi, "")
-      .replace(/<footer\b[\s\S]*?<\/footer\s*>/gi, "")
+      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, "")
+      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, "")
+      .replace(/<nav\b[\s\S]*?<\/nav\b[^>]*>/gi, "")
+      .replace(/<header\b[\s\S]*?<\/header\b[^>]*>/gi, "")
+      .replace(/<footer\b[\s\S]*?<\/footer\b[^>]*>/gi, "")
       .replace(/<[^>]+>/g, "\n");
   }
+  // ここまでで残った `<` は壊れたタグの欠片だけ（本文の `<` は `&lt;` のまま残っていて、下でデコードする）。
+  // 欠片から要素が組み上がらないよう落とす。
+  stripped = stripped.replace(/</g, "");
   // エンティティは 1 パスでデコードする（`&amp;lt;` を `<` に二重デコードしない）。
   let bodyText = stripped
     .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITY_MAP[m] ?? m)
