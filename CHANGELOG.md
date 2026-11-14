@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.132.0](https://github.com/kumagallium/Graphium/compare/v0.131.0...v0.132.0) - 2026-11-14
+
+- [feat] Separate window: Graph and Memos panels, with the same icon rail as the main right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1664
+
 ## [v0.131.0](https://github.com/kumagallium/Graphium/compare/v0.130.1...v0.131.0) - 2026-11-13
 
 - feat: connect with a ChatGPT plan (Sign in with ChatGPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1663
