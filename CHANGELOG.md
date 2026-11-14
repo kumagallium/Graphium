@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.132.2](https://github.com/kumagallium/Graphium/compare/v0.132.1...v0.132.2) - 2026-11-14
+
+- [docs] Model guide: local ~30B is conditional for light work; add the cloud and local evaluation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1670
+
 ## [v0.132.1](https://github.com/kumagallium/Graphium/compare/v0.132.0...v0.132.1) - 2026-11-14
 
 - feat(source-check): open a PDF source at the quoted sentence by @kumagallium in https://github.com/kumagallium/Graphium/pull/1667
