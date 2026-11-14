@@ -17,6 +17,7 @@ import { registerClaimTools } from "./claim-tools";
 import { registerInsightTools } from "./insight-tools";
 import { registerMediaTools } from "./media-tools";
 import { registerProcedureTools } from "./procedure-tools";
+import { registerTopicTools } from "./topic-tools";
 import { registerReadTools } from "./read-tools";
 import { registerTools, type ToolContext } from "./tools";
 import { cleanupTempFiles } from "./upkeep/cleanup";
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
   registerClaimTools(server, ctx);
   registerInsightTools(server, ctx);
   registerProcedureTools(server, ctx);
+  registerTopicTools(server, ctx);
   registerMediaTools(server);
   // 会話の中に画面を描く道具（MCP Apps）。対応していないクライアントには文字の結果だけが届く
   registerAppTools(server, ctx);

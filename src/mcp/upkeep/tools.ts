@@ -77,7 +77,7 @@ export function readWikiDoc(root: string, id: string): GraphiumDocument | null {
   }
 }
 
-function isNewFormat(doc: GraphiumDocument): boolean {
+export function isNewFormat(doc: GraphiumDocument): boolean {
   return typeof doc.wikiMeta?.topicMarkdown === "string";
 }
 
@@ -111,7 +111,7 @@ export async function stoppedIfRunning(root: string): Promise<string | null> {
 }
 
 /** 資料 id を TopicSourceRef にする。解決できない id は title を id のまま使う（既存の資料用） */
-function resolveLenient(ids: string[], root: string): TopicSourceRef[] {
+export function resolveLenient(ids: string[], root: string): TopicSourceRef[] {
   const { refs, missing } = resolveSourceRefs(ids, root);
   const byId = new Map<string, TopicSourceRef>(refs.map((r) => [r.id, r]));
   for (const m of missing) byId.set(m, { id: m, title: m });

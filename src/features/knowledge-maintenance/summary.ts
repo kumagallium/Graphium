@@ -14,6 +14,7 @@ export const MAINTENANCE_OP_I18N_KEYS = {
   restore_version: "maintenance.op.restore_version",
   mcp_generate: "maintenance.op.mcp_generate",
   mcp_generate_insights: "maintenance.op.mcp_generate_insights",
+  mcp_generate_topics: "maintenance.op.mcp_generate_topics",
   undo: "maintenance.op.undo",
   undo_generic: "maintenance.op.undo_generic",
 } as const;
@@ -31,7 +32,7 @@ export type OperationDescription = {
  * - merge_topics / merge_atoms: { title, count }（count = 吸収された数）
  * - regenerate / reconcile / revise / restore_version: { title }
  * - archive_one: { title } / archive_many: { count }
- * - mcp_generate / mcp_generate_insights: { count }（作った・書き足したページの数）
+ * - mcp_generate / mcp_generate_insights / mcp_generate_topics: { count }（作った・書き足したページの数）
  * - undo: { title } / undo_generic: { count }（戻した対象の数）
  */
 export function describeOperation(op: MaintenanceOperation): OperationDescription {
@@ -56,7 +57,8 @@ export function describeOperation(op: MaintenanceOperation): OperationDescriptio
     case "restore_version":
       return { key: MAINTENANCE_OP_I18N_KEYS.restore_version, params: { title } };
     case "mcp_generate":
-    case "mcp_generate_insights": {
+    case "mcp_generate_insights":
+    case "mcp_generate_topics": {
       const ids = new Set<string>();
       for (const c of list(op.created)) if (c && typeof c.wikiId === "string") ids.add(c.wikiId);
       for (const p of list(op.pages)) if (p && typeof p.wikiId === "string") ids.add(p.wikiId);

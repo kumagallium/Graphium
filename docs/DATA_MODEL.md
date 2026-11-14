@@ -1146,12 +1146,13 @@ and lets a list view read only the small run files.
 
 - `trigger`: `merge_topics` / `organize_topics` / `group_by_thing` / `auto_tidy` / `auto_source_check` / `merge_atoms` /
   `regenerate` / `rebuild_topics` / `bulk_archive` / `restore_version` /
-  `undo` / `mcp_generate` / `mcp_generate_insights`. One run holds one or more `MaintenanceOperation`s (`kind`:
+  `undo` / `mcp_generate` / `mcp_generate_insights` / `mcp_generate_topics`. One run holds one or more `MaintenanceOperation`s (`kind`:
   `merge_topics` / `merge_atoms` / `regenerate` / `reconcile` / `revise` / `archive` /
-  `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights`). `mcp_generate` is written
-  only by the MCP claim tools (`submit_claims` / `submit_rewrite`) and
-  `mcp_generate_insights` only by `submit_insight_review` ( see
-  "Claims made through MCP" in ARCHITECTURE.md §4.4). Older app versions drop operations of
+  `restore_version` / `undo` / `mcp_generate` / `mcp_generate_insights` / `mcp_generate_topics`). `mcp_generate` is written
+  only by the MCP claim tools (`submit_claims` / `submit_rewrite`),
+  `mcp_generate_insights` only by `submit_insight_review` and `mcp_generate_topics` only by
+  `submit_topic_page` (one operation per topic page) ( see
+  "Claims made through MCP" and "Topics made through MCP" in ARCHITECTURE.md §4.4). Older app versions drop operations of
   a kind they do not know when loading a run, so they neither show nor undo it.
 - An operation carries `subject` (the kept / rewritten page), `related`
   (pages absorbed or archived — written when the operation **starts**, so
@@ -1164,7 +1165,7 @@ and lets a list view read only the small run files.
   merge or rebuild starts its operation and then waits on the LLM before
   saving, so `startedAt` can invert the order of two overlapping
   operations.
-- An `mcp_generate` / `mcp_generate_insights` operation also carries `created` (`{ wikiId, title }`
+- An `mcp_generate` / `mcp_generate_insights` / `mcp_generate_topics` operation also carries `created` (`{ wikiId, title }`
   for each page the operation made, recorded before the page is written).
   Undoing it moves those pages to the Trash (a page already in the Trash
   or gone counts as done) and restores appended pages from their copies;

@@ -93,7 +93,7 @@ export const INJECTION_GUARD =
 
 
 /** ページの内容のハッシュ（documentProvenance と modifiedAt は除く。取り消しの sameContent と同じ範囲） */
-function docContentHash(doc: GraphiumDocument): string {
+export function docContentHash(doc: GraphiumDocument): string {
   const { documentProvenance: _p, modifiedAt: _m, ...rest } = doc;
   void _p;
   void _m;
@@ -102,7 +102,7 @@ function docContentHash(doc: GraphiumDocument): string {
 
 // ── 入力の読み出し ──────────────────────────────────────────
 
-const NO_SCHEMA_MESSAGE =
+export const NO_SCHEMA_MESSAGE =
   "NO_SCHEMA: ナレッジスキーマ（skills/knowledge-schema.json）を読めません。Graphium を一度起動して、スキルの画面にナレッジスキーマがあることを確かめてください。";
 
 type PromptMaterials = {
@@ -115,7 +115,7 @@ type PromptMaterials = {
  * Skill の選び方はアプリ（note-app.tsx の pickActiveSkills）と同じ関数を使う。
  * スキーマが無い・読めないときは null
  */
-function loadPromptMaterials(root: string, language: Language): PromptMaterials | null {
+export function loadPromptMaterials(root: string, language: Language): PromptMaterials | null {
   const dir = join(root, "skills");
   const schemaPath = join(dir, "knowledge-schema.json");
   if (!existsSync(schemaPath)) return null;
