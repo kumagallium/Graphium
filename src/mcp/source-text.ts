@@ -162,42 +162,54 @@ function pageRange(pageStarts: number[] | undefined, start: number, end: number)
   return a === b ? `ページ ${a}` : `ページ ${a}〜${b}`;
 }
 
-/** 資料の本文を解決して窓で返す。断る場合は先頭に安定した語（UNKNOWN_SOURCE など）を置く */
-export async function getSourceText(
-  input: SourceTextInput,
-  root = resolveGraphiumRoot(),
-): Promise<string> {
-  const { sourceId } = input;
-  const size = Math.max(MIN_WINDOW_CHARS, Math.floor(input.windowChars ?? DEFAULT_WINDOW_CHARS));
+/** 資料の全文（窓に切る前）。断る場合は message の先頭に安定した語（UNKNOWN_SOURCE など）を置く */
+export type FullSourceText =
+  | { ok: true; title: string; text: string; pageStarts?: number[]; kind: "note" | "pdf" | "document" | "url" }
+  | { ok: false; message: string };
+
+/**
+ * 資料の全文を解決する（get_source_text と手順の課題が共有する。キャッシュも共有）。
+ * 対象: 通常のノート・ナレッジのページ・PDF / Word（.docx）素材・素材に登録した URL
+ */
+export async function resolveFullSourceText(sourceId: string, root = resolveGraphiumRoot()): Promise<FullSourceText> {
   const parsed = parseExternalSource(sourceId);
 
   // 種類ごとの事前確認と、キャッシュの鍵（ファイルの mtime）
   let stamp = 0;
+  let kind: "note" | "pdf" | "document" | "url" = "note";
   if (parsed?.kind === "pdf" || parsed?.kind === "document") {
+    kind = parsed.kind;
     const media = readMediaIndex(root).get(parsed.key);
     const file = findMediaFile(parsed.key, root);
-    if (!media && !file) return refuse("UNKNOWN_SOURCE", `資料が見つかりません: ${sourceId}`);
+    if (!media && !file) return { ok: false, message: refuse("UNKNOWN_SOURCE", `資料が見つかりません: ${sourceId}`) };
     if (parsed.kind === "document" && media?.mimeType !== DOCX_MIME) {
-      return refuse(
-        "UNSUPPORTED_FORMAT",
-        `この形式（${media?.mimeType ?? "不明"}）は文字起こしできません。Word（.docx）だけに対応しています。`,
-      );
+      return {
+        ok: false,
+        message: refuse(
+          "UNSUPPORTED_FORMAT",
+          `この形式（${media?.mimeType ?? "不明"}）は文字起こしできません。Word（.docx）だけに対応しています。`,
+        ),
+      };
     }
     stamp = mtimeOf(file);
   } else if (parsed?.kind === "url") {
+    kind = "url";
     const registered = [...readMediaIndex(root).values()].some((m) => m.type === "url" && m.url === parsed.key);
     if (!registered) {
-      return refuse(
-        "UNKNOWN_SOURCE",
-        `Graphium に登録された Web ページ（素材）ではありません: ${parsed.key}（search_media で登録済みの URL を探せます）`,
-      );
+      return {
+        ok: false,
+        message: refuse(
+          "UNKNOWN_SOURCE",
+          `Graphium に登録された Web ページ（素材）ではありません: ${parsed.key}（search_media で登録済みの URL を探せます）`,
+        ),
+      };
     }
     stamp = Math.floor(Date.now() / URL_CACHE_MS);
   } else if (parsed) {
-    return refuse("UNSUPPORTED_FORMAT", `この種類の資料（${parsed.kind}:）は文字起こしできません。`);
+    return { ok: false, message: refuse("UNSUPPORTED_FORMAT", `この種類の資料（${parsed.kind}:）は文字起こしできません。`) };
   } else {
     const path = noteFilePath(sourceId, root);
-    if (!path) return refuse("UNKNOWN_SOURCE", `ノートまたは資料が見つかりません: ${sourceId}`);
+    if (!path) return { ok: false, message: refuse("UNKNOWN_SOURCE", `ノートまたは資料が見つかりません: ${sourceId}`) };
     stamp = mtimeOf(path);
   }
 
@@ -208,16 +220,31 @@ export async function getSourceText(
     try {
       result = await resolveSourceText(sourceId, buildDeps(root));
     } catch (err) {
-      return refuse("EXTRACT_FAILED", err instanceof Error ? err.message : String(err));
+      return { ok: false, message: refuse("EXTRACT_FAILED", err instanceof Error ? err.message : String(err)) };
     }
     if (!result.ok) {
       const reason = REASON_TEXT[result.reason] ?? result.reason;
       // 資料が実在するのに無いと言われたら、素材インデックスや索引の食い違い
-      return refuse(result.reason === "deleted" ? "UNKNOWN_SOURCE" : "EXTRACT_FAILED", `${sourceId}: ${reason}`);
+      return {
+        ok: false,
+        message: refuse(result.reason === "deleted" ? "UNKNOWN_SOURCE" : "EXTRACT_FAILED", `${sourceId}: ${reason}`),
+      };
     }
     extracted = { title: result.title ?? sourceId, text: result.text, pageStarts: result.pageStarts };
     cacheSet(key, extracted);
   }
+  return { ok: true, kind, ...extracted };
+}
+
+/** 資料の本文を解決して窓で返す。断る場合は先頭に安定した語（UNKNOWN_SOURCE など）を置く */
+export async function getSourceText(
+  input: SourceTextInput,
+  root = resolveGraphiumRoot(),
+): Promise<string> {
+  const { sourceId } = input;
+  const size = Math.max(MIN_WINDOW_CHARS, Math.floor(input.windowChars ?? DEFAULT_WINDOW_CHARS));
+  const extracted = await resolveFullSourceText(sourceId, root);
+  if (!extracted.ok) return extracted.message;
 
   const { title, text, pageStarts } = extracted;
   const windows = splitIntoWindows(text, { size, overlap: WINDOW_OVERLAP });
