@@ -928,7 +928,7 @@ export const ko: Record<string, string> = {
   "settings.modelFit.level.good": "알맞음",
   "settings.modelFit.level.partial": "조건부",
   "settings.modelFit.level.poor": "알맞지 않음",
-  "settings.modelFit.note.default": "채팅 답변과 점검은 로컬 모델로도 대체로 충분합니다.",
+  "settings.modelFit.note.default": "출처 대조와 제목 붙이기는 로컬 모델로도 대체로 충분합니다. 점검과 세계 대조는 모델에 따라 시간이 걸리거나 놓치는 것이 늘어납니다.",
   "settings.modelFit.note.meeting": "정리하기는 발언을 바꾸지 않는 충실함이 필요하므로 강한 모델이 알맞습니다.",
   "settings.modelFit.link": "측정 결과",
   "settings.standardModel": "표준 작업 모델",
