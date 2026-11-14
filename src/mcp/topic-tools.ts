@@ -665,6 +665,7 @@ export async function submitTopicPage(input: SubmitTopicPageInput, ctx: ToolCont
         await op.recordCreated(savedId, doc.title, { derivedCount: 1 });
       }
       const ended = await op.end();
+      ctx.activity?.push("wrote", savedId);
       const items = await setItem(root, task.taskId, item.ref, { status: "done", savedId }, true);
       return [
         `${existing ? "改訂" : "作成"}しました: 「${doc.title}」 (id: ${savedId})`,

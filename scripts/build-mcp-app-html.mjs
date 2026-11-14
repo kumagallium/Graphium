@@ -94,6 +94,44 @@ footer p { margin: 0 0 4px; }
 `;
 }
 
+/**
+ * グラフの画面（graph-view.ts）の見た目。紙と墨の色はノートプレビューと同じ。
+ * グラフそのものは cytoscape が canvas に描くので、ここは枠・ボタン・凡例だけ
+ */
+function graphViewCss() {
+  const font = (file) => readFileSync(join(repoRoot, "public", "fonts", file)).toString("base64");
+  return `
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400 700; src: url(data:font/woff2;base64,${font("inter.woff2")}) format('woff2'); }
+:root {
+  color-scheme: light;
+  --paper: oklch(0.99 0.0085 128.6);
+  --paper-2: oklch(0.976 0.0051 145.5);
+  --ink: oklch(0.278 0.0406 148.1);
+  --ink-3: oklch(0.474 0.0427 151.9);
+  --rule: oklch(0.896 0.0169 151.1);
+  --rule-2: oklch(0.913 0.0144 148.8);
+  --forest: oklch(0.48 0.09 150);
+  --ui: 'Inter', system-ui, -apple-system, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; }
+body { font-family: var(--ui); color: var(--ink); font-size: 14px; line-height: 1.5; }
+.card { border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); overflow: hidden; }
+header { padding: 12px 16px 8px; border-bottom: 1px solid var(--rule-2); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.title { font-size: 18px; font-weight: 700; line-height: 1.3; grid-column: 1; overflow-wrap: anywhere; }
+.meta { color: var(--ink-3); font-size: 12px; grid-column: 1; }
+.actions { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.btn { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper-2); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.btn:hover { border-color: var(--forest); }
+.graph { width: 100%; background: var(--paper); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 16px; border-top: 1px solid var(--rule-2); font-size: 12px; color: var(--ink-3); }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.info { padding: 0 16px 10px; font-size: 12px; overflow-wrap: anywhere; }
+.muted { color: var(--ink-3); }
+`;
+}
+
 /** スクリプトの中の `</script` を崩して、HTML の中で閉じタグと読まれないようにする */
 function escapeInlineScript(js) {
   return js.replace(/<\/(script)/gi, "<\\/$1");
@@ -121,6 +159,37 @@ export async function buildNotePreviewHtml() {
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     "<title>Graphium note preview</title>",
     `<style>${notePreviewCss()}</style>`,
+    "</head>",
+    "<body>",
+    '<div id="root"></div>',
+    `<script>${escapeInlineScript(js)}</script>`,
+    "</body>",
+    "</html>",
+  ].join("\n");
+}
+
+/** グラフの画面の HTML を組み立てる（cytoscape と fcose も同梱する） */
+export async function buildGraphViewHtml() {
+  const result = await build({
+    entryPoints: [join(repoRoot, "src", "mcp", "apps", "graph-view.ts")],
+    bundle: true,
+    write: false,
+    format: "iife",
+    platform: "browser",
+    target: "es2020",
+    minify: true,
+    legalComments: "none",
+    logLevel: "silent",
+  });
+  const js = result.outputFiles[0].text;
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    "<head>",
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    "<title>Graphium graph</title>",
+    `<style>${graphViewCss()}</style>`,
     "</head>",
     "<body>",
     '<div id="root"></div>',

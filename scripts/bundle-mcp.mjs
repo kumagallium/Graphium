@@ -13,7 +13,7 @@
 // pdfjs は自分の package.json の場所から cMap・標準フォントを引くので、パッケージの形のまま置く。
 
 import { build } from "esbuild";
-import { buildNotePreviewHtml } from "./build-mcp-app-html.mjs";
+import { buildGraphViewHtml, buildNotePreviewHtml } from "./build-mcp-app-html.mjs";
 import { cpSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +64,7 @@ const stubBrowserPdf = {
 
 // MCP Apps の画面（会話の中に描くノートプレビュー）は 1 枚の HTML にして埋め込む（src/mcp/apps/note-preview-html.ts）
 const notePreviewHtml = await buildNotePreviewHtml();
+const graphViewHtml = await buildGraphViewHtml();
 
 await build({
   entryPoints: [join(repoRoot, "src/mcp/index.ts")],
@@ -79,6 +80,7 @@ await build({
   define: {
     __GRAPHIUM_VERSION__: JSON.stringify(pkg.version),
     __GRAPHIUM_NOTE_PREVIEW_HTML__: JSON.stringify(notePreviewHtml),
+    __GRAPHIUM_GRAPH_VIEW_HTML__: JSON.stringify(graphViewHtml),
     // Vite の import.meta.env を参照するコード（prov-generator のデバッグ出力など）を Node で動かす
     "import.meta.env.DEV": "false",
     "import.meta.env.BASE_URL": '"/"',

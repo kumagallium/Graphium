@@ -19,7 +19,11 @@ import { readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { z } from "zod";
 
+import { getGraphViewHtml } from "./apps/graph-view-html";
 import { getNotePreviewHtml } from "./apps/note-preview-html";
+import { buildFlowPayload, buildKnowledgePayload, buildLineagePayload, GRAPH_META_KEY, type GraphPayload } from "./graph-views";
+import { traceLineage } from "./lineage";
+import { describeSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { buildNotePreview, flattenPreviewBlocks, type NotePreview } from "./note-preview";
 import type { ToolContext } from "./tools";
 import { findMediaDataFile, mediaDir, validateMediaId } from "./media-tools";
@@ -27,6 +31,13 @@ import { getEntry } from "./search";
 import { readNote, vaultExists } from "./vault";
 
 export const NOTE_PREVIEW_URI = "ui://graphium/note-preview.html";
+export const GRAPH_VIEW_URI = "ui://graphium/graph.html";
+
+/** グラフを描く道具の _meta（新旧どちらの書き方のホストでも読めるよう両方入れる） */
+export const GRAPH_VIEW_TOOL_META = {
+  ui: { resourceUri: GRAPH_VIEW_URI },
+  [RESOURCE_URI_META_KEY]: GRAPH_VIEW_URI,
+} as const;
 
 /** 道具の定義に付ける _meta（新旧どちらの書き方のホストでも読めるよう両方入れる） */
 export const NOTE_PREVIEW_TOOL_META = {
@@ -151,6 +162,146 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
           },
         ],
         _meta: { [PREVIEW_META_KEY]: preview, [PREVIEW_IMAGES_META_KEY]: resolvePreviewImages(preview) },
+      };
+    },
+  );
+
+  // ── グラフ（手順の流れ・来歴・全体グラフ） ─────────────────────
+  registerAppResource(
+    server,
+    "Graphium graph",
+    GRAPH_VIEW_URI,
+    { description: "Graphium の手順の流れ・来歴・全体グラフを会話の中に描く画面" },
+    async () => ({
+      contents: [
+        {
+          uri: GRAPH_VIEW_URI,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: await getGraphViewHtml(),
+          _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false } },
+        },
+      ],
+    }),
+  );
+
+  const graphResult = (summary: string, payload: GraphPayload): CallToolResult => ({
+    content: [{ type: "text", text: summary }],
+    _meta: { [GRAPH_META_KEY]: payload },
+  });
+
+  registerAppTool(
+    server,
+    "show_steps",
+    {
+      title: "手順の流れを図で見せる",
+      description:
+        "ノート 1 件の手順の流れ（材料・装置 → 手順 → 生成物のつながりと条件）を、会話の中に図として描く（対応しているクライアントのみ）。" +
+        "手順ノートを作った直後（submit_procedure のあと）に、つながりを確かめてもらうときにも使う。" +
+        "中身を文字で読みたいだけなら get_note_steps を使う。",
+      inputSchema: { noteId: z.string().describe("ノート ID") },
+      annotations: { readOnlyHint: true },
+      _meta: GRAPH_VIEW_TOOL_META,
+    },
+    async ({ noteId }) => {
+      if (!vaultExists()) return text("Graphium の vault が見つかりません。");
+      const doc = readNote(noteId);
+      if (!doc) return text(`ノートが見つかりません: ${noteId}`);
+      const payload = buildFlowPayload(doc as any);
+      if (!payload) return text(`このノートには手順ブロックがありません: ${doc.title ?? noteId}`);
+      void ctx.usage?.recordRead(noteId);
+      const steps = payload.nodes.filter((n) => n.kind === "step").length;
+      return graphResult(
+        `「${payload.title}」の手順の流れを図で表示しました（手順 ${steps} 件・実体 ${payload.nodes.length - steps} 件）。` +
+          "文字で読むなら get_note_steps を使ってください。",
+        payload,
+      );
+    },
+  );
+
+  registerAppTool(
+    server,
+    "show_lineage",
+    {
+      title: "来歴を図で見せる",
+      description:
+        "ノート・ナレッジのページ・資料の来歴（派生元と派生先）を、会話の中に図として描く（対応しているクライアントのみ）。" +
+        "「この結論はどこから来たのか」を見せたいときに使う。文字で知りたいだけなら trace_lineage を使う。",
+      inputSchema: {
+        noteId: z.string().describe("起点のノート ID（pdf:… / document:… / url:… の資料 id も可）"),
+        direction: z.enum(["upstream", "downstream", "both"]).optional().describe("辿る向き（既定 both）"),
+        depth: z.number().int().min(1).max(5).optional().describe("何段辿るか（既定 2）"),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: GRAPH_VIEW_TOOL_META,
+    },
+    async ({ noteId, direction, depth }) => {
+      if (!vaultExists()) return text("Graphium の vault が見つかりません。");
+      const external = isExternalSourceId(noteId);
+      const doc = external ? null : readNote(noteId);
+      if ((!external && !doc) || (external && isUnknownExternalSource(noteId))) {
+        return text(`ノートまたは資料が見つかりません: ${noteId}`);
+      }
+      const startTitle = doc ? (doc.title ?? noteId) : describeSource(noteId).title;
+      const result = traceLineage(noteId, { direction, depth });
+      const payload = buildLineagePayload(result, startTitle);
+      for (const n of [...result.upstream, ...result.downstream]) ctx.activity?.push("walk", n.noteId, n.fromId ?? noteId);
+      return graphResult(
+        `「${startTitle}」の来歴を図で表示しました（上流 ${result.upstream.length} 件・下流 ${result.downstream.length} 件・つながり ${result.connections.length} 件）。` +
+          "文字で読むなら trace_lineage を使ってください。",
+        payload,
+      );
+    },
+  );
+
+  registerAppTool(
+    server,
+    "show_knowledge_graph",
+    {
+      title: "全体グラフを見せる",
+      description:
+        "Graphium の全体グラフ（ノート・トピック・知見・洞察・資料のつながり）を、会話の中に描く（対応しているクライアントのみ）。" +
+        "開いている間、この会話で読んだページ・たどった線・書いたページが光るので、" +
+        "ユーザーが「どこを見て答えているか見ながら話したい」と言ったときに、会話の最初に開く。" +
+        "folder を指定するとそのフォルダの外を薄く描く。ホストが対応していれば、会話の横に浮かせて表示できる。",
+      inputSchema: {
+        folder: z.string().optional().describe("範囲にするフォルダ（\"親\" または \"親/子\"）。外は薄く描く"),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: GRAPH_VIEW_TOOL_META,
+    },
+    async ({ folder }) => {
+      if (!vaultExists()) return text("Graphium の vault が見つかりません。");
+      const payload = buildKnowledgePayload({ folder });
+      if (!payload) return text("NO_INDEX: Graphium を一度起動してください（note-index.json がありません）。");
+      const counts = new Map<string, number>();
+      for (const n of payload.nodes) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1);
+      return graphResult(
+        `全体グラフを表示しました（${payload.nodes.length} ノード・${payload.edges.length} 本の線` +
+          (payload.truncated ? `。大きいので ${payload.truncated.total} 件中 ${payload.truncated.shown} 件` : "") +
+          `）。この会話で読んだ・書いたページはグラフの上で光ります。`,
+        payload,
+      );
+    },
+  );
+
+  // 画面だけが呼ぶ道具（モデルには見せない）。全体グラフが数秒おきに、触れたものを受け取る
+  registerAppTool(
+    server,
+    "graph_activity",
+    {
+      title: "グラフに光らせる出来事を受け取る",
+      description: "全体グラフの画面が、この MCP で外の AI が触れたもの（読んだ・検索に出た・たどった・書いた）を受け取る。画面専用。",
+      inputSchema: {
+        since: z.number().int().min(0).optional().describe("最後に受け取った番号（既定 0）"),
+      },
+      annotations: { readOnlyHint: true },
+      _meta: { ui: { resourceUri: GRAPH_VIEW_URI, visibility: ["app"] } },
+    },
+    async ({ since }) => {
+      const r = ctx.activity?.since(since ?? 0) ?? { events: [], cursor: since ?? 0 };
+      return {
+        content: [{ type: "text", text: `${r.events.length} events` }],
+        structuredContent: r,
       };
     },
   );
