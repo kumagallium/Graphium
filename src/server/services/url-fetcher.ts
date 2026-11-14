@@ -2,6 +2,8 @@
 // 外部 URL を取得し、HTML からタイトル・OGP・本文テキストを抽出する
 // /api/wiki/fetch-url と /api/prov/ingest-url の両方から使う共通処理
 
+import { parseHTML } from "linkedom";
+
 const USER_AGENT = "Graphium/1.0 (Knowledge Layer)";
 const ACCEPT = "text/html,application/xhtml+xml,text/plain,application/pdf";
 const FETCH_TIMEOUT_MS = 15_000;
@@ -76,19 +78,12 @@ export async function fetchPageAsText(
   };
 }
 
+/** 本文テキストに含めない要素（実行物・装飾・ページの枠）。 */
+const NON_CONTENT_SELECTOR = "script, style, noscript, template, nav, header, footer";
+
 /**
  * HTML 文字列からタイトル・説明・本文を抽出する
  */
-/** デコード対象のエンティティ表（1 パス置換用）。 */
-const ENTITY_MAP: Record<string, string> = {
-  "&nbsp;": " ",
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-};
-
 export function extractFromHtml(
   html: string,
   maxTextChars: number = DEFAULT_MAX_TEXT_CHARS,
@@ -102,25 +97,33 @@ export function extractFromHtml(
   const metaDescription =
     html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? "";
 
-  // 変化がなくなるまでブロック・タグを除去する（入れ子で分断された形の取りこぼし防止）。
-  // 閉じタグの空白や余計な属性（`</script >`・`</script\tfoo>`）も許す。
-  let stripped = html;
-  for (let prev = ""; prev !== stripped; ) {
-    prev = stripped;
-    stripped = stripped
-      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, "")
-      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, "")
-      .replace(/<nav\b[\s\S]*?<\/nav\b[^>]*>/gi, "")
-      .replace(/<header\b[\s\S]*?<\/header\b[^>]*>/gi, "")
-      .replace(/<footer\b[\s\S]*?<\/footer\b[^>]*>/gi, "")
-      .replace(/<[^>]+>/g, "\n");
-  }
-  // ここまでで残った `<` は壊れたタグの欠片だけ（本文の `<` は `&lt;` のまま残っていて、下でデコードする）。
-  // 欠片から要素が組み上がらないよう落とす。
-  stripped = stripped.replace(/</g, "");
-  // エンティティは 1 パスでデコードする（`&amp;lt;` を `<` に二重デコードしない）。
-  let bodyText = stripped
-    .replace(/&(?:nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITY_MAP[m] ?? m)
+  // 本文は DOM（linkedom）で取り出す。正規表現でのタグ除去は `</script >` や
+  // 入れ子で分断された形を取りこぼす。テキストノードを改行でつなぐので、
+  // 「タグの位置で改行する」従来の見た目は保つ。エンティティは DOM がデコードする
+  // （`&amp;lt;` は `&lt;` のまま。二重デコードしない）。
+  // linkedom は文書の形をしていない断片を body に入れないので、包んでから解析する。
+  const docHtml = /<html[\s>]/i.test(html)
+    ? html
+    : `<!doctype html><html><head></head><body>${html}</body></html>`;
+  const { document: doc } = parseHTML(docHtml);
+  for (const el of Array.from(doc.querySelectorAll(NON_CONTENT_SELECTOR))) el.remove();
+  const root = doc.body ?? doc.documentElement;
+  // 改行は要素の境目（開きと閉じ）にだけ入れる。linkedom はエンティティの位置で
+  // テキストノードを分けることがあるので、テキスト同士の間には入れない。
+  const texts: string[] = [];
+  type WalkNode = { nodeType: number; nodeValue: string | null; childNodes: ArrayLike<unknown> };
+  const walk = (node: WalkNode) => {
+    if (node.nodeType === 3) {
+      texts.push((node.nodeValue ?? "").replace(/\u00a0/g, " "));
+      return;
+    }
+    texts.push("\n");
+    for (const child of Array.from(node.childNodes)) walk(child as WalkNode);
+    texts.push("\n");
+  };
+  if (root) for (const child of Array.from(root.childNodes)) walk(child as unknown as WalkNode);
+  let bodyText = texts
+    .join("")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
