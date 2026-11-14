@@ -6,7 +6,7 @@
 // POST /api/models/available — プロバイダーのモデル一覧取得
 
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
+import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel, getServerMode } from "../config/models.js";
 import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
 import { aiErrorCodeOf, errorBody } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
@@ -14,6 +14,8 @@ import { resolveCopilotBinaryAsync } from "../services/cli-binary-resolver.js";
 import { copilotCliManager, CopilotCliError } from "../services/copilot-cli-manager.js";
 import { listCopilotModels } from "../services/copilot-subscription.js";
 import { isDuplicateModelName } from "../../lib/model-name-rules.js";
+import { chatgptPlanManager, ChatGptSignInError } from "../services/chatgpt-plan/manager.js";
+import { describeChatGptPlanError, listChatGptPlanModels } from "../services/chatgpt-plan/model.js";
 
 const app = new Hono();
 
@@ -73,6 +75,10 @@ app.use("/copilot/install", requireJson);
 app.use("/copilot/install/cancel", requireJson);
 app.use("/copilot/login", requireJson);
 app.use("/copilot/login/cancel", requireJson);
+app.use("/chatgpt/sign-in", requireJson);
+app.use("/chatgpt/sign-in/cancel", requireJson);
+app.use("/chatgpt/sign-out", requireJson);
+app.use("/chatgpt/welcomed", requireJson);
 
 // 状態（軽い。CLI は起動しない）
 app.get("/copilot/status", async (c) => c.json(await copilotCliManager.getStatus()));
@@ -157,6 +163,88 @@ function copilotErrorResponse(c: Context, err: unknown) {
   if (err instanceof CopilotCliError) {
     const status =
       err.code === "ALREADY_INSTALLING" || err.code === "ALREADY_SIGNING_IN" ? 409 : 400;
+    return c.json({ error: err.message, code: err.code }, status);
+  }
+  return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+}
+
+// ---- Sign in with ChatGPT（設定 → AI の「ChatGPT でサインイン」） ----
+
+// 状態（軽い。ネットワークは使わない）
+app.get("/chatgpt/status", (c) => c.json(chatgptPlanManager.getStatus()));
+
+// サインインを始める。返った authUrl をシステムブラウザで開く（進捗は status で読む）
+app.post("/chatgpt/sign-in", async (c) => {
+  if (getServerMode() !== "node") {
+    return c.json(
+      { error: "Sign in with ChatGPT is not available in this environment.", code: "CHATGPT_UNAVAILABLE" },
+      400,
+    );
+  }
+  try {
+    const { authUrl } = await chatgptPlanManager.startSignIn();
+    return c.json({ authUrl }, 202);
+  } catch (err) {
+    return chatgptErrorResponse(c, err);
+  }
+});
+
+app.post("/chatgpt/sign-in/cancel", (c) => {
+  chatgptPlanManager.cancelSignIn();
+  return c.json({});
+});
+
+// サインアウト（OpenAI 側でのトークン失効を試み、ローカルのトークンは必ず消す）
+app.post("/chatgpt/sign-out", async (c) => {
+  try {
+    return c.json(await chatgptPlanManager.signOut());
+  } catch (err) {
+    return chatgptErrorResponse(c, err);
+  }
+});
+
+// 初回の案内を見た印
+app.post("/chatgpt/welcomed", (c) => {
+  try {
+    chatgptPlanManager.markWelcomed();
+    return c.json({});
+  } catch (err) {
+    return chatgptErrorResponse(c, err);
+  }
+});
+
+// サインインとプラン利用の確認（モデル一覧を取る。ボタン操作時だけ）
+app.get("/chatgpt/models", async (c) => {
+  const status = chatgptPlanManager.getStatus();
+  if (!status.account) {
+    return c.json({ ok: false, code: "CHATGPT_NOT_SIGNED_IN", message: "Not signed in with ChatGPT" });
+  }
+  if (!status.account.planUsage) {
+    return c.json({
+      ok: false,
+      code: "CHATGPT_PLAN_USAGE_NOT_GRANTED",
+      message: "Plan usage was not granted for this sign-in",
+    });
+  }
+  try {
+    const models = await listChatGptPlanModels();
+    return c.json({ ok: true, models });
+  } catch (err) {
+    const described = describeChatGptPlanError(err);
+    const code =
+      described?.code === "CHATGPT_PLAN_AUTH_EXPIRED"
+        ? "CHATGPT_NOT_SIGNED_IN"
+        : described?.code === "CHATGPT_PLAN_NOT_ELIGIBLE"
+          ? "CHATGPT_NOT_ELIGIBLE"
+          : "CHATGPT_CHECK_FAILED";
+    const message = described?.message ?? (err instanceof Error ? err.message : String(err));
+    return c.json({ ok: false, code, message });
+  }
+});
+
+function chatgptErrorResponse(c: Context, err: unknown) {
+  if (err instanceof ChatGptSignInError) {
+    const status = err.code === "ALREADY_SIGNING_IN" ? 409 : 400;
     return c.json({ error: err.message, code: err.code }, status);
   }
   return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);

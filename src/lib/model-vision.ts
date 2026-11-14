@@ -31,6 +31,10 @@ export function modelAcceptsImages(model: VisionModelInfo | null | undefined): b
     case "google":
     case "copilot-subscription":
       return true;
+    case "chatgpt-plan":
+      // Responses API はインライン画像を受け取れる（Files API は使えないが、チャットの画像は
+      // data URL で渡る）。モデルは公式 OpenAI なので openai（apiBase なし）と同じ扱い
+      return !OPENAI_TEXT_ONLY_RE.test(id);
     case "openai":
       // apiBase 付きは中身が OpenAI とは限らない（互換サーバー）ので名前で見る
       if (model.apiBase) return COMPATIBLE_VISION_RE.test(id);
