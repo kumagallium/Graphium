@@ -3909,6 +3909,7 @@ can read your vault, add notes to it, maintain the knowledge layer
 (topics and answer pages), and act as the model for claim extraction — never
 editing the notes themselves.
 
+- Server instructions: `src/mcp/server-instructions.ts` is returned in the MCP `initialize` response (built in `src/mcp/create-server.ts`). It asks the assistant to offer, in one line, to save a conversation at a natural stopping point, and never to save unasked. It is a request to the model, so whether it asks is up to the client and model.
 - Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
   `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
 - Desktop distribution: `scripts/bundle-server.mjs` also runs
