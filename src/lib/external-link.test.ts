@@ -2,6 +2,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installExternalLinkHandler, isSameOriginHref, openExternalUrl } from "./external-link";
 
+// Tauri 扱いのとき、外部リンクのクリックは opener プラグインを動的 import して開く（待たずに投げる）。
+// 本物を読むと失敗して window.open に落ち、それがテストの後始末より後に走ることがある
+// （負荷が高いと「window is not defined」の未処理エラーになる）。偽物にして、各テストで読み込みの完了を待つ
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => {}) }));
+
 afterEach(() => {
   vi.restoreAllMocks();
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -40,16 +45,17 @@ describe("installExternalLinkHandler: 許可リスト外のスキーム", () => 
     }
   });
 
-  it("相対・# 始まり・mailto・blob:・data: は素通し", () => {
+  it("相対・# 始まり・mailto・blob:・data: は素通し", async () => {
     vi.spyOn(window, "open").mockImplementation(() => null);
     for (const h of ["#top", "/Graphium/manual/", "x.html", "mailto:a@e.example", "blob:http://localhost/abc", "data:text/plain,x"]) {
       expect(click(`<a id="a" href="${h}">x</a>`).defaultPrevented, h).toBe(false);
     }
+    await vi.dynamicImportSettled();
   });
 });
 
 describe("installExternalLinkHandler: SVG の <a>（監査 #96）", () => {
-  it("xlink:href のみの SVG <a> も横取りされ、メインウィンドウは遷移しない", () => {
+  it("xlink:href のみの SVG <a> も横取りされ、メインウィンドウは遷移しない", async () => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     vi.spyOn(window, "open").mockImplementation(() => null);
     installExternalLinkHandler();
@@ -57,6 +63,7 @@ describe("installExternalLinkHandler: SVG の <a>（監査 #96）", () => {
     const ev = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
     document.getElementById("r")!.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+    await vi.dynamicImportSettled();
   });
 
   it("SVG の <a href=javascript:> は遷移させない", () => {

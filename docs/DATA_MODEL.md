@@ -3936,10 +3936,15 @@ Graphium/
 │   │                          #   startOffsetMs: { system, mic } (informational: the WAV
 │   │                          #   already starts each side with that much silence, so
 │   │                          #   readers must not shift by it again) and tracks: { system, mic })
-│   ├── <fileId>.transcript.json  # meeting recordings only (desktop): { version: 1, language,
-│                                 #   engine, model, windowSec, channels, segments: [{ track:
-│                                 #   "system" | "mic", startMs, endMs, text, noSpeechProb }] }
-│                                 #   in time order, rewritten after every window
+│   ├── <fileId>.transcript.json  # audio materials that were transcribed (desktop): meeting recordings
+│                                 #   and other audio (phone voice notes arriving through the inbox,
+│                                 #   m4a / weba / wav, transcribed automatically or by "Transcribe"):
+│                                 #   { version: 1, language, engine, model, windowSec, channels,
+│                                 #   segments: [{ track: "system" | "mic" | null, startMs, endMs, text,
+│                                 #   noSpeechProb }] } in time order, rewritten after every window.
+│                                 #   Stereo meeting recordings carry both tracks; mono audio (anything
+│                                 #   that is not a meeting recording) has track: null, and its .txt lines are
+│                                 #   "[mm:ss] text" (no them: / me: label)
 │   ├── <fileId>.cleanup.json     # meeting recordings, when "Clean up" ran (desktop): CleanupDoc (§2.6)
 │   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
@@ -3961,7 +3966,13 @@ Graphium/
     ├── graph-layouts.json          # saved manual graph arrangements (§5.4)
     ├── ai-usage-<YYYYMMDD>-<app|mcp>-<session>.json  # pages AI cited (app chats) or opened (MCP get_note / get_topic): ids, times and groups only (§2.4 "AI usage records")
     ├── captures.json               # the memo list, CaptureIndex { version: 1, updatedAt, captures: CaptureEntry[] } (§2.7) — written by the app, read by the MCP export_prov
-    ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model downloaded at first use (small / base), SHA-256 verified
+    ├── models/whisper/ggml-<size>.bin  # desktop only: whisper model, SHA-256 verified. Downloaded when transcription is first needed:
+    │                                   #   pressing "Transcribe", a recording that has actually started with live transcription on, or an audio file
+    │                                   #   arriving through the inbox. The automatic starts (inbox, recording) try once per app launch
+    │                                   #   and not at all after the user cancelled the download or deleted the model in Settings
+    ├── transcribe-input/<fileId>.wav[.part]  # desktop only, temporary: audio converted by the WebView to 16 kHz / mono / 16-bit and handed to
+    │                                   #   Rust for one transcription job (never in media/). Removed when the job ends (done, failed,
+    │                                   #   cancelled) and swept at launch; capped at 2 h per file, 1 GiB in total, 2 files at a time
     ├── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
     ├── shared-chats:<sharedId>.json # AI chats about a shared entry, local only (§2.5)
     ├── opened/<fileId>/            # desktop only: "Open in app" — <display name> is the editable copy handed
