@@ -2729,7 +2729,7 @@ export const en: Record<string, string> = {
   "mobile.audio.start": "Start recording",
   "mobile.audio.stop": "Stop",
   "mobile.audio.requesting": "Waiting for microphone access...",
-  "mobile.audio.recording": "Recording",
+  "mobile.audio.recording": "Recording — keep this screen open",
   "mobile.audio.processing": "Finishing up...",
   "mobile.audio.retake": "Record again",
   "mobile.audio.capture": "Capture",
