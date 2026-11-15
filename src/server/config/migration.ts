@@ -21,6 +21,7 @@ import {
   copyFileSync,
   mkdirSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -35,6 +36,9 @@ export const LEGACY_DATA_DIR = join(
 
 /** テスト用に LEGACY_DATA_DIR の代わりを差し込めるよう、関数の第二引数で
  *  legacy path を override できるようにしている。本番呼び出しは省略する。 */
+
+/** 移行が済んだ印（新 dataDir 直下）。あれば二度と旧 dataDir から複製しない */
+const MIGRATION_DONE_MARKER = ".legacy-migrated";
 
 /** トップレベルで移行する対象 */
 const MIGRATION_TARGETS = ["models.json", "profiles.json", "usage"] as const;
@@ -62,13 +66,14 @@ export function migrateLegacyDataDir(
   if (legacyDir === newDataDir) return result;
 
   // 旧 path の存在確認自体が TCC で落ちることがあるので try で囲む
-  let legacyExists = false;
+  // 「無い」(ENOENT) と「読めない」(TCC 拒否など) は区別する。読めない回は印を書かず次回やり直す
+  let legacyExists = true;
   try {
-    legacyExists = existsSync(legacyDir);
-  } catch {
-    return result;
+    statSync(legacyDir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") return result;
+    legacyExists = false;
   }
-  if (!legacyExists) return result;
 
   try {
     mkdirSync(newDataDir, { recursive: true });
@@ -80,6 +85,21 @@ export function migrateLegacyDataDir(
     return result;
   }
 
+  // 済みの印があれば何もしない
+  // （利用者が新側で消した・作り直した設定を、旧側から再度書き戻さない）
+  if (existsSync(join(newDataDir, MIGRATION_DONE_MARKER))) {
+    result.skipped.push(...MIGRATION_TARGETS);
+    return result;
+  }
+
+  // 旧側が最初から無い起動も「済み」にする。あとで旧側に models.json が置かれても
+  // （同期フォルダ・ZIP 展開など）新規の利用者へ複製しない
+  if (!legacyExists) {
+    writeDoneMarker(newDataDir);
+    result.skipped.push(...MIGRATION_TARGETS);
+    return result;
+  }
+
   for (const name of MIGRATION_TARGETS) {
     const src = join(legacyDir, name);
     const dst = join(newDataDir, name);
@@ -88,6 +108,7 @@ export function migrateLegacyDataDir(
         result.skipped.push(name);
         continue;
       }
+      // 新側に既にあるものは上書きしない（models.json は apiBase を含むので特に）
       if (existsSync(dst)) {
         result.skipped.push(name);
         continue;
@@ -104,7 +125,20 @@ export function migrateLegacyDataDir(
     }
   }
 
+  // エラーなく一巡したときだけ印を書く（TCC 拒否などで失敗した回は次回やり直す）
+  if (result.errors.length === 0) {
+    writeDoneMarker(newDataDir);
+  }
+
   return result;
+}
+
+function writeDoneMarker(newDataDir: string): void {
+  try {
+    writeFileSync(join(newDataDir, MIGRATION_DONE_MARKER), new Date().toISOString());
+  } catch {
+    // 印が書けなくても起動は続ける
+  }
 }
 
 function copyDirRecursive(src: string, dst: string): void {

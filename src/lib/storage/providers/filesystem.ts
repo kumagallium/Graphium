@@ -8,6 +8,7 @@ import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
 import { bytesToBase64 } from "@/lib/base64";
 import { assertValidAppDataKey } from "../app-data-key";
+import { isSafeStorageId } from "../safe-id";
 
 /** Rust 側 FileInfo の型 */
 type RustFileInfo = {
@@ -221,7 +222,10 @@ export class LocalFilesystemProvider implements StorageProvider {
   extractFileId(url: string): string | null {
     // file-media://{fileId} 形式から ID を抽出
     const match = url.match(/^file-media:\/\/(.+)$/);
-    return match ? match[1] : null;
+    if (!match) return null;
+    // 他人のノートに仕込まれた `file-media://../../x` や UNC パス（\\host\share）は id として扱わない。
+    // 読みに行くと、データフォルダの外のファイルを読む・Windows が SMB 認証を送る
+    return isSafeStorageId(match[1]) ? match[1] : null;
   }
 
   async getUserEmail(): Promise<string | null> {

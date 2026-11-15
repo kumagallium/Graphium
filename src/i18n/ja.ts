@@ -2411,6 +2411,7 @@ export const ja: Record<string, string> = {
   "asset.openInApp": "アプリで開く",
   "asset.openInAppHint": "Word・Excel・PowerPoint などでコピーを開きます。Graphium に戻ったとき、編集した内容を取り込むか選べます",
   "asset.openInAppFailed": "アプリで開けませんでした。",
+  "asset.openInAppBlocked": "この種類のファイルは安全のためここからは開けません。",
   "asset.openedCopy.changed": "{name} がほかのアプリで編集されました",
   "asset.openedCopy.willReplace": "この素材はまだどこからも引用されていないので、編集した内容で置き換えます。",
   "asset.openedCopy.willAddVersion": "この素材はノートや知識から引用されているので、元の版はそのまま残し、編集した内容を新しい版として追加します。",
@@ -2662,6 +2663,7 @@ export const ja: Record<string, string> = {
   // プレビュー（サイドピーク）— 取り込む前に中身を見て取捨選択する
   "mobile.openPreview": "プレビューを開く",
   "mobile.previewLoading": "プレビューを読み込み中...",
+  "mobile.previewTooLarge": "大きすぎて、ここでは表示できません。",
   "mobile.previewFailed": "このファイルを読み込めませんでした: {error}",
   "mobile.importThis": "この項目を取り込み",
   // 空状態・エラー

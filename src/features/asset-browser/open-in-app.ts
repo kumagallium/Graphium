@@ -19,6 +19,22 @@ export function canOpenInApp(entry: Pick<MediaIndexEntry, "type">): boolean {
   return getActiveProvider().id === "filesystem";
 }
 
+/**
+ * Rust が「実行ファイル・スクリプト・ショートカットの拡張子なので開かない」と断ったときの印。
+ * 画面には専用の文言（asset.openInAppBlocked）を出す。
+ */
+const BLOCKED_PREFIX = "blocked-executable-type";
+
+export function isOpenInAppBlockedError(err: unknown): boolean {
+  const msg = typeof err === "string" ? err : err instanceof Error ? err.message : "";
+  return msg.startsWith(BLOCKED_PREFIX);
+}
+
+/** 開けなかったときの画面文言のキー。断られた種類なら専用の文言にする */
+export function openInAppFailureKey(err: unknown): "asset.openInAppBlocked" | "asset.openInAppFailed" {
+  return isOpenInAppBlockedError(err) ? "asset.openInAppBlocked" : "asset.openInAppFailed";
+}
+
 /** 素材の読み取り専用コピーを既定のアプリで開く */
 export async function openInApp(entry: Pick<MediaIndexEntry, "fileId" | "url" | "name">): Promise<void> {
   const provider = getActiveProvider();

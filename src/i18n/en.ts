@@ -2411,6 +2411,7 @@ export const en: Record<string, string> = {
   "asset.openInApp": "Open in app",
   "asset.openInAppHint": "Opens a copy in Word, Excel, PowerPoint or another app. When you come back, Graphium asks whether to bring your edits in",
   "asset.openInAppFailed": "Couldn't open the file in an app.",
+  "asset.openInAppBlocked": "For safety, this type of file can't be opened from here.",
   "asset.openedCopy.changed": "{name} was edited in another app",
   "asset.openedCopy.willReplace": "Nothing cites this material yet, so the edits replace it.",
   "asset.openedCopy.willAddVersion": "Notes or knowledge cite this material, so it is kept as it is and the edits are added as a new version.",
@@ -2664,6 +2665,7 @@ export const en: Record<string, string> = {
   // Preview side peek (look before you decide what to keep)
   "mobile.openPreview": "Open preview",
   "mobile.previewLoading": "Loading preview...",
+  "mobile.previewTooLarge": "This file is too large to show here.",
   "mobile.previewFailed": "Could not read this file: {error}",
   "mobile.importThis": "Import this file",
   // Empty / error states

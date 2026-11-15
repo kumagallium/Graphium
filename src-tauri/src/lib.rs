@@ -170,16 +170,28 @@ mod sidecar_job {
     }
 }
 
+/// sidecar に渡す CORS_ORIGINS。debug ビルドだけ dev の vite（5174）を足す。release は空文字
+/// （「追加の許可なし」。Tauri の WebView のオリジンは sidecar が自前で許可リストに足す）。
+fn sidecar_cors_origins() -> &'static str {
+    if cfg!(debug_assertions) {
+        "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost"
+    } else {
+        ""
+    }
+}
+
 /// 子プロセスを Rust 側で起動する。
 /// 戻り値は spawn できた PID。renderer 側はその後 `sidecar-log` /
 /// `sidecar-closed` イベントをリッスンしてバックエンドの状態を追う。
 #[tauri::command]
 fn start_native_sidecar(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     state: tauri::State<'_, NativeSidecarState>,
     data_dir: String,
     port: Option<u16>,
 ) -> Result<u32, String> {
+    require_main_window(&window)?;
     let port = port.unwrap_or(3001);
 
     let emit_log = |app: &tauri::AppHandle, line: String| {
@@ -233,10 +245,10 @@ fn start_native_sidecar(
     let mut cmd = Command::new(&node_path);
     cmd.arg(&server_script)
         .env("PORT", port.to_string())
-        .env(
-            "CORS_ORIGINS",
-            "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
-        )
+        // 開発用オリジン（vite の 5174）は debug ビルドだけ許す。release で渡すと、利用者が
+        // 別プロジェクトの dev サーバーを 5174 で動かしているとき、そのページのスクリプトが
+        // 127.0.0.1 の API 応答を読めてしまう。Tauri の WebView 3 オリジンは sidecar 側で常に足される
+        .env("CORS_ORIGINS", sidecar_cors_origins())
         .env("DATA_DIR", &data_dir)
         // macOS の Keychain 経由で API キーを扱うよう sidecar に明示する。
         // 旧形式（models.json に平文）が残っていれば sidecar 側で Keychain へ移行する。
@@ -754,6 +766,68 @@ fn graphium_root() -> Result<PathBuf, String> {
     }
 }
 
+/// 削除・外部で開く・保存先の変更のような影響の大きいコマンドは、メインウィンドウからだけ受ける。
+/// 別ウィンドウ（viewer）が読むのは共有ノートなど外から来た内容を含み、capabilities の ACL は
+/// アプリ自前のコマンドには効かないため、ここで呼び出し元のラベルを見る。
+fn require_main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    check_main_label(window.label())
+}
+
+/// ラベルが main のときだけ通す（require_main_window の判定本体。単体テスト用に分けている）。
+fn check_main_label(label: &str) -> Result<(), String> {
+    if label == MAIN_LABEL {
+        Ok(())
+    } else {
+        Err("このウィンドウからは実行できません".to_string())
+    }
+}
+
+// --- パスの 1 要素に使う id・名前の検査 ---
+//
+// 素材 id・ノート id などは `dir.join(format!("{id}.json"))` のようにパスへ組み込まれる。
+// `Path::join` は絶対パス（Windows では UNC `\\host\share` も）を渡すと基準を置き換え、
+// `..` は基準の外へ出るので、ノートの本文に紛れた `file-media://../../x` や細工した
+// @メンションのリンク先がそのまま任意のパスを指せてしまう。パスを組み立てる前に必ず通す。
+// 実際に生成される id（UUID・ハイフン・下線・`<id>.<拡張子>`）はすべて通る。
+
+/// id・ファイル名として使えるか。空・区切り文字（`/` `\`）・`..`・先頭の `.`・NUL と
+/// 制御文字を断る。`:` は Windows でだけ断る（ドライブ指定・代替データストリーム）。
+/// macOS / Linux では `:` 入りの名前は 1 要素のままで外へ出ないうえ、既存のデータに
+/// `wiki:<uuid>.json` のような名前が残っていることがあり、断ると開くことも消すこともできなくなる。
+/// Windows では `:` 入りのファイル名は作れないので、断っても既存のデータは壊れない。
+pub(crate) fn validate_id_component(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.contains(['/', '\\'])
+        || (cfg!(windows) && id.contains(':'))
+        || id.contains("..")
+        || id.starts_with('.')
+        || id.chars().any(|c| c.is_control())
+    {
+        return Err(format!("不正な id: {}", id.escape_debug()));
+    }
+    Ok(())
+}
+
+/// `base/<id><suffix>` を組み立てる。id を検査したうえで、できたパスが base 直下の
+/// 1 要素であること（base の外へ出ない・絶対パスで置き換わらない）も確かめる。
+fn join_id_component(base: &Path, id: &str, suffix: &str) -> Result<PathBuf, String> {
+    validate_id_component(id)?;
+    join_single_component(base, &format!("{id}{suffix}"))
+}
+
+/// `base/<name>` を組み立てる。name は base 直下の通常の 1 要素でなければならない
+/// （絶対パス・ドライブ指定・UNC・`..`・区切り文字入りは断る）。
+fn join_single_component(base: &Path, name: &str) -> Result<PathBuf, String> {
+    let mut comps = Path::new(name).components();
+    let single_normal =
+        matches!(comps.next(), Some(std::path::Component::Normal(_))) && comps.next().is_none();
+    let path = base.join(name);
+    if !single_normal || path.parent() != Some(base) {
+        return Err(format!("不正なパス要素: {}", name.escape_debug()));
+    }
+    Ok(path)
+}
+
 // --- ファイルシステムコマンド ---
 
 fn ensure_subdir(name: &str) -> Result<PathBuf, String> {
@@ -807,7 +881,8 @@ fn get_graphium_root() -> Result<GraphiumRootInfo, String> {
 /// `path` が `None` または空文字列ならカスタム設定をクリア（既定に戻る）。
 /// 実在しないディレクトリが指定された場合は作成を試みる。
 #[tauri::command]
-fn set_graphium_root(path: Option<String>) -> Result<GraphiumRootInfo, String> {
+fn set_graphium_root(window: tauri::WebviewWindow, path: Option<String>) -> Result<GraphiumRootInfo, String> {
+    require_main_window(&window)?;
     let mut config = read_app_config()?;
     match path {
         Some(p) if !p.trim().is_empty() => {
@@ -1003,14 +1078,14 @@ fn list_note_files() -> Result<Vec<FileInfo>, String> {
 /// ノートファイルを読み込み（JSON 文字列を返す）
 #[tauri::command]
 fn read_note_file(file_id: String) -> Result<String, String> {
-    let path = notes_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&notes_dir()?, &file_id, ".json")?;
     fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))
 }
 
 /// ノートファイルを書き込み
 #[tauri::command]
 fn write_note_file(file_id: String, content: String) -> Result<(), String> {
-    let path = notes_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&notes_dir()?, &file_id, ".json")?;
     fs::write(&path, content).map_err(|e| format!("ファイル書き込み失敗: {e}"))
 }
 
@@ -1020,8 +1095,9 @@ fn write_note_file(file_id: String, content: String) -> Result<(), String> {
 /// `trash` クレートで OS のゴミ箱に送るので、ユーザーは Finder から復元できる。
 /// trash クレートが失敗した場合はフォールバックで通常削除する。
 #[tauri::command]
-fn delete_note_file(file_id: String) -> Result<(), String> {
-    let path = notes_dir()?.join(format!("{file_id}.json"));
+fn delete_note_file(window: tauri::WebviewWindow, file_id: String) -> Result<(), String> {
+    require_main_window(&window)?;
+    let path = join_id_component(&notes_dir()?, &file_id, ".json")?;
     if path.exists() {
         if let Err(e) = trash::delete(&path) {
             // OS のゴミ箱送りに失敗しても、最後の手段として削除する
@@ -1078,21 +1154,22 @@ fn list_wiki_files() -> Result<Vec<FileInfo>, String> {
 /// Wiki ファイルを読み込み
 #[tauri::command]
 fn read_wiki_file(file_id: String) -> Result<String, String> {
-    let path = wiki_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&wiki_dir()?, &file_id, ".json")?;
     fs::read_to_string(&path).map_err(|e| format!("Wiki 読み取り失敗: {e}"))
 }
 
 /// Wiki ファイルを書き込み
 #[tauri::command]
 fn write_wiki_file(file_id: String, content: String) -> Result<(), String> {
-    let path = wiki_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&wiki_dir()?, &file_id, ".json")?;
     fs::write(&path, content).map_err(|e| format!("Wiki 書き込み失敗: {e}"))
 }
 
 /// Wiki ファイルを完全削除（OS のゴミ箱へ送る）
 #[tauri::command]
-fn delete_wiki_file(file_id: String) -> Result<(), String> {
-    let path = wiki_dir()?.join(format!("{file_id}.json"));
+fn delete_wiki_file(window: tauri::WebviewWindow, file_id: String) -> Result<(), String> {
+    require_main_window(&window)?;
+    let path = join_id_component(&wiki_dir()?, &file_id, ".json")?;
     if path.exists() {
         if let Err(e) = trash::delete(&path) {
             eprintln!("trash::delete 失敗（フォールバックで unlink）: {e}");
@@ -1148,21 +1225,22 @@ fn list_skill_files() -> Result<Vec<FileInfo>, String> {
 /// Skill ファイルを読み込み
 #[tauri::command]
 fn read_skill_file(file_id: String) -> Result<String, String> {
-    let path = skill_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&skill_dir()?, &file_id, ".json")?;
     fs::read_to_string(&path).map_err(|e| format!("Skill 読み取り失敗: {e}"))
 }
 
 /// Skill ファイルを書き込み
 #[tauri::command]
 fn write_skill_file(file_id: String, content: String) -> Result<(), String> {
-    let path = skill_dir()?.join(format!("{file_id}.json"));
+    let path = join_id_component(&skill_dir()?, &file_id, ".json")?;
     fs::write(&path, content).map_err(|e| format!("Skill 書き込み失敗: {e}"))
 }
 
 /// Skill ファイルを完全削除（OS のゴミ箱へ送る）
 #[tauri::command]
-fn delete_skill_file(file_id: String) -> Result<(), String> {
-    let path = skill_dir()?.join(format!("{file_id}.json"));
+fn delete_skill_file(window: tauri::WebviewWindow, file_id: String) -> Result<(), String> {
+    require_main_window(&window)?;
+    let path = join_id_component(&skill_dir()?, &file_id, ".json")?;
     if path.exists() {
         if let Err(e) = trash::delete(&path) {
             eprintln!("trash::delete 失敗（フォールバックで unlink）: {e}");
@@ -1237,7 +1315,9 @@ fn media_ext(name: &str, mime: &str) -> Option<String> {
 /// メディア本体のパスを解決する。新形式 `{id}.{ext}` を優先し、旧形式 `{id}` にフォールバック。
 /// `.meta.json`（メタデータ）・`.txt`（Reader 原文）・`.transcript.json`（文字起こし）・`.cleanup.json`（清書）・`.summary.json`（要約）は本体ではないので除外する。
 fn find_media_data_file(dir: &std::path::Path, file_id: &str) -> Option<PathBuf> {
-    if file_id.is_empty() {
+    // 区切り文字・`..`・絶対パス・UNC を含む id は探しに行かない（旧形式の `dir.join(file_id)` が
+    // 絶対パスで基準を置き換え、media の外のファイルや UNC パスを開いてしまうため）
+    if validate_id_component(file_id).is_err() {
         return None;
     }
     let prefix = format!("{file_id}.");
@@ -1343,6 +1423,8 @@ fn save_media_file_sync(
     data: String,
 ) -> Result<(), String> {
     use base64::Engine;
+    // パスに組み込む前に id を検査する（`../` や絶対パスで media の外へ書かせない）
+    validate_id_component(&file_id)?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| format!("Base64 デコード失敗: {e}"))?;
@@ -1356,7 +1438,7 @@ fn save_media_file_sync(
         "mimeType": mime_type,
         "createdTime": humantime::format_rfc3339(std::time::SystemTime::now()).to_string(),
     });
-    let meta_path = dir.join(format!("{file_id}.meta.json"));
+    let meta_path = join_id_component(&dir, &file_id, ".meta.json")?;
     fs::write(
         &meta_path,
         serde_json::to_string(&meta).unwrap(),
@@ -1368,7 +1450,7 @@ fn save_media_file_sync(
         Some(ext) => format!("{file_id}.{ext}"),
         None => file_id.clone(),
     };
-    let data_path = dir.join(&filename);
+    let data_path = join_id_component(&dir, &filename, "")?;
     // 同じ id の既存本体が別名で残っていれば削除（再アップロードで拡張子が変わるケース）
     if let Some(existing) = find_media_data_file(&dir, &file_id) {
         if existing != data_path {
@@ -1392,6 +1474,49 @@ async fn read_media_file(file_id: String) -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("メディア読み取りタスク失敗: {e}"))?
+}
+
+/// 「アプリで開く」で OS に渡さない拡張子（小文字・ドット無し）。実行ファイル・スクリプト・
+/// ショートカット・インストーラー・アプリ束など、開いただけでコードが動きうるもの。
+/// コピーには Mark-of-the-Web / quarantine が付かないので、警告なしで動いてしまう。
+const BLOCKED_OPEN_EXTS: &[&str] = &[
+    // Windows の実行・スクリプト・ショートカット
+    "exe", "bat", "cmd", "com", "scr", "pif", "msi", "msp", "mst", "ps1", "ps1xml", "ps2", "psc1",
+    "psc2", "vbs", "vbe", "vb", "js", "jse", "wsf", "wsh", "ws", "wsc", "hta", "cpl", "lnk", "url",
+    "jar", "jnlp", "reg", "inf", "scf", "msc", "gadget", "application", "appref-ms", "dll", "sys",
+    "ocx", "sct", "shb", "shs", "job", "ade", "adp", "bas", "mde", "chm",
+    // macOS
+    "app", "command", "terminal", "tool", "workflow", "action", "pkg", "mpkg", "dmg", "iso",
+    "osx", "scpt", "scptd", "webloc", "prefpane", "saver", "plugin", "kext", "wflow",
+    // Linux・Unix のシェルやスクリプト
+    "sh", "bash", "zsh", "fish", "csh", "ksh", "py", "pyw", "pyc", "rb", "pl", "pm", "php",
+    "desktop", "appimage", "run", "bin", "elf", "out",
+    // 開くだけで接続・設定変更・インストール・アドイン読み込みが起きるもの
+    "rdp", "settingcontent-ms", "library-ms", "search-ms", "searchconnector-ms", "appx", "msix",
+    "appxbundle", "msixbundle", "appinstaller", "xll", "xla", "xlam", "diagcab", "psm1", "psd1",
+    "mobileconfig", "inetloc", "fileloc", "xbap", "slk", "iqy",
+    // マクロ入り Office（開くとマクロの有効化を促される）
+    "docm", "xlsm", "pptm", "dotm", "xltm", "potm", "ppam", "ppsm", "sldm",
+];
+
+/// 「アプリで開く」を断るときの Err の先頭。TS 側（open-in-app.ts）がこの文字列で
+/// 「この種類は開けません」の画面文言へ振り分ける。
+const BLOCKED_OPEN_ERR_PREFIX: &str = "blocked-executable-type";
+
+/// 開こうとするファイルの拡張子が BLOCKED_OPEN_EXTS に当たるか（大文字小文字を区別しない）。
+/// Windows は名前の末尾の `.` と空白を無視して開くので、落としてから見る。
+fn blocked_open_ext(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    let name = name.trim_end_matches(['.', ' ']);
+    let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
+    BLOCKED_OPEN_EXTS.contains(&ext.as_str()).then_some(ext)
+}
+
+fn check_openable_ext(path: &Path) -> Result<(), String> {
+    match blocked_open_ext(path) {
+        Some(ext) => Err(format!("{BLOCKED_OPEN_ERR_PREFIX}:{ext}")),
+        None => Ok(()),
+    }
 }
 
 /// 「アプリで開く」用のファイル名を組み立てる。素材の表示名からパス区切りや
@@ -1440,9 +1565,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 /// `appdata/opened/{id}` を返す。id はディレクトリ名に使うので、パス区切りを含むものは弾く
 fn opened_dir(file_id: &str) -> Result<PathBuf, String> {
-    if file_id.is_empty() || file_id.contains(['/', '\\']) || file_id.contains("..") {
-        return Err(format!("不正なメディア id: {file_id}"));
-    }
+    validate_id_component(file_id).map_err(|_| format!("不正なメディア id: {}", file_id.escape_debug()))?;
     Ok(ensure_subdir("appdata")?.join("opened").join(file_id))
 }
 
@@ -1493,6 +1616,7 @@ fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> R
     let base_path = out_dir.join(OPENED_BASE_FILE);
 
     if let Some(existing) = find_opened_copy(out_dir) {
+        check_openable_ext(&existing)?;
         make_writable(&existing);
         let base = fs::read_to_string(&base_path).unwrap_or_default();
         let copy = fs::read(&existing).map_err(|e| format!("コピー読み取り失敗: {e}"))?;
@@ -1514,6 +1638,8 @@ fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> R
     }
 
     let dest = out_dir.join(opened_copy_file_name(name, file_id, data_ext.as_deref()));
+    // 表示名の拡張子がコピーの名前になりうる（本体に拡張子が無い旧形式）ので、置く前に確かめる
+    check_openable_ext(&dest)?;
     fs::write(&dest, &bytes).map_err(|e| format!("コピー書き込み失敗: {e}"))?;
     fs::write(&base_path, &src_hash).map_err(|e| format!("基準の記録失敗: {e}"))?;
     Ok(dest)
@@ -1528,11 +1654,20 @@ fn write_opened_copy(src: &Path, out_dir: &Path, name: &str, file_id: &str) -> R
 /// コピーへの変更は list_changed_opened_copies で見つけ、利用者が選んだときだけ
 /// 原本に反映する（上書き or 新しい版）。
 #[tauri::command]
-async fn open_media_in_app(app: tauri::AppHandle, file_id: String, name: String) -> Result<(), String> {
+async fn open_media_in_app(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    file_id: String,
+    name: String,
+) -> Result<(), String> {
+    require_main_window(&window)?;
     let copy_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
         let out_dir = opened_dir(&file_id)?;
         let src = find_media_data_file(&media_dir()?, &file_id)
             .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
+        // 実ファイルの拡張子が実行ファイル・スクリプト・ショートカットなら、コピーも作らず開かない
+        // （MIME と名前の食い違いで「ドキュメント」扱いにされた素材を OS に実行させない）
+        check_openable_ext(&src)?;
         write_opened_copy(&src, &out_dir, &name, &file_id)
     })
     .await
@@ -1746,14 +1881,14 @@ async fn read_media_thumbnail(file_id: String, max_edge: u32) -> Result<String, 
 /// バイナリメディア（save_media_file）とは別に <media_dir>/<id>.txt に置く。
 #[tauri::command]
 fn save_media_text(file_id: String, text: String) -> Result<(), String> {
-    let path = media_dir()?.join(format!("{file_id}.txt"));
+    let path = join_id_component(&media_dir()?, &file_id, ".txt")?;
     fs::write(&path, text).map_err(|e| format!("原文テキスト書き込み失敗: {e}"))
 }
 
 /// 保存済みの原文テキストを読み込み（存在しなければ None）。
 #[tauri::command]
 fn read_media_text(file_id: String) -> Result<Option<String>, String> {
-    let path = media_dir()?.join(format!("{file_id}.txt"));
+    let path = join_id_component(&media_dir()?, &file_id, ".txt")?;
     if !path.exists() {
         return Ok(None);
     }
@@ -1768,15 +1903,8 @@ fn read_media_text(file_id: String) -> Result<Option<String>, String> {
 /// （sidecar 側 safeId と同じ規則: 区切り文字・NUL・先頭ドットを拒否）。
 #[tauri::command]
 fn delete_media_text(file_id: String) -> Result<(), String> {
-    if file_id.is_empty()
-        || file_id.contains('/')
-        || file_id.contains('\\')
-        || file_id.contains('\0')
-        || file_id.starts_with('.')
-    {
-        return Err("不正なファイル ID".to_string());
-    }
-    let path = media_dir()?.join(format!("{file_id}.txt"));
+    let path = join_id_component(&media_dir()?, &file_id, ".txt")
+        .map_err(|_| "不正なファイル ID".to_string())?;
     if !path.exists() {
         return Ok(());
     }
@@ -1824,7 +1952,9 @@ fn list_media_files_sync() -> Result<Vec<MediaFileInfo>, String> {
 
 /// メディアファイルを完全削除（OS のゴミ箱へ送る）
 #[tauri::command]
-fn delete_media_file(file_id: String) -> Result<(), String> {
+fn delete_media_file(window: tauri::WebviewWindow, file_id: String) -> Result<(), String> {
+    require_main_window(&window)?;
+    validate_id_component(&file_id)?;
     let dir = media_dir()?;
     // 新形式（拡張子付き）・旧形式（拡張子なし）どちらでも解決して削除
     if let Some(data_path) = find_media_data_file(&dir, &file_id) {
@@ -1864,7 +1994,7 @@ fn delete_media_file(file_id: String) -> Result<(), String> {
 /// メディアファイルをリネーム
 #[tauri::command]
 fn rename_media_file(file_id: String, new_name: String) -> Result<(), String> {
-    let meta_path = media_dir()?.join(format!("{file_id}.meta.json"));
+    let meta_path = join_id_component(&media_dir()?, &file_id, ".meta.json")?;
     if !meta_path.exists() {
         return Err(format!("メディアが見つかりません: {file_id}"));
     }
@@ -1906,10 +2036,25 @@ fn app_data_key_from_file_name(stem: &str) -> String {
     out
 }
 
+/// read / write の appData キーがパスの外へ出ないかの検査。旧来のキーは `:` を含みうる
+/// （`app_data_file_name` が `%3A` に直す）ので、`validate_id_component` より `:` だけ緩い。
+fn validate_app_data_path_key(key: &str) -> Result<(), String> {
+    if key.is_empty()
+        || key.contains(['/', '\\'])
+        || key.contains("..")
+        || key.starts_with('.')
+        || key.chars().any(|c| c.is_control())
+    {
+        return Err(format!("不正な appData キー: {}", key.escape_debug()));
+    }
+    Ok(())
+}
+
 /// dir から appData を読む。新しい名前が無ければ、`:` か `%` を含むキーに限り旧来の名前
 /// `<key>.json` を読み、見つかれば新しい名前へ書き写す（旧ファイルは消さない）
 fn read_app_data_in(dir: &std::path::Path, key: &str) -> Result<Option<String>, String> {
-    let path = dir.join(app_data_file_name(key));
+    validate_app_data_path_key(key)?;
+    let path = join_single_component(dir, &app_data_file_name(key))?;
     if path.exists() {
         let content =
             fs::read_to_string(&path).map_err(|e| format!("アプリデータ読み取り失敗: {e}"))?;
@@ -1918,7 +2063,10 @@ fn read_app_data_in(dir: &std::path::Path, key: &str) -> Result<Option<String>, 
     if !(key.contains(':') || key.contains('%')) {
         return Ok(None);
     }
-    let legacy = dir.join(format!("{key}.json"));
+    // 旧名は `:` を含みうるが、区切り文字・`..`・ドライブ指定でパスの外へ出る形は読まない
+    let Ok(legacy) = join_single_component(dir, &format!("{key}.json")) else {
+        return Ok(None);
+    };
     // Windows では ADS として読める。無ければ（他 OS で `:` が使えない等）エラーでも None
     let content = match fs::read_to_string(&legacy) {
         Ok(c) => c,
@@ -1930,7 +2078,8 @@ fn read_app_data_in(dir: &std::path::Path, key: &str) -> Result<Option<String>, 
 
 /// dir へ appData を書く（常に新しい名前）
 fn write_app_data_in(dir: &std::path::Path, key: &str, data: &str) -> Result<(), String> {
-    fs::write(dir.join(app_data_file_name(key)), data)
+    validate_app_data_path_key(key)?;
+    fs::write(join_single_component(dir, &app_data_file_name(key))?, data)
         .map_err(|e| format!("アプリデータ書き込み失敗: {e}"))
 }
 
@@ -2107,13 +2256,24 @@ fn validate_id(id: &str) -> Result<(), String> {
 const INBOX_SUBDIR: &str = "Inbox";
 const INBOX_IMPORTED_SUBDIR: &str = "_imported";
 
+/// inbox_read で読む 1 ファイルの上限。スマホ撮影の動画・音声が通る大きさにしつつ、
+/// 数 GB のファイルで base64 化と IPC がメモリを使い果たすのを防ぐ。
+const INBOX_MAX_READ_BYTES: u64 = 500 * 1024 * 1024;
+
 /// inbox 内のファイルパスを安全に解決する(パストラバーサル防止)。
 /// Inbox 直下のファイルのみ許可し、区切り文字や親参照を含む name は拒否する。
 fn inbox_file_path(root: &str, name: &str) -> Result<PathBuf, String> {
-    if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+    if name.is_empty()
+        || name.contains(['/', '\\', '\0'])
+        // ':' は Windows のドライブ指定だけが危険。macOS では Finder の「/」が ':' で来る
+        || (cfg!(windows) && name.contains(':'))
+        || name.contains("..")
+        || name.chars().any(|c| c.is_control())
+    {
         return Err(format!("Invalid inbox file name: {name}"));
     }
-    Ok(PathBuf::from(root).join(INBOX_SUBDIR).join(name))
+    // Inbox 直下の 1 要素であることも確かめる（Windows のドライブ付き相対パス対策）
+    join_single_component(&PathBuf::from(root).join(INBOX_SUBDIR), name)
 }
 
 /// 受信箱の 1 アイテム。TS 側 `CaptureRef` と 1:1 対応する（camelCase で送る）。
@@ -2140,12 +2300,16 @@ fn inbox_list(root: String) -> Result<Vec<InboxItem>, String> {
     if !base.exists() {
         return Ok(vec![]);
     }
+    // Inbox 自体が別の場所へのリンクなのは正当な構成（NAS・外付けへ置く）として許す。
+    // 拒否するのは、その中に置かれたファイル単位のリンク（下の file_type 判定）
     let mut out: Vec<InboxItem> = Vec::new();
     for entry in fs::read_dir(&base).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        // _imported/ 等のサブフォルダは対象外(素のメディアファイルのみ拾う)
-        if !path.is_file() {
+        // _imported/ 等のサブフォルダと、シンボリックリンクは対象外(素のメディアファイルのみ拾う)。
+        // DirEntry::file_type はリンクを辿らない（readdir の d_type。追加の往復も増えない）ので、
+        // 同期相手が置いた `photo.png -> ~/.ssh/id_rsa` のようなリンクが素材として取り込まれない
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
@@ -2179,6 +2343,20 @@ fn inbox_read(root: String, name: String) -> Result<String, String> {
     // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
     validate_root(&root)?;
     let path = inbox_file_path(&root, &name)?;
+    // リンクは読まない（inbox_list が外したものを、名前を直接渡されて読まない）
+    let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if !meta.file_type().is_file() {
+        return Err(format!("Not a regular inbox file: {name}"));
+    }
+    // 巨大なファイルを丸ごとメモリに載せて base64 にし、IPC で運ぶとアプリが固まる。
+    // 超えたら読まずに断る（呼び出し側はその 1 件だけ失敗として飛ばし、ファイルは Inbox に残る）
+    if meta.len() > INBOX_MAX_READ_BYTES {
+        // 先頭の印は TS 側（InboxView）が文言へ振り分ける
+        return Err(format!(
+            "inbox-file-too-large: {} bytes, limit {INBOX_MAX_READ_BYTES}: {name}",
+            meta.len()
+        ));
+    }
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
     use base64::Engine;
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
@@ -2192,6 +2370,10 @@ fn inbox_mark_imported(root: String, name: String) -> Result<(), String> {
     // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
     validate_root(&root)?;
     let src = inbox_file_path(&root, &name)?;
+    // リンクは移さない（リンク先でなくリンク自体が動くだけだが、取り込み対象外のものは触らない）
+    if !fs::symlink_metadata(&src).map(|m| m.file_type().is_file()).unwrap_or(false) {
+        return Err(format!("Not a regular inbox file: {name}"));
+    }
     let imported_dir = PathBuf::from(&root)
         .join(INBOX_SUBDIR)
         .join(INBOX_IMPORTED_SUBDIR);
@@ -2611,6 +2793,88 @@ fn walk_intake_directory(
     }
 }
 
+/// 走査の root のどの階層にもドット始まりの名前が無いこと。取り込みの利用者が選ぶのは
+/// 普通のフォルダで、隠しフォルダ配下（設定・鍵・トークンの置き場）は対象にしない。
+fn check_scan_root_not_hidden(root: &Path) -> Result<(), String> {
+    let hidden = root.components().any(|c| match c {
+        std::path::Component::Normal(n) => n.to_str().is_some_and(|s| s.starts_with('.')),
+        _ => false,
+    });
+    if hidden {
+        Err(format!(
+            "隠しフォルダの中は取り込みの対象にできません: {}",
+            root.display()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// 走査の root が、~/Library の中の機密を置く場所（鍵・メール・設定など）でないこと。
+/// ホーム直下・ドライブ直下・クラウド同期フォルダ（~/Library/CloudStorage・
+/// ~/Library/Mobile Documents）は利用者が普通に選ぶ作業フォルダなので断らない。
+fn check_scan_root_not_too_broad(root: &Path) -> Result<(), String> {
+    check_scan_root_not_too_broad_with(root, home_dir_canonical().as_deref())
+}
+
+/// ~/Library 直下で、取り込みの対象にしない機密フォルダ
+const SENSITIVE_LIBRARY_DIRS: &[&str] = &[
+    "Keychains",
+    "Application Support",
+    "Preferences",
+    "Mail",
+    "Messages",
+    "Safari",
+    "Cookies",
+    "Accounts",
+    "Containers",
+    "Group Containers",
+];
+
+/// ホーム直下の AppData で、取り込みの対象にしない場所（Windows の設定・トークンの置き場）
+const SENSITIVE_APPDATA_DIRS: &[&str] = &["Roaming", "Local", "LocalLow"];
+
+/// root が <home>/AppData（とその Roaming・Local・LocalLow）の中か。
+/// パスの成分で見るので cfg で分けない。Windows の名前は大文字小文字を区別しないので無視して比べる。
+fn is_sensitive_appdata(root: &Path, home: &Path) -> bool {
+    let Ok(rel) = root.strip_prefix(home) else {
+        return false;
+    };
+    let mut comps = rel.components().filter_map(|c| match c {
+        std::path::Component::Normal(n) => n.to_str(),
+        _ => None,
+    });
+    match comps.next() {
+        Some(first) if first.eq_ignore_ascii_case("AppData") => match comps.next() {
+            // AppData 自体は配下の 3 か所をすべて含むので断る
+            None => true,
+            Some(second) => SENSITIVE_APPDATA_DIRS
+                .iter()
+                .any(|d| second.eq_ignore_ascii_case(d)),
+        },
+        _ => false,
+    }
+}
+
+fn check_scan_root_not_too_broad_with(root: &Path, home: Option<&Path>) -> Result<(), String> {
+    let sensitive = home.is_some_and(|h| {
+        let lib = h.join("Library");
+        SENSITIVE_LIBRARY_DIRS.iter().any(|d| root.starts_with(lib.join(d)))
+            || is_sensitive_appdata(root, h)
+    });
+    if sensitive {
+        Err(format!("このフォルダは取り込みの対象にできません: {}", root.display()))
+    } else {
+        Ok(())
+    }
+}
+
+fn home_dir_canonical() -> Option<PathBuf> {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .and_then(|p| p.canonicalize().ok())
+}
+
 /// walk_intake_directory を Tauri 層につなぐ同期本体。canonicalize・進捗 emit・
 /// 許可リスト更新を担う。
 fn scan_directory_sync(
@@ -2642,6 +2906,12 @@ fn scan_directory_sync(
     let root_canonical = PathBuf::from(&root)
         .canonicalize()
         .map_err(|e| format!("フォルダを開けません: {e}"))?;
+    // 隠しフォルダ（~/.ssh・~/.config/gh など）の中は走査も許可リストへの登録もしない。
+    // 呼び出し側が root と拡張子を自由に渡せるため、これが無いと設定・鍵のフォルダを
+    // 「取り込み対象」として読み出せてしまう
+    check_scan_root_not_hidden(&PathBuf::from(&root))?;
+    check_scan_root_not_hidden(&root_canonical)?;
+    check_scan_root_not_too_broad(&root_canonical)?;
 
     let app_for_progress = app.clone();
     let scan_id_for_progress = scan_id.clone();
@@ -2873,6 +3143,89 @@ fn create_dir_for_write(dir: &Path) -> Result<(), String> {
     })
 }
 
+/// 書き込み・削除の対象がシンボリックリンクなら断る。共有フォルダは同期ツールや他人が
+/// 書ける場所なので、`<hh>/<hash>` や `<id>.json` に置かれたリンクを辿ると、共有フォルダの
+/// 外（まだ無いファイルを含む）へ書いてしまう。存在しないパスは問題なし。
+fn reject_symlink(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => Err(format!(
+            "シンボリックリンクには書き込めません: {}",
+            path.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// 書き込み先のフォルダ（`<root>/notes` や `<blob-root>/<hh>`）が、正規化したうえで共有フォルダの
+/// 配下にあることを確かめる。フォルダ自体が外へのリンクに差し替えられた場合を断る。
+/// root 自身がリンク（`~/Shared -> /Volumes/NAS/...`）なのは正当なので、root も正規化して比べる。
+///
+/// canonicalize は NAS 越しだと 1 回 25〜226ms かかり、書き込み・削除のたびに 2〜4 回走る。
+/// そのため (root, dir) が「通った」結果だけを 30 秒覚えて使い回す。断った結果は覚えない。
+fn ensure_dir_within_root(root: &str, dir: &Path) -> Result<(), String> {
+    if dir_check_cache_hit(root, dir) {
+        // 当たりでも dir 自体が symlink に差し替わっていないかだけは毎回 1 回確かめる
+        // （symlink_metadata は canonicalize と違い NAS 越しでも軽い）。差し替わっていたら捨てて通常検査へ
+        match fs::symlink_metadata(dir) {
+            Ok(m) if !m.file_type().is_symlink() && m.is_dir() => return Ok(()),
+            _ => dir_check_cache_forget(root, dir),
+        }
+    }
+    ensure_dir_within_root_uncached(root, dir)?;
+    dir_check_cache_store(root, dir);
+    Ok(())
+}
+
+/// ensure_dir_within_root の検査結果（通ったものだけ）を覚えておく時間
+const DIR_CHECK_CACHE_TTL: Duration = Duration::from_secs(30);
+/// 覚える件数の上限（超えたら期限切れを捨て、それでも多ければ全部捨てる）
+const DIR_CHECK_CACHE_MAX: usize = 512;
+
+fn dir_check_cache() -> &'static Mutex<HashMap<(String, PathBuf), Instant>> {
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<(String, PathBuf), Instant>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn dir_check_cache_hit(root: &str, dir: &Path) -> bool {
+    let guard = dir_check_cache().lock().unwrap();
+    guard
+        .get(&(root.to_string(), dir.to_path_buf()))
+        .is_some_and(|t| t.elapsed() < DIR_CHECK_CACHE_TTL)
+}
+
+fn dir_check_cache_forget(root: &str, dir: &Path) {
+    dir_check_cache()
+        .lock()
+        .unwrap()
+        .remove(&(root.to_string(), dir.to_path_buf()));
+}
+
+fn dir_check_cache_store(root: &str, dir: &Path) {
+    let mut guard = dir_check_cache().lock().unwrap();
+    if guard.len() >= DIR_CHECK_CACHE_MAX {
+        guard.retain(|_, t| t.elapsed() < DIR_CHECK_CACHE_TTL);
+        if guard.len() >= DIR_CHECK_CACHE_MAX {
+            guard.clear();
+        }
+    }
+    guard.insert((root.to_string(), dir.to_path_buf()), Instant::now());
+}
+
+fn ensure_dir_within_root_uncached(root: &str, dir: &Path) -> Result<(), String> {
+    let root_c = validate_root(root)?
+        .canonicalize()
+        .map_err(|e| format!("共有フォルダを開けません: {e}"))?;
+    let dir_c = dir
+        .canonicalize()
+        .map_err(|e| format!("フォルダを開けません: {} ({e})", dir.display()))?;
+    if dir_c.starts_with(&root_c) {
+        Ok(())
+    } else {
+        Err(format!("共有フォルダの外には書き込めません: {}", dir.display()))
+    }
+}
+
 /// `<root>/<entry_type>/` のパスを返す（読み取り用。作らない）。
 /// 読むだけのメンバーは共有フォルダに書けないのが普通なので、読む経路で
 /// `create_dir_all` を呼ぶと、まだ誰も共有していない種類のフォルダで
@@ -2893,7 +3246,10 @@ fn shared_type_dir(root: &str, entry_type: &str) -> Result<PathBuf, String> {
 /// `<root>/_meta/tombstones/` のパスを返し、必要なら作成する。
 fn shared_tombstone_dir(root: &str) -> Result<PathBuf, String> {
     let root_path = require_root_reachable(root)?;
-    let dir = root_path.join("_meta").join("tombstones");
+    // _meta が外へのリンクなら、リンク先にフォルダを作る前に断る
+    let meta_dir = root_path.join("_meta");
+    reject_symlink(&meta_dir)?;
+    let dir = meta_dir.join("tombstones");
     create_dir_for_write(&dir)?;
     Ok(dir)
 }
@@ -3016,7 +3372,9 @@ fn shared_write(
 ) -> Result<(), String> {
     validate_id(&id)?;
     let dir = shared_type_dir(&root, &entry_type)?;
+    ensure_dir_within_root(&root, &dir)?;
     let path = dir.join(format!("{id}.json"));
+    reject_symlink(&path)?;
     assert_existing_author(&path, &author_email)?;
     fs::write(&path, content).map_err(|e| format!("ファイル書き込み失敗: {e}"))
 }
@@ -3033,13 +3391,17 @@ fn shared_delete(
 ) -> Result<(), String> {
     validate_id(&id)?;
     let body_dir = shared_type_dir(&root, &entry_type)?;
+    ensure_dir_within_root(&root, &body_dir)?;
     let body_path = body_dir.join(format!("{id}.json"));
+    reject_symlink(&body_path)?;
     assert_existing_author(&body_path, &author_email)?;
     if body_path.exists() {
         fs::remove_file(&body_path).map_err(|e| format!("本体ファイル削除失敗: {e}"))?;
     }
     let tomb_dir = shared_tombstone_dir(&root)?;
+    ensure_dir_within_root(&root, &tomb_dir)?;
     let tomb_path = tomb_dir.join(format!("{id}.json"));
+    reject_symlink(&tomb_path)?;
     fs::write(&tomb_path, tombstone_content)
         .map_err(|e| format!("tombstone 書き込み失敗: {e}"))?;
     Ok(())
@@ -3066,15 +3428,25 @@ fn shared_blob_write(
 ) -> Result<(), String> {
     use base64::Engine;
     let dir = shared_blob_dir(&root, &hash)?;
+    ensure_dir_within_root(&root, &dir)?;
     let hex_part = &hash["sha256:".len()..];
     let path = dir.join(hex_part);
+    // 置かれたリンク（まだ無い先を指すものを含む）を辿って外へ書かない。exists() はリンク先を
+    // 見るので、宙に浮いたリンクは「無い」になって fs::write がリンク先を新規作成してしまう
+    reject_symlink(&path)?;
     if path.exists() {
         return Ok(()); // dedup
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&content_base64)
         .map_err(|e| format!("base64 デコード失敗: {e}"))?;
-    fs::write(&path, bytes).map_err(|e| format!("blob 書き込み失敗: {e}"))
+    // create_new（O_EXCL）は最後の要素がリンクなら辿らず失敗する。確認から書き込みの間の差し替えも断つ
+    use std::io::Write;
+    match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut f) => f.write_all(&bytes).map_err(|e| format!("blob 書き込み失敗: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()), // 並行して同じ blob が置かれた（dedup）
+        Err(e) => Err(format!("blob 書き込み失敗: {e}")),
+    }
 }
 
 #[tauri::command]
@@ -3325,6 +3697,9 @@ fn shared_blob_delete(root: String, hash: String) -> Result<(), String> {
     let hex_part = &hash["sha256:".len()..];
     let path = dir.join(hex_part);
     if path.exists() {
+        // 入れ物フォルダが外へのリンクに差し替えられていても外のファイルは消さない
+        reject_symlink(&path)?;
+        ensure_dir_within_root(&root, &dir)?;
         fs::remove_file(&path).map_err(|e| format!("blob 削除失敗: {e}"))?;
     }
     Ok(())
@@ -4890,5 +5265,405 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
             outcome.cancelled,
             start.elapsed()
         );
+    }
+
+    // --- セキュリティ: id の検査・symlink・受信箱・開く拡張子 ---
+
+    /// 実際に生成される形の id は通る（既存ユーザーのノート・素材を壊さない）
+    #[test]
+    fn validate_id_component_accepts_real_ids() {
+        for id in [
+            "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70",
+            "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "note_1-a",
+            "abc123XYZ",
+            "m1.docx",
+            "日本語のid",
+            "a b",
+        ] {
+            assert!(validate_id_component(id).is_ok(), "{id} は通るはず");
+        }
+    }
+
+    /// file-media:// や @メンションに仕込まれうる攻撃の入力は断る
+    #[test]
+    fn validate_id_component_rejects_attack_inputs() {
+        for id in [
+            "",
+            "../../.ssh/id_rsa",
+            "..",
+            "a/b",
+            "a\\b",
+            "/Users/x/.ssh/id_rsa",
+            "\\\\attacker.example\\share\\x.png",
+            "C:\\Windows\\win.ini",
+            ".hidden",
+            "a\0b",
+            "a\nb",
+            "x..y",
+        ] {
+            assert!(validate_id_component(id).is_err(), "{id:?} は断るはず");
+        }
+    }
+
+    /// `:` は Windows でだけ断る。macOS / Linux では既存のデータ（`wiki:<uuid>`）を開けるように通す
+    #[test]
+    fn validate_id_component_colon_is_windows_only() {
+        for id in ["C:foo", "a:b", "wiki:3f2504e0-4f89-41d3-9a0c-0305e82c3301"] {
+            assert_eq!(validate_id_component(id).is_err(), cfg!(windows), "{id:?}");
+        }
+        // 通しても 1 要素のまま base の下に収まる
+        if !cfg!(windows) {
+            let base = Path::new("/data/notes");
+            let p = join_id_component(base, "wiki:abc", ".json").unwrap();
+            assert_eq!(p.parent(), Some(base));
+        }
+    }
+
+    #[test]
+    fn join_id_component_stays_under_base() {
+        let base = Path::new("/data/notes");
+        let ok = join_id_component(base, "abc-1", ".json").unwrap();
+        assert_eq!(ok, Path::new("/data/notes/abc-1.json"));
+        assert!(join_id_component(base, "../../etc/passwd", ".json").is_err());
+        assert!(join_id_component(base, "/etc/passwd", ".json").is_err());
+        assert!(join_id_component(base, "a/b", "").is_err());
+        // 名前だけを渡す経路（appData）も 1 要素に限る
+        assert!(join_single_component(base, "../x.json").is_err());
+        assert!(join_single_component(base, "/abs.json").is_err());
+        assert!(join_single_component(base, "a%3Ab.json").is_ok());
+    }
+
+    /// 旧形式の救済（`dir.join(file_id)`）が media の外の絶対パス・相対パスを読まない
+    #[test]
+    fn find_media_data_file_ignores_paths_outside_media() {
+        let tmp = tempfile::tempdir().unwrap();
+        let media = tmp.path().join("media");
+        fs::create_dir_all(&media).unwrap();
+        let secret = tmp.path().join("secret.txt");
+        fs::write(&secret, "secret").unwrap();
+        assert!(find_media_data_file(&media, secret.to_str().unwrap()).is_none());
+        assert!(find_media_data_file(&media, "../secret.txt").is_none());
+        // 通常の素材（新形式・旧形式）はこれまでどおり解決する
+        fs::write(media.join("m1.png"), b"x").unwrap();
+        fs::write(media.join("legacy-id"), b"x").unwrap();
+        assert!(find_media_data_file(&media, "m1").is_some());
+        assert!(find_media_data_file(&media, "legacy-id").is_some());
+    }
+
+    #[test]
+    fn save_media_file_rejects_traversal_id() {
+        // media_dir() に触る前に id で断られる（読み書きはどこにも起きない）
+        let r = save_media_file_sync("../../../x".into(), "a.plist".into(), "text/plain".into(), "QQ==".into());
+        assert!(r.is_err());
+        let r = save_media_file_sync("/tmp/x".into(), "a.bat".into(), "text/plain".into(), "QQ==".into());
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn app_data_keys_cannot_leave_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(write_app_data_in(tmp.path(), "../evil", "{}").is_err());
+        assert!(read_app_data_in(tmp.path(), "../../etc/passwd").is_err());
+        assert!(!tmp.path().parent().unwrap().join("evil.json").exists());
+        // 旧来の `:` 入りキーと通常のキーはこれまでどおり
+        write_app_data_in(tmp.path(), "settings:main", "{}").unwrap();
+        assert_eq!(read_app_data_in(tmp.path(), "settings:main").unwrap().as_deref(), Some("{}"));
+    }
+
+    #[test]
+    fn blocked_open_ext_covers_executables() {
+        for n in [
+            "a.exe", "a.BAT", "a.cmd", "a.scr", "a.ps1", "a.vbs", "a.js", "a.hta", "a.lnk", "a.url",
+            "a.msi", "a.jar", "a.reg", "a.app", "a.command", "a.terminal", "a.workflow", "a.pkg",
+            "a.sh", "a.py", "a.desktop", "a.AppImage", "a.rdp", "a.settingcontent-ms", "a.appx", "a.xll",
+            "a.mobileconfig", "report.docx.bat", "a.bat.", "a.bat ",
+        ] {
+            assert!(blocked_open_ext(Path::new(n)).is_some(), "{n} は断るはず");
+        }
+        for n in ["a.docx", "a.xlsx", "a.pptx", "a.pdf", "a.txt", "noext", "a.bat.docx"] {
+            assert!(blocked_open_ext(Path::new(n)).is_none(), "{n} は通るはず");
+        }
+    }
+
+    /// MIME を偽って「ドキュメント」にした .bat 本体は、コピーも作られず開かれない
+    #[test]
+    fn write_opened_copy_refuses_executable_body() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("m1.bat");
+        fs::write(&src, "echo pwned").unwrap();
+        assert!(check_openable_ext(&src).unwrap_err().starts_with(BLOCKED_OPEN_ERR_PREFIX));
+        // 本体に拡張子が無く、表示名で実行ファイルになる形
+        let legacy = tmp.path().join("legacy");
+        fs::write(&legacy, "x").unwrap();
+        let out = tmp.path().join("opened").join("legacy");
+        let err = write_opened_copy(&legacy, &out, "report.bat", "legacy").unwrap_err();
+        assert!(err.starts_with(BLOCKED_OPEN_ERR_PREFIX));
+        assert!(!out.join("report.bat").exists());
+    }
+
+    #[test]
+    fn inbox_read_rejects_oversize_and_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap().to_string();
+        let inbox = tmp.path().join(INBOX_SUBDIR);
+        fs::create_dir_all(&inbox).unwrap();
+        fs::write(inbox.join("ok.png"), b"abc").unwrap();
+        assert!(inbox_read(root.clone(), "ok.png".into()).is_ok());
+        // 上限超過は sparse ファイルで作る（実データは書かない）
+        let big = inbox.join("big.mp4");
+        let f = fs::File::create(&big).unwrap();
+        f.set_len(INBOX_MAX_READ_BYTES + 1).unwrap();
+        let err = inbox_read(root.clone(), "big.mp4".into()).unwrap_err();
+        assert!(err.starts_with("inbox-file-too-large"));
+        // 取り込みの一覧にもそのファイルは並ぶ（その 1 件だけ読めずに飛ばされる）
+        let names: Vec<String> = inbox_list(root.clone()).unwrap().into_iter().map(|i| i.name).collect();
+        assert!(names.contains(&"big.mp4".to_string()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inbox_skips_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap().to_string();
+        let inbox = tmp.path().join(INBOX_SUBDIR);
+        fs::create_dir_all(&inbox).unwrap();
+        let secret = tmp.path().join("secret");
+        fs::write(&secret, "secret").unwrap();
+        std::os::unix::fs::symlink(&secret, inbox.join("photo.png")).unwrap();
+        fs::write(inbox.join("real.png"), b"x").unwrap();
+        let names: Vec<String> = inbox_list(root.clone()).unwrap().into_iter().map(|i| i.name).collect();
+        assert_eq!(names, vec!["real.png".to_string()]);
+        assert!(inbox_read(root.clone(), "photo.png".into()).is_err());
+        assert!(inbox_mark_imported(root, "photo.png".into()).is_err());
+        assert!(secret.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_blob_write_refuses_dangling_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("_blobs");
+        fs::create_dir_all(&root).unwrap();
+        let hex = "ab".to_string() + &"0".repeat(62);
+        let hash = format!("sha256:{hex}");
+        let hh = root.join("ab");
+        fs::create_dir_all(&hh).unwrap();
+        let target = tmp.path().join("LaunchAgents-x");
+        std::os::unix::fs::symlink(&target, hh.join(&hex)).unwrap();
+        let r = shared_blob_write(root.to_str().unwrap().to_string(), hash.clone(), "QQ==".into());
+        assert!(r.is_err());
+        assert!(!target.exists(), "リンク先に書かれてはいけない");
+        // リンクでない通常の書き込みと dedup はこれまでどおり
+        let hash2 = format!("sha256:cd{}", "0".repeat(62));
+        shared_blob_write(root.to_str().unwrap().to_string(), hash2.clone(), "QQ==".into()).unwrap();
+        shared_blob_write(root.to_str().unwrap().to_string(), hash2, "QQ==".into()).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_delete_and_blob_delete_refuse_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        let id = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+        let victim = tmp.path().join("victim.json");
+        fs::write(&victim, b"keep").unwrap();
+        // 本体がリンク
+        std::os::unix::fs::symlink(&victim, root.join("notes").join(format!("{id}.json"))).unwrap();
+        let r = shared_delete(root.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        assert!(r.is_err());
+        assert!(victim.exists());
+        // _meta が外へのリンク: リンク先にフォルダを作らない
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let root2 = tmp.path().join("shared2");
+        fs::create_dir_all(&root2).unwrap();
+        std::os::unix::fs::symlink(&outside, root2.join("_meta")).unwrap();
+        let r = shared_delete(root2.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        assert!(r.is_err());
+        assert!(fs::read_dir(&outside).unwrap().next().is_none());
+        // blob: hh フォルダが外へのリンク
+        let broot = tmp.path().join("_blobs");
+        fs::create_dir_all(&broot).unwrap();
+        let hex = "ab".to_string() + &"0".repeat(62);
+        let ext = tmp.path().join("ext");
+        fs::create_dir_all(&ext).unwrap();
+        fs::write(ext.join(&hex), b"keep").unwrap();
+        std::os::unix::fs::symlink(&ext, broot.join("ab")).unwrap();
+        let r = shared_blob_delete(broot.to_str().unwrap().into(), format!("sha256:{hex}"));
+        assert!(r.is_err());
+        assert!(ext.join(&hex).exists());
+        // blob: ファイル自体がリンク
+        let broot2 = tmp.path().join("_blobs2");
+        fs::create_dir_all(broot2.join("ab")).unwrap();
+        std::os::unix::fs::symlink(&victim, broot2.join("ab").join(&hex)).unwrap();
+        let r = shared_blob_delete(broot2.to_str().unwrap().into(), format!("sha256:{hex}"));
+        assert!(r.is_err());
+        assert!(victim.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_write_refuses_symlinked_entry_and_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        let id = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+        let target = tmp.path().join("victim.json");
+        std::os::unix::fs::symlink(&target, root.join("notes").join(format!("{id}.json"))).unwrap();
+        let r = shared_write(root.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        assert!(r.is_err());
+        assert!(!target.exists());
+        // notes フォルダ自体が外へのリンクに差し替えられた場合
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let root2 = tmp.path().join("shared2");
+        fs::create_dir_all(&root2).unwrap();
+        std::os::unix::fs::symlink(&outside, root2.join("notes")).unwrap();
+        let r = shared_write(root2.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        assert!(r.is_err());
+        assert!(fs::read_dir(&outside).unwrap().next().is_none());
+        // 通常の共有は書ける
+        let root3 = tmp.path().join("shared3");
+        fs::create_dir_all(&root3).unwrap();
+        shared_write(root3.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None).unwrap();
+    }
+
+    #[test]
+    fn scan_root_in_hidden_folder_is_refused() {
+        assert!(check_scan_root_not_hidden(Path::new("/Users/x/.config/gh")).is_err());
+        assert!(check_scan_root_not_hidden(Path::new("/Users/x/.ssh")).is_err());
+        assert!(check_scan_root_not_hidden(Path::new("/Users/x/Documents/実験データ")).is_ok());
+    }
+
+    #[test]
+    fn scan_root_too_broad_is_refused() {
+        let home = Path::new("/Users/x");
+        let t = |p: &str| check_scan_root_not_too_broad_with(Path::new(p), Some(home));
+        assert!(t("/Users/x/Library/Application Support").is_err());
+        assert!(t("/Users/x/Library/Keychains").is_err());
+        // クラウド同期フォルダ・ホーム直下・ドライブ直下は通す
+        assert!(t("/Users/x/Library/CloudStorage/Dropbox/work").is_ok());
+        assert!(t("/Users/x/Library/Mobile Documents/com~apple~CloudDocs").is_ok());
+        assert!(t("/Users/x").is_ok());
+        assert!(t("/").is_ok());
+        assert!(t("/Users/x/Documents/実験データ").is_ok());
+        assert!(t("/Volumes/NAS/data").is_ok());
+        // Windows の AppData（Roaming・Local・LocalLow）は root でも配下でも断る
+        assert!(t("/Users/x/AppData").is_err());
+        assert!(t("/Users/x/AppData/Roaming").is_err());
+        assert!(t("/Users/x/AppData/Roaming/Code/User").is_err());
+        assert!(t("/Users/x/AppData/Local/Google").is_err());
+        assert!(t("/Users/x/appdata/locallow").is_err());
+        // ホーム配下の普通の作業フォルダ・AppData と名前が似ただけのものは通す
+        assert!(t("/Users/x/Documents").is_ok());
+        assert!(t("/Users/x/Desktop").is_ok());
+        assert!(t("/Users/x/Downloads").is_ok());
+        assert!(t("/Users/x/Documents/AppData/Roaming").is_ok());
+        assert!(t("/Users/x/AppDataBackup").is_ok());
+    }
+
+    #[test]
+    fn blocked_open_exts_include_macro_office() {
+        for n in ["a.docm", "a.XLSM", "a.pptm", "a.dotm", "a.xltm", "a.potm", "a.ppam", "a.ppsm", "a.sldm"] {
+            assert!(blocked_open_ext(Path::new(n)).is_some(), "{n} は断るはず");
+        }
+        assert!(blocked_open_ext(Path::new("a.docx")).is_none());
+    }
+
+    #[test]
+    fn ensure_dir_within_root_caches_only_passes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let r = root.to_str().unwrap();
+        let dir = root.join("notes");
+        assert!(ensure_dir_within_root(r, &dir).is_ok());
+        // 通った結果は覚えている（消えても 30 秒は通る = canonicalize を呼ばない）
+        assert!(dir_check_cache_hit(r, &dir));
+        // 外を指す dir は断り、断った結果は覚えない
+        assert!(ensure_dir_within_root(r, &outside).is_err());
+        assert!(!dir_check_cache_hit(r, &outside));
+        // キャッシュに当たっている dir を外向きの symlink に差し替えたら通らず、キャッシュも捨てる
+        #[cfg(unix)]
+        {
+            assert!(dir_check_cache_hit(r, &dir));
+            fs::remove_dir_all(&dir).unwrap();
+            std::os::unix::fs::symlink(&outside, &dir).unwrap();
+            assert!(dir_check_cache_hit(r, &dir));
+            assert!(ensure_dir_within_root(r, &dir).is_err());
+            assert!(!dir_check_cache_hit(r, &dir));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_dir_within_root_still_refuses_symlink_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("notes")).unwrap();
+        let r = root.to_str().unwrap();
+        assert!(ensure_dir_within_root(r, &root.join("notes")).is_err());
+        assert!(!dir_check_cache_hit(r, &root.join("notes")));
+    }
+
+    #[test]
+    fn main_label_gate_allows_only_main() {
+        assert!(check_main_label(MAIN_LABEL).is_ok());
+        assert!(check_main_label("viewer").is_err());
+        assert!(check_main_label("").is_err());
+    }
+
+    #[test]
+    fn inbox_file_path_refuses_drive_relative_and_traversal() {
+        for n in ["../x", "a/b", "a\\b", "", "a\0b", "a..png"] {
+            assert!(inbox_file_path("/r", n).is_err(), "{n:?} は断るはず");
+        }
+        // Windows ではドライブ付き相対パスを断る。それ以外では ':' 入りの名前は通る
+        assert_eq!(inbox_file_path("/r", "C:x.png").is_err(), cfg!(windows));
+        assert!(inbox_file_path("/r", "録音 10:23.m4a").is_ok() || cfg!(windows));
+        assert!(inbox_file_path("/r", "photo 1.png").is_ok());
+        assert!(inbox_file_path("/r", ".DS_Store").is_ok());
+    }
+
+    /// root 自体・Inbox 自体が symlink なのは正当な構成（NAS・外付け）として通す
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_root_and_inbox_dir_are_allowed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        fs::create_dir_all(real.join(INBOX_SUBDIR)).unwrap();
+        fs::write(real.join(INBOX_SUBDIR).join("a.png"), b"x").unwrap();
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let root = link.to_str().unwrap().to_string();
+        shared_write(root.clone(), "notes".into(), "00000000-0000-7000-8000-000000000001".into(), "{}".into(), None).unwrap();
+        assert!(real.join("notes").join("00000000-0000-7000-8000-000000000001.json").exists());
+        let items = inbox_list(root.clone()).unwrap();
+        assert_eq!(items.len(), 1);
+        // Inbox 自体がリンクでも通る
+        let other = tmp.path().join("other");
+        fs::create_dir_all(&other).unwrap();
+        let inbox_target = tmp.path().join("inbox-real");
+        fs::create_dir_all(&inbox_target).unwrap();
+        fs::write(inbox_target.join("b.png"), b"x").unwrap();
+        std::os::unix::fs::symlink(&inbox_target, other.join(INBOX_SUBDIR)).unwrap();
+        assert_eq!(inbox_list(other.to_str().unwrap().to_string()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sidecar_cors_origins_matches_build_profile() {
+        let v = sidecar_cors_origins();
+        if cfg!(debug_assertions) {
+            assert!(v.contains("http://localhost:5174"));
+        } else {
+            assert!(v.is_empty());
+        }
     }
 }

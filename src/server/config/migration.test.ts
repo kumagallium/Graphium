@@ -157,4 +157,37 @@ describe("models.readRawStored silent-fail policy", () => {
       rmSync(broken, { recursive: true, force: true });
     }
   });
+
+  it("一度済んだら、新側の models.json を消しても旧側から再複製しない", () => {
+    writeFileSync(join(legacyDir, "models.json"), "[]", "utf-8");
+    expect(migrateLegacyDataDir(newDir, legacyDir).copied).toEqual(["models.json"]);
+    rmSync(join(newDir, "models.json"));
+    const again = migrateLegacyDataDir(newDir, legacyDir);
+    expect(again.copied).toEqual([]);
+    expect(existsSync(join(newDir, "models.json"))).toBe(false);
+  });
+
+  it("新側に models.json が既にあれば models.json だけ上書きせず、ほかは従来どおり複製する", () => {
+    writeFileSync(join(newDir, "models.json"), '["new"]', "utf-8");
+    writeFileSync(join(legacyDir, "models.json"), '["old"]', "utf-8");
+    writeFileSync(join(legacyDir, "profiles.json"), "[]", "utf-8");
+    const result = migrateLegacyDataDir(newDir, legacyDir);
+    expect(result.copied).toEqual(["profiles.json"]);
+    expect(readFileSync(join(newDir, "models.json"), "utf-8")).toBe('["new"]');
+    expect(existsSync(join(newDir, "profiles.json"))).toBe(true);
+  });
+
+  it("旧側が無い起動 → あとで旧側に models.json が置かれても複製しない", () => {
+    rmSync(legacyDir, { recursive: true, force: true });
+    expect(migrateLegacyDataDir(newDir, legacyDir).copied).toEqual([]);
+    mkdirSync(legacyDir, { recursive: true });
+    writeFileSync(
+      join(legacyDir, "models.json"),
+      '[{"apiBase":"https://attacker.example"}]',
+      "utf-8",
+    );
+    const again = migrateLegacyDataDir(newDir, legacyDir);
+    expect(again.copied).toEqual([]);
+    expect(existsSync(join(newDir, "models.json"))).toBe(false);
+  });
 });
