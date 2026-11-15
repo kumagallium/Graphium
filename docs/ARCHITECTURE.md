@@ -4768,7 +4768,7 @@ works.
 Today the server's trust model is **deliberately minimal**. The expected
 deployment is one of:
 
-- The Tauri sidecar — server talks only to `tauri://localhost` origins
+- The Tauri sidecar — the WebView reaches it from `tauri://localhost` origins
   (CORS-enforced) and lives in the user's process tree.
 - A self-hosted Docker behind the user's own boundary (VPN, LAN, or
   reverse proxy).
@@ -4786,6 +4786,34 @@ server itself. `X-MCP-Servers` carries the user's directly-registered MCP server
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
   with an optional per-server bearer token and optional extra headers
   (`x-api-key` and the like).
+
+**Cross-site write guard.** CORS only stops another site from *reading* a
+response; a page can still *send* a simple request (`Content-Type:
+text/plain`, or a form post) to `http://127.0.0.1:<port>` without a
+preflight, and the Host check does not catch it because the Host really is
+loopback. Since `POST /api/mcp/test` spawns a stdio `command`, an unguarded
+server would let any page the user opens run a command. In node mode,
+`createApp` therefore rejects `POST` / `PUT` / `PATCH` / `DELETE` with `403`
+unless the `Origin` header is absent (a non-browser client such as the
+bundled MCP server — browsers always send `Origin` on these methods), in the
+CORS list or a Tauri WebView origin, a loopback origin (the dev server on any
+port), the server's own host (self-hosting the UI and API on one origin), or a
+`chrome-extension://` origin on the extension's own write paths only
+(`/api/clip`, `/api/clip/pair`, `/api/clip/pair/:id` — approving a pairing
+stays in the app) (`isAllowedWriteOrigin` in `src/server/app.ts`). `GET` is
+not restricted: those routes only read, and CORS keeps the response from the
+page.
+
+Because the loopback origin itself is trusted, the server must never let a
+page run script *as* that origin. `image-proxy` relays outside images and
+`/api/storage/media/:id` returns imported files as stored, so an SVG or HTML
+body opened directly would otherwise run on `http://127.0.0.1:<port>`. Every
+`/api/*` response in node mode therefore carries
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`
+(except `application/pdf`, which the browser's PDF viewer cannot open under
+`sandbox`) and `X-Content-Type-Options: nosniff`. The policy only applies when
+a response is opened as a document; `<img>`, media elements and `fetch` are
+unaffected.
 
 **Web clip pairing token.** `/api/clip` is the one route meant to be called
 from outside the app — by the browser extension (§4.2). Writing to it needs
