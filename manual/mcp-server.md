@@ -254,7 +254,7 @@ What the view shows:
 
 It is a view only. To change the note, open it in Graphium. Links in the view do not open. Clients without MCP Apps support (Claude Code, Codex and others) get a short text result as before; ask for `get_note` when the assistant should read the body.
 
-### When the assistant offers to save {#assistant-offers-to-save}
+### When the assistant offers to save <Badge type="tip" text="Added in v0.137.0 (2026-11-15)" /> {#assistant-offers-to-save}
 
 At a natural stopping point in a conversation (a conclusion, a decision, a plan that came together), the assistant may ask in one line whether to save it to Graphium.
 
