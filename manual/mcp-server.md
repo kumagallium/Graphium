@@ -35,13 +35,14 @@ The desktop app ships with the MCP server, so you don't need Node.js or the sour
 |---|---|
 | **Claude Desktop** | Adds a `graphium` entry to Claude's config file and leaves everything else in it alone (the previous file is kept next to it as `claude_desktop_config.json.graphium-backup`). Claude writes that file back when it quits, so if Claude is open the button asks you to quit it first (⌘Q, or quit from the system tray on Windows). Restart Claude afterwards. |
 | **Claude Code** | Runs `claude mcp add --scope user graphium …` for you, so it works whichever folder you open Claude Code in. New sessions pick it up. |
-| **Codex** (OpenAI) | Runs `codex mcp add graphium …` for you. The Codex app, CLI and IDE extension share this setting. |
+| **Codex** (OpenAI) | Adds a `graphium` entry to Codex's settings (`~/.codex/config.toml`). It uses the `codex` command when one is found, and otherwise writes the file itself, leaving the other entries alone (the previous file is kept as `config.toml.graphium-backup`). The Codex app, CLI and IDE extension share this setting. |
+| **ChatGPT** (desktop app) | The same as Codex: the ChatGPT app for Mac and Windows reads the same settings, so registering either one registers both. Restart ChatGPT, then ask in a **Work** mode conversation. |
 
-If the `claude` or `codex` command is not found on your computer, the row shows the command instead, with a copy button — paste it into a terminal once. **Other assistants (Cursor and more)** gives you the JSON to paste into their MCP settings.
+If the `claude` command is not found on your computer, the Claude Code row shows the command instead, with a copy button — paste it into a terminal once. **Other assistants (Cursor and more)** gives you the JSON to paste into their MCP settings.
 
 The registered server lives inside the app, so **it updates whenever the app updates** — there is nothing to rebuild. If a `graphium` from somewhere else is already registered (for example one you built from source earlier), the row says so and **Register again** switches it to the app's copy.
 
-ChatGPT (the app and the web) can only reach tools on the internet, not a server on your computer, so it cannot be registered. To use OpenAI's models with your notes, use Codex.
+In ChatGPT, Graphium works from **Work** mode conversations in the desktop app; both reading your notes and saving new ones work there. **Chat** mode, ChatGPT on the web, and the phone apps can only reach tools on the internet, not a server on your computer, so they cannot use it. Which ChatGPT plans include Work mode is up to OpenAI.
 
 Then check that it works: ask your assistant
 

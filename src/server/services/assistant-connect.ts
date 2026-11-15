@@ -1,4 +1,4 @@
-// 外の AI アシスタント（Claude Desktop / Claude Code / Codex）に、デスクトップ版へ同梱した
+// 外の AI アシスタント（Claude Desktop / Claude Code / Codex / ChatGPT デスクトップアプリ）に、デスクトップ版へ同梱した
 // Graphium の MCP サーバーを登録する。
 //
 // 同梱物: アプリの resources に sidecar/（node と server.mjs）と mcp/（graphium-mcp.mjs と
@@ -12,14 +12,30 @@
 //   - Claude Desktop: 設定ファイル（claude_desktop_config.json）の mcpServers に graphium だけを足す。
 //     Claude が起動中だと、終了時に手元の古い内容で書き戻して消えるので、起動中は書かずに断る。
 //     書き換える前の内容は .graphium-backup に残す。壊れた JSON は上書きしない
-//   - Claude Code / Codex: それぞれの CLI（claude mcp add / codex mcp add）を呼ぶ。設定ファイルの形は
-//     CLI に任せる。CLI が見つからなければ、貼り付けるコマンドを画面に出してもらう（no-cli）
+//   - Claude Code: CLI（claude mcp add）を呼ぶ。設定ファイルの形は CLI に任せる。
+//     CLI が見つからなければ、貼り付けるコマンドを画面に出してもらう（no-cli）
+//   - Codex / ChatGPT デスクトップアプリ: どちらも ~/.codex/config.toml の [mcp_servers.*] を読むので
+//     登録は共通。codex CLI（ChatGPT.app 同梱のものを含む）があれば codex mcp add を呼び、
+//     無ければ config.toml の [mcp_servers.graphium] の command と args だけを直接書き換える。
+//     節の中のほかの設定・下位の表・ほかの節・コメントは変えず、元の権限を引き継ぐ。
+//     書き換える前の内容は .graphium-backup に残す
 //
 // 状態の読み取りは設定ファイルを読むだけ（CLI は起動しない）。graphium が同梱の script を
 // 指していれば registered、別の場所（手でビルドした版など）なら outdated。
 
 import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +44,7 @@ import { detectCliBinaryAsync } from "./cli-binary-resolver.js";
 
 const execFileAsync = promisify(execFile);
 
-export const ASSISTANT_CLIENTS = ["claude-desktop", "claude-code", "codex"] as const;
+export const ASSISTANT_CLIENTS = ["claude-desktop", "claude-code", "codex", "chatgpt"] as const;
 export type AssistantClientId = (typeof ASSISTANT_CLIENTS)[number];
 
 /** 登録の名前（どのクライアントでも同じ） */
@@ -88,7 +104,14 @@ function cliCandidates(name: "claude" | "codex", home: string): string[] {
       "/usr/local/bin/claude",
     ];
   }
-  return [join(home, ".local/bin/codex"), "/opt/homebrew/bin/codex", "/usr/local/bin/codex"];
+  return [
+    join(home, ".local/bin/codex"),
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+    // ChatGPT のデスクトップアプリに同梱の Codex CLI
+    "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+    join(home, "Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
+  ];
 }
 
 async function findCliDefault(name: "claude" | "codex"): Promise<string | undefined> {
@@ -227,8 +250,7 @@ function jsonEntryStatus(config: unknown, script: string): "idle" | "registered"
 /** config.toml の [mcp_servers.graphium] の節だけを取り出す */
 function codexSection(toml: string): string | null {
   const lines = toml.split(/\r?\n/);
-  const header = new RegExp(`^\\s*\\[\\s*mcp_servers\\.(?:"${SERVER_NAME}"|${SERVER_NAME})\\s*\\]\\s*$`);
-  const start = lines.findIndex((l) => header.test(l));
+  const start = lines.findIndex((l) => GRAPHIUM_MAIN_HEADER.test(l));
   if (start < 0) return null;
   const rest = lines.slice(start + 1);
   // 次の表見出し（[x] / [[x]]）まで。graphium の下位の表（[mcp_servers.graphium.env]）は含める
@@ -261,7 +283,7 @@ export async function getAssistantConnectStatus(env: AssistantConnectEnv = defau
       available,
       node: env.node,
       script: env.script,
-      rows: { "claude-desktop": "idle", "claude-code": "idle", codex: "idle" },
+      rows: { "claude-desktop": "idle", "claude-code": "idle", codex: "idle", chatgpt: "idle" },
       snippets,
     };
   }
@@ -276,7 +298,7 @@ export async function getAssistantConnectStatus(env: AssistantConnectEnv = defau
   const section = codexSection(codexText);
   const codex = section === null ? "idle" : mentionsScript(section, env.script) ? "registered" : "outdated";
 
-  const [claudeCli, codexCli] = await Promise.all([env.findCli("claude"), env.findCli("codex")]);
+  const claudeCli = await env.findCli("claude");
   return {
     available,
     node: env.node,
@@ -285,7 +307,9 @@ export async function getAssistantConnectStatus(env: AssistantConnectEnv = defau
       "claude-desktop": desktop,
       // CLI が無くても、すでに同梱版で登録されていればそれを見せる
       "claude-code": code === "registered" || claudeCli ? code : "no-cli",
-      codex: codex === "registered" || codexCli ? codex : "no-cli",
+      // Codex / ChatGPT は CLI が無くても config.toml を直接書けるので no-cli にしない
+      codex,
+      chatgpt: codex,
     },
     snippets,
   };
@@ -330,6 +354,130 @@ function writeClaudeDesktopConfig(env: AssistantConnectEnv): void {
   renameSync(tmp, path);
 }
 
+/** TOML のリテラル文字列（' で囲む。\ はそのまま入る）。' や改行を含むときだけ基本文字列にする */
+function tomlString(value: string): string {
+  if (!/['\r\n]/.test(value)) return `'${value}'`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
+  return `"${escaped}"`;
+}
+
+const GRAPHIUM_KEY = `(?:"${SERVER_NAME}"|'${SERVER_NAME}'|${SERVER_NAME})`;
+
+/** [mcp_servers.graphium] の見出しか（下位の表は含まない。見出しの後ろのコメントは許す） */
+const GRAPHIUM_MAIN_HEADER = new RegExp(`^\\s*\\[\\s*mcp_servers\\s*\\.\\s*${GRAPHIUM_KEY}\\s*\\]\\s*(?:#.*)?$`);
+
+/**
+ * config.toml の本文で、[mcp_servers.graphium] の command と args だけを書き換える。
+ * 節の中のほかの設定（enabled など）、下位の表（[mcp_servers.graphium.env] など）、
+ * ほかの節、コメント、空行には触れない。節が無ければ末尾に足す。
+ * graphium をインラインテーブルやドット付きのキーで書いている設定は、安全に直せないので断る。
+ */
+export function upsertGraphiumToml(text: string, node: string, script: string): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text === "" ? [] : text.split(/\r?\n/);
+  // 末尾の改行で出る空要素は、最後に付け直す
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+
+  const assignments = [`command = ${tomlString(node)}`, `args = [${tomlString(script)}]`];
+  const dottedFromRoot = new RegExp(`^\\s*mcp_servers\\s*\\.\\s*${GRAPHIUM_KEY}\\s*[.=]`);
+  const keyInServers = new RegExp(`^\\s*${GRAPHIUM_KEY}\\s*[.=]`);
+  const mcpServersHeader = /^\s*\[\s*mcp_servers\s*\]\s*(?:#.*)?$/;
+
+  const out: string[] = [];
+  let table: "root" | "servers" | "graphium" | "other" = "root";
+  let found = false;
+  let skippingArray = 0; // 複数行にわたる args = [ … ] を読み飛ばしている間の [ の深さ
+  for (const line of lines) {
+    if (skippingArray > 0) {
+      skippingArray += bracketDelta(line);
+      continue;
+    }
+    if (/^\s*\[/.test(line)) {
+      if (GRAPHIUM_MAIN_HEADER.test(line)) {
+        table = "graphium";
+        found = true;
+        out.push(line, ...assignments);
+        continue;
+      }
+      table = mcpServersHeader.test(line) ? "servers" : "other";
+      out.push(line);
+      continue;
+    }
+    if ((table === "root" && dottedFromRoot.test(line)) || (table === "servers" && keyInServers.test(line))) {
+      throw new AssistantConnectError(
+        "CONFIG_UNSUPPORTED",
+        "config.toml の graphium の書き方（1 行の表やドット付きのキー）は、ここからは書き換えられません。設定ファイルの graphium の行を消してから、もう一度押してください。",
+      );
+    }
+    if (table === "graphium" && /^\s*(?:command|"command"|args|"args")\s*=/.test(line)) {
+      // 古い command / args は捨てる（新しい値は見出しの直後に書いた）
+      if (/^\s*"?args"?\s*=/.test(line)) {
+        const depth = bracketDelta(line);
+        if (depth > 0) skippingArray = depth;
+      }
+      continue;
+    }
+    out.push(line);
+  }
+  if (!found) {
+    if (out.length && out[out.length - 1].trim() !== "") out.push("");
+    out.push(`[mcp_servers.${SERVER_NAME}]`, ...assignments);
+  }
+  return `${out.join(eol)}${eol}`;
+}
+
+/** 1 行の中の [ と ] の差（文字列の中の括弧は数えない。コメント以降は見ない） */
+function bracketDelta(line: string): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === "\\" && quote === '"') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === "#") break;
+    else if (c === "[") depth++;
+    else if (c === "]") depth--;
+  }
+  return depth;
+}
+
+/** Codex / ChatGPT 共通の config.toml に graphium を書く（CLI が無いとき） */
+function writeCodexConfig(env: AssistantConnectEnv): void {
+  const configured = codexConfigPath(env);
+  try {
+    // dotfiles へのシンボリックリンクなら、リンクを残してリンク先を書き換える
+    const path = existsSync(configured) ? realpathSync(configured) : configured;
+    let text = "";
+    // 新しく作るときは本人だけが読める権限にする（ほかの MCP の API キーが入ることがある）
+    let mode = 0o600;
+    if (existsSync(path)) {
+      text = readFileSync(path, "utf8");
+      mode = statSync(path).mode & 0o777;
+      copyFileSync(path, `${path}.graphium-backup`);
+    } else {
+      mkdirSync(dirname(path), { recursive: true });
+    }
+    const next = upsertGraphiumToml(text, env.node, env.script);
+    // 途中で落ちても元のファイルを壊さないよう、隣に書いてから置き換える。元の権限を引き継ぐ
+    const tmp = `${path}.graphium-tmp`;
+    writeFileSync(tmp, next, { encoding: "utf8", mode });
+    chmodSync(tmp, mode);
+    renameSync(tmp, path);
+  } catch (err) {
+    if (err instanceof AssistantConnectError) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    throw new AssistantConnectError("CONFIG_WRITE_FAILED", `Codex の設定ファイルを書き換えられませんでした: ${configured}（${message}）`);
+  }
+}
+
 /** CLI の失敗を、利用者に見せる 1 行にする */
 function cliErrorMessage(err: unknown): string {
   const e = err as { stderr?: string; message?: string };
@@ -355,9 +503,14 @@ export async function registerAssistant(
     return "registered";
   }
 
-  const cliName = client === "claude-code" ? "claude" : "codex";
-  const bin = await env.findCli(cliName);
-  if (!bin) return "no-cli";
+  const isClaudeCode = client === "claude-code";
+  const bin = await env.findCli(isClaudeCode ? "claude" : "codex");
+  if (!bin) {
+    if (isClaudeCode) return "no-cli";
+    // Codex / ChatGPT: CLI が無くても設定ファイルを直接書く
+    writeCodexConfig(env);
+    return "registered";
+  }
 
   // 以前の登録（手でビルドした版など）があれば外してから足す。無いときの失敗は無視する
   const scope = client === "claude-code" ? ["--scope", "user"] : [];

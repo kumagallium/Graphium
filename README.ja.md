@@ -3,11 +3,11 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>AI 時代のひらめきノート。</b>
+  <b>AI のための、あなたの記憶。</b>
 </p>
 <p align="center">
-  書けば書くほど、点と点が繋がって「ひらめき」になる。<br />
-  あなたが書いた一文も、AI が手渡した一文も、その出どころのノートまで辿れる。辿れるからこそ、安心して広げられます。
+  AI に、毎回説明し直さなくていい。<br />
+  読んだもの、聞いたこと、書き留めたことを、手元のパソコンの 1 か所に残しておけます。Graphium の中の AI からも、Claude や ChatGPT のデスクトップアプリからも、あなたの記録をもとに出どころつきの答えが返ってきます。AI を替えても、記憶は失われません。
 </p>
 <p align="center">
   <a href="README.md">English</a> | <b>日本語</b>
@@ -38,20 +38,20 @@
 
 Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E3%83%86%E3%83%AB%E3%82%AB%E3%82%B9%E3%83%86%E3%83%B3) スタイルの小さなノート術と、W3C の来歴標準 [PROV-DM](https://www.w3.org/TR/prov-dm/) を組み合わせた、個人開発のオープンソースプロジェクトです。AI が手渡してくれた一文も含めて、すべての主張をその根拠となるノートまで辿れる状態を目指しています。
 
-## 仕組み — 書く、広げる、辿る
+## 仕組み（残す、つながる、辿る）
 
-### 1. 書く
-思いつきをそのまま書き、`@` 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。
+### 1. 残す
+Web のクリップ、録音の文字起こし、写真や PDF から読み取った文字、思いついたメモ、`@` 参照でつないだノート。入口がいくつもあるので、目にしたものをそのまま入れておけます。
 
 <p align="center"><img src="public/landing/screen-editor.png" alt="他のノートへの @ 参照を含むノートを開いた Graphium エディタ" width="760" /></p>
 
-### 2. AI と広げる
-あなたの AI（API キーや GitHub Copilot のサブスク）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
+### 2. AI とつながる
+Graphium の中の AI（API キー、GitHub Copilot のサブスク、ChatGPT Plus / Pro のプラン）が、記録をトピックに束ね、「知見」や「洞察」を拾い上げます。Claude や ChatGPT のデスクトップアプリ、Codex など MCP に対応した AI ともつながります。デスクトップ版のボタン 1 つで登録でき、ノートを読むだけでなく、会話でまとまったことを書き戻すこともできます。
 
 <p align="center"><img src="public/landing/screen-knowledge.png" alt="パン作りのノートから作られたナレッジのトピック一覧" width="760" /></p>
 
-### 3. 起源まで辿る
-AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられます。
+### 3. 辿る
+AI の答えも、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。外の AI が書き込んだノートにはその印が残るので、安心して AI に任せられます。
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="来歴パネル（洞察・知見・元ノート）を開いた洞察ページ" width="760" /></p>
 
@@ -168,6 +168,8 @@ Zettelkasten との対応は意図的なものです。**洞察** が permanent 
 ## 相互運用性
 
 Graphium はプロヴェナンスを **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** としてエクスポートします。これは Linked Data 上に構築された W3C 標準であり、独自形式ではありません。PROV-DM や JSON-LD を理解するあらゆるツールが Graphium の出力を利用できます。プロヴェナンスデータは設計上ポータブルです。
+
+Graphium は **[MCP](https://modelcontextprotocol.io) サーバー** としても動きます。デスクトップ版の **⚙ 設定 → AI → 外の AI からノートを使う** から、Claude Desktop・Claude Code・Codex・ChatGPT のデスクトップアプリにボタン 1 つで登録できます（ChatGPT では Work モードの会話から使えます）。ノートの検索・読み込み・手順のたどり・新しいノートの保存ができます。ノートの置き場所は、あなたのパソコンのままです。使い方は [ユーザーマニュアル](https://kumagallium.github.io/Graphium/manual/ja/mcp-server) にあります。
 
 ## 使い方
 

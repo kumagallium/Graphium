@@ -22,6 +22,26 @@ The line I want the product to live up to:
 Everything in this document — the labels, the Knowledge layer, the file formats — is in
 service of that one line.
 
+### One memory, any AI
+
+More and more often, talking to an AI ends in the thought "I already told you this."
+Each AI company is starting to give its own product a *memory*. That memory, though,
+stays inside the product: switch to another AI and it does not come with you.
+
+I chose to keep the memory with you, not with the AI. Graphium is meant to be that
+memory on your side.
+
+| Side | What it does |
+|---|---|
+| Ways in | Web clips, transcribed recordings, text read from photos and PDFs, quick memos, conversations with AI. Whatever you take in goes to one place |
+| The memory | Plain JSON files on your machine, gathered into topics and traceable to their sources |
+| Ways out | Graphium's built-in AI, and outside AIs that connect over MCP (the Claude and ChatGPT desktop apps, Codex, and others). They can read, and they can also write back what a conversation worked out |
+
+This is another way of saying the line above. The "anytime" in "reusable anytime"
+includes *after you switch AIs*. Provenance matters here too: when several AIs write
+into the same memory, being able to tell where each piece was written from is what
+lets you trust it.
+
 ## 2. Why I built it
 
 Notes tend to be the cheap part of any thinking work. The expensive part

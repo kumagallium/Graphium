@@ -23,10 +23,10 @@ export const en = {
   "nav.manual": "Manual",
 
   // Hero
-  "hero.eyebrow": "Graphium · An inspiration notebook for the AI era",
-  "hero.title": "The more you write, the more the dots connect into insight.",
+  "hero.eyebrow": "Graphium · Your memory, for every AI",
+  "hero.title": "Stop re-explaining yourself to AI.",
   "hero.subtitle":
-    "Every line — the ones you wrote and the ones the AI handed you — traces back to the note it came from. That traceable trust is what lets the dots connect and insight emerge — and even the insight can show its own origin, later.",
+    "What you read on the web, what was said in a meeting, a scribbled memo, your talks with AI. Keep what you take in in one place on your own computer, and AI answers from your own records — Graphium's built-in AI, or the Claude and ChatGPT desktop apps — with the source attached. The memory stays on your machine, so switching AIs doesn't erase it.",
   "hero.tryOnline": "Try online",
   "hero.seeSample": "See a sample notebook",
   "hero.download": "Download desktop",
@@ -36,16 +36,16 @@ export const en = {
     "A one-minute video, no sound. Bring in a folder of records, watch the dots connect into topics, and trace the AI's answer back to the note it came from.",
 
   // How it works (3 steps)
-  "how.heading": "Write, expand, trace.",
-  "how.step1.title": "Write",
+  "how.heading": "Keep, connect, trace.",
+  "how.step1.title": "Keep",
   "how.step1.body":
-    "Jot ideas down as they come and connect them with @ references. Up to here, it feels as light as any note app.",
-  "how.step2.title": "Expand with AI",
+    "Web clips, transcribed recordings, text read from photos and PDFs, quick memos. With that many ways in, whatever you come across can go straight in.",
+  "how.step2.title": "Connect to your AIs",
   "how.step2.body":
-    "Connect your own AI — an API key or your GitHub Copilot subscription — and it gathers your notes into topics and lifts claims and insights out of them: connections you didn't notice yourself.",
+    "Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics. The Claude and ChatGPT desktop apps connect with one button in Settings — they can read your notes and also save what you worked out in the conversation back into them.",
   "how.step3.title": "Trace to the origin",
   "how.step3.body":
-    "Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.",
+    "Any answer, and any line you wrote, walks back to its source note in one click. Notes an outside AI writes carry a mark saying so, so you can hand work to AI with confidence.",
 
   // Screens
   "screens.heading": "See it in action.",
@@ -82,9 +82,9 @@ export const en = {
   // Built for trust
   "trust.heading": "Built for trust.",
   "trust.sub": "Your AI, your storage, open source.",
-  "trust.ai.title": "Runs on your own AI",
+  "trust.ai.title": "One memory, any AI",
   "trust.ai.body":
-    "Graphium is built to think alongside AI — your AI. An API key or your GitHub Copilot subscription connects it, and nothing is sent anywhere without your say.",
+    "The built-in AI runs on your API key, GitHub Copilot subscription, or ChatGPT Plus / Pro plan. Outside AIs — the Claude and ChatGPT desktop apps, Codex, Cursor and more — connect over MCP. Switch AIs and your memory stays put. You decide what goes to which AI.",
   "trust.storage.title": "Your storage",
   "trust.storage.body":
     "Notes are plain JSON files on your disk (desktop) or in your browser (web). Point the desktop app at a Drive / iCloud / Dropbox folder for sync with no extra accounts.",
@@ -108,6 +108,9 @@ export const en = {
   "faq.ai.q": "Do I need AI to use it?",
   "faq.ai.a":
     "Writing, linking, and tracing all work without AI. But Graphium comes into its own when you think with it — an API key or a GitHub Copilot subscription connects in minutes.",
+  "faq.connect.q": "Which AIs can use my notes?",
+  "faq.connect.a":
+    "Inside Graphium, the AI you connect with an API key, a GitHub Copilot subscription, or a ChatGPT Plus / Pro plan (desktop app). From outside, the desktop app registers itself with Claude Desktop, Claude Code, Codex and the ChatGPT desktop app in one click (Settings → AI → Use your notes from other AI assistants); other MCP clients such as Cursor take a JSON snippet. In ChatGPT it works from Work-mode conversations in the desktop app; Chat mode, the web, and the phone apps can't reach a tool on your computer.",
   "faq.scope.q": "Can I control what the AI reads?",
   "faq.scope.a":
     "Yes. Every AI conversation has a three-way grounding scope: External adds a fresh web search and is told to cite only what it actually finds, Internal cross-searches the knowledge distilled from your notes, and This note narrows down to just what the note cites — originals first, so quotes come from the source text rather than a summary.",
@@ -137,10 +140,10 @@ export const ja: Record<keyof typeof en, string> = {
   "nav.start": "はじめる",
   "nav.manual": "マニュアル",
 
-  "hero.eyebrow": "Graphium · AI 時代のひらめきノート",
-  "hero.title": "書けば書くほど、点と点が繋がる「ひらめきノート」",
+  "hero.eyebrow": "Graphium · AI のための、あなたの記憶",
+  "hero.title": "AI に、毎回説明し直さなくていい。",
   "hero.subtitle":
-    "あなたが書いた一文も、AI が手渡してくれた一文も、その出どころのノートまで辿れます。辿れるという信頼があるからこそ、安心して点と点が繋がり、ひらめきが生まれます。そしてその「ひらめきの起源」も、あとから示せるのです。",
+    "Web で読んだもの、会議で話したこと、手書きのメモ、AI との会話。目にしたものを手元のパソコンの 1 か所に残しておくと、Graphium の中の AI からも、Claude や ChatGPT のデスクトップアプリからも、あなたの記録をもとに出どころつきの答えが返ってきます。記憶はあなたのパソコンにあるので、AI を替えても失われません。",
   "hero.tryOnline": "オンラインで試す",
   "hero.seeSample": "見本のノートを見る",
   "hero.download": "デスクトップ版を入手",
@@ -149,16 +152,16 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.videoCaption":
     "1 分の動画（音声なし）。記録をフォルダごと入れると、点と点がトピックに繋がり、AI の答えから出どころのノートまで辿れます。",
 
-  "how.heading": "書く、広げる、辿る。",
-  "how.step1.title": "書く",
+  "how.heading": "残す、つながる、辿る。",
+  "how.step1.title": "残す",
   "how.step1.body":
-    "思いつきをそのまま書き、@ 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。",
-  "how.step2.title": "AI と広げる",
+    "Web のクリップ、録音の文字起こし、写真や PDF から読み取った文字、思いついたメモ。入口がいくつもあるので、目にしたものをそのまま入れておけます。",
+  "how.step2.title": "AI とつながる",
   "how.step2.body":
-    "あなたの AI(API キーや GitHub Copilot のサブスク)を繋ぐと、AI がノートの群れを「トピック」にまとめ、「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
-  "how.step3.title": "起源まで辿る",
+    "Graphium の中の AI（API キー、GitHub Copilot のサブスク、ChatGPT Plus / Pro のプラン）が、記録をトピックに束ねます。Claude や ChatGPT のデスクトップアプリとも設定画面のボタン 1 つでつながり、ノートを読むだけでなく、会話でまとまったことを書き戻すこともできます。",
+  "how.step3.title": "辿る",
   "how.step3.body":
-    "AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられるのです。",
+    "AI の答えも、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。外の AI が書き込んだノートにはその印が残るので、安心して AI に任せられます。",
 
   "screens.heading": "実際の画面。",
   "screens.editor.title": "書いて、繋ぐ",
@@ -191,9 +194,9 @@ export const ja: Record<keyof typeof en, string> = {
 
   "trust.heading": "信頼できる土台。",
   "trust.sub": "あなたの AI、あなたのストレージ、オープンソース。",
-  "trust.ai.title": "あなたの AI で動く",
+  "trust.ai.title": "記憶は 1 つ、AI は選べる",
   "trust.ai.body":
-    "Graphium は AI と一緒に考えるためのノートです。動かすのは「あなたの AI」(API キーや GitHub Copilot のサブスク)。何を渡すかはあなたが決め、断りなく外部へ送りません。",
+    "Graphium の中の AI は、API キー、GitHub Copilot のサブスク、ChatGPT Plus / Pro のプランで動きます。外の AI（Claude や ChatGPT のデスクトップアプリ、Codex、Cursor など）とは MCP でつながります。AI を乗り換えても、記憶は手元に残ります。何をどの AI に渡すかは、あなたが決められます。",
   "trust.storage.title": "あなたのストレージ",
   "trust.storage.body":
     "ノートはプレーンな JSON ファイルとして、デスクトップ版ならローカルに、Web 版ならブラウザ内に保存されます。保存先を Drive / iCloud / Dropbox の同期フォルダにすれば、追加のアカウント連携なしで同期できます。",
@@ -215,6 +218,9 @@ export const ja: Record<keyof typeof en, string> = {
   "faq.ai.q": "AI は必須ですか?",
   "faq.ai.a":
     "書く・繋ぐ・辿るだけなら、AI なしでも動きます。ただ、Graphium の本領は AI と一緒に考えるところにあります。API キーか GitHub Copilot のサブスクがあれば、数分で繋がります。",
+  "faq.connect.q": "どの AI から使えますか?",
+  "faq.connect.a":
+    "Graphium の中では、API キー、GitHub Copilot のサブスク、ChatGPT Plus / Pro のプラン（デスクトップ版）でつないだ AI が使えます。外からは、デスクトップ版の設定（⚙ 設定 → AI → 外の AI からノートを使う）のボタン 1 つで、Claude Desktop・Claude Code・Codex・ChatGPT のデスクトップアプリに登録できます。Cursor など、ほかの MCP 対応アシスタントには JSON を貼り付けます。ChatGPT で使えるのは、デスクトップアプリの Work モードの会話です。Chat モード・Web 版・スマホのアプリからは、パソコンの中のツールにつなげません。",
   "faq.scope.q": "AI が読む範囲は選べますか?",
   "faq.scope.a":
     "選べます。AI との会話には「渡す範囲」という切り替えが付いています。「外部参照」は Web を検索して実際に見つかった出典だけを引くよう指示され、「内部参照」はノートから蒸留された知識を横断検索し、「ノート内参照」は引用したものだけに絞る、という 3 段階です。範囲を絞るのは、引用や数値を要約ではなく原文から引くためなのです。",
