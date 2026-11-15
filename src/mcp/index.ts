@@ -9,10 +9,10 @@
 // ⚠️ stdout は JSON-RPC 専用。console.log を足すとプロトコルが壊れて
 //    クライアント側で「サーバーが応答しない」になる。ログは必ず stderr へ。
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { registerAppTools } from "./app-tools";
+import { createGraphiumMcpServer } from "./create-server";
 import { registerClaimTools } from "./claim-tools";
 import { registerInsightTools } from "./insight-tools";
 import { registerMediaTools } from "./media-tools";
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     process.stderr.write(`[graphium-mcp] 一時ファイルの片付けに失敗: ${String(e)}\n`);
   });
 
-  const server = new McpServer({ name: "graphium", version: VERSION });
+  const server = createGraphiumMcpServer(VERSION);
 
   // initialize は connect 直後にはまだ終わっていないので、呼ばれた時点で解決する
   const getClientName = () => {
