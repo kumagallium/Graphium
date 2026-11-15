@@ -188,7 +188,10 @@ describe("readXlsx", () => {
     const sheet = readXlsx(
       singleSheet(`<worksheet ${NS_MAIN}><sheetData>${rows.join("")}</sheetData></worksheet>`),
     ).sheets[0];
-_000); // 27 万セルを DOM で読むので重い。ほかのテストと並んで走ると 30 秒では足りないことがある
+    expect(sheet.rows).toBe(11_000);
+    expect(sheet.truncated).toBeUndefined();
+    // 27 万セルを DOM で読むので重い。ほかのテストと並んで走ると 30 秒では足りないことがある
+  }, 120_000);
 
   it("詰めてもなお予算を超える対角線状のシートだけ truncated を立てる", () => {
     // 1 行に 1 セルずつ、列も 1 つずつずらす（1000 行 × 1000 列 = 100 万マス、実在 1000 → 予算 50 万を超える）
