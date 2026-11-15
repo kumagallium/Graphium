@@ -121,7 +121,7 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 - A misheard name cannot be corrected, because it is hidden instead.
 :::
 
-## Audio from your phone or a recorder {#other-audio}
+## Audio from your phone or a recorder <Badge type="tip" text="Added in v0.137.0 (2026-11-15)" /> {#other-audio}
 
 Audio that is not a meeting recording can be transcribed too, for example a voice memo sent from your phone (.m4a, .weba) or a .wav file from a recorder. Open the audio in your [materials](/materials-and-citations) and press **Transcribe**.
 
