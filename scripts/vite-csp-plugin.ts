@@ -18,7 +18,8 @@ export function scriptHash(content: string): string {
 /** HTML に残っているインライン <script>（src なし・中身あり）の中身を集める */
 export function findInlineScripts(html: string): string[] {
   const out: string[] = [];
-  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  // 終了タグは </script > のような空白入りも拾う（ブラウザはそれも終了タグとして読む）
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
   for (let m = re.exec(html); m; m = re.exec(html)) {
     const attrs = m[1];
     const body = m[2];

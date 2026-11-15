@@ -44,13 +44,15 @@ for (const f of files) {
   if (dirs.get("object-src")?.some((v) => v !== "blob:" && v !== "'none'")) fail(f, "object-src に blob: 以外の許可がある");
   if (!dirs.get("frame-src")?.includes("blob:")) fail(f, "frame-src に blob:（PDF プレビュー）が無い");
   if (dirs.get("frame-src")?.some((v) => !frameOk.has(v))) fail(f, "frame-src に許可リスト外の指定がある");
-  if (!dirs.get("style-src")?.includes("https://accounts.google.com/gsi/style")) fail(f, "style-src に GIS が無い");
+  // 値の一覧（配列）の中に、この指定そのものがあるかを見る（文字列の部分一致ではない）
+  if (!dirs.get("style-src")?.some((v) => v === "https://accounts.google.com/gsi/style")) fail(f, "style-src に GIS が無い");
   // インラインのイベントハンドラ属性（onclick= など）は script-src のハッシュでは許可できない
   if (/<[a-z][^>]*\son[a-z]+\s*=/i.test(html)) fail(f, "インラインのイベントハンドラ属性がある");
   if (/upgrade-insecure-requests|frame-ancestors/.test(content)) fail(f, "meta で効かない / 入れない方針の指定がある");
 
   let inline = 0;
-  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  // 終了タグは </script > のような空白入りも拾う（ブラウザはそれも終了タグとして読む）
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi)) {
     if (/\bsrc\s*=/i.test(m[1]) || m[2].trim() === "") continue;
     const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(m[1])?.[1]?.toLowerCase();
     if (type && !["module", "text/javascript", "application/javascript"].includes(type)) continue;
