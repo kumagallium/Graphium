@@ -187,6 +187,15 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `start_insight_task` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | "Look for insights across my claims" (the assistant writes the insights itself; see [below](#having-your-assistant-make-insights)) |
 | `submit_insights` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | Called by the assistant with the insights it wrote. Nothing is saved yet; it returns a review task |
 | `submit_insight_review` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | Called by the assistant with the review's answers. The insights are saved here |
+| `start_procedure_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Turn this paper into a procedure note" (the assistant writes the steps itself; see [below](#procedure-notes-from-your-assistant)) |
+| `submit_procedure` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with the steps it wrote. The procedure note is created here |
+| `start_topic_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Make topics from this paper" (the assistant writes the topics itself; see [below](#topics-from-your-assistant)) |
+| `submit_topic_routes` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with which topics to revise and which to create |
+| `get_topic_write_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant to get what it needs to write one topic |
+| `submit_topic_page` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with one topic's text. Each topic is saved here, one at a time |
+| `show_steps` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Show this procedure as a flow" (see [below](#graphs-in-the-conversation)) |
+| `show_lineage` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Show where this came from, as a diagram" |
+| `show_knowledge_graph` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Show me the knowledge graph while we talk" |
 | `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
@@ -329,7 +338,7 @@ Things to know:
 - **Each submission can be undone in one step.** It appears under **Upkeep → Upkeep history** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
 - **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
-- **Topics are not made this way yet.** They still come from Graphium's own ingest. Insights can be — see the next section.
+- **Topics and procedure notes can be made this way too**, from v0.134.0 — see [Having your assistant make topics](#topics-from-your-assistant) and [Having your assistant turn a source into a procedure note](#procedure-notes-from-your-assistant). Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
 
 ![Settings, AI tab, with the Preview features group open: sections for World grounding (Use world grounding on, Auto-ground new knowledge), Source check (Auto-check sources), Claims (Use claims on), Insight discovery (Use insights on, the Insight test and Scans per ingest) and Asterism integration (Connect with Asterism). There are no model selectors in this group.](/screenshots/settings-experimental.png)
@@ -359,6 +368,68 @@ Things to know:
 - **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant).
 - **Each review can be undone in one step**, as **Created insights via MCP** under **Upkeep → Upkeep history**. Undoing it moves the new insights to the Trash and puts back the ones it added to or linked.
 - **Bundles and repeats are found by wording, not meaning.** The app uses semantic similarity (embeddings) for both; outside the app there are none, so a reworded repeat can be missed and saved as a new insight. Graphium's full check can still find it as redundant later.
+
+### Having your assistant turn a source into a procedure note <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> {#procedure-notes-from-your-assistant}
+
+Your assistant can do what **Extract steps into a note** does in the app, with its own model: read a paper (PDF), a Word file, a web page you saved as a material, or one of your notes, and write a procedure note — the steps, with what each one used, the conditions, and what it produced, linked as [provenance](/labels-and-provenance).
+
+1. `start_procedure_task` — Graphium hands the assistant the same instructions it gives its own model, with the names you already use for steps, materials and tools. A long source is not put into the task; the assistant reads it with `get_source_text`.
+2. `submit_procedure` — the assistant passes the steps it wrote. Graphium runs the app's checks and creates the note.
+
+You only ask — *"turn this paper into a procedure note"* — and the assistant calls the tools in order.
+
+What stays with Graphium:
+
+- **The app's checks.** If step headings are not in the language you asked for, if parallel conditions were folded into one step, or if the same chain of steps was copied once per sample, Graphium asks the assistant to fix it once, as the app retries once. The next answer is saved as it is.
+- **Your names.** A name that differs from one you already use only in spelling — case, hyphens, plurals — is changed to yours.
+- **Where it came from.** The note links to its source and is recorded as derived from it. It goes into the procedure folder, and into the material's folders.
+
+Things to know:
+
+- **Only a new note is written.** Your other notes are not changed, so this works while Graphium is running.
+- **Matching names by meaning is left to the assistant.** The app also merges names that mean the same thing (for example *calcination* and *calcining*) with a second AI call. Here, the task lists your existing names and asks the assistant to use them.
+- **The material shows the note under "used in" once you save the note in Graphium.**
+
+### Having your assistant make topics <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> {#topics-from-your-assistant}
+
+Your assistant can also make and revise [topics](/knowledge-layer) from a source, as Graphium's own ingest does. There are two rounds:
+
+1. `start_topic_task` — Graphium hands the assistant your existing topics and the source, with the app's instructions for deciding **which topics to revise and which to create**. The assistant answers with `submit_topic_routes`.
+2. Graphium returns a numbered list (`w1`, `w2`, …). For each item, the assistant gets the current text and the source with `get_topic_write_task`, writes the topic, and passes it to `submit_topic_page`.
+
+The items do not depend on each other, so the assistant can hand them to sub-agents one at a time. An item it decides not to write is passed with `skip: true`.
+
+What stays with Graphium:
+
+- **The app's rules for choosing topics.** A topic Graphium did not list cannot be revised. A new topic with the same title as an existing one revises that one instead. A topic that already cites this source is always revised, so what it says about the source is checked against the new text.
+- **The app's checks on the text.** If a revision drops every sentence that cites a different source, Graphium asks the assistant once to keep them. The passage inside each citation is checked against the source and removed if it cannot be found there.
+- **One page at a time.** Each topic is saved as its own step under **Upkeep → Upkeep history** (**Wrote topics via MCP**), and can be undone on its own.
+
+Things to know:
+
+- **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant). While it runs, saving answers `APP_RUNNING:`.
+- **The source is read whole.** The app splits a long source into windows for its own model; the assistant reads it all, with `get_source_text` when it is long.
+- **Topics in the older format are not revised.** Use **Rebuild from sources** in the app first.
+- **Semantic search catches up on the next start**, as with claims.
+
+### Seeing graphs inside the conversation <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> {#graphs-in-the-conversation}
+
+In clients that support MCP Apps (Claude Desktop and others), the assistant can draw three graphs inside the conversation. They look the same as in the app.
+
+- **`show_steps`** — a note's steps as a flow: inputs and tools, the steps, and what they produced, from left to right. Useful right after the assistant makes a procedure note.
+- **`show_lineage`** — where a note, topic or source came from, and what came from it.
+- **`show_knowledge_graph`** — the whole [global graph](/knowledge-layer). While it is open, it marks what the assistant touches in this conversation, as the graph beside the app's chat does: pages it read in light green, pages it wrote in dark green, and the links it followed in a thick green line. Ask for it at the start — *"show me the knowledge graph while we talk"* — and watch where the answer comes from. With `folder`, pages outside the folder are faded.
+
+![The knowledge graph drawn inside a conversation: grey nodes for the vault, a few pages in light green with their titles (read by the assistant), and a thick green line along the links the assistant followed. Buttons at the top: Fit, Float beside the chat, Full screen.](/screenshots/mcp-knowledge-graph.png)
+
+![A procedure drawn as a flow inside a conversation: two inputs (bread flour, water) lead into five step cards — Autolyse, Stretch and fold, Bulk fermentation, Shape and proof, Bake — ending in the output, an 11 cm loaf.](/screenshots/mcp-step-flow.png)
+
+Things to know:
+
+- **Float it beside the chat.** If the client supports it, **Float beside the chat** keeps the graph next to the conversation, and **Full screen** makes it larger.
+- **Only what the assistant actually touched is marked.** Search results are not marked, only pages it read. Nothing is guessed.
+- **Large vaults are cut to 1,200 nodes.** Pages outside the folder go first, then the least connected. The graph takes about a second and a half to draw at that size.
+- **Clients that do not draw apps** (Claude Code, for example) get a one-line text answer instead.
 
 ### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}
 
