@@ -26,7 +26,8 @@ function isBlockedIPv4(ip: string): boolean {
   if (a === 192 && b === 168) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
   if (a === 192 && b === 0 && p[2] === 0) return true; // 192.0.0.0/24
-  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15（ベンチマーク）
+  // 198.18.0.0/15（ベンチマーク用）は断らない。Clash / Surge などの fake-IP 方式の DNS は
+  // 全ホスト名をこの範囲に解決するので、断ると外のサイトが全部取れなくなる。内側への到達にはならない
   if (a >= 224) return true; // マルチキャスト・予約
   return false;
 }

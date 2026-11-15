@@ -39,9 +39,10 @@ function textOf(entries: Record<string, Uint8Array>, path: string): string | nul
 const MAX_ROW = 1_048_576;
 const MAX_COL = 16_384;
 const MAX_GRID_CELLS = 2_000_000; // dimension を信じる面積の上限
-// シートごとの空マス（padding）の予算 = max(実在セル数 × 8, 50,000)。通常の表はこの中に収まる
+// シートごとの空マス（padding）の予算 = max(実在セル数 × 8, 500,000)。通常の表はこの中に収まる
+// （5 列の表の 6 万行目にメモが 1 つある、10 行の表の XFD 列にメモが 1 つある、といった表も位置を保つ）
 const PADDING_PER_REAL_CELL = 8;
-const MIN_PADDING_LIMIT = 50_000;
+const MIN_PADDING_LIMIT = 500_000;
 // ブック全体の予算。シートごとの上限だけだと、シート数を増やして空マスを積み上げられる。
 // 数えるのは padding だけ（実在セルの多い正当な大きな表を切らないため）
 const MAX_SHEETS = 64;

@@ -53,6 +53,20 @@ function isExternalHttpUrl(href: string): boolean {
   }
 }
 
+/** クリックを横取りせず素通しする絶対スキーム（http(s) は外部リンクとして別に扱う） */
+const PASSTHROUGH_SCHEMES = new Set(["http", "https", "mailto", "blob", "data"]);
+
+/** href がアプリ自身のオリジン（スキーム・ホスト・ポートが同じ）を指す絶対 URL か */
+export function isSameOriginHref(href: string, base: string = window.location.href): boolean {
+  try {
+    const here = new URL(base);
+    const there = new URL(href);
+    return there.protocol === here.protocol && there.host === here.host;
+  } catch {
+    return false;
+  }
+}
+
 /** HTML の <a href> と SVG の <a href> / <a xlink:href> のどれからでも href 文字列を取る。 */
 function anchorHref(anchor: Element): string | null {
   return anchor.getAttribute("href") ?? anchor.getAttribute("xlink:href");
@@ -81,10 +95,15 @@ export function installExternalLinkHandler(): void {
       const href = anchorHref(anchor);
       if (!href) return;
       if (!isExternalHttpUrl(href)) {
-        // 実行できるスキーム（javascript: / vbscript:）は遷移させない
+        // 許可リストにない絶対スキーム（javascript: / vbscript: / smb: / file: / ms-msdt: など
+        // OS のハンドラを呼べるもの）は遷移させず、何もしない。相対・# 始まり・mailto・
+        // ダウンロード用の blob: / data: は素通し（アプリ内の <a href> に入るのはこれらだけ）
         // eslint-disable-next-line no-control-regex
         const norm = href.replace(/[\u0000-\u0020\u007f-\u009f]+/g, "");
-        if (/^(javascript|vbscript):/i.test(norm)) e.preventDefault();
+        const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(norm)?.[1].toLowerCase();
+        // アプリ自身のオリジンを指す絶対 URL（macOS の本番は tauri://localhost/…#note/<id>。
+        // 「リンクをコピー」が作る形）はアプリ内の移動なので素通しする
+        if (scheme && !PASSTHROUGH_SCHEMES.has(scheme) && !isSameOriginHref(norm)) e.preventDefault();
         return;
       }
       // エディタ本文（contenteditable）内のリンクはサイドピークのリーダーで開く

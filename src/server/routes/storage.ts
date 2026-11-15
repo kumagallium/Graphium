@@ -84,7 +84,8 @@ function safeId(id: string, allowColon = false, platform: NodeJS.Platform = proc
   // ':' は Windows の代替データストリーム（file.json:stream）になり、予約名（CON / PRN / AUX / NUL /
   // COM1-9 / LPT1-9、拡張子付きも）は開くと固まる。どちらも Windows でだけ起きるので、Windows でだけ拒否する。
   // macOS / Linux では 1 要素のままで外へ出ず、既存のデータに `wiki:<id>.json` のような名前が
-  // 残っていることがあるので、拒否すると開くことも消すこともできなくなる（Windows では作れない名前）。
+  // 残っていることがあるので、拒否すると開くことも消すこともできなくなる
+  // （Windows では ':' は代替データストリームの指定になり、"wiki:<id>.json" という名前のファイルにはならない）。
   // appdata のキーは ":" を含む正規のキー（appDataFileName が符号化して保存する）なので allowColon で通す
   const windows = platform === "win32";
   if (

@@ -49,16 +49,39 @@ function isPrivateIpv4Octets(o: [number, number, number, number]): boolean {
   );
 }
 
-/** IPv6 内に埋め込まれた IPv4（::ffff:a.b.c.d / ::a.b.c.d / hex 2 グループ）を取り出す */
-function embeddedIpv4(h: string): [number, number, number, number] | null {
-  const dotted = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
-  if (dotted) return parseIpv4(dotted[1]);
-  const hex = /^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
-  if (hex) {
-    const hi = parseInt(hex[1], 16);
-    const lo = parseInt(hex[2], 16);
-    return [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff];
+/** IPv6 文字列を 8 つの 16 ビット群に展開する（不正なら null）。ドット表記の末尾 v4 も受ける */
+function expandIpv6(ip: string): number[] | null {
+  let s = ip.split("%")[0];
+  const dotted = s.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const o = dotted[2].split(".").map(Number);
+    if (o.some((n) => n > 255)) return null;
+    s = `${dotted[1]}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
   }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const all = [...head, ...Array(fill).fill("0"), ...tail].map((x) => parseInt(x, 16));
+  return all.length === 8 && all.every((n) => Number.isInteger(n) && n >= 0 && n <= 0xffff) ? all : null;
+}
+
+/**
+ * IPv6 内に埋め込まれた IPv4 を取り出す（src/mcp/public-url-fetch.ts と同じ形）。
+ * ::ffff:a.b.c.d（射影）・::a.b.c.d（互換）・::ffff:0:a.b.c.d（SIIT）・64:ff9b::/96（NAT64）・2002::/16（6to4）
+ */
+function embeddedIpv4(h: string): [number, number, number, number] | null {
+  const g = expandIpv6(h);
+  if (!g) return null;
+  const v4 = (hi: number, lo: number): [number, number, number, number] => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff];
+  const zeros = (n: number) => g.slice(0, n).every((x) => x === 0);
+  if (zeros(5) && g[5] === 0xffff) return v4(g[6], g[7]);
+  if (zeros(6)) return v4(g[6], g[7]);
+  if (zeros(4) && g[4] === 0xffff && g[5] === 0) return v4(g[6], g[7]);
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) return v4(g[6], g[7]);
+  if (g[0] === 0x2002) return v4(g[1], g[2]);
   return null;
 }
 

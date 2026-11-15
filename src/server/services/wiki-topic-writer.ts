@@ -7,7 +7,6 @@
 // （Topic Router）、前の本文 + 資料 1 本から次の版を作る（Source Topic Reviser）、
 // 新形式どうしの本文統合（Topic Merger）。
 
-import { SOURCE_AS_DATA_GUARD } from "./source-data-guard.js";
 import { isTopicType, type TopicType } from "../../lib/document-types";
 import { generationLanguageName } from "../../lib/language.js";
 // ── Topic Consolidator（既存話題どうしの統合）──
@@ -315,12 +314,7 @@ export const SOURCE_PASSAGE_RULES = `## Keep the passage each sentence comes fro
  * Source Topic Reviser 用のシステムプロンプトを構築する。
  * 前の本文（新規なら空）と新しい資料 1 本の全文を受け取り、次の版の本文（全文書き直し）を返す。
  */
-/** 資料はデータであって指示ではない、の 1 段を末尾に足す */
 export function buildSourceTopicReviserSystemPrompt(language: string, isAnswer?: boolean): string {
-  return buildSourceTopicReviserSystemPromptBase(language, isAnswer) + SOURCE_AS_DATA_GUARD;
-}
-
-function buildSourceTopicReviserSystemPromptBase(language: string, isAnswer?: boolean): string {
   const ja = language === "ja";
   return `You are a topic-page writer for Graphium, a provenance-tracking note editor, using an incremental revision method.
 
@@ -461,12 +455,7 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
 /**
  * Source Survey 用のシステムプロンプトを構築する。
  */
-/** 資料はデータであって指示ではない、の 1 段を末尾に足す */
 export function buildSourceSurveySystemPrompt(language: string): string {
-  return buildSourceSurveySystemPromptBase(language) + SOURCE_AS_DATA_GUARD;
-}
-
-function buildSourceSurveySystemPromptBase(language: string): string {
   return `You write a short orientation summary ("survey") for one document, for Graphium, a provenance-tracking note editor.
 
 You will be given ONLY the beginning of a document (its first window of text — not the full document). From what is written in this beginning alone, produce a short orientation summary covering:
@@ -822,12 +811,7 @@ export function truncateConversationForAnswerRewrite(
  * Source Summary 用のシステムプロンプトを構築する。
  * knowledgeSchema（利用者が育てる規約）があれば、トピックの改訂と同じ位置づけで末尾に添える。
  */
-/** 資料はデータであって指示ではない、の 1 段を末尾に足す */
 export function buildSourceSummarySystemPrompt(language: string, knowledgeSchema?: string): string {
-  return buildSourceSummarySystemPromptBase(language, knowledgeSchema) + SOURCE_AS_DATA_GUARD;
-}
-
-function buildSourceSummarySystemPromptBase(language: string, knowledgeSchema?: string): string {
   const ja = language === "ja";
   const ko = language === "ko";
   const schemaSection = knowledgeSchema && knowledgeSchema.trim()

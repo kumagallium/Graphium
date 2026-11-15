@@ -231,7 +231,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   // （デスクトップ版と dev）。検査しない口:
   //   - OPTIONS（CORS の preflight）
   //   - GET / HEAD /api/storage/capabilities（画面が「合言葉が要るか」を知るため）
-  //   - GET /api/health（生死確認。合言葉が要るときは内部の値を返さない。health.ts）
+  //   - GET / HEAD /api/health（生死確認。合言葉が要るときは内部の値を返さない。health.ts）
   //   - 拡張機能の口（/api/clip の POST・/ping・/pair・/pair/:id）。X-Graphium-Clip-Token と Origin で守る
   // ヘッダーで通ったら Cookie を配る（<img> などヘッダーを付けられない同一オリジンの読み込み用）。
   // Secure は付けない（LAN の http で使うため）。
@@ -242,7 +242,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
       const path = c.req.path.replace(/\/+$/, "");
       if (method === "OPTIONS") return next();
       if ((method === "GET" || method === "HEAD") && path === "/api/storage/capabilities") return next();
-      if (method === "GET" && path === "/api/health") return next();
+      if ((method === "GET" || method === "HEAD") && path === "/api/health") return next();
       if (method === "POST" && /^\/api\/clip(\/pair(\/[^/]+)?)?$/.test(path)) return next();
       if (method === "GET" && path === "/api/clip/ping") return next();
       const result = checkRequestAuth(c);

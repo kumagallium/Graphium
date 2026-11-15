@@ -3398,8 +3398,12 @@ The same `src/` tree is built four different ways.
   or a Windows UNC path inside an imported note (`file-media://../../x`)
   cannot make Rust read or write outside the data folder. The joined path
   must also be a single component directly under its base directory. On
-  the TypeScript side `extractFileId` and the @-mention resolver apply the
-  same rule (`src/lib/storage/safe-id.ts`) before anything is loaded.
+  the TypeScript side `extractFileId` and the @-mention resolver apply a
+  similar rule (`src/lib/storage/safe-id.ts`) before anything is loaded. The
+  TypeScript side always refuses `:` (ids the app generates never contain
+  one, and a refused link target falls through to the title lookup); Rust
+  and the server refuse `:` only on Windows, so that older data containing it
+  still opens elsewhere.
   Commands that delete, open an external app or change the data folder
   (`delete_*_file`, `open_media_in_app`, `set_graphium_root`,
   `start_native_sidecar`) accept only the `main` window; the viewer
@@ -3799,7 +3803,7 @@ The same `src/` tree is built four different ways.
   NUL or `..`, so the reachable surface is exactly one flat directory.
   Symbolic links placed inside `Inbox/` are skipped (`inbox_list` uses the
   directory entry's own type; `inbox_read` and `inbox_mark_imported`
-  refuse them), and `inbox_read` refuses a file over 500 MB without
+  refuse them), and `inbox_read` refuses a file over 1.4 GB without
   reading it, so that one file fails on its own and stays in the inbox
   while the rest import. The
   inbox is a staging area rather than a category: importing hands the

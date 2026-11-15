@@ -10,7 +10,6 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import { SOURCE_AS_DATA_GUARD } from "./source-data-guard.js";
 import { jsonrepair } from "jsonrepair";
 import { CodedError } from "../../lib/ai-error-codes.js";
 import type { AtomRelation, AtomType, AtomShape, AtomTransfer, EpistemicStatus, ShapeFamily } from "../../lib/document-types.js";
@@ -173,12 +172,7 @@ export type AtomCandidate = {
   // Toulmin の backing / modalQualifier も Atom に持たない（Claim 層のみ）。
 };
 
-/** 資料はデータであって指示ではない、の 1 段を末尾に足す */
 export function buildAtomizerSystemPrompt(language: string): string {
-  return buildAtomizerSystemPromptBase(language) + SOURCE_AS_DATA_GUARD;
-}
-
-function buildAtomizerSystemPromptBase(language: string): string {
   const ja = language === "ja";
   return `You are an Atom discoverer for Graphium. An Atom is NOT a tidied restatement of a Claim — it is the **transferable structure** behind it. A Claim such as "電気陰性度差が小さいほどキャリア移動度が高い" is a domain finding; the Atom is the structural rule it instances ("構成要素の性質が均質なほど、内部の流れが妨げられにくい"). You discover Atoms by decomposing Claims to their relationship structure and abstracting to that rule.
 

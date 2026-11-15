@@ -254,6 +254,9 @@ describe("合言葉（GRAPHIUM_AUTH_TOKEN）は全 API に効く", () => {
     const body = (await health.json()) as Record<string, unknown>;
     expect(body).not.toHaveProperty("dataDir");
     expect(body).not.toHaveProperty("pid");
+    // HEAD も合言葉なしで通る（応答は GET と同じ縮約）
+    const head = await app.request("/api/health", { method: "HEAD" });
+    expect(head.status).toBe(200);
     const ping = await get(app, "/api/clip/ping");
     expect(((await ping.json()) as { error: string }).error).not.toBe("Authentication failed");
     const pr = await get(app, "/api/clip/pair-requests");

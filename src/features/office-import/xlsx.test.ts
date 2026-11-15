@@ -193,16 +193,20 @@ describe("readXlsx", () => {
   }, 30_000);
 
   it("詰めてもなお予算を超える対角線状のシートだけ truncated を立てる", () => {
-    // 1 行に 1 セルずつ、列も 1 つずつずらす（600 行 × 600 列 = 36 万マス、実在 600 → 予算 5 万を超える）
+    // 1 行に 1 セルずつ、列も 1 つずつずらす（1000 行 × 1000 列 = 100 万マス、実在 1000 → 予算 50 万を超える）
     const rows: string[] = [];
-    const letters = (n: number) => (n > 26 ? String.fromCharCode(64 + Math.floor((n - 1) / 26)) : "") + String.fromCharCode(65 + ((n - 1) % 26));
-    for (let r = 1; r <= 600; r++) rows.push(`<row r="${r}"><c r="${letters(r)}${r}"><v>1</v></c></row>`);
+    const letters = (n: number) => {
+      let s = "";
+      for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(65 + ((k - 1) % 26)) + s;
+      return s;
+    };
+    for (let r = 1; r <= 1000; r++) rows.push(`<row r="${r}"><c r="${letters(r)}${r}"><v>1</v></c></row>`);
     const sheet = readXlsx(
       singleSheet(`<worksheet ${NS_MAIN}><sheetData>${rows.join("")}</sheetData></worksheet>`),
     ).sheets[0];
     expect(sheet.truncated).toBe(true);
     expect(sheet.compacted).toBe(true);
-    expect(sheet.rows).toBeLessThan(600);
+    expect(sheet.rows).toBeLessThan(1000);
     expect(sheet.rows).toBeGreaterThan(0);
   });
 
@@ -371,6 +375,24 @@ describe("readXlsx", () => {
     expect(sheet.cells[499].every((v) => v === "")).toBe(true); // 空行の位置が残る
     expect(sheet.cells[0][6]).toBe(""); // 空列の位置が残る
     expect(sheet.cells[4999][19]).toBe("5000");
+  }, 30_000);
+
+  it("5 列 × 100 行と A60000 の 1 セルは位置を保つ（詰めない）", () => {
+    const rows: string[] = [];
+    for (let r = 1; r <= 100; r++) {
+      let cs = "";
+      for (let c = 1; c <= 5; c++) cs += `<c r="${String.fromCharCode(64 + c)}${r}"><v>${r}</v></c>`;
+      rows.push(`<row r="${r}">${cs}</row>`);
+    }
+    rows.push(`<row r="60000"><c r="A60000" t="inlineStr"><is><t>memo</t></is></c></row>`);
+    const sheet = readXlsx(
+      singleSheet(`<worksheet ${NS_MAIN}><sheetData>${rows.join("")}</sheetData></worksheet>`),
+    ).sheets[0];
+    expect(sheet.compacted).toBeUndefined();
+    expect(sheet.truncated).toBeUndefined();
+    expect(sheet.rows).toBe(60000);
+    expect(sheet.cells[59999][0]).toBe("memo");
+    expect(sheet.cells[99][4]).toBe("100");
   }, 30_000);
 
   it("実在セル 15,001 個（A1:C5000 と AMJ1）は詰めて 5000 行を残す", () => {

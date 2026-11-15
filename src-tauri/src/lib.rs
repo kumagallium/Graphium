@@ -251,6 +251,12 @@ fn start_native_sidecar(
         // 127.0.0.1 の API 応答を読めてしまう。Tauri の WebView 3 オリジンは sidecar 側で常に足される
         .env("CORS_ORIGINS", sidecar_cors_origins())
         .env("DATA_DIR", &data_dir)
+        // 親プロセスの環境から継がせない。デスクトップ版の画面には合言葉を入れる場所が無く、
+        // GRAPHIUM_AUTH_TOKEN を継ぐと全 API が 401 になる。bind は 127.0.0.1 固定で足りるので
+        // GRAPHIUM_BIND_HOST / GRAPHIUM_ALLOWED_HOSTS も継がせない（継ぐと待ち受け先・許可ホストが変わる）
+        .env_remove("GRAPHIUM_AUTH_TOKEN")
+        .env_remove("GRAPHIUM_BIND_HOST")
+        .env_remove("GRAPHIUM_ALLOWED_HOSTS")
         // macOS の Keychain 経由で API キーを扱うよう sidecar に明示する。
         // 旧形式（models.json に平文）が残っていれば sidecar 側で Keychain へ移行する。
         .env("GRAPHIUM_USE_KEYCHAIN", if cfg!(target_os = "macos") { "1" } else { "0" })
@@ -795,7 +801,8 @@ fn check_main_label(label: &str) -> Result<(), String> {
 /// 制御文字を断る。`:` は Windows でだけ断る（ドライブ指定・代替データストリーム）。
 /// macOS / Linux では `:` 入りの名前は 1 要素のままで外へ出ないうえ、既存のデータに
 /// `wiki:<uuid>.json` のような名前が残っていることがあり、断ると開くことも消すこともできなくなる。
-/// Windows では `:` 入りのファイル名は作れないので、断っても既存のデータは壊れない。
+/// Windows では `:` は代替データストリームの指定になり、"wiki:<id>.json" という名前のファイルにはならない
+/// ので、断っても既存のデータは壊れない。
 pub(crate) fn validate_id_component(id: &str) -> Result<(), String> {
     if id.is_empty()
         || id.contains(['/', '\\'])
@@ -2259,7 +2266,7 @@ const INBOX_IMPORTED_SUBDIR: &str = "_imported";
 
 /// inbox_read で読む 1 ファイルの上限。スマホ撮影の動画・音声が通る大きさにしつつ、
 /// 数 GB のファイルで base64 化と IPC がメモリを使い果たすのを防ぐ。
-const INBOX_MAX_READ_BYTES: u64 = 500 * 1024 * 1024;
+const INBOX_MAX_READ_BYTES: u64 = 1400 * 1024 * 1024;
 
 /// inbox 内のファイルパスを安全に解決する(パストラバーサル防止)。
 /// Inbox 直下のファイルのみ許可し、区切り文字や親参照を含む name は拒否する。

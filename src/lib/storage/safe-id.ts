@@ -4,7 +4,9 @@
 // `file-media://../../x` や `file-media://\\host\share\x`、細工した @メンションのリンク先を
 // 含みうる。そのまま Rust の読み書きコマンドへ渡すと、データフォルダの外のファイルを読む・
 // Windows が SMB 認証を相手へ送る、といったことが起きる。パスの 1 要素に使う文字列は
-// ここを通してから渡す。Rust 側の validate_id_component（src-tauri/src/lib.rs）と同じ規則。
+// ここを通してから渡す。
+// ':' は TS では常に断る（画面が作る id に ':' は無い。断られたリンク先はタイトルの逆引きに進む）。
+// Rust（validate_id_component）とサーバー（safeId）は、古いデータを開けるよう Windows でだけ断る。
 //
 // 実際に生成される id（UUID・ハイフン・下線・`<id>.<拡張子>`）はすべて通る。
 

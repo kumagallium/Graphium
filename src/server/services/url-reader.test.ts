@@ -689,6 +689,31 @@ describe("sanitizeReaderHtml: SVG アニメーション・style・name（監査 
     expect(out).not.toContain("t.example");
   });
 
+  it("a の name は、id が無いときだけ id に移す（ページ内リンクが効き続ける）", () => {
+    const out = sanitizeReaderHtml('<p><a href="#fn1">see</a></p><p><a name="fn1">1</a> <a name="k" id="own">2</a> <a name="__TAURI__">3</a> <a name="process">4</a></p>');
+    expect(out).not.toContain("name=");
+    expect(out).toContain('id="fn1"');
+    expect(out).toContain('id="own"');
+    expect(out).not.toContain('id="k"');
+    expect(out).not.toContain("__TAURI__");
+    expect(out).not.toContain('id="process"');
+    // a 以外の name は移さない
+    expect(sanitizeReaderHtml('<img name="x" src="https://e.example/a.png">')).not.toContain('id="x"');
+  });
+
+  it("a の href は相対・# 始まり・http・https・mailto だけ残し、他のスキームは href を落とす（文字は残す）", () => {
+    const out = sanitizeReaderHtml(
+      '<a href="smb://host/share">s</a><a href="file:///etc/passwd">f</a><a href="ms-msdt:/id x">m</a>' +
+        '<a href=" SMB://h/x">S</a><a href="https://e.example/">h</a><a href="http://e.example/">h2</a>' +
+        '<a href="mailto:a@e.example">mail</a><a href="#top">t</a><a href="/path/x">r</a><a href="x.html">r2</a>',
+    );
+    expect(out).not.toMatch(/smb:|file:|ms-msdt:/i);
+    for (const text of [">s<", ">f<", ">m<", ">S<"]) expect(out).toContain(text);
+    for (const keep of ['href="https://e.example/"', 'href="http://e.example/"', 'href="mailto:a@e.example"', 'href="#top"', 'href="/path/x"', 'href="x.html"']) {
+      expect(out).toContain(keep);
+    }
+  });
+
   it("name 属性を落とし、id は残す", () => {
     const out = sanitizeReaderHtml(`<p><img name="x" id="__TAURI_INTERNALS__" src="data:image/png;base64,AAAA"><a id="fn1" name="fn1">1</a></p>`);
     expect(out).not.toContain("name=");

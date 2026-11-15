@@ -325,6 +325,12 @@ function stripDangerousAttrs(el: SweepElement): void {
     // id は脚注のアンカー（#fn1）に要るので残すが、window / document の既存名を隠す id
     // （__TAURI_INTERNALS__ など）は落とす。
     if (lower === "name" || (lower === "id" && isClobberingId(el.getAttribute(name) ?? ""))) {
+      // 古い記事の脚注は `<a name="x">` だけでアンカーを作る。ページ内リンク（<a href="#x">）が
+      // 効き続けるよう、id が無い a は name の値を id に移す（名前付きプロパティを隠す値は移さない）
+      const nameValue = el.getAttribute(name) ?? "";
+      if (lower === "name" && tag === "a" && el.getAttribute("id") === null && nameValue.trim() && !isClobberingId(nameValue)) {
+        el.setAttribute("id", nameValue);
+      }
       el.removeAttribute(name);
       continue;
     }
@@ -342,8 +348,19 @@ function stripDangerousAttrs(el: SweepElement): void {
       el.setAttribute(name, "#");
     } else if (norm.startsWith("data:") && tag !== "img" && tag !== "image") {
       el.setAttribute(name, "#");
+    } else if ((tag === "a" || tag === "area") && (lower === "href" || lower === "xlink:href") && !isAllowedLinkHref(norm)) {
+      // 本文のリンクは相対・# 始まり・http・https・mailto だけ残す（smb: / file: / ms-msdt: など
+      // OS のハンドラを呼べるスキームは href ごと落とす。リンクの文字は残る）
+      el.removeAttribute(name);
     }
   }
+}
+
+/** 本文の <a href> に残してよい値か（引数は normalizeUrlForScheme 済み）。スキームが無ければ相対 */
+function isAllowedLinkHref(norm: string): boolean {
+  const m = /^([a-z][a-z0-9+.-]*):/.exec(norm);
+  if (!m) return true;
+  return m[1] === "http" || m[1] === "https" || m[1] === "mailto";
 }
 
 /**

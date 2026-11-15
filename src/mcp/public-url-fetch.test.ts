@@ -13,12 +13,15 @@ describe("isBlockedIp", () => {
     }
   });
   it("IPv6 で v4 や内側を包む形も止める（互換・NAT64・6to4・SIIT・サイトローカル）", () => {
-    for (const ip of ["::127.0.0.1", "::7f00:1", "64:ff9b::7f00:1", "64:ff9b::a00:1", "2002:7f00:1::", "2002:a9fe:a9fe::", "::ffff:0:127.0.0.1", "fec0::1", "192.0.0.1", "198.18.0.1", "198.19.255.1"]) {
+    for (const ip of ["::127.0.0.1", "::7f00:1", "64:ff9b::7f00:1", "64:ff9b::a00:1", "2002:7f00:1::", "2002:a9fe:a9fe::", "::ffff:0:127.0.0.1", "fec0::1", "192.0.0.1"]) {
       expect(isBlockedIp(ip), ip).toBe(true);
     }
   });
   it("IPv6 の公開アドレス（v4 を包む形を含む）は通す", () => {
     for (const ip of ["64:ff9b::5db8:d822", "2002:5db8:d822::", "::ffff:5db8:d822", "2001:db8::1"]) expect(isBlockedIp(ip), ip).toBe(false);
+  });
+  it("198.18.0.0/15（fake-IP 方式の DNS が使う範囲）は通す", () => {
+    for (const ip of ["198.18.0.1", "198.19.255.1", "::ffff:198.18.0.1"]) expect(isBlockedIp(ip), ip).toBe(false);
   });
   it("公開アドレスは通す", () => {
     for (const ip of ["93.184.216.34", "8.8.8.8", "172.32.0.1", "2606:4700:4700::1111"]) expect(isBlockedIp(ip), ip).toBe(false);
