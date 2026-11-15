@@ -79,7 +79,7 @@ import {
   archiveIndexEntry,
   restoreFromArchive,
   saveIndexFile,
-  buildIndexEntry,
+  tryBuildIndexEntry,
   type RecentNote,
   type GraphiumIndex,
 } from "../features/navigation";
@@ -1074,7 +1074,9 @@ export function useFileManager(authenticated: boolean) {
         for (const result of wikiDocs) {
           if (result.status === "fulfilled") {
             const { file, doc } = result.value;
-            const entry = buildIndexEntry(file.id, doc, file);
+            // 壊れた Wiki ページ 1 件で索引全体の組み立てを止めない（飛ばして警告に残す）
+            const entry = tryBuildIndexEntry(file.id, doc, file);
+            if (!entry) continue;
             const flags = liveWikiEntries.get(file.id) ?? startupWikiFlags.get(file.id);
             if (flags?.archivedAt) entry.archivedAt = flags.archivedAt;
             if (flags?.deletedAt) entry.deletedAt = flags.deletedAt;

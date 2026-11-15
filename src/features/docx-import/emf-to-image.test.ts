@@ -192,6 +192,42 @@ describe("isEmfMime / isTiffMime / isRenderableImageMime", () => {
 });
 
 describe("extractDibDraws", () => {
+  /** 同じ DIB 本体（bodySize バイト）を指す 100 バイトのレコードを n 個並べた EMF（本体は最後に 1 つだけ） */
+  function amplifiedEmf(n: number, bodySize: number): ArrayBuffer {
+    const recSize = 100;
+    const head = emfHeader();
+    const bodyAt = head.length + n * recSize; // 本体の位置（レコード群の後ろ）
+    const recs: Uint8Array[] = [head];
+    for (let i = 0; i < n; i++) {
+      const r = new Uint8Array(recSize);
+      const dv = new DataView(r.buffer);
+      dv.setUint32(0, 81, true); // EMR_STRETCHDIBITS
+      dv.setUint32(4, recSize, true);
+      const recOff = head.length + i * recSize;
+      dv.setUint32(48, bodyAt - recOff, true); // offBmiSrc
+      dv.setUint32(52, 40, true); // cbBmiSrc
+      dv.setUint32(56, bodyAt - recOff + 40, true); // offBitsSrc
+      dv.setUint32(60, bodySize - 40, true); // cbBitsSrc
+      recs.push(r);
+    }
+    recs.push(new Uint8Array(bodySize)); // DIB 本体（どのレコードからも指される）
+    return buildEmf(...recs);
+  }
+
+  it("同じ DIB を指す小さなレコードを大量に並べても、確保量を増幅させず断る", () => {
+    const t = Date.now();
+    // 修正前は 3000 件 × 約 1MB = 約 3GB を確保しようとした
+    const draws = extractDibDraws(amplifiedEmf(3000, 1_000_000));
+    expect(draws).toHaveLength(0);
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it("同じ DIB を指すレコードが少数なら、本体を共有して取り出せる", () => {
+    const draws = extractDibDraws(amplifiedEmf(3, 1000));
+    expect(draws).toHaveLength(3);
+    expect(draws[0].bmp).toBe(draws[1].bmp);
+  });
+
   it("STRETCHDIBITS から BMP と配置情報を取り出す", () => {
     const emf = buildEmf(emfHeader(), emfStretchDiBits(10), emfEof());
     const draws = extractDibDraws(emf);

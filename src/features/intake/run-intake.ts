@@ -91,7 +91,7 @@ export type IntakeDeps = {
    * 「まだ取り出していないものは、取り込みからでも素材の詳細からでも取り出せる」
    * という規則をここでも満たす）。失敗しても取り込み自体は続行する（warn するだけ）
    */
-  expandOffice?: (file: File, fileId: string) => Promise<{ derived: number; skipped: number }>;
+  expandOffice?: (file: File, fileId: string) => Promise<{ derived: number; skipped: number; truncated?: number }>;
   /**
    * 既存（duplicate）の素材が既に展開済みかどうかを判定する。
    * 渡されない場合は従来どおり新規登録のときだけ expandOffice を呼ぶ。
@@ -143,6 +143,8 @@ export type IntakeOutcome = {
   officeDerived: number;
   /** PowerPoint の展開で変換できずに捨てられた画像（EMF/WMF/TIFF 変換失敗等）の合計件数 */
   officeSkipped: number;
+  /** Excel の展開で、上限のために下の行・後ろのシートを切ったシートの合計件数 */
+  officeTruncated?: number;
 };
 
 /**
@@ -177,6 +179,9 @@ export function mergeOutcome(a: IntakeOutcome, b: IntakeOutcome): IntakeOutcome 
     ocrTargets: [...a.ocrTargets, ...b.ocrTargets],
     officeDerived: a.officeDerived + b.officeDerived,
     officeSkipped: a.officeSkipped + b.officeSkipped,
+    ...(a.officeTruncated !== undefined || b.officeTruncated !== undefined
+      ? { officeTruncated: (a.officeTruncated ?? 0) + (b.officeTruncated ?? 0) }
+      : {}),
   };
 }
 
@@ -261,6 +266,7 @@ export async function runIntake(
   const ocrTargets: BulkOcrTarget[] = [];
   let officeDerived = 0;
   let officeSkipped = 0;
+  let officeTruncated = 0;
   const notesDone = notes.length;
   for (let i = 0; i < materials.length; i++) {
     const m = materials[i];
@@ -309,9 +315,10 @@ export async function runIntake(
       const needsExpand = !duplicate || (deps.isOfficeExpanded ? !deps.isOfficeExpanded(fileId ?? "") : false);
       if (needsExpand && fileId && deps.expandOffice && isExpandableOfficeFile(m.name)) {
         try {
-          const { derived, skipped: officeSkippedCount } = await deps.expandOffice(rawFile, fileId);
+          const { derived, skipped: officeSkippedCount, truncated } = await deps.expandOffice(rawFile, fileId);
           officeDerived += derived;
           officeSkipped += officeSkippedCount;
+          officeTruncated += truncated ?? 0;
         } catch (err) {
           console.warn(`[intake] Office ファイルの展開に失敗: ${m.name}`, err);
         }
@@ -366,5 +373,6 @@ export async function runIntake(
     ocrTargets,
     officeDerived,
     officeSkipped,
+    officeTruncated,
   };
 }

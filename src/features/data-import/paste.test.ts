@@ -35,3 +35,52 @@ describe("detectPastedTable", () => {
     expect(t?.rows).toBe(2);
   });
 });
+
+describe("detectPastedTable（細工入力）", () => {
+  it("閉じない <tr> の繰り返しでも短時間で返る", () => {
+    const html = "<table>" + "<tr><td>".repeat(60_000);
+    const t = Date.now();
+    detectPastedTable({ html });
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+
+  it("閉じない `<` の繰り返しのセルでも短時間で返る", () => {
+    const html = "<table><tr><td>" + "<".repeat(300_000) + "</td></tr><tr><td>b</td></tr></table>";
+    const t = Date.now();
+    detectPastedTable({ html });
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+
+  it("上限を超える巨大 HTML は表として読まず null（テキストが無ければ）", () => {
+    const html = "<table>" + "<tr><td>a</td></tr>".repeat(100_000) + "</table>";
+    expect(detectPastedTable({ html })).toBeNull();
+  });
+});
+
+describe("detectPastedTable（長い属性・正常系）", () => {
+  const longStyle = 'style="overflow:hidden;' + "x".repeat(500) + '"';
+
+  it("開きタグが 300 字を超える td（Google スプレッドシート）でも中身が混ざらない", () => {
+    const td = (v: string) => `<td ${longStyle} data-sheets-value="${"y".repeat(400)}">${v}</td>`;
+    const html = `<table><tr>${td("A")}${td("B")}</tr><tr>${td("1")}${td("2")}</tr></table>`;
+    expect(detectPastedTable({ html })?.tsv).toBe("A\tB\n1\t2");
+  });
+
+  it("長い href の a タグがセルに残らない", () => {
+    const a = `<a href="https://example.com/${"p".repeat(600)}">link</a>`;
+    const html = `<table><tr><td>${a}</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>`;
+    expect(detectPastedTable({ html })?.tsv).toBe("link\tB\n1\t2");
+  });
+
+  it("上限を超える行数は切った表を返さない", () => {
+    const html = "<table>" + "<tr><td>a</td></tr>".repeat(20_001) + "</table>";
+    expect(detectPastedTable({ html })).toBeNull();
+  });
+
+  it("閉じない `<` が並び最後にだけ `>` がある入力でも短時間で返る", () => {
+    const html = "<table><tr><td>" + "<".repeat(300_000) + "></td></tr><tr><td>b</td></tr></table>";
+    const t = Date.now();
+    detectPastedTable({ html });
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+});

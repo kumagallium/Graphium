@@ -105,6 +105,7 @@ export function useIntake(
           ocrPending: combined.ocrTargets.length,
           officeDerived: combined.officeDerived,
           officeSkipped: combined.officeSkipped,
+          officeTruncated: combined.officeTruncated,
           aiAvailable: depsRef.current.aiAvailable,
         });
         // 進行中に × で閉じられていても、結果（復元レポート）は必ず見せる

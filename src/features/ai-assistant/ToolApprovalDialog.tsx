@@ -18,21 +18,32 @@ import {
   type ToolApprovalRequest,
 } from "./tool-approval";
 
-/** 1 つの値として見せる長さの上限（長い本文は先頭だけ） */
+/** 最初に見せる長さの上限。超える値は「すべて表示」で全文を確かめられる */
 const MAX_VALUE_CHARS = 600;
 
-function formatValue(value: unknown): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? String(value);
-  return text.length > MAX_VALUE_CHARS ? `${text.slice(0, MAX_VALUE_CHARS)}…` : text;
+export type ApprovalInputRow = {
+  key: string;
+  /** 最初に見せる文字列（長ければ先頭だけ＋「…」） */
+  value: string;
+  /** 全文 */
+  full: string;
+  /** value が full を切り詰めたものか */
+  truncated: boolean;
+};
+
+function formatValue(key: string, value: unknown): ApprovalInputRow {
+  const full = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? String(value);
+  const truncated = full.length > MAX_VALUE_CHARS;
+  return { key, value: truncated ? `${full.slice(0, MAX_VALUE_CHARS)}…` : full, full, truncated };
 }
 
 /** 渡す値を「名前: 値」の並びにする。オブジェクトでなければ 1 行で */
-export function approvalInputRows(input: unknown): { key: string; value: string }[] {
+export function approvalInputRows(input: unknown): ApprovalInputRow[] {
   if (input && typeof input === "object" && !Array.isArray(input)) {
-    return Object.entries(input as Record<string, unknown>).map(([key, value]) => ({ key, value: formatValue(value) }));
+    return Object.entries(input as Record<string, unknown>).map(([key, value]) => formatValue(key, value));
   }
   if (input === undefined || input === null) return [];
-  return [{ key: "", value: formatValue(input) }];
+  return [formatValue("", input)];
 }
 
 export type ToolApprovalDialogViewProps = {
@@ -44,6 +55,14 @@ export type ToolApprovalDialogViewProps = {
 export function ToolApprovalDialogView({ request, onAnswer }: ToolApprovalDialogViewProps) {
   const t = useT();
   const [remember, setRemember] = useState(false);
+  // 「すべて表示」で全文を開いた行（行の番号）
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggleExpanded = (i: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(i)) next.add(i);
+      return next;
+    });
   const rows = approvalInputRows(request.input);
   const toolLabel = request.title || request.name;
   const decline = () => onAnswer({ approved: false, remember: false });
@@ -56,6 +75,9 @@ export function ToolApprovalDialogView({ request, onAnswer }: ToolApprovalDialog
           {t("toolApproval.lead", { server: request.server || "MCP", tool: toolLabel })}
         </p>
         <p className="text-xs text-muted-foreground">{t("toolApproval.why")}</p>
+        {rows.some((r) => r.truncated) && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">{t("toolApproval.shortened")}</p>
+        )}
         {rows.length > 0 && (
           <div>
             <p className="mb-1 text-xs font-medium text-foreground">{t("toolApproval.inputs")}</p>
@@ -63,7 +85,19 @@ export function ToolApprovalDialogView({ request, onAnswer }: ToolApprovalDialog
               {rows.map((r, i) => (
                 <div key={`${r.key}-${i}`} className="text-xs">
                   {r.key && <dt className="font-medium text-muted-foreground">{r.key}</dt>}
-                  <dd className="whitespace-pre-wrap break-words font-mono text-foreground">{r.value}</dd>
+                  <dd className="whitespace-pre-wrap break-words font-mono text-foreground">
+                    {expanded.has(i) ? r.full : r.value}
+                  </dd>
+                  {r.truncated && (
+                    <button
+                      type="button"
+                      className="mt-0.5 text-xs text-primary underline"
+                      aria-expanded={expanded.has(i)}
+                      onClick={() => toggleExpanded(i)}
+                    >
+                      {expanded.has(i) ? t("toolApproval.collapse") : t("toolApproval.showAll", { count: String(r.full.length) })}
+                    </button>
+                  )}
                 </div>
               ))}
             </dl>

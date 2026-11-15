@@ -998,8 +998,16 @@ export async function ensureIndex(
     const doc = docCache.get(file.id);
     if (doc) {
       const prior = indexMap.get(file.id);
+      // 壊れたノート 1 件（型が崩れた本文など）で索引全体の構築を止めない。
+      // 飛ばしたノートは索引に入らないので、次回以降も stale 扱いで再試行される
+      let entry: NoteIndexEntry;
+      try {
+        entry = buildIndexEntry(file.id, doc, file);
+      } catch (err) {
+        console.warn(`[index] 索引化できないノートをスキップ: ${file.name}`, err);
+        continue;
+      }
       notes = notes.filter((n) => n.noteId !== file.id);
-      const entry = buildIndexEntry(file.id, doc, file);
       // archivedAt / deletedAt は doc に乗らず index にしか無い。stale 判定で
       // buildIndexEntry から作り直すと落ちるため、既存エントリから引き継ぐ。
       // （これが無いと保存後の再構築でアーカイブ/ゴミ箱のノートが一覧へ復活する）
@@ -1038,7 +1046,12 @@ async function fullRebuild(
   for (const file of files) {
     const doc = docCache.get(file.id);
     if (doc) {
-      entries.push(buildIndexEntry(file.id, doc, file));
+      // 壊れたノート 1 件で全体の構築を止めない（飛ばしてログに残す）
+      try {
+        entries.push(buildIndexEntry(file.id, doc, file));
+      } catch (err) {
+        console.warn(`[index] 索引化できないノートをスキップ: ${file.name}`, err);
+      }
     }
   }
 
@@ -1073,6 +1086,23 @@ function isIndexFresh(index: GraphiumIndex, files: GraphiumFile[]): boolean {
   return true;
 }
 
+/**
+ * 索引エントリを作る。壊れたノート（型が崩れた本文など）は例外にせず null を返し、ログに残す。
+ * 呼び出し側は null のノートだけ飛ばして残りの索引を作る。
+ */
+export function tryBuildIndexEntry(
+  noteId: string,
+  doc: GraphiumDocument,
+  file?: GraphiumFile,
+): NoteIndexEntry | null {
+  try {
+    return buildIndexEntry(noteId, doc, file);
+  } catch (err) {
+    console.warn(`[index] 索引化できないノートをスキップ: ${file?.name ?? noteId}`, err);
+    return null;
+  }
+}
+
 // ノート保存時: 該当エントリだけ差分更新
 // archivedAt / deletedAt は doc には乗らないため、既存エントリから引き継ぐ
 // （これが無いと archive 済みノートを保存した瞬間にフラグが剥がれる）。
@@ -1083,7 +1113,9 @@ export function updateIndexEntry(
   file?: GraphiumFile,
 ): GraphiumIndex {
   const existing = index.notes.find((n) => n.noteId === noteId);
-  const entry = buildIndexEntry(noteId, doc, file);
+  const entry = tryBuildIndexEntry(noteId, doc, file);
+  // 壊れたノートは索引を触らない（保存・取り込みの本体は止めない）
+  if (!entry) return index;
   if (existing?.archivedAt) entry.archivedAt = existing.archivedAt;
   if (existing?.deletedAt) entry.deletedAt = existing.deletedAt;
   const notes = index.notes.filter((n) => n.noteId !== noteId);

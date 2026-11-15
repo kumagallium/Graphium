@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildIndexEntry,
+  tryBuildIndexEntry,
   updateIndexEntry,
   removeIndexEntry,
   ensureIndex,
@@ -914,5 +915,23 @@ describe("チェックリスト項目の収集（v32）", () => {
     expect(withEmpty.checklist).toBeUndefined();
     const none = buildIndexEntry("file-2", mockDoc());
     expect(none.checklist).toBeUndefined();
+  });
+});
+
+describe("壊れたノートがあっても索引が止まらない（Wiki 側・保存時）", () => {
+  const poisoned = () => {
+    const doc = mockDoc({ title: "毒" });
+    (doc.pages[0] as unknown as { provLinks: unknown }).provLinks = 5;
+    return doc;
+  };
+
+  it("tryBuildIndexEntry は壊れたノートで null を返し、正常なノートは作る", () => {
+    expect(tryBuildIndexEntry("bad", poisoned())).toBeNull();
+    expect(tryBuildIndexEntry("ok", mockDoc({ title: "正常" }))?.title).toBe("正常");
+  });
+
+  it("updateIndexEntry は壊れたノートでは索引をそのまま返す", () => {
+    const index = mockIndex([]);
+    expect(updateIndexEntry(index, "bad", poisoned())).toBe(index);
   });
 });
