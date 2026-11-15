@@ -10,7 +10,8 @@ import { MeetingRecorderBar } from "./MeetingRecorderBar";
 import { MeetingStartDialog } from "./MeetingStartDialog";
 import { registerRecording } from "./register-recording";
 import * as api from "./api";
-import { clearResult, clearTranscribe, dismissError, transcribeToastKey } from "./store";
+import { bytesToMb, canAutoDownload, useModelDownloadState } from "./model-auto-download";
+import { clearResult, clearTranscribe, dismissError, onAutoModelDownloadFailed, transcribeToastKey } from "./store";
 import { getMeetingSettings } from "../settings/store";
 import { useMeetingRecorder, useMeetingRecorderBoot } from "./use-meeting-recorder";
 
@@ -34,6 +35,10 @@ export function MeetingRecorderMount({
   const [transcribeToast, setTranscribeToast] = useState<string | null>(null);
   const handledRef = useRef<string | null>(null);
   const [modelMissing, setModelMissing] = useState(false);
+  // 未取得のモデルの大きさの目安（MB）
+  const [modelMb, setModelMb] = useState<number | null>(null);
+  // 取得の状態は共有（受信箱・設定からの取得も含む）。完了・取り消し・失敗で下の再読み込みと文が切り替わる
+  const modelDl = useModelDownloadState(getMeetingSettings().modelSize);
 
   // 録音が始まったら、文字起こしブロックを 1 回だけ差し込む（同じ録音で二度入れない）
   const insertedRef = useRef<string | null>(null);
@@ -92,6 +97,12 @@ export function MeetingRecorderMount({
     })();
   }, [enabled, rec.result, rec.stopReason, t]);
 
+  // 録音を始めたあとのモデルの自動取得が失敗したら、録音まわりのトーストで 1 文知らせる（録音は続いている）
+  useEffect(() => {
+    if (!enabled) return;
+    return onAutoModelDownloadFailed(() => setToast(t("meeting.modelDownloadFailed")));
+  }, [enabled, t]);
+
   // 停止の失敗は同意ダイアログではなくトーストで知らせる
   useEffect(() => {
     if (rec.phase === "error" && rec.error?.context === "stop") {
@@ -119,18 +130,26 @@ export function MeetingRecorderMount({
     return () => clearTimeout(timer);
   }, [transcribeToast]);
 
-  // 開始ダイアログを開いたとき、録音中の文字起こしが ON でモデル未取得なら注意を出す
+  // 開始ダイアログを開いたとき、録音中の文字起こしが ON でモデル未取得なら知らせる（取得はここでは始めない。
+  // 「始める」を押して録音を始めたときに取得する。今回の録音は取得が終わってから文字起こしできる）。
+  // 取得の完了・取り消し・失敗（modelDl.status の変化）でモデルの有無を読み直し、古い文を残さない
   const confirming = rec.phase === "confirming";
   useEffect(() => {
     if (!enabled || !confirming) return;
     const ms = getMeetingSettings();
-    if (!ms.liveTranscribe) { setModelMissing(false); return; }
+    if (!ms.liveTranscribe) { setModelMissing(false); setModelMb(null); return; }
     let cancelled = false;
     api.getModelStatus()
-      .then((list) => { if (!cancelled) setModelMissing(!list.find((m) => m.size === ms.modelSize)?.present); })
+      .then((list) => {
+        if (cancelled) return;
+        const st = list.find((m) => m.size === ms.modelSize);
+        const missing = !st?.present;
+        setModelMissing(missing);
+        setModelMb(missing && st ? bytesToMb(st.expectedBytes) : null);
+      })
       .catch(() => { if (!cancelled) setModelMissing(false); });
     return () => { cancelled = true; };
-  }, [enabled, confirming]);
+  }, [enabled, confirming, modelDl.status]);
 
   useEffect(() => {
     if (!toast) return;
@@ -165,6 +184,12 @@ export function MeetingRecorderMount({
         onOpenSettings={() => void api.openScreenSettings().catch(() => {})}
         errorMessage={errorMessage}
         modelMissing={modelMissing}
+        modelDownloadMb={
+          modelMissing && modelMb !== null && (modelDl.status === "downloading" || canAutoDownload(getMeetingSettings().modelSize))
+            ? modelMb
+            : null
+        }
+        modelDownloading={modelDl.status === "downloading"}
         captureSystem={rec.captureSystem}
         onCaptureSystemChange={rec.setCaptureSystem}
         onStart={() => {
