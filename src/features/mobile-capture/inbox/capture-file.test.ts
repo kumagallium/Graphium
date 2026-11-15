@@ -239,3 +239,18 @@ describe("捕獲ファイルのフォルダ", () => {
     expect(parsed).toMatchObject({ folder: "材料X" });
   });
 });
+
+describe("URL 捕獲の URL スキーム検査（監査 #82）", () => {
+  const make = (url: string) =>
+    JSON.stringify({ graphium: 1, kind: "url", createdAt: "2026-07-27T00:00:00.000Z", url });
+
+  it("javascript: / file: / smb: / data: は null（素材扱いに退避）", () => {
+    for (const u of ["javascript:alert(1)", "file:///etc/passwd", "smb://host/share", "data:text/html,x"]) {
+      expect(parseGraphiumCaptureFile("a-url.graphium.json", make(u)), u).toBeNull();
+    }
+  });
+
+  it("https は通る", () => {
+    expect(parseGraphiumCaptureFile("a-url.graphium.json", make("https://example.com/p"))).not.toBeNull();
+  });
+});

@@ -96,6 +96,13 @@ export function WebClipPairingPrompt({
         >
           {request?.number}
         </div>
+        {/* 申し込み元の拡張機能の ID。番号だけでは、ほかの拡張機能の申し込みと見分けにくい */}
+        <p className="text-xs text-muted-foreground break-all">
+          {t("webClip.pair.extensionId")}:{" "}
+          <span className="font-mono" data-testid="web-clip-pair-extension-id">
+            {request?.extensionId}
+          </span>
+        </p>
         <p className="text-xs text-muted-foreground">{t("webClip.pair.note")}</p>
       </ModalBody>
       <ModalFooter>

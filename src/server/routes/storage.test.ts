@@ -1,7 +1,7 @@
 // /api/storage/appdata の一覧・削除（キー・prefix の検証を含む）
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import app from "./storage.js";
@@ -157,5 +157,113 @@ describe("GET /media/:id の本体探し", () => {
     // メタデータが無いもの（URL ブックマークの原文など）も同じ
     writeFileSync(join(md, "u1.txt"), "reader text");
     expect((await app.request("/media/u1")).status).toBe(404);
+  });
+});
+
+describe("id の検査（Windows の予約名・代替データストリーム）", () => {
+  const realPlatform = process.platform;
+  const setPlatform = (p: NodeJS.Platform) => Object.defineProperty(process, "platform", { value: p });
+  afterEach(() => setPlatform(realPlatform));
+
+  it("Windows では予約名・':' を含む id は notes で 400（読み・書きとも）", async () => {
+    setPlatform("win32");
+    for (const id of ["CON", "con.json", "NUL", "aux", "COM1", "lpt9.txt", "note:stream", "a:b"]) {
+      const get = await app.request(`/notes/${encodeURIComponent(id)}`);
+      expect(get.status, id).toBe(400);
+      const put = await app.request(`/notes/${encodeURIComponent(id)}`, { method: "PUT", body: "{}" });
+      expect(put.status, id).toBe(400);
+    }
+  });
+
+  // macOS / Linux では 1 要素のままで外へ出ない。既存のデータに wiki:<id>.json のような名前が
+  // 残っていることがあり、拒否すると開くことも消すこともできなくなる
+  it("Windows 以外では ':' 入りの id・予約名と同じ綴りの id も読み書き・削除できる", async () => {
+    if (realPlatform === "win32") return;
+    setPlatform("darwin");
+    for (const id of ["wiki:3f2c1a4e-0000-4000-8000-000000000000", "aux"]) {
+      const put = await app.request(`/notes/${encodeURIComponent(id)}`, { method: "PUT", body: "{}" });
+      expect(put.status, id).toBe(200);
+      const get = await app.request(`/notes/${encodeURIComponent(id)}`);
+      expect(get.status, id).toBe(200);
+      const del = await app.request(`/notes/${encodeURIComponent(id)}`, { method: "DELETE" });
+      expect(del.status, id).toBe(200);
+    }
+    // パスの外へ出る形はどの OS でも拒否
+    for (const id of ["..", ".hidden", "a/b", "a\\b"]) {
+      const get = await app.request(`/notes/${encodeURIComponent(id)}`);
+      expect([400, 404], id).toContain(get.status);
+    }
+  });
+
+  it("普通の id・予約名に似ているだけの id は通る", async () => {
+    for (const id of ["note-1", "aux-1", "console", "com10", "3f2c1a4e-0000-4000-8000-000000000000"]) {
+      const put = await app.request(`/notes/${id}`, { method: "PUT", body: "{}" });
+      expect(put.status, id).toBe(200);
+    }
+  });
+
+  it("appdata のキーは ':' を含んでいても従来どおり読み書きできる", async () => {
+    const put = await app.request("/appdata/graphium:settings", { method: "PUT", body: '{"a":1}' });
+    expect(put.status).toBe(200);
+    const get = await app.request("/appdata/graphium:settings");
+    expect(get.status).toBe(200);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("appdata は本人だけが読める権限で書く", () => {
+  it("新規も既存（緩い権限）も 0o600 になる", async () => {
+    const { statSync, chmodSync } = await import("node:fs");
+    const file = join(dir, "appdata", appDataFileName("k-secret"));
+    writeFileSync(file, "{}");
+    chmodSync(file, 0o644);
+    const put = await app.request("/appdata/k-secret", { method: "PUT", body: '{"token":"x"}' });
+    expect(put.status).toBe(200);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    const fresh = await app.request("/appdata/k-fresh", { method: "PUT", body: "{}" });
+    expect(fresh.status).toBe(200);
+    expect(statSync(join(dir, "appdata", appDataFileName("k-fresh"))).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("Vercel モードでは capabilities 以外を 404", () => {
+  it("storage の読み書きは 404、capabilities は serverStorage:false", async () => {
+    const { setServerMode } = await import("../config/models.js");
+    setServerMode("vercel");
+    try {
+      for (const [method, path] of [["GET", "/notes"], ["GET", "/media/x"], ["PUT", "/notes/a"], ["PUT", "/appdata/k"]] as const) {
+        const res = await app.request(path, { method, body: method === "PUT" ? "{}" : undefined });
+        expect(res.status, `${method} ${path}`).toBe(404);
+      }
+      const cap = await app.request("/capabilities");
+      expect(((await cap.json()) as { serverStorage: boolean }).serverStorage).toBe(false);
+      // 末尾が /capabilities でも、ルートそのものでなければ 404
+      for (const path of ["/notes/capabilities", "/media/capabilities", "/appdata/capabilities"]) {
+        const res = await app.request(path);
+        expect(res.status, path).toBe(404);
+      }
+    } finally {
+      setServerMode("node");
+    }
+  });
+});
+
+describe("DATA_DIR の新規作成と HEAD capabilities", () => {
+  it.skipIf(process.platform === "win32")("存在しない DATA_DIR は 0o700 で作られる", async () => {
+    const fresh = join(dir, "fresh-data");
+    process.env.DATA_DIR = fresh;
+    const res = await app.request("/notes");
+    expect(res.status).toBe(200);
+    expect(statSync(fresh).mode & 0o777).toBe(0o700);
+  });
+
+  it("Vercel モードでも HEAD /capabilities は 404 にならない", async () => {
+    const { setServerMode } = await import("../config/models.js");
+    setServerMode("vercel");
+    try {
+      const res = await app.request("/capabilities", { method: "HEAD" });
+      expect(res.status).toBe(200);
+    } finally {
+      setServerMode("node");
+    }
   });
 });

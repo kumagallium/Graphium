@@ -11,6 +11,8 @@
 // Readability が読み取れなかった URL（SPA / paywall / 非記事）は
 // 既存の OGP カード (UrlPreview) に fallback する。
 
+import { safeExternalHref } from "../../lib/safe-href";
+import { interceptSvgAnchorClick } from "../../lib/svg-anchor-click";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, RefreshCw, ImageDown, Loader2, Check } from "lucide-react";
 import { useT } from "../../i18n";
@@ -395,16 +397,18 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
             <RefreshCw size={12} style={{ marginRight: 4 }} />
             {t("asset.url.readerRetry")}
           </button>
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={toolBtnSecondary}
-            className="hover:bg-muted"
-          >
-            <ExternalLink size={12} style={{ marginRight: 4 }} />
-            {t("asset.urlOpen")}
-          </a>
+          {safeExternalHref(entry.url) && (
+            <a
+              href={safeExternalHref(entry.url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={toolBtnSecondary}
+              className="hover:bg-muted"
+            >
+              <ExternalLink size={12} style={{ marginRight: 4 }} />
+              {t("asset.urlOpen")}
+            </a>
+          )}
         </div>
       </div>
     );
@@ -440,16 +444,18 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
           {article.byline ? ` · ${article.byline}` : ""}
         </span>
         <div style={{ marginLeft: "auto" }}>
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={toolBtnSecondary}
-            className="hover:bg-muted transition-colors"
-          >
-            <ExternalLink size={12} style={{ marginRight: 4 }} />
-            {t("asset.urlOpen")}
-          </a>
+          {safeExternalHref(entry.url) && (
+            <a
+              href={safeExternalHref(entry.url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={toolBtnSecondary}
+              className="hover:bg-muted transition-colors"
+            >
+              <ExternalLink size={12} style={{ marginRight: 4 }} />
+              {t("asset.urlOpen")}
+            </a>
+          )}
         </div>
       </div>
 
@@ -471,6 +477,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset
         <article
           ref={articleRef}
           data-graphium-reader-root
+          onClick={interceptSvgAnchorClick}
           onMouseOver={handleArticleImgOver}
           onMouseOut={handleArticleImgOut}
           lang={article.lang ?? undefined}

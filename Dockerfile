@@ -46,6 +46,8 @@ ENV DATA_DIR=/app/data
 # コンテナ内では全インターフェースで待ち受ける（サーバーの既定は 127.0.0.1。
 # 外部への公開範囲は compose / docker run の ports 設定で制御する）
 ENV GRAPHIUM_BIND_HOST=0.0.0.0
+# 起動時の警告をコンテナ向けの案内に切り替える目印
+ENV GRAPHIUM_CONTAINER=1
 # フロントエンド配信はバックエンドではなく nginx で行う場合はこの行を削除
 ENV SERVE_STATIC=dist
 

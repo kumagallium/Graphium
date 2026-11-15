@@ -427,6 +427,32 @@ describe("parseIngesterOutput: backing (Phase γ)", () => {
     expect(out[0]?.backing?.[2]?.internalClaimId).toBe("c-1");
   });
 
+  it("url は http / https の絶対 URL だけ残し、ほかは url だけ落として entry は残す", () => {
+    const out = parseIngesterOutput(
+      JSON.stringify({
+        wikis: [
+          {
+            kind: "claim",
+            title: "T",
+            sections: [{ heading: "", content: "..." }],
+            backing: [
+              { source: "external-paper", citation: "a", url: "javascript:alert(1)" },
+              { source: "external-paper", citation: "b", url: "//attacker.example/x" },
+              { source: "external-paper", citation: "c", url: "not a url" },
+              { source: "external-paper", citation: "d", url: "data:text/html,x" },
+              { source: "external-paper", citation: "e", url: "http://example.com/p" },
+            ],
+          },
+        ],
+      }),
+    );
+    const b = out[0]?.backing ?? [];
+    expect(b).toHaveLength(5);
+    expect(b.slice(0, 4).every((e) => e.url === undefined)).toBe(true);
+    expect(b[0]?.citation).toBe("a");
+    expect(b[4]?.url).toBe("http://example.com/p");
+  });
+
   it("source が fixed vocabulary 外なら entry を捨てる", () => {
     const out = parseIngesterOutput(
       JSON.stringify({

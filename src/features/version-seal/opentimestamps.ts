@@ -45,6 +45,24 @@ export const MAX_TREE_DEPTH = 256;
 export const MAX_OP_ARG_BYTES = 4096;
 /** attestation の payload の長さの上限 */
 export const MAX_ATTESTATION_PAYLOAD_BYTES = 8192;
+/** 1 つの木（.ots・カレンダーの応答）に含められる attestation の数の上限（fork で大量に並べる細工への対策） */
+export const MAX_ATTESTATIONS = 128;
+/** カレンダー 1 件の応答に含められる attestation の数の上限（1 台が木を膨らませるのを防ぐ） */
+export const MAX_ATTESTATIONS_PER_RESPONSE = 16;
+/** verifyOts がブロックヘッダを取りに行く Bitcoin attestation の高さ（重複を除く）の上限 */
+export const MAX_HEADER_HEIGHTS = 16;
+
+/** 木に含まれる attestation の数を数える */
+export function countAttestations(node: OtsNode): number {
+  let n = 0;
+  const stack: OtsNode[] = [node];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    n += cur.attestations.length;
+    for (const e of cur.edges) stack.push(e.child);
+  }
+  return n;
+}
 /** 評価中のメッセージの長さの上限（hexlify の連鎖で倍々に増えるのを止める） */
 const MAX_MESSAGE_BYTES = 64 * 1024;
 /** varuint の最大バイト数（49 ビット。number で安全に扱える範囲） */
@@ -135,6 +153,8 @@ export function encodeVarbytes(bytes: Uint8Array): Uint8Array {
 
 class Reader {
   pos = 0;
+  /** 読んだ attestation の数（上限の検査用） */
+  attestations = 0;
   constructor(readonly data: Uint8Array) {}
 
   get remaining(): number {
@@ -193,6 +213,7 @@ function readNode(r: Reader, depth: number): OtsNode {
     if (tag === 0x00) {
       // attestation は op より前に並ぶ（正規形）
       if (node.edges.length > 0) throw new OtsFormatError("attestation が op の後ろにあります");
+      if (++r.attestations > MAX_ATTESTATIONS) throw new OtsFormatError("attestation が多すぎます");
       const attTag = new Uint8Array(r.bytes(8));
       const payload = new Uint8Array(r.varbytes(MAX_ATTESTATION_PAYLOAD_BYTES));
       node.attestations.push({ tag: attTag, payload });
@@ -638,6 +659,12 @@ export async function verifyOts(
 
   const ev = await evaluateTree(file.root, file.digest);
   const results: OtsPathResult[] = [];
+  // 同じ高さは 1 回だけ聞く。attestation の総数は MAX_ATTESTATIONS で抑えてあるので、
+  // ヘッダ取得の数にも上限がある。偽の attestation を本物より前に並べられても本物を落とさず、
+  // 確定が複数あるときは木の並びによらず最も早い時刻を取れるよう、途中で打ち切らない
+  // ただし取りに行く高さは木に現れた順に MAX_HEADER_HEIGHTS 件まで。超えた分は確かめない
+  const headerByHeight = new Map<number, Promise<string>>();
+  let skippedHeights = 0;
   for (const leaf of ev.leaves) {
     const a = leaf.attestation;
     if (tagIs(a, TAG_PENDING)) {
@@ -656,15 +683,27 @@ export async function verifyOts(
         continue;
       }
       const digest = bytesToHex(leaf.msg);
+      if (!headerByHeight.has(height) && headerByHeight.size >= MAX_HEADER_HEIGHTS) {
+        skippedHeights++;
+        continue;
+      }
       try {
-        const headerHex = await getBlockHeader(height);
+        let pendingHeader = headerByHeight.get(height);
+        if (!pendingHeader) {
+          pendingHeader = getBlockHeader(height);
+          headerByHeight.set(height, pendingHeader);
+        }
+        const headerHex = await pendingHeader;
         if (!(await headerMeetsProofOfWork(headerHex, height))) {
           results.push({ status: "invalid", height, reason: "ブロックヘッダの作業証明が成り立ちません" });
           continue;
         }
         const check = checkBitcoinHeader(headerHex, digest);
-        if (check.merkleRootMatches) results.push({ status: "confirmed", height, time: check.time, digest });
-        else results.push({ status: "invalid", height, reason: "ブロックの merkle root と一致しません" });
+        if (check.merkleRootMatches) {
+          results.push({ status: "confirmed", height, time: check.time, digest });
+        } else {
+          results.push({ status: "invalid", height, reason: "ブロックの merkle root と一致しません" });
+        }
       } catch (err) {
         results.push({ status: "unverifiable", reason: `ブロック ${height} のヘッダを確かめられません: ${err instanceof Error ? err.message : String(err)}` });
       }
@@ -673,6 +712,10 @@ export async function verifyOts(
     }
   }
   for (const reason of ev.unverifiable) results.push({ status: "unverifiable", reason });
+  if (skippedHeights > 0) {
+    // 1 件でも確定が取れていれば ok のまま。取れていなければ「確かめられなかった」として残る
+    results.push({ status: "unverifiable", reason: `確かめるブロックの数の上限（${MAX_HEADER_HEIGHTS}）を超えたため、${skippedHeights} 件は確かめていません` });
+  }
 
   const times = results.flatMap((r) => (r.status === "confirmed" ? [r.time] : []));
   return {

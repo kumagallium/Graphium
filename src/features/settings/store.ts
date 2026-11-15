@@ -3,6 +3,7 @@
 
 import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { isDemoMode } from "../../lib/demo/demo-mode";
+import { curatedApprovalFreeToolsForUrl } from "./mcp-connect/catalog";
 
 const STORAGE_KEY = "graphium-settings";
 
@@ -58,6 +59,11 @@ type McpServerBase = {
    * 決めたもの・厳選の読むだけの接続先）。省略時は確認する
    */
   skipApproval?: boolean;
+  /**
+   * 確認なしで動かしてよい道具の名前（厳選の接続先が検索だけを免除するときに入る）。
+   * これを持つサーバーでは、一覧に無い道具はサーバー自身の readOnlyHint があっても確認する
+   */
+  approvalFreeTools?: string[];
 };
 
 /**
@@ -167,6 +173,45 @@ function toStringRecord(raw: unknown): Record<string, string> | undefined {
     if (typeof v === "string") out[k] = v;
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * 編集で置き換えるとき、旧エントリの「今後確認しない」（skipApproval / approvalFreeTools）を引き継ぐ。
+ * 接続先（stdio なら command と args、remote なら url）が変わるときは引き継がない
+ * （別のコマンド・別のサーバーに、前のサーバーへの信頼が残らないように）。名前や env だけの編集では残す
+ */
+export function inheritApprovalFields(
+  old: McpServerEntry | undefined,
+  next: McpServerEntry,
+): { skipApproval?: true; approvalFreeTools?: string[] } {
+  // 接続先が変わって引き継げないときも、新しい接続先が厳選一覧と同じなら、その一覧の免除を入れる
+  const curatedFallback = (): { approvalFreeTools?: string[] } => {
+    const curated = next.type === "remote" ? curatedApprovalFreeToolsForUrl(next.url) : undefined;
+    return curated ? { approvalFreeTools: curated } : {};
+  };
+  if (!old || old.type !== next.type) return curatedFallback();
+  const sameTarget =
+    old.type === "stdio" && next.type === "stdio"
+      ? old.command === next.command && JSON.stringify(old.args) === JSON.stringify(next.args)
+      : old.type === "remote" && next.type === "remote" && old.url === next.url;
+  if (!sameTarget) return curatedFallback();
+  return {
+    ...(old.skipApproval ? { skipApproval: true as const } : {}),
+    ...(old.approvalFreeTools ? { approvalFreeTools: old.approvalFreeTools } : {}),
+  };
+}
+
+/**
+ * 編集で置き換えた結果が他のエントリと同名にならないようにする。
+ * 確認の免除はサーバー名で照合されるので、同名が並ぶと別のサーバーに免除が及ぶ。重なるときは「 (2)」「 (3)」を付ける
+ */
+export function uniqueMcpName(others: readonly { name: string }[], name: string): string {
+  const taken = new Set(others.map((o) => o.name));
+  if (!taken.has(name)) return name;
+  for (let i = 2; ; i++) {
+    const candidate = `${name} (${i})`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 export type McpJsonParseResult = { servers: McpServerEntry[]; error?: "invalid-json" | "no-servers" };
@@ -711,10 +756,34 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
       apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
       headers: toStringRecord(s.headers),
       enabled,
-      ...(s.skipApproval === true ? { skipApproval: true } : {}),
+      ...remoteApprovalFields(s, url),
     });
   }
   return out;
+}
+
+/**
+ * remote サーバーの確認の免除まわり（skipApproval / approvalFreeTools）を読み込む。
+ * 以前の版は厳選一覧のサーバーを skipApproval: true（サーバー丸ごと免除）で保存していた。
+ * approvalFreeTools を持たないそれは、一覧の定義（検索の道具だけ免除）に読み替える。
+ * approvalFreeTools を持つものの skipApproval は、利用者が「今後確認しない」と選んだものなのでそのまま残す
+ */
+function remoteApprovalFields(
+  s: Record<string, unknown>,
+  url: string,
+): { skipApproval?: true; approvalFreeTools?: string[] } {
+  const own = Array.isArray(s.approvalFreeTools)
+    ? s.approvalFreeTools.filter((t): t is string => typeof t === "string" && t !== "")
+    : [];
+  if (own.length > 0) {
+    return { ...(s.skipApproval === true ? { skipApproval: true as const } : {}), approvalFreeTools: own };
+  }
+  if (s.skipApproval === true) {
+    const curated = curatedApprovalFreeToolsForUrl(url);
+    if (curated) return { approvalFreeTools: curated };
+    return { skipApproval: true };
+  }
+  return {};
 }
 
 /** localStorage から読んだ savedRegistries を正規化する（url 必須・dedup） */

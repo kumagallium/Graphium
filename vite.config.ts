@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+import { rewriteDevProxyOrigin } from "./src/lib/dev-proxy-origin";
 import { execSync } from "node:child_process";
 import { writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -315,6 +316,16 @@ export default defineConfig({
       "/api": {
         target: `http://127.0.0.1:${process.env.PORT ?? 3001}`,
         changeOrigin: true,
+        // サーバーは書き込み系の要求の Origin を見る（ループバックの任意ポートは信頼しない）。
+        // 要求の Origin が dev サーバー自身のものと一致するとき（= この画面からの要求）だけ、
+        // 宛先のオリジンに書き換えて通す。ほかのサイトの Origin はそのまま渡し、サーバーが 403 にする。
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            const target = `http://127.0.0.1:${process.env.PORT ?? 3001}`;
+            const rewritten = rewriteDevProxyOrigin(req.headers.origin, req.headers.host, target);
+            if (rewritten) proxyReq.setHeader("Origin", rewritten);
+          });
+        },
       },
     },
   },

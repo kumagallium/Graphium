@@ -6,7 +6,7 @@
 // 保存し、ファイルには metadata のみを書く。旧形式（apiKey をファイルに含む）の
 // データは初回読み込み時に Keychain へ移行し、ファイルから消す。
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import {
   isKeychainEnabled,
@@ -89,7 +89,23 @@ function modelsPath(): string {
 
 function ensureDataDir(): void {
   if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
+    // 新しく作るときは本人だけが入れる権限で作る（Windows では無視される）
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  }
+}
+
+/**
+ * 秘密を含みうるファイルを本人だけが読める権限（0o600）で書く。
+ * 既存のファイルも書き込み時に chmod し直す（以前の既定の権限で作られたものを締める）。
+ * Windows は POSIX の権限を持たない（保存先の ACL に任せる）ので何もしない。
+ */
+export function writePrivateFileSync(path: string, data: string | Uint8Array): void {
+  writeFileSync(path, data, { mode: 0o600 });
+  if (process.platform === "win32") return;
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    // 権限を変えられない保存先（一部のマウント）でも書き込み自体は成功させる
   }
 }
 
@@ -115,7 +131,7 @@ function readRawStored(): StoredModelConfig[] {
 
 function writeRawStored(models: StoredModelConfig[]): void {
   ensureDataDir();
-  writeFileSync(modelsPath(), JSON.stringify(models, null, 2), "utf-8");
+  writePrivateFileSync(modelsPath(), JSON.stringify(models, null, 2));
 }
 
 /**

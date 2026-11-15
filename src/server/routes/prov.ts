@@ -156,7 +156,7 @@ app.post("/ingest-url", async (c) => {
   } catch (err) {
     const e = err as FetchPageError;
     if (typeof e?.status === "number" && typeof e?.message === "string") {
-      return c.json({ error: e.message }, e.status as 400 | 500);
+      return c.json({ error: e.message }, e.status as 400 | 403 | 500);
     }
     return c.json(errorBody(err), 500);
   }

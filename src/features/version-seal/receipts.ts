@@ -20,9 +20,13 @@ import {
   applyUpgrade,
   blindDigest,
   buildBlindedOts,
+  countAttestations,
+  MAX_ATTESTATIONS_PER_RESPONSE,
   listBitcoinClaims,
   listPending,
   parseOts,
+  parseTimestampBody,
+  type OtsFile,
   serializeOts,
   verifyOts,
 } from "./opentimestamps";
@@ -295,6 +299,41 @@ export async function checkReceipts(
 
 export const OTS_ENDPOINT = "opentimestamps";
 
+/** 既知のカレンダーの Pending だけを、重複除き・カレンダー単位の巡回で最大 limit 件選ぶ */
+export function pickPendingRoundRobin<T extends { uri: string; commitment: string }>(
+  all: T[],
+  limit: number,
+): T[] {
+  const byUri = new Map<string, T[]>();
+  const seen = new Set<string>();
+  for (const p of all) {
+    if (!isKnownCalendar(p.uri)) continue;
+    const k = `${p.uri}\n${p.commitment}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const list = byUri.get(p.uri);
+    if (list) list.push(p);
+    else byUri.set(p.uri, [p]);
+  }
+  const queues = [...byUri.values()];
+  const out: T[] = [];
+  for (let i = 0; out.length < limit; i++) {
+    let any = false;
+    for (const q of queues) {
+      if (i < q.length) {
+        any = true;
+        out.push(q[i]);
+        if (out.length >= limit) break;
+      }
+    }
+    if (!any) break;
+  }
+  return out;
+}
+
+/** 1 回の upgrade で問い合わせる Pending の数の上限 */
+const MAX_UPGRADES_PER_CALL = 16;
+
 async function setReceipt(
   provider: StorageProvider,
   noteId: string,
@@ -350,7 +389,31 @@ export async function attachOts(
   }
   const known = responses.filter((r) => isKnownCalendar(r.calendar));
   if (known.length === 0) return { status: "pending", message: "登録簿にないカレンダーの応答でした" };
-  const ots = buildBlindedOts(hexToBytes(meta.seal.sealHash), nonce, known.map((r) => base64ToBytes(r.body)));
+  const digest = hexToBytes(meta.seal.sealHash);
+  // 1 件の不正な応答（OTS でない中身・多すぎる attestation）でほかの正常な応答まで捨てない。
+  // 先頭から足していき、合流後の .ots を読み戻せるものだけ使う（attestation の数の上限は
+  // 木全体にかかるので、1 件ずつ読めても合流すると超えることがある）
+  const bodies: Uint8Array[] = [];
+  let ots: Uint8Array | null = null;
+  for (const r of known) {
+    try {
+      const body = base64ToBytes(r.body);
+      if (countAttestations(parseTimestampBody(body)) > MAX_ATTESTATIONS_PER_RESPONSE) continue;
+      const candidate = buildBlindedOts(digest, nonce, [...bodies, body]);
+      parseOts(candidate);
+      bodies.push(body);
+      ots = candidate;
+    } catch {
+      // このカレンダーの応答は使わない
+    }
+  }
+  if (!ots) {
+    await setReceipt(provider, noteId, snapshotId, {
+      kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "failed", receiptKey: key, updatedAt: nowIso(),
+      failures: (existing?.failures ?? 0) + 1,
+    });
+    return { status: "pending", message: "カレンダーの応答を読めませんでした" };
+  }
   await provider.writeAppData(key, bytesToBase64(ots));
   await setReceipt(provider, noteId, snapshotId, {
     kind: "opentimestamps", endpoint: OTS_ENDPOINT, status: "pending", receiptKey: key, updatedAt: nowIso(),
@@ -374,10 +437,18 @@ export async function upgradeOts(
   if (!meta?.seal || !receipt) return { status: "not_sealed" };
   const bytes = await loadReceiptBytes(provider, receipt.receiptKey);
   if (!bytes) return { status: "pending", message: "証明がまだありません" };
-  const file = parseOts(bytes);
+  let file: OtsFile;
+  try {
+    file = parseOts(bytes);
+  } catch {
+    return { status: "pending", message: "証明を読めませんでした" };
+  }
   let merged = 0;
-  for (const p of await listPending(file)) {
-    if (!isKnownCalendar(p.uri)) continue; // .ots の中の URI はそのまま信用しない
+  // .ots の中の URI はそのまま信用せず、登録簿にあるものだけを対象にする。
+  // 乗っ取られたカレンダーが偽の Pending を大量に並べても、ほかのカレンダーの枠が
+  // 押し出されないよう、(URI, commitment) の重複を除き、カレンダーごとに順番に枠を配る
+  const pendings = pickPendingRoundRobin(await listPending(file), MAX_UPGRADES_PER_CALL);
+  for (const p of pendings) {
     try {
       const res = await (opts.post ?? defaultPost)(`${apiBase()}/seal/ots/upgrade`, {
         calendar: p.uri,
@@ -386,14 +457,36 @@ export async function upgradeOts(
       const body = res.json as { status?: string; body?: string } | null;
       if (res.status === 404 || res.status === 405) return { status: "unsupported" };
       if (res.status === 200 && body?.status === "upgraded" && typeof body.body === "string") {
-        merged += await applyUpgrade(file, p.commitment, base64ToBytes(body.body), p.uri);
+        // 応答を 1 件ずつ合流させ、そのたびに上限内で読み戻せるかを確かめる。
+        // だめな応答（attestation が多すぎる・合流すると木の上限を超える）だけ飛ばして元に戻す
+        const upgrade = base64ToBytes(body.body);
+        if (countAttestations(parseTimestampBody(upgrade)) > MAX_ATTESTATIONS_PER_RESPONSE) continue;
+        const backup = serializeOts(file);
+        try {
+          const n = await applyUpgrade(file, p.commitment, upgrade, p.uri);
+          parseOts(serializeOts(file));
+          merged += n;
+        } catch {
+          file = parseOts(backup);
+        }
       }
     } catch {
       // 届かなければ次の機会に
     }
   }
-  const updated = merged > 0 ? serializeOts(file) : bytes;
-  if (merged > 0) await provider.writeAppData(receipt.receiptKey, bytesToBase64(updated));
+  let updated = bytes;
+  if (merged > 0) {
+    // 乗っ取られたカレンダーの応答で木が膨らんでも、読み戻せない .ots を書かない
+    // （書くと次回から parseOts が上限超えで弾き、元の証明にも戻れなくなる）
+    try {
+      const next = serializeOts(file);
+      parseOts(next);
+      await provider.writeAppData(receipt.receiptKey, bytesToBase64(next));
+      updated = next;
+    } catch {
+      return { status: "pending", message: "確定待ち" };
+    }
+  }
   if ((await listBitcoinClaims(file)).length === 0) return { status: "pending", message: "確定待ち" };
   const v = await verifyOts(updated, meta.seal.sealHash, opts.getHeader ?? makeHeaderFetcher());
   if (!v.ok || !v.earliestTime) return { status: "pending", message: "照合できませんでした" };

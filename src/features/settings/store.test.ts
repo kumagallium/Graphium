@@ -837,6 +837,32 @@ describe("段のスイッチ（標準・精密を使うか）", () => {
   });
 });
 
+describe("厳選サーバーの確認の免除（skipApproval からの読み替え）", () => {
+  beforeEach(() => localStorage.clear());
+
+  const save = (mcpServers: unknown[]) => localStorage.setItem("graphium-settings", JSON.stringify({ mcpServers }));
+
+  it("以前の版が skipApproval で保存した Tavily は、検索の道具だけの免除に読み替える", () => {
+    save([{ type: "remote", id: "t", name: "tavily", url: "https://mcp.tavily.com/mcp/", transport: "streamable-http", apiKey: "k", enabled: true, skipApproval: true }]);
+    const s = loadSettings().mcpServers[0];
+    expect(s.skipApproval).toBeUndefined();
+    expect(s.approvalFreeTools).toEqual(["tavily-search", "tavily_search"]);
+    expect(s.type === "remote" && s.apiKey).toBe("k");
+  });
+
+  it("利用者が自分で付けた別サーバーの skipApproval はそのまま", () => {
+    save([{ type: "remote", id: "x", name: "x", url: "https://other.example/mcp", transport: "sse", enabled: true, skipApproval: true }]);
+    expect(loadSettings().mcpServers[0].skipApproval).toBe(true);
+  });
+
+  it("免除の一覧を持つサーバーに利用者が付けた skipApproval は残る", () => {
+    save([{ type: "remote", id: "t", name: "tavily", url: "https://mcp.tavily.com/mcp/", transport: "streamable-http", enabled: true, skipApproval: true, approvalFreeTools: ["tavily-search"] }]);
+    const s = loadSettings().mcpServers[0];
+    expect(s.skipApproval).toBe(true);
+    expect(s.approvalFreeTools).toEqual(["tavily-search"]);
+  });
+});
+
 describe("文字起こしモデルの「自動では取り直さない」印", () => {
   beforeEach(() => {
     localStorage.clear();

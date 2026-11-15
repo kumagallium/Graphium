@@ -55,10 +55,13 @@ export type LoadedClaimSource = { ok: true; src: ClaimSource } | { ok: false; me
 export const claimSourceDeps: {
   fetchUrl: (url: string) => Promise<{ title?: string; description?: string; text: string }>;
 } = {
-  // アプリの /api/wiki/fetch-url と同じ関数・同じ既定（本文は 5000 字まで）
+  // アプリの /api/wiki/fetch-url と同じ本文の取り出し・同じ既定（本文は 5000 字まで）。
+  // ただし MCP は外部の AI が宛先を選ぶので、取得は宛先（リダイレクト先も）を検査する public-url-fetch を通す
   fetchUrl: async (url) => {
-    const { fetchPageAsText } = await import("../server/services/url-fetcher");
-    return fetchPageAsText(url);
+    const { fetchPublicUrlHtml } = await import("./public-url-fetch");
+    const { extractFromHtml } = await import("../server/services/url-fetcher");
+    const { html } = await fetchPublicUrlHtml(url);
+    return extractFromHtml(html);
   },
 };
 

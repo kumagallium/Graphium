@@ -1,6 +1,7 @@
 // Wiki ドキュメント用バナー
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { useMemo, useState } from "react";
 import {
   RefreshCw,
@@ -1067,9 +1068,9 @@ function WorldGroundingDetailSection({
               {sources.map((s, i) => (
                 <span key={i}>
                   {i > 0 && <span style={{ color: "var(--ink-4)" }}>; </span>}
-                  {s.url ? (
+                  {s.url && safeExternalHref(s.url) ? (
                     <a
-                      href={s.url}
+                      href={safeExternalHref(s.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
@@ -2007,11 +2008,11 @@ function BackingSection({ backing }: { backing: BackingEntry[] }) {
             <li key={i}>
               <BackingSourceChip source={b.source} />{" "}
               <span>{b.citation}</span>
-              {b.url && (
+              {b.url && safeExternalHref(b.url) && (
                 <>
                   {" "}
                   <a
-                    href={b.url}
+                    href={safeExternalHref(b.url)}
                     target="_blank"
                     rel="noreferrer"
                     style={{

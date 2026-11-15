@@ -3,6 +3,8 @@
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { setCookie } from "hono/cookie";
+import { AUTH_COOKIE_MAX_AGE, AUTH_COOKIE_NAME, authCookieValue, checkRequestAuth } from "./auth-token.js";
 import { setServerMode } from "./config/models.js";
 import { setServerMode as setProfilesServerMode } from "./config/profiles.js";
 import healthRoutes from "./routes/health.js";
@@ -72,12 +74,14 @@ export function isAllowedHost(hostHeader: string | undefined, allowList: string[
  *
  * ブラウザは書き込み系の要求に必ず Origin を付けるので、Origin を見て断る:
  *   - Origin 無し → ブラウザ以外（同梱の MCP サーバー・CLI・テスト）。通す
- *   - 許可リスト（CORS_ORIGINS と Tauri の WebView）・ループバック（dev の vite）・
- *     自分自身と同じホスト（セルフホストで画面と API を同じオリジンで配る形）→ 通す
+ *   - 許可リスト（CORS_ORIGINS と Tauri の WebView）・自分自身と同じホスト
+ *     （セルフホストで画面と API を同じオリジンで配る形）→ 通す
+ *     ループバックの「任意のポート」は信頼しない（手元の別ポートで開いた信頼できないページが
+ *     /api/mcp/test などを叩けてしまうため）。dev の vite は proxy が Origin を宛先のものに
+ *     書き換えて通す（vite.config.ts）。tauri dev は CORS_ORIGINS の既定 http://localhost:5174
  *   - Chrome 拡張機能 → Web クリップの送信とペアリングの申し込み（/api/clip・/api/clip/pair・/api/clip/pair/:id）だけ通す
  *   - それ以外（他のサイト・"null"）→ 断る
  */
-const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 const EXTENSION_ORIGIN_RE = /^chrome-extension:\/\/[a-p]{32}$/;
 // 拡張機能が書き込みに使う口だけ（クリップの送信とペアリングの申し込み・結果の問い合わせ）。
 // 承認（/pair-requests/:id）や合言葉の作り直しは利用者の画面の操作なので、拡張機能には開けない。
@@ -93,7 +97,6 @@ export function isAllowedWriteOrigin(args: {
   if (origin === undefined) return true;
   const o = origin.trim();
   if (allowedOrigins.includes(o)) return true;
-  if (LOOPBACK_ORIGIN_RE.test(o)) return true;
   if (EXTENSION_ORIGIN_RE.test(o)) return EXTENSION_WRITE_PATH_RE.test(path);
   try {
     const u = new URL(o);
@@ -151,9 +154,11 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   }
 
   // CORS 設定
-  const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5174")
+  // 空文字（compose の ${CORS_ORIGINS:-} が未設定のとき）は未指定と同じ扱いで既定に戻す
+  const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174")
     .split(",")
-    .map((o) => o.trim());
+    .map((o) => o.trim())
+    .filter(Boolean);
   // Tauri webview オリジンを追加
   for (const tauriOrigin of ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]) {
     if (!allowedOrigins.includes(tauriOrigin)) allowedOrigins.push(tauriOrigin);
@@ -190,7 +195,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
       // MCP 登録ユーザーの AI が全滅した実例あり）。回帰テスト: app.test.ts
       // X-Graphium-Clip-Token（Web クリップの合言葉）はわざと列挙しない。拡張機能は
       // host_permissions で CORS の外から送るので要らず、Web ページからは送らせない（routes/clip.ts）
-      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token", "X-MCP-Servers"],
+      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token", "X-MCP-Servers", "X-Registry-Key"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
   );
@@ -219,6 +224,38 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
         for (const [k, v] of Object.entries(extra)) res.headers.set(k, v);
         c.res = res;
       }
+    });
+  }
+
+  // セルフホストの合言葉（GRAPHIUM_AUTH_TOKEN）を全 API に効かせる。未設定なら素通し
+  // （デスクトップ版と dev）。検査しない口:
+  //   - OPTIONS（CORS の preflight）
+  //   - GET / HEAD /api/storage/capabilities（画面が「合言葉が要るか」を知るため）
+  //   - GET / HEAD /api/health（生死確認。合言葉が要るときは内部の値を返さない。health.ts）
+  //   - 拡張機能の口（/api/clip の POST・/ping・/pair・/pair/:id）。X-Graphium-Clip-Token と Origin で守る
+  // ヘッダーで通ったら Cookie を配る（<img> などヘッダーを付けられない同一オリジンの読み込み用）。
+  // Secure は付けない（LAN の http で使うため）。
+  if (mode !== "vercel") {
+    app.use("/api/*", async (c, next) => {
+      if (!process.env.GRAPHIUM_AUTH_TOKEN) return next();
+      const method = c.req.method;
+      const path = c.req.path.replace(/\/+$/, "");
+      if (method === "OPTIONS") return next();
+      if ((method === "GET" || method === "HEAD") && path === "/api/storage/capabilities") return next();
+      if ((method === "GET" || method === "HEAD") && path === "/api/health") return next();
+      if (method === "POST" && /^\/api\/clip(\/pair(\/[^/]+)?)?$/.test(path)) return next();
+      if (method === "GET" && path === "/api/clip/ping") return next();
+      const result = checkRequestAuth(c);
+      if (result === "denied") return c.json({ error: "Authentication failed" }, 401);
+      if (result === "header") {
+        setCookie(c, AUTH_COOKIE_NAME, authCookieValue(process.env.GRAPHIUM_AUTH_TOKEN), {
+          httpOnly: true,
+          sameSite: "Strict",
+          path: "/api",
+          maxAge: AUTH_COOKIE_MAX_AGE,
+        });
+      }
+      await next();
     });
   }
 

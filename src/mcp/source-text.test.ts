@@ -32,6 +32,21 @@ describe("getSourceText", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("sourceId に .. や区切りを含められない（vault の外の .json の有無を探らせない）", async () => {
+    writeFileSync(join(root, "..", "graphium-outside-probe.json"), "{}");
+    try {
+      const probe = await getSourceText({ sourceId: "../../graphium-outside-probe" }, root);
+      const missing = await getSourceText({ sourceId: "../../graphium-outside-missing" }, root);
+      // 存在する・しないで応答が変わらない（どちらも同じ断り）
+      expect(probe).toBe(missing.replace("graphium-outside-missing", "graphium-outside-probe"));
+      expect(probe.startsWith("UNKNOWN_SOURCE")).toBe(true);
+      expect((await getSourceText({ sourceId: "a/b" }, root)).startsWith("UNKNOWN_SOURCE")).toBe(true);
+      expect((await getSourceText({ sourceId: "a\\b" }, root)).startsWith("UNKNOWN_SOURCE")).toBe(true);
+    } finally {
+      rmSync(join(root, "..", "graphium-outside-probe.json"), { force: true });
+    }
+  });
+
   it("PDF はページ番号つきで返し、page 指定でそのページを含む窓を選ぶ", async () => {
     writeFileSync(join(root, "media", "pdf1.pdf"), buildMinimalPdf(["Alpha first page", "Beta second page", "Gamma third page"]));
     writeMediaIndex([{ fileId: "pdf1", name: "論文.pdf", type: "pdf", mimeType: "application/pdf", url: "", uploadedAt: "", usedIn: [] }]);

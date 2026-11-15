@@ -2604,7 +2604,15 @@ The LLM judge runs in one of two modes, picked per request in
     fits the "is this claim known in the literature" question directly.
   - **a connected MCP search tool, on top** (`services/grounding-search.ts →
     findSearchTool` + `runGroundingSearch`): adds broad general-web coverage
-    when the user has wired one up (e.g. Tavily / Brave). Optional.
+    when the operator has configured an MCP Registry (the `CRUCIBLE_API_URL`
+    environment variable only; a request-supplied `X-Registry-URL` header is
+    ignored on this path):
+    one search tool (picked by name) from a Registry server is used, unless
+    it is explicitly `destructiveHint: true`. Servers the user adds in
+    Settings → AI are not used (the app sends no `X-MCP-Servers` header for
+    world grounding; the header-based branches — curated `approvalFreeTools`,
+    readOnlyHint on a "don't ask again" server — serve other clients that do
+    send it). Optional.
 
   The verdict is grounded in real results rather than the model's memory;
   `null` means "searched and found no direct prior art — not a proof of
@@ -3381,6 +3389,45 @@ The same `src/` tree is built four different ways.
   (remove one entry for good; a missing key succeeds). Both validate the
   key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
   over a directory so `cargo test` covers it
+- Every command that builds a path from an id (note / wiki / skill /
+  media ids, appData keys) passes it through one check in `lib.rs`
+  (`validate_id_component`): empty, `/`, `\`, `..`, a leading `.`
+  and control characters are refused (and `:` on Windows, where it means a
+  drive or an alternate data stream; elsewhere it stays one path component,
+  and older data can contain names such as `wiki:<id>`), so a relative path, an absolute path
+  or a Windows UNC path inside an imported note (`file-media://../../x`)
+  cannot make Rust read or write outside the data folder. The joined path
+  must also be a single component directly under its base directory. On
+  the TypeScript side `extractFileId` and the @-mention resolver apply a
+  similar rule (`src/lib/storage/safe-id.ts`) before anything is loaded. The
+  TypeScript side always refuses `:` (ids the app generates never contain
+  one, and a refused link target falls through to the title lookup); Rust
+  and the server refuse `:` only on Windows, so that older data containing it
+  still opens elsewhere.
+  Commands that delete, open an external app or change the data folder
+  (`delete_*_file`, `open_media_in_app`, `set_graphium_root`,
+  `start_native_sidecar`) accept only the `main` window; the viewer
+  window can read and save notes but not run them. The sidecar gets
+  `CORS_ORIGINS=http://localhost:5174,...` in debug builds only; release
+  builds pass only the three WebView origins (an empty value would make the
+  sidecar fall back to its default, `http://localhost:5174`)
+- Shared-folder writes (`shared_write`, `shared_delete`,
+  `shared_blob_write`, and the file check of `shared_blob_delete`) refuse a
+  target that is a symbolic link and require the destination folder, once
+  canonicalized, to sit under the shared root (the root itself may be a
+  link, e.g. a NAS mount). A passing directory check is remembered
+  in-process for 30 seconds (only passes, never refusals) so a burst of
+  writes over a NAS does not canonicalize on every call. Folder scanning
+  (`scan_directory`) refuses a root that is inside a hidden folder (any
+  dot-prefixed path component), under one of ten sensitive folders directly
+  inside `~/Library` (Keychains, Application Support, Preferences, Mail,
+  Messages, Safari, Cookies, Accounts, Containers, Group Containers), or at
+  or under `AppData` (Roaming, Local, LocalLow) in the home folder. The
+  filesystem root, the home folder itself, Documents / Desktop / Downloads,
+  cloud-sync folders and NAS mounts are accepted. The one-time move from the
+  old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
+  once done and is skipped afterwards; it copies files as before except that
+  it never overwrites an existing `models.json` in the new data folder
 - **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
   During an online meeting the desktop records two tracks side by side:
   what the machine is playing (the other participants, taken from the OS
@@ -3749,7 +3796,12 @@ The same `src/` tree is built four different ways.
   to `appdata/opened/<fileId>/<display name>` (path separators and
   characters Windows rejects are stripped from the name) next to
   `.graphium-base`, the SHA-256 of what it copied, and hands that copy to
-  the OS default app through the opener plugin. The original is never
+  the OS default app through the opener plugin. A file whose real
+  extension is an executable, script, shortcut or installer type (`exe`,
+  `bat`, `lnk`, `ps1`, `app`, `command`, `sh`, ...) is never copied or
+  opened — the command returns `blocked-executable-type:<ext>` and the UI
+  says it cannot be opened from here; saving the material is not
+  affected. The original is never
   handed out, so saving in Word or Excel cannot silently change the bytes
   that notes and knowledge cite. Opening again never overwrites a copy that
   was edited. On start and whenever the window regains focus,
@@ -3801,8 +3853,13 @@ The same `src/` tree is built four different ways.
   directory (`inbox_list`, returning name/size/mtime), read one file as
   base64 (`inbox_read`), delete an imported file (`inbox_discard`) or move
   it aside into `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`).
-  All four reject an empty root and any name containing a path separator
-  or `..`, so the reachable surface is exactly one flat directory. The
+  All four reject an empty root and any name containing a path separator,
+  NUL or `..`, so the reachable surface is exactly one flat directory.
+  Symbolic links placed inside `Inbox/` are skipped (`inbox_list` uses the
+  directory entry's own type; `inbox_read` and `inbox_mark_imported`
+  refuse them), and `inbox_read` refuses a file over 1.4 GB without
+  reading it, so that one file fails on its own and stays in the inbox
+  while the rest import. The
   inbox is a staging area rather than a category: importing hands the
   bytes to the active storage provider, so the file becomes an ordinary
   asset in the media library and leaves the inbox. After a successful
@@ -4828,10 +4885,30 @@ deployment is one of:
 - A self-hosted Docker behind the user's own boundary (VPN, LAN, or
   reverse proxy).
 
-Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
-`X-MCP-Servers`, `X-Registry-URL`/`X-Registry-Key`) are passthrough to
-upstream LLM / MCP / Registry APIs, not authentication for the Graphium
-server itself. `X-MCP-Servers` carries the user's directly-registered MCP servers; the
+**Self-host token (`GRAPHIUM_AUTH_TOKEN`).** When set, node mode requires it on
+**every** `/api/*` request (a shared middleware in `src/server/app.ts`, not only
+the storage routes). A request passes with an `X-Graphium-Token` header equal to
+the token, or with the `graphium_auth` cookie (`sha256("graphium-auth-cookie:" +
+token)` in hex; the server hands it out — `HttpOnly; SameSite=Strict; Path=/api;
+Max-Age` 30 days, no `Secure` so LAN `http` works — on a response to a
+header-authenticated request, for same-origin loads such as `<img>` that cannot
+carry a header). Both sides are hashed with SHA-256 and compared with
+`timingSafeEqual`. Not checked: `OPTIONS`, `GET /api/storage/capabilities`,
+`GET /api/health` (when a token is set, an unauthenticated caller gets only
+liveness — no `dataDir`, pid or model info), and the extension's endpoints
+(`POST /api/clip`, `GET /api/clip/ping`, `POST /api/clip/pair`,
+`POST /api/clip/pair/:id`), which are guarded by `X-Graphium-Clip-Token` and the
+`Origin` rule below. With no token set (desktop sidecar, dev) nothing is
+checked. The browser frontend adds the header to every request whose target is
+the API (`installApiAuthFetch`, `src/lib/api-auth-fetch.ts`) and never to another
+origin. At start-up the server warns loudly when it listens beyond loopback
+without a token, because the MCP connection test starts a local command: an open
+LAN port is remote command execution.
+
+Other tokens you may see in headers (`X-LLM-API-Key`, `X-MCP-Servers`,
+`X-Registry-URL`/`X-Registry-Key`) are passthrough to upstream LLM / MCP /
+Registry APIs, not authentication for the Graphium server itself.
+`X-MCP-Servers` carries the user's directly-registered MCP servers; the
 `agent` route resolves each into a connection. Two transports:
 
 - **stdio (local)** — the server spawns the configured `command`/`args`
@@ -4851,16 +4928,20 @@ server would let any page the user opens run a command. In node mode,
 `createApp` therefore rejects `POST` / `PUT` / `PATCH` / `DELETE` with `403`
 unless the `Origin` header is absent (a non-browser client such as the
 bundled MCP server — browsers always send `Origin` on these methods), in the
-CORS list or a Tauri WebView origin, a loopback origin (the dev server on any
-port), the server's own host (self-hosting the UI and API on one origin), or a
+CORS list (`CORS_ORIGINS`, default `http://localhost:5174`) or a Tauri WebView
+origin, the server's own host (self-hosting the UI and API on one origin), or a
 `chrome-extension://` origin on the extension's own write paths only
 (`/api/clip`, `/api/clip/pair`, `/api/clip/pair/:id` — approving a pairing
-stays in the app) (`isAllowedWriteOrigin` in `src/server/app.ts`). `GET` is
-not restricted: those routes only read, and CORS keeps the response from the
-page.
+stays in the app) (`isAllowedWriteOrigin` in `src/server/app.ts`). A loopback
+origin on an *arbitrary* port is **not** trusted (a page served from any other
+local port — a notebook, a static server — could otherwise start commands). The
+dev server keeps working because the Vite `/api` proxy rewrites `Origin` to the
+backend's own origin, and only when the incoming `Origin` is the dev server's own
+(`vite.config.ts`); any other `Origin` is forwarded unchanged and gets `403`.
+`GET` is not restricted: those routes only read, and CORS keeps the response from
+the page.
 
-Because the loopback origin itself is trusted, the server must never let a
-page run script *as* that origin. `image-proxy` relays outside images and
+The server never lets a page run script *as* an allowed origin. `image-proxy` relays outside images and
 `/api/storage/media/:id` returns imported files as stored, so an SVG or HTML
 body opened directly would otherwise run on `http://127.0.0.1:<port>`. Every
 `/api/*` response in node mode therefore carries
@@ -4898,6 +4979,40 @@ DNS rebinding. The app-facing endpoints (`GET /api/clip/inbox`,
 `X-Graphium-Token` when `GRAPHIUM_AUTH_TOKEN` is set. Bodies are capped at
 1 MB, text at 50,000 characters, URLs at 2,048 characters and http(s) only,
 and at most 1,000 clips wait in the inbox.
+
+**Saved keys stay with their server.** `GET /api/models` never returns a key,
+and the server will not send a saved key somewhere new. `POST
+/api/models/available` and `POST /api/models` with `source_model_id` plus an
+`api_base` on a different origin than the saved model's, and `PUT
+/api/models/:id` changing `api_base` to another origin without a new `api_key`,
+answer `400 API_KEY_REENTRY_REQUIRED` (keyless endpoints such as Ollama and the
+subscription providers are exempt). For Registry calls, the env
+`CRUCIBLE_API_KEY` is attached only when the target has the same origin as
+`CRUCIBLE_API_URL`; an `X-Registry-URL` pointing elsewhere gets only an explicit
+`X-Registry-Key`, and Registry requests do not follow redirects. A
+`copilot-subscription` model's `api_base` is a CLI path: it must be an absolute
+path to an existing regular file that is not a UNC path, not `.js`/`.mjs`/`.cjs`
+(the SDK would run it with node), and not inside `DATA_DIR` (the managed CLI
+location is the one exception); the same check applies to
+`GRAPHIUM_COPILOT_CLI_PATH`, and a path that fails it is ignored in favour of
+auto-detection. Files that can hold secrets (`models.json`, `appdata/*`) are
+written with mode `0600` (not applied on Windows).
+
+**Outbound fetches.** `image-proxy` follows redirects by hand (at most five),
+checks each hop's destination *before* sending (loopback, private, link-local,
+cloud metadata; the hostname's trailing dot is stripped and every DNS-resolved
+address is checked too), and so does `pdf-proxy` with a narrower rule — a URL the
+user typed may point at the LAN, so only link-local and cloud-metadata
+destinations are blocked (`src/server/services/safe-fetch.ts`). `/api/url/reader`,
+`/api/wiki/fetch-url` and `/api/prov/ingest-url` apply the same narrower rule,
+including to every redirect target: link-local and cloud-metadata destinations
+are refused. A DNS answer that changes between the check and the connection is
+not covered. In Vercel mode the storage routes answer `404` except the
+`capabilities` route itself. Ids in storage routes always reject path
+separators, NUL and a leading `.`; on Windows they also reject reserved device
+names and `:` (a drive or an alternate data stream there — elsewhere it stays
+one path component, and older data can contain names such as `wiki:<id>`).
+Appdata keys may contain `:` on every platform (the file name encodes it).
 
 Crucible is a **discovery source, not a connection**. The settings UI
 calls `/api/tools` (with `X-Registry-URL`/`X-Registry-Key`) to list a
@@ -4946,9 +5061,29 @@ user declined. The client shows one dialog at a time
 (`ToolApprovalHost`, mounted once in `note-app`); "don't ask again" sets
 `skipApproval` on that server, which the server list's **Ask before
 running tools that can change things** checkbox turns back off. Curated
-entries marked `readOnly` in `catalog.json` (Tavily, whose tools carry no
-annotations) are added with `skipApproval`. World grounding only uses
-search tools and is not gated.
+entries in `catalog.json` list `approvalFreeTools` (Tavily, whose tools
+carry no annotations: only its search tool names); they are saved with that
+list instead of a server-wide `skipApproval` (sent in `X-MCP-Servers` too).
+For such a server a tool outside the list asks even if the server marks it
+`readOnlyHint`, so URL-fetching tools (extract / crawl) are confirmed. Older
+saved entries with `skipApproval` for a curated URL are read as the list on
+load. World grounding is not gated, so it only picks a search tool from an
+operator-configured Registry server (unless `destructiveHint: true`), or, for
+clients sending `X-MCP-Servers`, one on a curated list or `readOnlyHint` on a
+"don't ask again" server (name-only matches elsewhere are ignored). The app
+itself does not use user-added servers for world grounding.
+
+Prompt-injection guards: the chat system prompt carries
+`MATERIAL_AS_DATA_GUARD` (notes, retrieved passages, imported documents,
+search and tool results are data, not instructions), the retrieved context
+says the same and neutralizes `</knowledge>` / `</notes>` / `</wiki-index>`
+inside passages, the text-tool fallback loop neutralizes `<tool_result>` /
+`<tool_call>` inside tool results, and MCP tools that return note or source
+text append `READ_INJECTION_GUARD` as a separate text part. The MCP side
+fetches registered web pages only from public addresses (redirects are
+re-checked one hop at a time; loopback, private, link-local and metadata
+addresses are refused) and `add_material` refuses executable, script and
+shortcut extensions.
 
 Clients are kept in a per-`id` connection pool and reused across
 requests; editing a server's config re-signs the entry and transparently

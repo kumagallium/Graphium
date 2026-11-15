@@ -28,6 +28,10 @@ export const AI_ERROR_CODES = {
   EMBEDDING_MODEL_NOT_DOWNLOADED: "EMBEDDING_MODEL_NOT_DOWNLOADED",
   /** モデルの表示名が既存の別モデルと重複している（追加・改名） */
   DUPLICATE_MODEL_NAME: "DUPLICATE_MODEL_NAME",
+  /** 保存済みの API キーを、保存済みの接続先と別のサーバーへは送れない（400。キーの入れ直しを案内する） */
+  API_KEY_REENTRY_REQUIRED: "API_KEY_REENTRY_REQUIRED",
+  /** copilot-subscription の api_base（CLI のパス）が、起動してよい実行ファイルでない（400） */
+  COPILOT_CLI_PATH_INVALID: "COPILOT_CLI_PATH_INVALID",
   /** PROV ingester の LLM 出力が再試行しても構造化ブロックにならなかった（502） */
   PROV_STRUCTURE_FAILED: "PROV_STRUCTURE_FAILED",
   /** Atomizer の LLM 出力が JSON として解釈できず、jsonrepair でも修復できなかった。

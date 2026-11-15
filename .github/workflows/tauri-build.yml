@@ -41,6 +41,9 @@ jobs:
       - name: Resolve release ID
         id: resolve
         uses: actions/github-script@v7
+        env:
+          # 入力はスクリプトへ直接埋めず環境変数で渡す（インジェクション対策）
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         with:
           script: |
             // 成功済みの別 OS の資産を上書きせず、失敗した OS だけを再ビルドできる。
@@ -55,7 +58,7 @@ jobs:
             core.setOutput('matrix', JSON.stringify({
               include: targets.filter((target) => platform === 'all' || target.platform.startsWith(`${platform}-`)),
             }));
-            const tag = context.payload.release?.tag_name || '${{ inputs.release_tag }}';
+            const tag = context.payload.release?.tag_name || process.env.INPUT_RELEASE_TAG;
             core.setOutput('tag', tag);
             if (context.payload.release?.id) {
               core.setOutput('release_id', context.payload.release.id);
@@ -88,12 +91,13 @@ jobs:
       - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
 
@@ -260,7 +264,7 @@ jobs:
           key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # beforeBuildCommand の vite build（rendering chunks）が macOS ランナーの
@@ -315,9 +319,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
         run: |
           set -uo pipefail
-          TAG="${{ needs.resolve-release.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           REPO="${{ github.repository }}"
           VERSION="${TAG#v}"
 
@@ -378,9 +383,11 @@ jobs:
           ls -la /tmp/assets/*.sig 2>/dev/null || echo "No .sig files"
 
       - name: Build latest.json
+        env:
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ needs.resolve-release.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           VERSION="${TAG#v}"
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
 
@@ -442,8 +449,9 @@ jobs:
       - name: Upload latest.json to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
         run: |
-          TAG="${{ needs.resolve-release.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
 
       # main の public/updater/latest.json を更新して GitHub Pages 経由で
@@ -453,9 +461,10 @@ jobs:
       - name: Publish latest.json to main (for GitHub Pages)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
         run: |
           set -e
-          TAG="${{ needs.resolve-release.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           NEW_VERSION="${TAG#v}"
 
           # 直前ステップで生成した latest.json を退避してから fresh clone へ移動する
@@ -557,12 +566,15 @@ jobs:
     steps:
       - name: Open or update issue on release build failure
         uses: actions/github-script@v7
+        env:
+          RESOLVED_TAG: ${{ needs.resolve-release.outputs.tag }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         with:
           script: |
             const tag =
-              '${{ needs.resolve-release.outputs.tag }}' ||
+              process.env.RESOLVED_TAG ||
               context.payload.release?.tag_name ||
-              '${{ inputs.release_tag }}' ||
+              process.env.INPUT_RELEASE_TAG ||
               'unknown';
             const runUrl =
               `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +

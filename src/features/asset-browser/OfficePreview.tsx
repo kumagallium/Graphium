@@ -116,6 +116,13 @@ export function XlsxSheetsView({ sheets }: { sheets: XlsxSheet[] }) {
           })}
         </div>
       )}
+      {sheet.truncated ? (
+        <div className="text-[11px] text-muted-foreground">
+          {t("asset.officePreview.sheetCut", { rows: String(sheet.rows) })}
+        </div>
+      ) : sheet.compacted ? (
+        <div className="text-[11px] text-muted-foreground">{t("asset.officePreview.sheetCompacted")}</div>
+      ) : null}
       {preview.rows.length === 0 ? (
         <div className="text-sm text-muted-foreground p-6 text-center">{t("asset.officePreview.emptySheet")}</div>
       ) : (

@@ -16,6 +16,8 @@
 
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
+import { BlockedTargetError, guardedFetch } from "./safe-fetch.js";
+import { isClobberingId } from "../../lib/clobber-id";
 
 // 多くのサイトは "Graphium/1.0" のような非ブラウザ UA を素で 403 にする。
 // 現実的なブラウザ UA + 充実した Accept ヘッダにして互換性を上げる
@@ -61,7 +63,7 @@ export type ReaderArticle = {
 };
 
 export type ReaderError = {
-  status: 400 | 422 | 500;
+  status: 400 | 403 | 422 | 500;
   message: string;
   /**
    * 機械可読なエラー種別。ルート側が message 文字列に依存せず分岐するために使う。
@@ -84,16 +86,24 @@ export type ReaderError = {
 export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> {
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: ACCEPT,
-        "Accept-Language": ACCEPT_LANGUAGE,
+    // 利用者が自分で指定する URL なので LAN は止めない。リンクローカルとクラウドのメタデータだけ、
+    // リダイレクト先も含めて止める（リダイレクトは 1 段ずつ検査してから辿る）
+    res = await guardedFetch(
+      url,
+      {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: ACCEPT,
+          "Accept-Language": ACCEPT_LANGUAGE,
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-    });
+      "metadata-only",
+    );
   } catch (err) {
+    if (err instanceof BlockedTargetError) {
+      throw { status: 403, message: "This host is not allowed" } satisfies ReaderError;
+    }
     const message = err instanceof Error ? err.message : "URL fetch failed";
     throw { status: 500, message } satisfies ReaderError;
   }
@@ -258,6 +268,38 @@ export function sanitizeReaderHtml(html: string, baseUrl?: string): string {
 const DANGEROUS_ELEMENTS_SELECTOR =
   "script, style, iframe, object, embed, link, track, meta, noscript, template, base, form";
 
+/**
+ * SVG のアニメーション要素。`<a><animate attributeName="href" values="javascript:...">` のように、
+ * 属性検査の後で href を書き換えられるので要素ごと落とす（tagName は大文字小文字が混ざるため小文字で比べる）。
+ */
+const SVG_ANIMATION_TAGS = new Set([
+  "animate",
+  "set",
+  "animatetransform",
+  "animatemotion",
+  "mpath",
+  "discard",
+]);
+
+/**
+ * style 属性を丸ごと落とす条件。CSS のエスケープ（バックスラッシュ）で url( を隠す手口と、
+ * 画面全体を覆う配置（position / z-index）、外部読み込み（url( / @import / expression）を見る。
+ */
+const DANGEROUS_STYLE_RE = /\\|url\(|expression|@import|position|z-index/i;
+
+/** CSS の url(...) を取りうる presentation 属性。バックスラッシュ入りの値は落とす（`u\72l(` 対策）。 */
+const CSS_VALUE_ATTRS = new Set([
+  "fill",
+  "stroke",
+  "mask",
+  "filter",
+  "clip-path",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "cursor",
+]);
+
 /** URL を取る属性。 */
 const URL_ATTRS = new Set(["href", "src", "xlink:href", "action", "formaction"]);
 
@@ -279,14 +321,46 @@ function stripDangerousAttrs(el: SweepElement): void {
       el.removeAttribute(name);
       continue;
     }
+    // name は DOM クロバリング（window / document の名前付きプロパティ）に使われるので落とす。
+    // id は脚注のアンカー（#fn1）に要るので残すが、window / document の既存名を隠す id
+    // （__TAURI_INTERNALS__ など）は落とす。
+    if (lower === "name" || (lower === "id" && isClobberingId(el.getAttribute(name) ?? ""))) {
+      // 古い記事の脚注は `<a name="x">` だけでアンカーを作る。ページ内リンク（<a href="#x">）が
+      // 効き続けるよう、id が無い a は name の値を id に移す（名前付きプロパティを隠す値は移さない）
+      const nameValue = el.getAttribute(name) ?? "";
+      if (lower === "name" && tag === "a" && el.getAttribute("id") === null && nameValue.trim() && !isClobberingId(nameValue)) {
+        el.setAttribute("id", nameValue);
+      }
+      el.removeAttribute(name);
+      continue;
+    }
+    if (lower === "style" && DANGEROUS_STYLE_RE.test(el.getAttribute(name) ?? "")) {
+      el.removeAttribute(name);
+      continue;
+    }
+    if (CSS_VALUE_ATTRS.has(lower) && (el.getAttribute(name) ?? "").includes("\\")) {
+      el.removeAttribute(name);
+      continue;
+    }
     if (!URL_ATTRS.has(lower)) continue;
     const norm = normalizeUrlForScheme(el.getAttribute(name) ?? "");
     if (norm.startsWith("javascript:") || norm.startsWith("vbscript:")) {
       el.setAttribute(name, "#");
     } else if (norm.startsWith("data:") && tag !== "img" && tag !== "image") {
       el.setAttribute(name, "#");
+    } else if ((tag === "a" || tag === "area") && (lower === "href" || lower === "xlink:href") && !isAllowedLinkHref(norm)) {
+      // 本文のリンクは相対・# 始まり・http・https・mailto だけ残す（smb: / file: / ms-msdt: など
+      // OS のハンドラを呼べるスキームは href ごと落とす。リンクの文字は残る）
+      el.removeAttribute(name);
     }
   }
+}
+
+/** 本文の <a href> に残してよい値か（引数は normalizeUrlForScheme 済み）。スキームが無ければ相対 */
+function isAllowedLinkHref(norm: string): boolean {
+  const m = /^([a-z][a-z0-9+.-]*):/.exec(norm);
+  if (!m) return true;
+  return m[1] === "http" || m[1] === "https" || m[1] === "mailto";
 }
 
 /**
@@ -341,6 +415,9 @@ function rewriteReaderMedia(html: string, baseUrl?: string): string {
   // <meta> は本文に居る理由が無い一方、http-equiv="refresh" は挿入時に処理する実装がある。
   for (const el of Array.from(doc.querySelectorAll(DANGEROUS_ELEMENTS_SELECTOR))) {
     el.remove();
+  }
+  for (const el of Array.from(doc.querySelectorAll("*"))) {
+    if (SVG_ANIMATION_TAGS.has(el.tagName.toLowerCase())) el.remove();
   }
   for (const el of Array.from(doc.querySelectorAll("*"))) stripDangerousAttrs(el);
 

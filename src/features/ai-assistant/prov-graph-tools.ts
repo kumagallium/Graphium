@@ -273,7 +273,15 @@ export async function runProvTool(
   const depth = typeof input.depth === "number" ? Math.min(3, Math.max(1, Math.floor(input.depth))) : 2;
   const result = await traceLineageLoadingBodies(entry.noteId, { direction, depth }, data);
   const fmt = (nodes: LineageNode[]) => {
-    const shown = nodes.filter((n) => isExternalSourceId(n.noteId) || inScope(ctx, n.noteId));
+    // 外部資料（pdf: / url: など）は、手前が範囲内のノート（または起点）から辿れたものだけ出す。
+    // 範囲の外のノートを経由して着いた資料の名前・URL は、フォルダの柵の外なので出さない
+    const reachable = new Set<string>([entry.noteId]);
+    const shown = nodes.filter((n) => {
+      const parent = n.fromId ?? entry.noteId;
+      const ok = isExternalSourceId(n.noteId) ? reachable.has(parent) : inScope(ctx, n.noteId);
+      if (ok) reachable.add(n.noteId);
+      return ok;
+    });
     // たどった線を知らせる（手前が範囲の外で出していないノートなら、起点からの線にしない）
     const shownIds = new Set([entry.noteId, ...shown.map((n) => n.noteId)]);
     for (const n of shown) {

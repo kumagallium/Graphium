@@ -6,8 +6,9 @@
 
 import type { Context } from "hono";
 import { fetchRegistryServers, buildMCPUrl, detectTransport } from "./registry.js";
-import { getMCPTools, type MCPServerInfo } from "./mcp.js";
-import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "./env.js";
+import { getMCPTools, type MCPServerInfo, type MCPToolInfo } from "./mcp.js";
+import { approvalExemptionsFromServers } from "./tool-approval.js";
+import { getRegistryKey, getManualMcpServers } from "./env.js";
 
 /**
  * 接続可能な MCP サーバー全ての tools を集約して返す。
@@ -16,10 +17,22 @@ import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "./env.js";
  */
 export async function discoverAllMcpTools(
   c: Context,
-): Promise<{ tools: Record<string, unknown> }> {
+): Promise<{
+  tools: Record<string, unknown>;
+  toolInfo: Record<string, MCPToolInfo>;
+  /** 利用者が「今後確認しない」と決めたサーバー名 */
+  skipServers: ReadonlySet<string>;
+  /** 厳選の接続先ごとの「確認なしの道具の名前」 */
+  freeTools: ReadonlyMap<string, ReadonlySet<string>>;
+  /** 運用側の設定（環境変数の Registry）由来のサーバー名。手動登録と同名なら含めない */
+  operatorServers: ReadonlySet<string>;
+}> {
   const manualServers = getManualMcpServers(c);
-  const envRegistryUrl = getRegistryUrl(c).replace(/\/$/, "");
-  if (manualServers.length === 0 && !envRegistryUrl) return { tools: {} };
+  // 世界照合は確認なしで道具を実行するので、Registry は運用側の環境変数だけを見る。
+  // 要求の X-Registry-URL ヘッダーで差し替えられてはいけない（AI チャットの経路とは別）。
+  const envRegistryUrl = (process.env.CRUCIBLE_API_URL || "").replace(/\/$/, "");
+  const { skipServers, freeTools } = approvalExemptionsFromServers(manualServers);
+  if (manualServers.length === 0 && !envRegistryUrl) return { tools: {}, toolInfo: {}, skipServers, freeTools, operatorServers: new Set() };
 
   const envRegistryServers = envRegistryUrl
     ? await fetchRegistryServers(envRegistryUrl, getRegistryKey())
@@ -48,5 +61,8 @@ export async function discoverAllMcpTools(
   for (const e of registryEndpoints) byName.set(e.name, e);
   for (const e of manualEndpoints) byName.set(e.name, e);
 
-  return getMCPTools([...byName.values()]);
+  const manualNames = new Set(manualEndpoints.map((e) => e.name));
+  const operatorServers = new Set(registryEndpoints.map((e) => e.name).filter((n) => !manualNames.has(n)));
+  const { tools, toolInfo } = await getMCPTools([...byName.values()]);
+  return { tools, toolInfo, skipServers, freeTools, operatorServers };
 }

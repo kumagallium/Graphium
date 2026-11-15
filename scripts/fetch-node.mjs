@@ -11,23 +11,71 @@
 //      Tauri は実行時に <name>-<host_target_triple>[.exe] を解決して spawn する。
 //      node 自体を sidecar として登録し、JS 側から server.mjs を引数で渡す方式。
 
-import { existsSync, mkdirSync, copyFileSync, chmodSync, rmSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, chmodSync, rmSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseShasums, replaceHashTable } from "./node-hashes.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, "..");
+const SELF_PATH = fileURLToPath(import.meta.url);
 
 // Node 22 LTS (Jod) — maintenance LTS until 2027-04。
 // 同梱する node は配布物の一部なので、Node.js のセキュリティリリースが出たらここを上げる
 // （2026-10-21 のリリース: Brotli の OOB write・TLS のホスト名検査・dns の NUL 切り詰めなど 10 件）
 const NODE_VERSION = "v22.23.5";
+
+// NODE_VERSION に対応する SHA256 の固定表（アーカイブのファイル名 → ハッシュ）。
+// nodejs.org の SHASUMS256.txt は同じ配布元から来るため、配布元が差し替えられると
+// アーカイブと一緒に偽の値も出せてしまう。リポジトリ内の表と突き合わせて防ぐ。
+// 版を上げるときは NODE_VERSION を変えたあと `node scripts/fetch-node.mjs --update-hashes` で書き換え、
+// 差分（値が nodejs.org の公式リリース告知と合うか）を人が確かめてからコミットする。
+// <node-sha256:begin>
+const NODE_SHA256 = {
+  "node-v22.23.5-darwin-arm64.tar.gz": "e7131995759b61a0170b646010d2ad35a5d37b4cb0d471f3e8317eac6f742f3d",
+  "node-v22.23.5-darwin-x64.tar.gz": "c53383238206b9ae4db23c5d8a63645e2e753bec8ab51a49cc81939aa64e9422",
+  "node-v22.23.5-linux-arm64.tar.gz": "8bd3dc69eee8f3f226315a80d7d1d4faccf217a4c8fae500168ac2e38f3bdba3",
+  "node-v22.23.5-linux-x64.tar.gz": "c54118104acc524633b5abe106bbf44a53126ec8b4e5fa105cb92b5d7de8a1a1",
+  "node-v22.23.5-win-arm64.zip": "c1856817f611738c77534efbff8a5a17990593eab24046bc8d2c23a77a160d13",
+  "node-v22.23.5-win-x64.zip": "4a191082e9706866830379d577d2cc8a50c776fcd9436a8d061b063ed0d9a0e3",
+};
+// <node-sha256:end>
+
 const SIDECAR_DIR = join(PROJECT_ROOT, "src-tauri", "sidecar");
 const BINARIES_DIR = join(PROJECT_ROOT, "src-tauri", "binaries");
 
 const force = process.argv.includes("--force");
+
+// --update-hashes: SHASUMS256.txt を取得して上の NODE_SHA256 を NODE_VERSION の分で書き換える（取得のみ・展開しない）
+if (process.argv.includes("--update-hashes")) {
+  const work = mkdtempSync(join(tmpdir(), "fetch-node-hashes-"));
+  const out = join(work, "SHASUMS256.txt");
+  const r = spawnSync(
+    "curl",
+    ["-fsSL", "--http1.1", "--connect-timeout", "30", "--retry", "3", "-o", out,
+      `https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt`],
+    { stdio: "inherit" },
+  );
+  if (r.status !== 0) {
+    rmSync(work, { recursive: true, force: true });
+    console.error("[fetch-node] Download failed (SHASUMS256.txt)");
+    process.exit(1);
+  }
+  const entries = parseShasums(readFileSync(out, "utf8"), NODE_VERSION);
+  rmSync(work, { recursive: true, force: true });
+  if (entries.length === 0) {
+    console.error(`[fetch-node] SHASUMS256.txt has no entries for ${NODE_VERSION}`);
+    process.exit(1);
+  }
+  const next = replaceHashTable(readFileSync(SELF_PATH, "utf8"), entries);
+  writeFileSync(SELF_PATH, next);
+  console.log(`[fetch-node] Updated NODE_SHA256 for ${NODE_VERSION} (${entries.length} entries). Review the diff before committing.`);
+  process.exit(0);
+}
+
 
 // プラットフォーム判定
 const isWindows = process.platform === "win32";
@@ -117,6 +165,22 @@ const expected = readFileSync(shasumsPath, "utf8")
   .find(([, name]) => name === archiveFile)?.[0];
 if (!expected) fail(`SHASUMS256.txt has no entry for ${archiveFile}`);
 const actual = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
+// 固定表との突き合わせ（SHASUMS256.txt が配布元ごと差し替えられても通さない）
+const pinned = NODE_SHA256[archiveFile];
+if (!pinned) {
+  fail(
+    `No pinned sha256 for ${archiveFile} in NODE_SHA256.\n` +
+      `  After raising NODE_VERSION, run: node scripts/fetch-node.mjs --update-hashes\n` +
+      `  and review the diff before committing.`,
+  );
+}
+if (pinned !== expected) {
+  fail(
+    `Pinned sha256 differs from SHASUMS256.txt for ${archiveFile}\n  pinned   ${pinned}\n  nodejs.org ${expected}\n` +
+      `  If NODE_VERSION was just raised, run: node scripts/fetch-node.mjs --update-hashes (and review the diff).\n` +
+      `  Otherwise the download source may have been tampered with.`,
+  );
+}
 if (actual !== expected) fail(`sha256 mismatch for ${archiveFile}\n  expected ${expected}\n  actual   ${actual}`);
 console.log(`[fetch-node] sha256 OK (${expected.slice(0, 12)}…)`);
 

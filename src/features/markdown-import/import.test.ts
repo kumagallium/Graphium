@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   importMarkdownToGraphiumDoc,
+  rewriteImageReferences,
   buildWikiLinkResolver,
   applyWikiLinkResolution,
   type WikiLinkRef,
@@ -214,5 +215,77 @@ describe("エクスポート → 再インポートのラウンドトリップ",
     const allText = JSON.stringify(page.blocks);
     expect(allText).toContain("@Other Note");
     expect(allText).not.toContain("GWLINK");
+  });
+});
+
+describe("importMarkdownToGraphiumDoc の画像参照走査（細工入力）", () => {
+  const opts = {
+    resolveImage: async () => null,
+    uploadImage: async () => "u",
+  };
+
+  it("閉じない `![` の繰り返しでも短時間で返る（2 次の計算量にならない）", async () => {
+    const t = Date.now();
+    await rewriteImageReferences("![".repeat(100_000), opts, []);
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it("閉じない `![a](` の繰り返しでも短時間で返る", async () => {
+    const t = Date.now();
+    await rewriteImageReferences("![a](".repeat(50_000), opts, []);
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it("長い data: URL の画像も出現順に控える（後ろの通常画像とずれない）", async () => {
+    const data = "data:image/png;base64," + "A".repeat(5000);
+    const md = `![a](${data})\n\n![b](pic.png)`;
+    const ordered: string[] = [];
+    const out = await rewriteImageReferences(
+      md,
+      { resolveImage: async () => new File(["x"], "pic.png"), uploadImage: async () => "uploaded://pic" },
+      ordered,
+    );
+    expect(ordered).toEqual([data, "uploaded://pic"]);
+    expect(out.startsWith(`![a](${data})`)).toBe(true);
+  });
+
+  it("alt・title が長くても従来どおり当たる（従来の正規表現と同じ結果）", async () => {
+    const cases = [
+      `![${"x".repeat(500)}](a.png "${"t".repeat(500)}")`,
+      '![a](b.png "t")![c](d.png)',
+      "![a]( b.png)",
+      "![a](b.png  \n \"t\"  )",
+      "![[x]](y) ![a](b c)",
+      "![a![b](c.png)",
+      "text ![](x.png) tail",
+    ];
+    const old = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    for (const md of cases) {
+      const expected = [...md.matchAll(old)].map((m) => m[2]);
+      const got: string[] = [];
+      await rewriteImageReferences(
+        md,
+        {
+          resolveImage: async (u: string) => {
+            got.push(u);
+            return null;
+          },
+          uploadImage: async () => "u",
+        },
+        [],
+      );
+      expect(got).toEqual([...new Set(expected)].filter((u) => !/^[a-z]+:\/\//i.test(u)));
+    }
+  });
+
+  it("空白の前で止まる `![a](x` の繰り返しでも短時間で返る", async () => {
+    const t = Date.now();
+    await rewriteImageReferences("![a](x".repeat(30_000) + " ".repeat(30_000) + '"', opts, []);
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+
+  it("壊れたパーセント符号の画像 URL で取り込み全体が落ちない", async () => {
+    const file = new File(["![a](%E0%A4%A.png)\n\nbody"], "x.md", { type: "text/markdown" });
+    await expect(importMarkdownToGraphiumDoc(file, opts)).resolves.toBeTruthy();
   });
 });

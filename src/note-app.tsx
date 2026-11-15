@@ -293,6 +293,7 @@ import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteC
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
+import { setServerStorageToken } from "./lib/storage/providers/server-fs";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
@@ -486,7 +487,7 @@ import { planThingGroups, composeThingBody, type ThingGroup } from "./features/w
 import type { ThingGroupProgressHooks, ThingGroupResult } from "./features/wiki/ThingGroupsSection";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
-import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
+import { wrapMaterialFrame, setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
 import { setAgentProgress, clearAgentProgress } from "./features/ai-assistant/agent-progress";
 import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -4789,11 +4790,7 @@ function NoteEditorInner({
                 ? `以下のノート「${title}」の内容全体について質問があります。`
                 : `以下はノート「${title}」の現在の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。`,
               "",
-              "---",
-              `ノートタイトル: ${title}`,
-              "",
-              pageMarkdown,
-              "---",
+              wrapMaterialFrame("open-note", [`ノートタイトル: ${title}`, "", pageMarkdown].join("\n")),
               "",
               question,
             ].join("\n");
@@ -4817,11 +4814,8 @@ function NoteEditorInner({
             userMessage = [
               userMessage,
               "",
-              "---",
               "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
-              "",
-              ...noteContents,
-              "---",
+              wrapMaterialFrame("attached-notes", noteContents.join("\n")),
             ].join("\n");
           }
         }
@@ -4867,11 +4861,8 @@ function NoteEditorInner({
             userMessage = [
               userMessage,
               "",
-              "---",
               "以下はユーザーが引用・添付したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
-              "",
-              ...assetContents,
-              "---",
+              wrapMaterialFrame("attached-assets", assetContents.join("\n")),
             ].join("\n");
           }
         }
@@ -8332,13 +8323,50 @@ class ListSidePeekBoundary extends Component<
 function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | null }) {
   const t = useT();
   const [showDetail, setShowDetail] = useState(false);
+  const [serverToken, setServerToken] = useState("");
   const messageKey = failure?.key ?? "startup.initFailed";
+
+  // セルフホストの合言葉が要る／合っていない: 設定画面には初期化が済まないとたどり着けないので、
+  // ここで入力して保存 → 再読み込みできるようにする（保存先は設定画面と同じ）
+  const saveServerToken = () => {
+    const value = serverToken.trim();
+    if (!value) return;
+    setServerStorageToken(value);
+    window.location.reload();
+  };
 
   return (
     <div className="flex flex-col items-center justify-center h-dvh bg-background gap-3 px-8 text-center">
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
         {t(messageKey)}
       </p>
+      {failure?.needsServerToken && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveServerToken();
+          }}
+        >
+          <input
+            type="password"
+            value={serverToken}
+            onChange={(e) => setServerToken(e.target.value)}
+            placeholder={t("settings.serverStorage.tokenPlaceholder")}
+            aria-label={t("settings.serverStorage.tokenPlaceholder")}
+            autoComplete="off"
+            autoFocus
+            className="h-8 w-56 rounded-md border border-border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            disabled={!serverToken.trim()}
+            className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {t("settings.serverStorage.save")}
+          </button>
+        </form>
+      )}
       {failure?.needsFolderAccess && (
         <>
           <p className="text-xs text-muted-foreground/80 max-w-sm leading-relaxed">
@@ -9459,11 +9487,8 @@ export function NoteApp() {
             userMessageForModel = [
               text,
               "",
-              "---",
               "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
-              "",
-              ...noteContents,
-              "---",
+              wrapMaterialFrame("attached-notes", noteContents.join("\n")),
             ].join("\n");
           }
         }
@@ -10869,7 +10894,7 @@ export function NoteApp() {
       bytes: Uint8Array,
       name: string,
       fileId: string,
-    ): Promise<{ derived: number; skipped: number }> => {
+    ): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const lower = name.toLowerCase();
 
       if (lower.endsWith(".pptx")) {
@@ -10905,7 +10930,7 @@ export function NoteApp() {
 
       if (lower.endsWith(".xlsx")) {
         const { readXlsx } = await import("./features/office-import/xlsx");
-        const { sheets } = readXlsx(bytes);
+        const { sheets, truncated: bookTruncated } = readXlsx(bytes);
         const bookName = name.replace(/\.xlsx$/i, "");
 
         let derived = 0;
@@ -10919,7 +10944,11 @@ export function NoteApp() {
             console.warn(`[note-app] xlsx シート登録失敗: ${sheet.name}`, err);
           }
         }
-        return { derived, skipped: 0 };
+        // 上限で切ったシート（下の行を切った・後ろのシートを読まなかった）の件数を知らせる
+        const truncated = sheets.filter((s) => s.truncated).length + (bookTruncated ? 1 : 0);
+        // 空の行と列を詰めただけのシート（一部だけの取り込みではないが、行・列の位置がずれる）は別に数える
+        const compacted = sheets.filter((s) => s.compacted && !s.truncated).length;
+        return { derived, skipped: 0, truncated, compacted };
       }
 
       return { derived: 0, skipped: 0 };
@@ -10929,7 +10958,7 @@ export function NoteApp() {
 
   // 投入口から入ってきた File を展開する
   const handleExpandOffice = useCallback(
-    async (file: File, fileId: string): Promise<{ derived: number; skipped: number }> => {
+    async (file: File, fileId: string): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const bytes = new Uint8Array(await file.arrayBuffer());
       return expandOfficeBytes(bytes, file.name, fileId);
     },
@@ -10939,7 +10968,7 @@ export function NoteApp() {
   // 素材の詳細（3-dot メニュー）から既存の pptx / xlsx 素材を手動で展開する。
   // handleExtractDocxImages と同じ流儀（provider.getMediaBlobUrl → fetch）で実体を読む。
   const handleExpandOfficeEntry = useCallback(
-    async (entry: MediaIndexEntry): Promise<{ derived: number; skipped: number }> => {
+    async (entry: MediaIndexEntry): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -11983,7 +12012,7 @@ export function NoteApp() {
       const ext = parseExternalSource(sourceId);
       if (ext) {
         if (ext.kind === "url") {
-          window.open(ext.key, "_blank", "noopener,noreferrer");
+          void openExternalUrl(ext.key);
           return;
         }
         if (ext.kind === "memo") {
@@ -14018,7 +14047,7 @@ export function NoteApp() {
     async (
       entry: MediaIndexEntry,
       onProgress: (done: number, total: number) => void,
-    ): Promise<{ extracted: number }> => {
+    ): Promise<{ extracted: number; skipped: number }> => {
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -14075,7 +14104,7 @@ export function NoteApp() {
         }
       }
       onProgress(files.length, files.length);
-      return { extracted };
+      return { extracted, skipped: stats.skipped };
     },
     [fm],
   );

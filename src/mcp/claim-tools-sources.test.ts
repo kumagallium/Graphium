@@ -371,4 +371,19 @@ describe("素材とメモを対象にする", () => {
     }
     expect(wikiFiles()).toHaveLength(1);
   });
+
+  it("URL: 既定の取得は宛先を検査する（メタデータ宛・内側へのリダイレクトへは取りに行かない）", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("", { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } }),
+    );
+    try {
+      await expect(claimSourceDeps.fetchUrl("http://169.254.169.254/latest/meta-data/")).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      // 公開の宛先が内側へ 302 しても、2 段目は取りに行かない
+      await expect(claimSourceDeps.fetchUrl("http://93.184.216.34/x")).rejects.toThrow();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

@@ -2,6 +2,7 @@
 // Note 行と視覚言語を揃えつつ、素材固有の列（type / usedIn / derived-from）を持つ <tr>
 // 親テーブルから渡される列幅・ヘッダと合わせて使う。
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table } from "lucide-react";
 import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
@@ -208,8 +209,11 @@ export function MaterialListItem({
             {entry.name}
           </span>
           {entry.type === "url" && entry.url && (
+            (() => {
+              const href = safeExternalHref(entry.url);
+              return href ? (
             <a
-              href={entry.url}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -219,6 +223,8 @@ export function MaterialListItem({
             >
               <ExternalLink size={12} />
             </a>
+              ) : null;
+            })()
           )}
         </div>
         {entry.type === "url" && entry.urlMeta?.domain && (

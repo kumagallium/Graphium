@@ -90,6 +90,9 @@ function mtimeOf(path: string | null): number {
 }
 
 function noteFilePath(id: string, root: string): string | null {
+  // ノート ID はファイル名そのもの。区切り文字や「..」を含む ID で vault の外のファイルの有無を探らせない
+  // （readNote と同じ検査）
+  if (!id || /[\\/]/.test(id) || id.includes("..")) return null;
   for (const dir of [notesDir(root), wikiDir(root)]) {
     const p = join(dir, `${id}.json`);
     if (existsSync(p)) return p;
@@ -129,9 +132,9 @@ function buildDeps(root: string): ResolveSourceTextDeps {
     },
     loadStoredUrlText: undefined,
     fetchUrlText: async (url) => {
-      const { fetchAsReaderArticle } = await import("../server/services/url-reader");
-      const article = await fetchAsReaderArticle(url);
-      return { title: article.title, text: article.textContent };
+      // 宛先は外の AI が選ぶので、この PC 内・LAN 宛（リダイレクト先を含む）は取りに行かない
+      const { fetchPublicUrlText } = await import("./public-url-fetch");
+      return fetchPublicUrlText(url);
     },
     findCaptureText: () => undefined,
   };

@@ -5,7 +5,8 @@
 // Web 版は vite proxy の same-origin で CORS が発生せず発症しないため、
 // このテストが唯一の自動検知点になる。
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { authCookieValue } from "./auth-token.js";
 import { createApp, isAllowedWriteOrigin } from "./app.js";
 
 // apiHeaders（と認証系）が付けうるカスタムヘッダーの一覧。
@@ -16,6 +17,7 @@ const FRONTEND_CUSTOM_HEADERS = [
   "x-llm-api-key",
   "x-registry-url",
   "x-graphium-token",
+  "x-registry-key",
   "x-api-key",
 ];
 
@@ -138,8 +140,10 @@ describe("他サイトからの書き込み系の要求（CSRF）", () => {
 
   it.each([
     [undefined, "/api/mcp/test", true], // ブラウザ以外（同梱の MCP サーバー・CLI）
-    ["http://localhost:5180", "/api/mcp/test", true], // dev の vite（任意のポート）
-    ["http://127.0.0.1:5174", "/api/mcp/test", true],
+    ["http://localhost:5180", "/api/mcp/test", false], // ループバックの任意ポートは信頼しない
+    ["http://127.0.0.1:8000", "/api/mcp/test", false],
+    ["http://127.0.0.1:5174", "/api/mcp/test", false], // CORS_ORIGINS に無ければ断る
+    ["http://localhost:5174", "/api/mcp/test", true], // CORS_ORIGINS の既定（tauri dev）
     ["http://tauri.localhost", "/api/mcp/test", true], // Windows の WebView2
     ["https://evil.example", "/api/mcp/test", false],
     ["http://localhost.evil.example", "/api/mcp/test", false],
@@ -151,7 +155,7 @@ describe("他サイトからの書き込み系の要求（CSRF）", () => {
     ["https://graphium.example", "/api/mcp/test", false],
   ])("Origin %s → %s は %s", (origin, path, expected) => {
     expect(
-      isAllowedWriteOrigin({ origin, path, host: "127.0.0.1:3001", allowedOrigins: ["tauri://localhost", "http://tauri.localhost"] }),
+      isAllowedWriteOrigin({ origin, path, host: "127.0.0.1:3001", allowedOrigins: ["tauri://localhost", "http://tauri.localhost", "http://localhost:5174"] }),
     ).toBe(expected);
   });
 
@@ -186,5 +190,76 @@ describe("API の応答を文書として開いても実行させない", () => 
     expect(allowed("/api/clip/pair-requests/123e4567")).toBe(false); // 承認は利用者の画面から
     expect(allowed("/api/clip/pairing/reset")).toBe(false);
     expect(allowed("/api/clip/inbox/abc")).toBe(false);
+  });
+});
+
+describe("合言葉（GRAPHIUM_AUTH_TOKEN）は全 API に効く", () => {
+  const prev = process.env.GRAPHIUM_AUTH_TOKEN;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.GRAPHIUM_AUTH_TOKEN;
+    else process.env.GRAPHIUM_AUTH_TOKEN = prev;
+  });
+  const H = { Host: "127.0.0.1:3001" };
+  const get = (app: ReturnType<typeof createApp>, path: string, headers: Record<string, string> = {}) =>
+    app.request(`http://127.0.0.1:3001${path}`, { headers: { ...H, ...headers } });
+
+  it("未設定なら素通し", async () => {
+    delete process.env.GRAPHIUM_AUTH_TOKEN;
+    const res = await get(createApp({ mode: "node" }), "/api/models");
+    expect(res.status).toBe(200);
+  });
+
+  it("設定時、storage 以外（models・tools・mcp・url）も合言葉なしは 401", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = "s3cret-token";
+    const app = createApp({ mode: "node" });
+    for (const path of ["/api/models", "/api/tools", "/api/url/image-proxy?url=http://example.com/a.png"]) {
+      expect((await get(app, path)).status).toBe(401);
+    }
+    const post = await app.request("http://127.0.0.1:3001/api/mcp/test", {
+      method: "POST",
+      headers: { ...H, "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "touch", args: ["/tmp/x"] }),
+    });
+    expect(post.status).toBe(401);
+    expect((await get(app, "/api/models", { "X-Graphium-Token": "wrong" })).status).toBe(401);
+  });
+
+  it("ヘッダーで通り、Cookie が配られ、その Cookie でも通る", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = "s3cret-token";
+    const app = createApp({ mode: "node" });
+    const ok = await get(app, "/api/models", { "X-Graphium-Token": "s3cret-token" });
+    expect(ok.status).toBe(200);
+    const cookie = ok.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain(`graphium_auth=${authCookieValue("s3cret-token")}`);
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=Strict/i);
+    expect(cookie).toContain("Path=/api");
+    expect(cookie).not.toMatch(/Secure/i);
+    const viaCookie = await get(app, "/api/models", { Cookie: `graphium_auth=${authCookieValue("s3cret-token")}` });
+    expect(viaCookie.status).toBe(200);
+    // 合言葉そのものを Cookie に入れても通らない
+    expect((await get(app, "/api/models", { Cookie: "graphium_auth=s3cret-token" })).status).toBe(401);
+  });
+
+  it("検査しない口: capabilities・health（内部の値は出さない）・拡張機能の口", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = "s3cret-token";
+    const app = createApp({ mode: "node" });
+    expect((await get(app, "/api/storage/capabilities")).status).toBe(200);
+    // HEAD も合言葉なしで通る（storage.ts の isCapabilitiesRequest と揃える）
+    expect((await app.request("/api/storage/capabilities", { method: "HEAD" })).status).toBe(200);
+    // 別のパスの HEAD は通さない
+    expect((await app.request("/api/models", { method: "HEAD" })).status).toBe(401);
+    const health = await get(app, "/api/health");
+    expect(health.status).toBe(200);
+    const body = (await health.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("dataDir");
+    expect(body).not.toHaveProperty("pid");
+    // HEAD も合言葉なしで通る（応答は GET と同じ縮約）
+    const head = await app.request("/api/health", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    const ping = await get(app, "/api/clip/ping");
+    expect(((await ping.json()) as { error: string }).error).not.toBe("Authentication failed");
+    const pr = await get(app, "/api/clip/pair-requests");
+    expect(((await pr.json()) as { error: string }).error).toBe("Authentication failed");
   });
 });

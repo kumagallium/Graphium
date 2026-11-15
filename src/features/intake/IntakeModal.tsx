@@ -76,6 +76,8 @@ export type IntakeState =
       officeDerived: number;
       /** PowerPoint の展開で変換できずに捨てられた画像（EMF/WMF/TIFF 変換失敗等）の合計件数 */
       officeSkipped: number;
+      /** Excel の展開で上限のために切ったシートの件数 */
+      officeTruncated?: number;
       aiAvailable: boolean;
     };
 
@@ -227,6 +229,11 @@ export function IntakeModal({
                 {state.officeSkipped > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {t("intake.officeSkipped", { count: String(state.officeSkipped) })}
+                  </p>
+                )}
+                {(state.officeTruncated ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("intake.officeTruncated", { count: String(state.officeTruncated) })}
                   </p>
                 )}
                 {state.skipped > 0 && (

@@ -45,6 +45,8 @@ export type ManualMcpServer = (
 ) & {
   /** 利用者が「このサーバーは今後確認しない」と決めた（書き換える道具も確認なしで実行する） */
   skipApproval?: boolean;
+  /** 確認なしで動かしてよい道具の名前（厳選の接続先の検索だけ）。これを持つサーバーは readOnlyHint では免除しない */
+  approvalFreeTools?: string[];
 };
 
 /** unknown を文字列値だけのヘッダー表にする。空なら undefined */
@@ -74,6 +76,11 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
       const id = typeof s.id === "string" && s.id ? s.id : name;
       if (!name) continue;
 
+      const freeToolNames = Array.isArray(s.approvalFreeTools)
+        ? s.approvalFreeTools.filter((t): t is string => typeof t === "string" && t !== "")
+        : [];
+      const freeTools = freeToolNames.length > 0 ? { approvalFreeTools: freeToolNames } : {};
+
       if (s.type === "stdio") {
         if (typeof s.command !== "string" || !s.command.trim()) continue;
         const args = Array.isArray(s.args) ? s.args.filter((a): a is string => typeof a === "string") : [];
@@ -85,7 +92,7 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
                 ),
               ) as Record<string, string>)
             : undefined;
-        out.push({ id, type: "stdio", name, command: s.command, args, env, ...(s.skipApproval === true ? { skipApproval: true } : {}) });
+        out.push({ id, type: "stdio", name, command: s.command, args, env, ...(s.skipApproval === true ? { skipApproval: true } : {}), ...freeTools });
         continue;
       }
 
@@ -100,6 +107,7 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
         apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
         headers: toHeaderRecord(s.headers),
         ...(s.skipApproval === true ? { skipApproval: true } : {}),
+        ...freeTools,
       });
     }
     return out;

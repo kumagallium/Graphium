@@ -1,6 +1,7 @@
 // ブックマークブロック
 // URL を OGP カード形式で表示する
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { createReactBlockSpec } from "@blocknote/react";
 import { useState, useEffect } from "react";
 import { fetchUrlMetadata, extractDomain } from "../../features/asset-browser/media-index";
@@ -187,7 +188,10 @@ export function BookmarkCard({ block, editor }: BookmarkCardProps) {
 
   // カード本体クリック: サイドピークが登録されていればそこで開く。
   // 未登録（フォールバック）や外部ボタンでは従来どおり新規タブで開く。
-  const openExternal = () => window.open(url, "_blank", "noopener,noreferrer");
+  const openExternal = () => {
+    const safe = safeExternalHref(url);
+    if (safe) window.open(safe, "_blank", "noopener,noreferrer");
+  };
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!openBookmarkPeek(editor, url)) openExternal();
@@ -273,7 +277,7 @@ export function BookmarkExternalHTML({ block }: { block: BookmarkCardProps["bloc
           <p> で包むのは、裸の <a> だと段落にならず、前後のブロックの
           リンクと 1 行に連結されてしまうため（カードは 1 ブロック＝1 段落）。 */}
       <p>
-        <a href={url}>{title || url}</a>
+        <a href={safeExternalHref(url)}>{title || url}</a>
       </p>
       {/* 説明文はゲート以前の書き出しにも入っていた本文なので落とさない */}
       {description ? <p>{description}</p> : null}

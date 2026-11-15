@@ -172,6 +172,28 @@ const port = Number(process.env.PORT ?? 3001);
 const hostname = process.env.GRAPHIUM_BIND_HOST ?? "127.0.0.1";
 bootLog(`calling serve() on host=${hostname} port=${port}`);
 
+// 合言葉なしでループバック以外に開くと、同じネットワークの誰でも API（MCP の接続テストなど
+// コマンドを起動する口を含む）を使える。止めはしないが目立つ警告を出す。
+{
+  const loopback = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+  const nonLoopbackNoToken = !loopback.has(hostname.toLowerCase()) && !process.env.GRAPHIUM_AUTH_TOKEN;
+  if (nonLoopbackNoToken && process.env.GRAPHIUM_CONTAINER === "1") {
+    // 公式 Docker イメージは常に 0.0.0.0 に bind する。公開範囲はポートの公開設定で決まるので案内だけ出す
+    const msg =
+      "Running inside a container. Exposure is decided by the port publishing settings. " +
+      "Set GRAPHIUM_AUTH_TOKEN before exposing it beyond 127.0.0.1.";
+    bootLog(msg);
+    console.warn(msg);
+  } else if (nonLoopbackNoToken) {
+    const msg =
+      `WARNING: listening on ${hostname} without GRAPHIUM_AUTH_TOKEN. ` +
+      "Anyone who can reach this port can read your notes and run commands on this machine. " +
+      "Set GRAPHIUM_AUTH_TOKEN (a long random value) before exposing it.";
+    bootLog(msg);
+    console.warn("\n!!! " + msg + " !!!\n");
+  }
+}
+
 try {
   serve({ fetch: app.fetch, port, hostname }, (info: { port: number }) => {
     bootLog(`listening on ${hostname}:${info.port}`);

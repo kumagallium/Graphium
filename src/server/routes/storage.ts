@@ -27,7 +27,8 @@ import {
 } from "node:fs";
 import { join, extname } from "node:path";
 import type { Context, Next } from "hono";
-import { getServerMode } from "../config/models.js";
+import { getServerMode, writePrivateFileSync } from "../config/models.js";
+import { isRequestAuthorized } from "../auth-token.js";
 import { isValidAppDataKey } from "../../lib/storage/app-data-key.js";
 import {
   appDataFileName,
@@ -60,7 +61,13 @@ function resolveDataDir(): string {
 }
 
 function ensureDir(path: string): void {
-  if (!existsSync(path)) mkdirSync(path, { recursive: true });
+  // DATA_DIR そのものを新しく作るときは本人だけが入れる権限で作る（config/models.ts の ensureDataDir と同じ）。
+  // 既存のフォルダの権限は変えない
+  if (existsSync(path)) return;
+  // 子フォルダの recursive mkdir に巻き込まれて 755 で作られないよう、DATA_DIR を先に 0o700 で作る
+  const root = resolveDataDir();
+  if (!existsSync(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (path !== root) mkdirSync(path, { recursive: true });
 }
 
 function subdir(name: string): string {
@@ -69,9 +76,27 @@ function subdir(name: string): string {
   return dir;
 }
 
-function safeId(id: string): string {
-  // パストラバーサル防止: スラッシュ・バックスラッシュ・ヌル文字を拒否
-  if (!id || id.includes("/") || id.includes("\\") || id.includes("\0") || id.startsWith(".")) {
+// Windows の予約名（拡張子付きでも同じ。CON.txt は CON として扱われ、開くと固まる）
+const WINDOWS_RESERVED_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
+function safeId(id: string, allowColon = false, platform: NodeJS.Platform = process.platform): string {
+  // パストラバーサル防止: スラッシュ・バックスラッシュ・ヌル文字を拒否。
+  // ':' は Windows の代替データストリーム（file.json:stream）になり、予約名（CON / PRN / AUX / NUL /
+  // COM1-9 / LPT1-9、拡張子付きも）は開くと固まる。どちらも Windows でだけ起きるので、Windows でだけ拒否する。
+  // macOS / Linux では 1 要素のままで外へ出ず、既存のデータに `wiki:<id>.json` のような名前が
+  // 残っていることがあるので、拒否すると開くことも消すこともできなくなる
+  // （Windows では ':' は代替データストリームの指定になり、"wiki:<id>.json" という名前のファイルにはならない）。
+  // appdata のキーは ":" を含む正規のキー（appDataFileName が符号化して保存する）なので allowColon で通す
+  const windows = platform === "win32";
+  if (
+    !id ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\0") ||
+    (windows && !allowColon && id.includes(":")) ||
+    id.startsWith(".") ||
+    (windows && WINDOWS_RESERVED_NAME_RE.test(id))
+  ) {
     throw new Error("Invalid file ID");
   }
   return id;
@@ -105,19 +130,35 @@ const docTypes: Array<{ slug: string; sub: string }> = [
 
 const app = new Hono();
 
-// 認証ミドルウェア
+// capabilities のルートそのものだけ（/api/storage/<何か>/capabilities は含めない）。
+// 単体でマウントされた場合（/capabilities）と app.ts の /api/storage 配下の両方を見る
+function isCapabilitiesRequest(c: Context): boolean {
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") return false;
+  const p = c.req.path.replace(/\/+$/, "");
+  return p === "/capabilities" || p === "/api/storage/capabilities";
+}
+
+// 認証ミドルウェア（app.ts の共通ミドルウェアと同じ照合。単体でマウントされても守れるよう残す）
 async function authMiddleware(c: Context, next: Next) {
-  const expected = process.env.GRAPHIUM_AUTH_TOKEN;
-  if (!expected) {
+  // 機能検出は合言葉が要るかを知らせる口なので素通し（app.ts と同じ）
+  if (isCapabilitiesRequest(c)) {
     await next();
     return;
   }
-  const token = c.req.header("x-graphium-token");
-  if (token !== expected) {
+  if (!isRequestAuthorized(c)) {
     return c.json({ error: "Authentication failed" }, 401);
   }
   await next();
 }
+
+// Vercel モードはディスクが永続しない公開 API。capabilities（serverStorage:false を返す）以外は
+// 提供しない（書き込み可能なファイルシステムで動くと、保存した中身をこのオリジンで配ってしまう）
+app.use("*", async (c, next) => {
+  if (getServerMode() === "vercel" && !isCapabilitiesRequest(c)) {
+    return c.json({ error: "Storage is not available" }, 404);
+  }
+  await next();
+});
 
 app.use("*", authMiddleware);
 
@@ -411,7 +452,7 @@ app.delete("/appdata/:key", (c) => {
 
 app.get("/appdata/:key", (c) => {
   try {
-    const key = safeId(c.req.param("key"));
+    const key = safeId(c.req.param("key"), true);
     const dir = subdir("appdata");
     const path = join(dir, appDataFileName(key));
     let text: string;
@@ -438,10 +479,10 @@ app.get("/appdata/:key", (c) => {
 
 app.put("/appdata/:key", async (c) => {
   try {
-    const key = safeId(c.req.param("key"));
+    const key = safeId(c.req.param("key"), true);
     const body = await c.req.text();
     JSON.parse(body); // バリデーション
-    writeFileSync(join(subdir("appdata"), appDataFileName(key)), body, "utf-8");
+    writePrivateFileSync(join(subdir("appdata"), appDataFileName(key)), body);
     return c.json({ ok: true });
   } catch (e) {
     return c.json({ error: String(e) }, 400);

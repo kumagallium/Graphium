@@ -162,6 +162,35 @@ describe("media-tools", () => {
   describe("addMaterial", () => {
     const csv = "name,price\nflour,120\n";
 
+    it("実行ファイル・スクリプト・ショートカットの拡張子は断る（何も書かない）", async () => {
+      for (const name of ["最新.bat", "run.CMD", "a.ps1", "x.exe", "y.lnk", "z.command", "w.terminal", "s.sh", "h.hta", "j.jar", "v.vbs", "i.url", "a.xll", "b.ws", "c.bas", "d.library-ms"]) {
+        await expect(addMaterial({ bytes_base64: b64("echo hi"), name }, root)).rejects.toThrow(/追加できません/);
+      }
+      // Office の MIME を偽って渡しても、名前の拡張子が実行系なら断る
+      await expect(
+        addMaterial({ bytes_base64: b64("echo hi"), name: "報告.bat", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }, root),
+      ).rejects.toThrow(/追加できません/);
+      expect(readdirSync(media)).toEqual([]);
+    });
+
+    it("名前の末尾のドット・空白で実行系の検査をすり抜けられない", async () => {
+      for (const name of ["evil.cmd.", "evil.bat. ", "evil.exe...", "evil.ps1 . "]) {
+        await expect(addMaterial({ bytes_base64: b64("echo hi"), name }, root)).rejects.toThrow(/追加できません/);
+      }
+      expect(readdirSync(media)).toEqual([]);
+      // 通る名前は、末尾を落とした形で保存される
+      await addMaterial({ bytes_base64: b64(csv), name: "price.csv. " }, root);
+      const metas = readdirSync(media).filter((f) => f.endsWith(".meta.json"));
+      expect(metas.length).toBe(1);
+      expect(JSON.parse(readFileSync(join(media, metas[0]), "utf8")).name).toBe("price.csv");
+    });
+
+    it("data 系・文書の拡張子は引き続き追加できる", async () => {
+      for (const name of ["a.csv", "b.tsv", "c.json", "d.docx", "e.pdf", "f.png", "g.xlsx", "h.py", "i.xlsm"]) {
+        await expect(addMaterial({ bytes_base64: b64(`x-${name}`), name }, root)).resolves.toMatchObject({ duplicate: false });
+      }
+    });
+
     it("追加すると <id>.<ext> と meta と台帳ができ、.tmp は残らない", async () => {
       const r = await addMaterial({ bytes_base64: b64(csv), name: "price.csv" }, root);
       expect(r.duplicate).toBe(false);

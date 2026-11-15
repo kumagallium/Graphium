@@ -164,6 +164,21 @@ describe("classifyInitFailure", () => {
     expect(f.key).toBe("startup.initFailedMissing");
   });
 
+  it("セルフホストの合言葉が要る・合っていないときは、画面で入力してもらう分類にする", () => {
+    const needed = classifyInitFailure(new Error("認証トークンが必要です"));
+    expect(needed.key).toBe("startup.initFailedToken");
+    expect(needed.needsServerToken).toBe(true);
+    expect(needed.needsFolderAccess).toBe(false);
+
+    const rejected = classifyInitFailure(new Error('Storage API エラー (401): {"error":"Unauthorized"}'));
+    expect(rejected.key).toBe("startup.initFailedTokenRejected");
+    expect(rejected.needsServerToken).toBe(true);
+
+    // 401 以外のサーバーエラーは合言葉の話にしない
+    const other = classifyInitFailure(new Error("Storage API エラー (500): boom"));
+    expect(other.needsServerToken).toBeUndefined();
+  });
+
   it("分類できないものは汎用に落とし、生文字列は保つ", () => {
     const f = classifyInitFailure("something unexpected");
     expect(f.key).toBe("startup.initFailed");

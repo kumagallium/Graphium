@@ -9,6 +9,7 @@ import {
   clearReaderCache,
   fetchAsReaderArticle,
 } from "./url-reader";
+import { setHostResolverForTest } from "./safe-fetch";
 
 const ARTICLE_HTML = `<!doctype html>
 <html lang="en">
@@ -82,8 +83,13 @@ describe("extractReaderFromHtml", () => {
 });
 
 describe("fetchAsReaderArticle (bot protection)", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
+    setHostResolverForTest();
   });
 
   function stubFetch(status: number, headers: Record<string, string>) {
@@ -615,5 +621,109 @@ describe("reader cache (LRU)", () => {
     expect(getCachedReaderArticle("https://example.com/p0")).toBeNull();
     // 新しいものは残っている
     expect(getCachedReaderArticle("https://example.com/new")).not.toBeNull();
+  });
+});
+
+describe("fetchAsReaderArticle の宛先検査（メタデータ宛・リダイレクト）", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setHostResolverForTest();
+  });
+
+  it("公開ホストからメタデータ宛への 302 は、その GET を送らずに 403", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } }));
+    await expect(fetchAsReaderArticle("https://public.example.com/a")).rejects.toMatchObject({ status: 403 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("メタデータ宛の直接指定は fetch せずに 403", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    await expect(fetchAsReaderArticle("http://169.254.169.254/")).rejects.toMatchObject({ status: 403 });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("sanitizeReaderHtml: SVG アニメーション・style・name（監査 #32 #96 #54 #38）", () => {
+  it("<animate> / <set> / <animateTransform> / <mpath> を落とす（href を javascript: に書き換える手口）", () => {
+    const out = sanitizeReaderHtml(
+      `<svg><a><animate attributeName="href" values="javascript:alert(1)" begin="0s" fill="freeze"/><set attributeName="href" to="javascript:alert(2)"/><animateTransform attributeName="transform"/><rect width="9" height="9"/></a></svg>`,
+    );
+    expect(out).not.toMatch(/animate|<set|javascript:/i);
+    expect(out).toContain("<rect");
+  });
+
+  it("SVG の <a> の xlink:href / href の javascript: は無害化される", () => {
+    const out = sanitizeReaderHtml(
+      `<svg><a xlink:href="javascript:alert(1)"><text>x</text></a><a href=" JaVa\tScript:alert(2)"><text>y</text></a></svg>`,
+    );
+    expect(out).not.toMatch(/javascript:/i);
+  });
+
+  it("画面を覆う style / CSS エスケープの url( / @import / expression を属性ごと落とす", () => {
+    for (const style of [
+      "position:fixed;inset:0",
+      "z-index:9999",
+      "background-image:u\\72l(https://t.example/x.png)",
+      "background:url(https://t.example/x.png)",
+      "width:expression(alert(1))",
+      "@import 'https://t.example/a.css'",
+    ]) {
+      const out = sanitizeReaderHtml(`<svg style="${style}"><rect width="1" height="1"/></svg>`);
+      expect(out, style).not.toContain("style=");
+    }
+  });
+
+  it("害のない style は残す", () => {
+    const out = sanitizeReaderHtml(`<svg style="width:100px"><rect width="1" height="1"/></svg>`);
+    expect(out).toContain("style=");
+  });
+
+  it("fill=u\\72l(...) のような presentation 属性のエスケープも落とす", () => {
+    const out = sanitizeReaderHtml(`<svg><rect fill="u\\72l(https://t.example/x)" width="1" height="1"/></svg>`);
+    expect(out).not.toContain("t.example");
+  });
+
+  it("a の name は、id が無いときだけ id に移す（ページ内リンクが効き続ける）", () => {
+    const out = sanitizeReaderHtml('<p><a href="#fn1">see</a></p><p><a name="fn1">1</a> <a name="k" id="own">2</a> <a name="__TAURI__">3</a> <a name="process">4</a></p>');
+    expect(out).not.toContain("name=");
+    expect(out).toContain('id="fn1"');
+    expect(out).toContain('id="own"');
+    expect(out).not.toContain('id="k"');
+    expect(out).not.toContain("__TAURI__");
+    expect(out).not.toContain('id="process"');
+    // a 以外の name は移さない
+    expect(sanitizeReaderHtml('<img name="x" src="https://e.example/a.png">')).not.toContain('id="x"');
+  });
+
+  it("a の href は相対・# 始まり・http・https・mailto だけ残し、他のスキームは href を落とす（文字は残す）", () => {
+    const out = sanitizeReaderHtml(
+      '<a href="smb://host/share">s</a><a href="file:///etc/passwd">f</a><a href="ms-msdt:/id x">m</a>' +
+        '<a href=" SMB://h/x">S</a><a href="https://e.example/">h</a><a href="http://e.example/">h2</a>' +
+        '<a href="mailto:a@e.example">mail</a><a href="#top">t</a><a href="/path/x">r</a><a href="x.html">r2</a>',
+    );
+    expect(out).not.toMatch(/smb:|file:|ms-msdt:/i);
+    for (const text of [">s<", ">f<", ">m<", ">S<"]) expect(out).toContain(text);
+    for (const keep of ['href="https://e.example/"', 'href="http://e.example/"', 'href="mailto:a@e.example"', 'href="#top"', 'href="/path/x"', 'href="x.html"']) {
+      expect(out).toContain(keep);
+    }
+  });
+
+  it("name 属性を落とし、id は残す", () => {
+    const out = sanitizeReaderHtml(`<p><img name="x" id="__TAURI_INTERNALS__" src="data:image/png;base64,AAAA"><a id="fn1" name="fn1">1</a></p>`);
+    expect(out).not.toContain("name=");
+    expect(out).toContain('id="fn1"');
+    // id でも名前付きプロパティになるので、isTauri() を騙す名前は落とす
+    expect(out).not.toContain("__TAURI_INTERNALS__");
+    expect(sanitizeReaderHtml('<a id="__TAURI__">t</a><a id="process">u</a>')).not.toMatch(/id=/);
+    // window に元からある名前（location・History など）は上書きにならないので、見出しのアンカーとして残す
+    const kept = sanitizeReaderHtml('<h2 id="location">a</h2><h2 id="History">b</h2>');
+    expect(kept).toContain('id="location"');
+    expect(kept).toContain('id="History"');
   });
 });

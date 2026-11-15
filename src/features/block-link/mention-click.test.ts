@@ -48,6 +48,27 @@ const ref = (sourceBlockId: string, targetNoteId: string, sourceRowIdentity?: st
 describe("resolveMentionClickTarget", () => {
   const base = { blockId: "b1", inTableCell: false, rowIdentity: null, links: [], noteIndex, media };
 
+  describe("細工されたリンク先 id", () => {
+    // 他人のノートをフォークして持ち込まれた targetNoteId は、そのままノートの読み書きのパスに入る
+    it.each(["../../Library/x", "/Users/x/.ssh/id_rsa", "\\\\host\\share\\x", "C:\\x", "a/b"])(
+      "%s はノートの行き先にしない",
+      (bad) => {
+        const r = resolveMentionClickTarget({
+          ...base,
+          mentionText: "Index Note x",
+          links: [ref("b1", bad)],
+        });
+        expect(r).toBeNull();
+      },
+    );
+
+    it("通常の id は従来どおり開く", () => {
+      expect(
+        resolveMentionClickTarget({ ...base, mentionText: "Index Note", links: [ref("b1", "n1")] }),
+      ).toBe("n1");
+    });
+  });
+
   describe("表の行に紐づけたリンク", () => {
     // 試料ごとの data.txt（同名の別ファイル）を、同じ表の行ごとに @ で並べた状態
     const rowLinks = [ref("tbl", "data:f2", "row_1"), ref("tbl", "data:f3", "row_2")];

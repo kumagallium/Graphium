@@ -97,6 +97,19 @@ describe("assistant-connect", () => {
       expect(existsSync(`${desktopConfig()}.graphium-tmp`)).toBe(false);
     });
 
+    it("元の権限（0600）を引き継ぎ、新しく作るときも本人だけが読める", async () => {
+      expect(await registerAssistant("claude-desktop", makeEnv())).toBe("registered");
+      expect(statSync(desktopConfig()).mode & 0o777).toBe(0o600);
+    });
+
+    it("0600 の設定ファイルを書き換えても 0644 にならない", async () => {
+      mkdirSync(join(desktopConfig(), ".."), { recursive: true });
+      writeFileSync(desktopConfig(), JSON.stringify({ mcpServers: { other: { command: "x" } } }), { encoding: "utf8", mode: 0o600 });
+      chmodSync(desktopConfig(), 0o600);
+      await registerAssistant("claude-desktop", makeEnv());
+      expect(statSync(desktopConfig()).mode & 0o777).toBe(0o600);
+    });
+
     it("Claude が起動中なら書かずに needs-quit", async () => {
       const env = makeEnv({ isClaudeDesktopRunning: async () => true });
       expect(await registerAssistant("claude-desktop", env)).toBe("needs-quit");

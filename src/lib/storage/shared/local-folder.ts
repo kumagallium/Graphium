@@ -149,16 +149,48 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
       root: this.root,
       entryType: folder,
     });
-    const out: SharedEntry[] = [];
+    const candidates: { entry: SharedEntry; json: string; unshared: boolean }[] = [];
     for (const j of jsons) {
       try {
         const parsed = parseStored(j);
-        // active な entry のみ list に含める（unshared = tombstone は除外）
-        if (parsed.entry.status === "unshared") continue;
-        out.push(parsed.entry);
+        // unshared（tombstone）は一覧には出さないが、同じ id の重複判定には数える
+        // （本物が tombstone のとき、同じ id を名乗る active な影を通さないため）
+        // id が uuidv7 でないもの・置かれたフォルダの種別と違うものは捨てる
+        if (!isValidSharedId(parsed.entry.id) || parsed.entry.type !== prefix) continue;
+        candidates.push({ entry: parsed.entry, json: j, unshared: parsed.entry.status === "unshared" });
       } catch {
         // 壊れたファイルはスキップ（list の安定性優先）
       }
+    }
+    // 同じ id を名乗る entry が複数あるとき（クラウド同期の競合コピー・手での複製・別名のファイルに
+    // 他人の id を書いた「影」）は、ファイル名 = id の本物を shared_read で読み、中身が一致する
+    // ものだけ残す。shared_list は中身しか返さずファイル名と突き合わせられないため、
+    // 追加の読み込みは重複したときだけ行う
+    const counts = new Map<string, number>();
+    for (const c of candidates) counts.set(c.entry.id, (counts.get(c.entry.id) ?? 0) + 1);
+    const realJson = new Map<string, string | null>();
+    const out: SharedEntry[] = [];
+    const emitted = new Set<string>();
+    for (const c of candidates) {
+      const id = c.entry.id;
+      if (emitted.has(id)) continue;
+      if (c.unshared && (counts.get(id) ?? 0) <= 1) continue;
+      if ((counts.get(id) ?? 0) > 1) {
+        if (!realJson.has(id)) {
+          try {
+            realJson.set(
+              id,
+              await invoke<string>("shared_read", { root: this.root, entryType: folder, id }),
+            );
+          } catch {
+            realJson.set(id, null); // 本物のファイルが無い。どれも信用しない
+          }
+        }
+        if (realJson.get(id) !== c.json) continue;
+      }
+      if (c.unshared) continue;
+      emitted.add(id);
+      out.push(c.entry);
     }
     return out;
   }
@@ -172,6 +204,10 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
       id,
     });
     const parsed = parseStored(json);
+    // ファイル名（id）と中身の id が違うものは、別の entry を装ったファイル
+    if (parsed.entry.id !== id) {
+      throw new Error(`Shared entry id mismatch: ${id}`);
+    }
     return {
       entry: parsed.entry,
       body: base64ToUint8(parsed.body_base64),
@@ -295,12 +331,22 @@ export class LocalFolderBlobProvider implements BlobStorageProvider {
     };
   }
 
-  async get(ref: BlobRef): Promise<Uint8Array> {
+  /** 検証せずに読む（verifyHash が不一致を false で返すために使う） */
+  private async readRaw(ref: BlobRef): Promise<Uint8Array> {
     const b64 = await invoke<string>("shared_blob_read", {
       root: this.root,
       hash: ref.hash,
     });
     return base64ToUint8(b64);
+  }
+
+  /** blob を読む。中身のハッシュが ref.hash と違えば（フォルダ内ですり替えられている）例外 */
+  async get(ref: BlobRef): Promise<Uint8Array> {
+    const bytes = await this.readRaw(ref);
+    if ((await computeBlobHash(bytes)) !== ref.hash) {
+      throw new Error(`Shared blob hash mismatch: ${ref.hash}`);
+    }
+    return bytes;
   }
 
   async url(ref: BlobRef): Promise<string> {
@@ -311,7 +357,7 @@ export class LocalFolderBlobProvider implements BlobStorageProvider {
   }
 
   async verifyHash(ref: BlobRef): Promise<boolean> {
-    const bytes = await this.get(ref);
+    const bytes = await this.readRaw(ref);
     const recomputed = await computeBlobHash(bytes);
     return recomputed === ref.hash;
   }

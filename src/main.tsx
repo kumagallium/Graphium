@@ -10,6 +10,7 @@ import { initUiZoomInput } from "./lib/ui-zoom";
 import { UiZoomOverlays } from "./features/ui-zoom";
 import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
+import { installApiAuthFetch } from "./lib/api-auth-fetch";
 import { installExternalLinkHandler } from "./lib/external-link";
 import { createCloseRequestHandler, installPageExitFlush } from "./lib/flush-on-exit";
 import { flushMeetingRecordingOnExit } from "./features/meeting-recorder/flush-on-exit";
@@ -27,6 +28,9 @@ import { ViewerWindow } from "./features/viewer-window/ViewerWindow";
 // 別ウィンドウは 1 つのノートだけを出すページ。sidecar・メニュー・自動更新・アプリの終了処理は
 // メインのウィンドウだけが持つ（別ウィンドウでも動かすと sidecar が 2 つ立つ）。
 const viewerTarget = getViewerTarget();
+
+// セルフホストの合言葉（X-Graphium-Token）を API への fetch すべてに足す（描画前に包む）
+installApiAuthFetch();
 
 if (isTauri()) {
   // 外部リンク（<a target="_blank"> / 出典 URL）を OS ブラウザで開けるようにする。

@@ -8,6 +8,7 @@
 //
 // 設計詳細: docs/internal/team-shared-storage-design.md §3 Library / §22
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
 import {
@@ -109,7 +110,7 @@ export function SharedEntryBody({
       <div className="space-y-2 text-sm">
         {url && (
           <a
-            href={url}
+            href={safeExternalHref(url)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-primary hover:underline break-all"

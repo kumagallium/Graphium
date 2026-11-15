@@ -3,6 +3,7 @@
 // /api/wiki/fetch-url と /api/prov/ingest-url の両方から使う共通処理
 
 import { parseHTML } from "linkedom";
+import { BlockedTargetError, guardedFetch } from "./safe-fetch.js";
 
 const USER_AGENT = "Graphium/1.0 (Knowledge Layer)";
 const ACCEPT = "text/html,application/xhtml+xml,text/plain,application/pdf";
@@ -40,11 +41,20 @@ export async function fetchPageAsText(
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: ACCEPT },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    // 利用者が指定する URL なので LAN は止めない。リンクローカルとクラウドのメタデータだけ、
+    // リダイレクト先も含めて止める
+    res = await guardedFetch(
+      url,
+      {
+        headers: { "User-Agent": USER_AGENT, Accept: ACCEPT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      },
+      "metadata-only",
+    );
   } catch (err) {
+    if (err instanceof BlockedTargetError) {
+      throw { status: 403, message: "This host is not allowed" } satisfies FetchPageError;
+    }
     const message = err instanceof Error ? err.message : "URL fetch failed";
     throw { status: 500, message } satisfies FetchPageError;
   }

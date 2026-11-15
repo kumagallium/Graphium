@@ -211,6 +211,8 @@ Three tools are made for other programs rather than for you: `list_media`, `get_
 A few things to know:
 
 - `add_material` only accepts the file's content (base64). It never reads a path on your disk, so a connected assistant cannot use it to pick up arbitrary files.
+- `add_material` refuses executables, scripts and shortcuts (for example `.exe`, `.bat`, `.sh`, `.js`, `.lnk`, `.app`), because opening them from the app could run them. If you need such a file as a reference, give it a `.txt` name and pass the text.
+- When a source or a task needs a web page, Graphium fetches only public addresses. Addresses on this PC, on your local network and cloud metadata addresses are not fetched (also through redirects); such a page fails with a message saying so. Save the page as a file instead.
 - The same content is never stored twice. The check is the file's SHA-256, the same key the app uses, so a renamed copy still merges with the material you already have.
 - Files over 32 MiB are not fetched or added through these tools.
 - A material added this way shows up in Graphium, and in `list_media`, after Graphium next rebuilds its media index (restarting Graphium is the sure way). Until then, dropping the same file in the app may create a second copy.

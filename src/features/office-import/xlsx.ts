@@ -17,14 +17,36 @@ export type XlsxSheet = {
   rows: number;
   /** CSV にする前のセルの表（行 × 列。エスケープ前の値）。プレビューの表示に使う */
   cells: string[][];
+  /** 空マスの上限を超えたので、下の行を切って返したときだけ true */
+  truncated?: boolean;
+  /** 空の行と列を詰めて返したとき（元の位置とは行・列がずれる）だけ true。truncated とは別の印 */
+  compacted?: boolean;
 };
-export type XlsxReadResult = { sheets: XlsxSheet[] };
+export type XlsxReadResult = {
+  sheets: XlsxSheet[];
+  /** ブック全体の上限（シート数・合計マス数）で、後ろのシートを読まなかったときだけ true */
+  truncated?: boolean;
+};
 
 function textOf(entries: Record<string, Uint8Array>, path: string): string | null {
   const raw = entries[path];
   if (!raw) return null;
   return new TextDecoder().decode(raw);
 }
+
+// Excel の仕様上の上限（1,048,576 行・16,384 列＝XFD）。dimension やセル参照はファイル側が
+// 自由に書けるので、これを超える値は信じない。敷き詰める総マス数にも上限を置く
+const MAX_ROW = 1_048_576;
+const MAX_COL = 16_384;
+const MAX_GRID_CELLS = 2_000_000; // dimension を信じる面積の上限
+// シートごとの空マス（padding）の予算 = max(実在セル数 × 8, 500,000)。通常の表はこの中に収まる
+// （5 列の表の 6 万行目にメモが 1 つある、10 行の表の XFD 列にメモが 1 つある、といった表も位置を保つ）
+const PADDING_PER_REAL_CELL = 8;
+const MIN_PADDING_LIMIT = 500_000;
+// ブック全体の予算。シートごとの上限だけだと、シート数を増やして空マスを積み上げられる。
+// 数えるのは padding だけ（実在セルの多い正当な大きな表を切らないため）
+const MAX_SHEETS = 64;
+const MAX_BOOK_PADDING = 2_000_000;
 
 /** 列文字（A, B, ..., Z, AA, ...）を 1 始まりの列番号に変換する */
 function columnLettersToIndex(letters: string): number {
@@ -37,9 +59,13 @@ function columnLettersToIndex(letters: string): number {
 
 /** セル参照（例: "AB12"）を { col, row } に分解する */
 function parseCellRef(ref: string): { col: number; row: number } | null {
-  const m = ref.match(/^([A-Za-z]+)(\d+)$/);
+  // 列文字は 3 桁（XFD）まで。長い列文字で桁あふれさせる細工を弾く
+  const m = ref.match(/^([A-Za-z]{1,3})(\d{1,7})$/);
   if (!m) return null;
-  return { col: columnLettersToIndex(m[1].toUpperCase()), row: Number(m[2]) };
+  const col = columnLettersToIndex(m[1].toUpperCase());
+  const row = Number(m[2]);
+  if (col < 1 || col > MAX_COL || row < 1 || row > MAX_ROW) return null;
+  return { col, row };
 }
 
 /** RFC 4180 に沿って 1 フィールドをエスケープする */
@@ -96,7 +122,7 @@ function worksheetToCsv(
   xml: string,
   parser: DOMParser,
   sharedStrings: string[],
-): { csv: string; rows: number; cells: string[][] } {
+): { csv: string; rows: number; cells: string[][]; truncated: boolean; compacted: boolean; padding: number } {
   const doc = parser.parseFromString(xml, "application/xml");
 
   // <dimension ref="A1:D10"/> があれば行・列の上限として使う（無ければ実データから求める）
@@ -107,7 +133,8 @@ function worksheetToCsv(
   if (dimRef) {
     const parts = dimRef.split(":");
     const end = parseCellRef(parts[parts.length - 1]);
-    if (end) {
+    // 上限内の dimension だけ採用する（巨大な矩形を宣言して全マスを敷き詰めさせる細工への対策）
+    if (end && end.row * end.col <= MAX_GRID_CELLS) {
       maxRow = end.row;
       maxCol = end.col;
     }
@@ -124,6 +151,7 @@ function worksheetToCsv(
     const parsedRowNum = rAttr ? Number(rAttr) : NaN;
     const rowNum = Number.isFinite(parsedRowNum) && parsedRowNum > 0 ? parsedRowNum : nextRowFallback;
     nextRowFallback = rowNum + 1;
+    if (rowNum > MAX_ROW) continue; // 仕様上ありえない行は読み飛ばす
     maxRow = Math.max(maxRow, rowNum);
     const rowCells = cells.get(rowNum) ?? new Map<number, string>();
 
@@ -133,6 +161,7 @@ function worksheetToCsv(
       const ref = cEl.getAttribute("r");
       const pos = ref ? parseCellRef(ref) : null;
       const col = pos?.col ?? ++fallbackCol;
+      if (col > MAX_COL) continue;
       maxCol = Math.max(maxCol, col);
 
       const type = cEl.getAttribute("t") ?? "n";
@@ -159,20 +188,61 @@ function worksheetToCsv(
     cells.set(rowNum, rowCells);
   }
 
-  // maxRow/maxCol の矩形に敷き詰めて CSV へ。空セル・途中の空行はそのまま空文字の行として残す
+  // 実在セル数（同じ位置への重複は 1 つと数える）
+  let realCount = 0;
+  for (const rc of cells.values()) realCount += rc.size;
+
+  // 空マスの敷き詰め（padding）の予算。実在セル数に比例させ、通常の表はこの中に収まる
+  const sheetLimit = Math.max(realCount * PADDING_PER_REAL_CELL, MIN_PADDING_LIMIT);
+  const limit = sheetLimit;
+
+  let rowList: number[] | null = null; // null = 1..maxRow をそのまま出す
+  let colList: number[] | null = null; // null = 1..maxCol をそのまま出す
+  let compacted = false;
+  let truncated = false;
+  // 行は列が 0 でも 1 マスぶんの重さとして数える。セルを持たない <row r="1048576"/> だけのシートは
+  // 列が 0 のまま 100 万行の空行になるので、「行数 × 列数」だけで測ると予算をすり抜ける
+  if (maxRow * Math.max(1, maxCol) - realCount > limit) {
+    // 位置を保つと padding が予算を超える: 実在セルの無い行と列を落として詰める（順序は保つ）
+    compacted = true;
+    rowList = Array.from(cells.entries())
+      .filter(([, rc]) => rc.size > 0)
+      .map(([r]) => r)
+      .sort((x, y) => x - y);
+    const used = new Set<number>();
+    for (const rc of cells.values()) for (const c of rc.keys()) used.add(c);
+    colList = Array.from(used).sort((x, y) => x - y);
+    const width = Math.max(1, colList.length);
+    if (rowList.length * width - realCount > limit) {
+      // 詰めてもなお予算を超える（対角線状に散らばった巨大なシートなど）: 行を予算内で切る
+      truncated = true;
+      const kept: number[] = [];
+      let keptReal = 0;
+      for (const r of rowList) {
+        const n = cells.get(r)?.size ?? 0;
+        if ((kept.length + 1) * width - (keptReal + n) > limit) break;
+        kept.push(r);
+        keptReal += n;
+      }
+      rowList = kept;
+    }
+  }
+
   const grid: string[][] = [];
   const lines: string[] = [];
-  for (let r = 1; r <= maxRow; r++) {
-    const rowCells = cells.get(r);
+  const rowCount = rowList ? rowList.length : maxRow;
+  const colCount = colList ? colList.length : maxCol;
+  for (let i = 0; i < rowCount; i++) {
+    const rowCells = cells.get(rowList ? rowList[i] : i + 1);
     const fields: string[] = [];
-    for (let c = 1; c <= maxCol; c++) {
-      fields.push(rowCells?.get(c) ?? "");
-    }
+    for (let j = 0; j < colCount; j++) fields.push(rowCells?.get(colList ? colList[j] : j + 1) ?? "");
     grid.push(fields);
     lines.push(fields.map(escapeCsvField).join(","));
   }
 
-  return { csv: lines.join("\r\n"), rows: maxRow, cells: grid };
+  // ブック全体の予算に数える padding も、行を 1 マス以上の重さとして数える（上の判定と同じ測り方）
+  const padding = Math.max(0, rowCount * Math.max(1, colCount) - realCount);
+  return { csv: lines.join("\r\n"), rows: rowCount, cells: grid, truncated, compacted, padding };
 }
 
 /** .xlsx の bytes を読み、シートごとに CSV 文字列を組み立てる */
@@ -191,15 +261,42 @@ export function readXlsx(bytes: Uint8Array): XlsxReadResult {
   const rels = parseWorkbookRels(relsXml, parser);
 
   const sheets: XlsxSheet[] = [];
+  let budget = MAX_BOOK_PADDING;
+  let bookTruncated = false;
+  // 同じパスを指す <sheet> は解析結果を使い回す（同じ XML を何度も解析させない）
+  const parsedByPath = new Map<string, ReturnType<typeof worksheetToCsv>>();
   for (const def of sheetDefs) {
     const target = rels.get(def.rId);
     if (!target) continue;
     const path = target.startsWith("worksheets/") ? `xl/${target}` : target.startsWith("/xl/") ? target.slice(1) : target;
-    const sheetXml = textOf(entries, path);
-    if (!sheetXml) continue;
-    const { csv, rows, cells } = worksheetToCsv(sheetXml, parser, sharedStrings);
-    sheets.push({ name: def.name, csv, rows, cells });
+    // 読むシート数・合計マス数の上限を超えたら、以降は読まずに打ち切る
+    if (sheets.length >= MAX_SHEETS || budget <= 0) {
+      bookTruncated = true;
+      break;
+    }
+    let parsed = parsedByPath.get(path);
+    if (!parsed) {
+      const sheetXml = textOf(entries, path);
+      if (!sheetXml) continue;
+      parsed = worksheetToCsv(sheetXml, parser, sharedStrings);
+      parsedByPath.set(path, parsed);
+    }
+    const { csv, rows, cells, truncated, compacted, padding } = parsed;
+    // 使い回した解析結果が残りの予算に収まらないときは、そこで打ち切る
+    if (padding > budget) {
+      bookTruncated = true;
+      break;
+    }
+    budget -= padding;
+    sheets.push({
+      name: def.name,
+      csv,
+      rows,
+      cells,
+      ...(truncated ? { truncated } : {}),
+      ...(compacted ? { compacted } : {}),
+    });
   }
 
-  return { sheets };
+  return { sheets, ...(bookTruncated ? { truncated: true } : {}) };
 }

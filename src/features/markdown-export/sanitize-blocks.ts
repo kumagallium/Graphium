@@ -44,6 +44,11 @@ function sanitizeStyles(styles: Record<string, unknown> | undefined, knownStyles
   return out;
 }
 
+/** Markdown の画像記法の alt に入れる文字列のエスケープ（記法を抜けられる文字を無効化し、改行は空白にする） */
+function escapeMarkdownAlt(value: string): string {
+  return value.replace(/\s*[\r\n]+\s*/g, " ").replace(/[\\[\]()<>]/g, (c) => `\\${c}`);
+}
+
 /**
  * 内部リンク（青文字の `@タイトル` テキスト）を Obsidian 互換の `[[タイトル]]` に変換する。
  * ノート ID は本文に埋まっておらず「表示テキスト＝タイトル」が規約なので、表示テキスト
@@ -97,8 +102,10 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
     } else if (item.type === "inlineImage") {
       // インライン画像 → Markdown の画像記法。URL は素材ライブラリの内部参照
       // （書き出し先では解決できないが、何の画像かは alt で分かる）
-      const name = String(item.props?.name ?? "");
-      const fileId = String(item.props?.fileId ?? "");
+      // 素材名はファイル名由来で `]` `(` を含み得る。そのまま入れると
+      // `a](https://攻撃者/t.png)![b.png` のように記法を抜けて外部画像やリンクを差し込める
+      const name = escapeMarkdownAlt(String(item.props?.name ?? ""));
+      const fileId = String(item.props?.fileId ?? "").replace(/[()\s\\]/g, "");
       if (fileId) out.push({ type: "text", text: `![${name}](media:${fileId})`, styles: {} });
     } else if (typeof item.text === "string") {
       // 未知の inline type（将来の mention 等）はテキストとして残す
