@@ -16,9 +16,13 @@ export const MCP_CONFIRM_NAME_MAX_CHARS = 80;
 const UNSAFE_CHARS =
   /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\uffa0\ufe00-\ufe0f\u{e0100}-\u{e01ef}]|[^\S ]/gu;
 
-/** 表示用: バックスラッシュを \\ に、制御文字などを見える形（\uXXXX / \u{XXXXX}）に置き換える */
-export function escapeForDisplay(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(UNSAFE_CHARS, (c) => {
+/**
+ * 表示用: バックスラッシュを \\ に、制御文字などを見える形（\uXXXX / \u{XXXXX}）に置き換える。
+ * alsoQuotes を付けると " も \" にする（引用符で囲んで見せるとき用。バックスラッシュと同じ 1 回の置換で行う）
+ */
+export function escapeForDisplay(text: string, alsoQuotes = false): string {
+  const escaped = alsoQuotes ? text.replace(/[\\"]/g, (c) => `\\${c}`) : text.replace(/\\/g, "\\\\");
+  return escaped.replace(UNSAFE_CHARS, (c) => {
     const cp = c.codePointAt(0) as number;
     const hex = cp.toString(16).toUpperCase();
     return cp > 0xffff ? `\\u{${hex}}` : `\\u${hex.padStart(4, "0")}`;
@@ -33,8 +37,7 @@ export function truncateForDisplay(text: string, max = MCP_CONFIRM_NAME_MAX_CHAR
 
 /** 空白や引用符を含む引数は、境目が分かるよう "" で囲む */
 function quoteArg(arg: string): string {
-  const safe = escapeForDisplay(arg);
-  return arg === "" || /[\s"]/.test(arg) ? `"${safe.replace(/"/g, '\\"')}"` : safe;
+  return arg === "" || /[\s"]/.test(arg) ? `"${escapeForDisplay(arg, true)}"` : escapeForDisplay(arg);
 }
 
 /**
@@ -52,7 +55,7 @@ export function formatCommandLine(entry: McpStdioServer): string {
 export function formatEnvLine(entry: McpStdioServer): string | null {
   const keys = Object.keys(entry.env ?? {});
   if (keys.length === 0) return null;
-  return `env: ${keys.map(escapeForDisplay).join(", ")}`;
+  return `env: ${keys.map((k) => escapeForDisplay(k)).join(", ")}`;
 }
 
 function formatOne(entry: McpStdioServer): string {
