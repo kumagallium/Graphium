@@ -41,7 +41,7 @@ Graphium is a personal open-source project that combines [Zettelkasten](https://
 ## How it works — keep, connect, trace
 
 ### 1. Keep
-Web clips, transcribed recordings, text read from photos and PDFs, quick memos and notes linked with `@` references. With that many ways in, whatever you come across can go straight in.
+Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, and notes linked with `@` references. With that many ways in, whatever you come across can go straight in.
 
 <p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
 

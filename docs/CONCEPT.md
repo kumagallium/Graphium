@@ -33,7 +33,7 @@ memory on your side.
 
 | Side | What it does |
 |---|---|
-| Ways in | Web clips, transcribed recordings, text read from photos and PDFs, quick memos, conversations with AI. Whatever you take in goes to one place |
+| Ways in | Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, conversations with AI. Whatever you take in goes to one place |
 | The memory | Plain JSON files on your machine, gathered into topics and traceable to their sources |
 | Ways out | Graphium's built-in AI, and outside AIs that connect over MCP (the Claude and ChatGPT desktop apps, Codex, and others). They can read, and they can also write back what a conversation worked out |
 
