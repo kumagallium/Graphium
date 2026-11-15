@@ -78,6 +78,8 @@ export const ko: Record<string, string> = {
   "startup.initFailedPermission": "노트 폴더를 열지 못했습니다. macOS가 접근을 허용하지 않고 있습니다.",
   "startup.initFailedTimeout": "노트 폴더를 읽는 데 평소보다 오래 걸리고 있습니다. 대부분 다시 불러오면 해결됩니다.",
   "startup.initFailedMissing": "노트 폴더를 찾지 못했습니다. 외장 드라이브나 동기화 폴더에 두었다면 사용할 수 있는 상태인지 확인해 주세요.",
+  "startup.initFailedToken": "이 서버는 접근 토큰(GRAPHIUM_AUTH_TOKEN)을 요구합니다. 서버를 시작할 때 설정한 값을 입력해 주세요.",
+  "startup.initFailedTokenRejected": "저장된 접근 토큰이 서버에서 받아들여지지 않았습니다. 서버를 시작할 때 설정한 값을 다시 입력해 주세요.",
   "startup.folderAccessHint": "업데이트 직후라면 Graphium을 종료했다가 다시 열면 대부분 해결됩니다.",
   "startup.folderAccessHintSettings": "그래도 열리지 않으면 시스템 설정 → 개인정보 보호 및 보안 → 파일 및 폴더에서 Graphium의 '문서' 폴더 접근을 켜 주세요.",
   "startup.restartApp": "Graphium 다시 시작",

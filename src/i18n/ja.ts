@@ -73,6 +73,8 @@ export const ja: Record<string, string> = {
   "startup.initFailedPermission": "ノートフォルダを開けませんでした。macOS がアクセスを保留しているようです。",
   "startup.initFailedTimeout": "ノートフォルダの読み込みに時間がかかっています。再読み込みで直ることがほとんどです。",
   "startup.initFailedMissing": "ノートフォルダが見つかりませんでした。外付けドライブや同期フォルダに置いている場合は、使える状態か確認してください。",
+  "startup.initFailedToken": "このサーバーはトークン（GRAPHIUM_AUTH_TOKEN）を求めています。サーバーを起動したときに設定した値を入力してください。",
+  "startup.initFailedTokenRejected": "保存してあるトークンがサーバーに通りませんでした。サーバーを起動したときに設定した値を入力し直してください。",
   "startup.folderAccessHint": "アップデートした直後は、一度アプリを終了して開き直すと通ることがあります。",
   "startup.folderAccessHintSettings": "それでも開けないときは、システム設定 → プライバシーとセキュリティ → ファイルとフォルダ で Graphium の「書類」フォルダをオンにしてください。",
   "startup.restartApp": "アプリを再起動",

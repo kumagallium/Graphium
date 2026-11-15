@@ -30,17 +30,30 @@ export type StorageInitFailure = {
     | "startup.initFailedPermission"
     | "startup.initFailedTimeout"
     | "startup.initFailedMissing"
+    | "startup.initFailedToken"
+    | "startup.initFailedTokenRejected"
     | "startup.initFailed";
   /** 生のエラー文字列（詳細表示・問い合わせ用に残す） */
   raw: string;
   /** OS のフォルダアクセス許可を案内すべきか */
   needsFolderAccess: boolean;
+  /** セルフホストの合言葉（GRAPHIUM_AUTH_TOKEN）をこの画面で入れてもらえば直るか */
+  needsServerToken?: boolean;
 };
 
 /** 初期化エラーを、ユーザーが次に取れる行動で分類する */
 export function classifyInitFailure(e: unknown): StorageInitFailure {
   const raw = e instanceof Error ? e.message : String(e);
   const lower = raw.toLowerCase();
+
+  // セルフホストで合言葉が要る／合っていない（server-fs の init が投げる）。再読み込みでは直らず、
+  // 設定画面にもたどり着けないので、起動失敗の画面でそのまま入力してもらう
+  if (raw.includes("認証トークンが必要です")) {
+    return { key: "startup.initFailedToken", raw, needsFolderAccess: false, needsServerToken: true };
+  }
+  if (/Storage API エラー \(401\)/.test(raw)) {
+    return { key: "startup.initFailedTokenRejected", raw, needsFolderAccess: false, needsServerToken: true };
+  }
 
   // withTimeout が付ける印。宙吊りか、TCC ダイアログの応答待ちで返ってこない
   if (lower.includes("init timeout after")) {
@@ -142,7 +155,7 @@ export function useStorage() {
           // 権限で弾かれている場合、同じプロセスの中では何度やっても同じところで
           // 返る（TCC の判定はプロセス単位で決まる）。粘らずに案内へ回し、
           // 起動し直してもらう。
-          if (failure.needsFolderAccess) break;
+          if (failure.needsFolderAccess || failure.needsServerToken) break;
           if (attempt < attempts && !cancelled) await delay(INIT_RETRY_DELAY_MS);
         }
       }

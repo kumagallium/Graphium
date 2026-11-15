@@ -73,6 +73,8 @@ export const en: Record<string, string> = {
   "startup.initFailedPermission": "Graphium could not open your notes folder — macOS is withholding access.",
   "startup.initFailedTimeout": "Reading your notes folder is taking longer than usual. Reloading usually clears it.",
   "startup.initFailedMissing": "Graphium could not find your notes folder. If you keep it on an external drive or a synced folder, check that it is available.",
+  "startup.initFailedToken": "This server asks for its access token (GRAPHIUM_AUTH_TOKEN). Enter the value the server was started with.",
+  "startup.initFailedTokenRejected": "The server did not accept the saved access token. Enter the value the server was started with.",
   "startup.folderAccessHint": "Right after an update, quitting Graphium and opening it again usually clears this.",
   "startup.folderAccessHintSettings": "If it still will not open, turn on the Documents folder for Graphium in System Settings → Privacy & Security → Files and Folders.",
   "startup.restartApp": "Restart Graphium",

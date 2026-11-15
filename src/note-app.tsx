@@ -293,6 +293,7 @@ import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteC
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
+import { setServerStorageToken } from "./lib/storage/providers/server-fs";
 import { getActiveProvider } from "./lib/storage/registry";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
@@ -8318,13 +8319,50 @@ class ListSidePeekBoundary extends Component<
 function StartupInitFailureScreen({ failure }: { failure: StorageInitFailure | null }) {
   const t = useT();
   const [showDetail, setShowDetail] = useState(false);
+  const [serverToken, setServerToken] = useState("");
   const messageKey = failure?.key ?? "startup.initFailed";
+
+  // セルフホストの合言葉が要る／合っていない: 設定画面には初期化が済まないとたどり着けないので、
+  // ここで入力して保存 → 再読み込みできるようにする（保存先は設定画面と同じ）
+  const saveServerToken = () => {
+    const value = serverToken.trim();
+    if (!value) return;
+    setServerStorageToken(value);
+    window.location.reload();
+  };
 
   return (
     <div className="flex flex-col items-center justify-center h-dvh bg-background gap-3 px-8 text-center">
       <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
         {t(messageKey)}
       </p>
+      {failure?.needsServerToken && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveServerToken();
+          }}
+        >
+          <input
+            type="password"
+            value={serverToken}
+            onChange={(e) => setServerToken(e.target.value)}
+            placeholder={t("settings.serverStorage.tokenPlaceholder")}
+            aria-label={t("settings.serverStorage.tokenPlaceholder")}
+            autoComplete="off"
+            autoFocus
+            className="h-8 w-56 rounded-md border border-border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            disabled={!serverToken.trim()}
+            className="px-3 py-1.5 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {t("settings.serverStorage.save")}
+          </button>
+        </form>
+      )}
       {failure?.needsFolderAccess && (
         <>
           <p className="text-xs text-muted-foreground/80 max-w-sm leading-relaxed">
