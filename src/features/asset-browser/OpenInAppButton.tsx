@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
-import { canOpenInApp, openInApp } from "./open-in-app";
+import { canOpenInApp, openInApp, openInAppFailureKey } from "./open-in-app";
 import type { MediaIndexEntry } from "./media-index";
 
 export function OpenInAppButton({
@@ -20,17 +20,17 @@ export function OpenInAppButton({
   style?: React.CSSProperties;
 }) {
   const t = useT();
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<"asset.openInAppBlocked" | "asset.openInAppFailed" | null>(null);
   if (!canOpenInApp(entry)) return null;
-  const label = failed ? t("asset.openInAppFailed") : t("asset.openInApp");
+  const label = failed ? t(failed) : t("asset.openInApp");
   return (
     <button
       type="button"
       onClick={() => {
-        setFailed(false);
+        setFailed(null);
         openInApp(entry).catch((err) => {
           console.error("[open-in-app] アプリで開けませんでした:", err);
-          setFailed(true);
+          setFailed(openInAppFailureKey(err));
         });
       }}
       data-tooltip={label}

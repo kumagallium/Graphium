@@ -30,7 +30,7 @@ import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-i
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry } from "./media-index";
 import { usePptxCover } from "./pptx-cover";
-import { canOpenInApp, openInApp } from "./open-in-app";
+import { canOpenInApp, openInApp, openInAppFailureKey } from "./open-in-app";
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
 import { DELIMITED_FILE_ACCEPT } from "../data-import/file-kind";
 import { runOcrForImage, runBulkOcr, OcrToast, type OcrToastState } from "../media-ocr";
@@ -427,10 +427,17 @@ function PptxCoverThumbnail({ entry, compact = false }: { entry: MediaIndexEntry
 // 既定のアプリで開く（Finder やエクスプローラーと同じ感覚）。1 回目のクリックでピークも開くので、
 // プレビューを見ながらアプリが立ち上がる。ほかの素材とブラウザ版では何もしない。
 // ダブルクリックで名前の文字が選択されたままにならないよう、選択は外す。
-function openInAppOnDoubleClick(entry: MediaIndexEntry) {
+// 開けなかったときは onFail に文言キーを渡す（Rust が断った種類は専用の文言）。
+function openInAppOnDoubleClick(
+  entry: MediaIndexEntry,
+  onFail: (key: "asset.openInAppBlocked" | "asset.openInAppFailed") => void,
+) {
   if (!canOpenInApp(entry)) return;
   window.getSelection()?.removeAllRanges();
-  openInApp(entry).catch((err) => console.error("[asset-gallery] アプリで開けませんでした:", err));
+  openInApp(entry).catch((err) => {
+    console.error("[asset-gallery] アプリで開けませんでした:", err);
+    onFail(openInAppFailureKey(err));
+  });
 }
 
 // 共通サムネイルディスパッチ（gallery/list 両用）
@@ -524,6 +531,7 @@ function MediaCard({
   onMouseEnter,
   onDelete,
   onOpenDetail,
+  onOpenInAppFailed,
   memo,
 }: {
   entry: MediaIndexEntry;
@@ -538,6 +546,8 @@ function MediaCard({
   onMouseEnter: (index: number) => void;
   onDelete: (entry: MediaIndexEntry) => void;
   onOpenDetail: (entry: MediaIndexEntry) => void;
+  /** ダブルクリックで「アプリで開く」に失敗したとき（文言キーを渡す） */
+  onOpenInAppFailed: (key: "asset.openInAppBlocked" | "asset.openInAppFailed") => void;
   /** メモの印。渡さなければ（メモの入口が無い文脈）出さない */
   memo?: GalleryMemoChipProps;
 }) {
@@ -613,7 +623,7 @@ function MediaCard({
       {/* サムネイル（クリックでモーダル表示） */}
       <button
         onClick={() => onOpenDetail(entry)}
-        onDoubleClick={() => openInAppOnDoubleClick(entry)}
+        onDoubleClick={() => openInAppOnDoubleClick(entry, onOpenInAppFailed)}
         className="block w-full cursor-pointer"
       >
         <MediaThumbnail entry={entry} />
@@ -1055,6 +1065,16 @@ export function AssetGalleryView({
     const timer = setTimeout(() => setBulkSourceResult(null), 8000);
     return () => clearTimeout(timer);
   }, [bulkSourceResult]);
+
+  // ダブルクリックで「アプリで開く」に失敗したときの通知（数秒で消える）
+  const [openInAppFailure, setOpenInAppFailure] = useState<
+    "asset.openInAppBlocked" | "asset.openInAppFailed" | null
+  >(null);
+  useEffect(() => {
+    if (!openInAppFailure) return;
+    const timer = setTimeout(() => setOpenInAppFailure(null), 6000);
+    return () => clearTimeout(timer);
+  }, [openInAppFailure]);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1710,6 +1730,15 @@ export function AssetGalleryView({
           })}
         </div>
       )}
+      {/* 一括 DOI 補完の結果（bottom-16）と同時に出ても重ならないよう、さらに一段上に出す */}
+      {openInAppFailure && (
+        <div
+          className="fixed bottom-28 right-4 z-[9999] flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 shadow-lg pl-3 pr-3.5 py-1.5 text-xs text-foreground"
+          role="status"
+        >
+          {t(openInAppFailure)}
+        </div>
+      )}
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
@@ -2104,6 +2133,7 @@ export function AssetGalleryView({
                   onMouseEnter={range.onRowMouseEnter}
                   onDelete={setDeleteTarget}
                   memo={memoChipFor(entry)}
+                  onOpenInAppFailed={setOpenInAppFailure}
                   onOpenDetail={(e) => {
                     // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
                     if (range.shouldSuppressClick()) return;
@@ -2176,7 +2206,7 @@ export function AssetGalleryView({
                         if (range.shouldSuppressClick()) return;
                         setDetailEntry(entry);
                       }}
-                      onDoubleClick={() => openInAppOnDoubleClick(entry)}
+                      onDoubleClick={() => openInAppOnDoubleClick(entry, setOpenInAppFailure)}
                     >
                       <td
                         className="py-2 px-2 cursor-pointer"

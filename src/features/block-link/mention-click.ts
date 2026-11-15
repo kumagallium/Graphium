@@ -14,6 +14,7 @@ import {
 } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
 import { MENTIONABLE_ASSET_TYPES, resolveMentionTargetFromLinks } from "./mention-menu";
+import { isSafeStorageId } from "../../lib/storage/safe-id";
 import type { MaterialFocus } from "../asset-browser/pdf-quote-anchor";
 
 /** リンク記録のうち、解決に使う部分だけ */
@@ -150,7 +151,11 @@ export function resolveMentionClickTarget(input: MentionClickInput): string | nu
   );
   if (fromLinks) {
     if (parseExternalSource(fromLinks.noteId)) return fromLinks.noteId;
-    return fromLinks.isWiki ? `wiki:${fromLinks.noteId}` : fromLinks.noteId;
+    // リンク先 id はそのままノートの読み書きに使われる。他人のノートをフォークして持ち込まれた
+    // 細工（`../` や絶対パス）は行き先にしない（下のタイトル・素材名の逆引きへ進む）
+    if (isSafeStorageId(fromLinks.noteId)) {
+      return fromLinks.isWiki ? `wiki:${fromLinks.noteId}` : fromLinks.noteId;
+    }
   }
 
   // 2) タイトルの逆引き

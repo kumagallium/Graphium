@@ -2378,6 +2378,7 @@ export const ko: Record<string, string> = {
   "asset.openInApp": "앱에서 열기",
   "asset.openInAppHint": "Word, Excel, PowerPoint 등의 앱에서 사본을 엽니다. Graphium으로 돌아오면 편집한 내용을 가져올지 묻습니다",
   "asset.openInAppFailed": "앱에서 파일을 열지 못했습니다.",
+  "asset.openInAppBlocked": "안전을 위해 이 종류의 파일은 여기서 열 수 없습니다.",
   "asset.openedCopy.changed": "{name} 파일이 다른 앱에서 편집되었습니다",
   "asset.openedCopy.willReplace": "이 자료는 아직 아무 곳에서도 인용하지 않으므로, 편집한 내용으로 바꿉니다.",
   "asset.openedCopy.willAddVersion": "노트나 지식 베이스에서 이 자료를 인용하고 있으므로, 원래 버전은 그대로 두고 편집한 내용을 새 버전으로 추가합니다.",
@@ -2629,6 +2630,7 @@ export const ko: Record<string, string> = {
   // Preview side peek (look before you decide what to keep)
   "mobile.openPreview": "미리 보기 열기",
   "mobile.previewLoading": "미리 보기를 불러오는 중…",
+  "mobile.previewTooLarge": "파일이 너무 커서 여기에서는 표시할 수 없습니다.",
   "mobile.previewFailed": "이 파일을 읽지 못했습니다: {error}",
   "mobile.importThis": "이 파일 가져오기",
   // Empty / error states

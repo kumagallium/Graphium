@@ -29,7 +29,7 @@ import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
 import { readEntryBytes } from "./read-entry-bytes";
-import { canOpenInApp, openInApp } from "./open-in-app";
+import { canOpenInApp, openInApp, openInAppFailureKey } from "./open-in-app";
 import { buildAssetLink } from "../block-link/graphium-link";
 import { MENTIONABLE_ASSET_TYPES } from "../block-link/mention-menu";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -277,7 +277,7 @@ export function MaterialActionsMenu({
       await openInApp(entry);
     } catch (err) {
       console.error("[material-actions-menu] アプリで開けませんでした:", err);
-      setOpenInAppError(t("asset.openInAppFailed"));
+      setOpenInAppError(t(openInAppFailureKey(err)));
     }
   }, [entry, t]);
 

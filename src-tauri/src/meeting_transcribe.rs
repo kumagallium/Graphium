@@ -574,9 +574,10 @@ fn track_from_name(name: &str) -> Option<&'static str> {
     }
 }
 
-/// ファイル名に使う ID の検証（区切り文字・NUL・先頭ドットを拒否）
+/// ファイル名に使う ID の検証。lib.rs の validate_id_component に揃える
+/// （`..`・`:`・制御文字も断る。Windows の `C:x` が基準を置き換えるのを防ぐ）
 fn valid_id(id: &str) -> bool {
-    !(id.is_empty() || id.contains('/') || id.contains('\\') || id.contains('\0') || id.starts_with('.'))
+    crate::validate_id_component(id).is_ok()
 }
 
 fn model_spec(size: &str) -> Result<(&'static str, &'static str, u64), String> {
@@ -1943,6 +1944,9 @@ mod tests {
         assert!(!valid_id("../x"));
         assert!(!valid_id(".hidden"));
         assert!(!valid_id(""));
+        // `:` は Windows でだけ断る（validate_id_component と同じ）
+        assert_eq!(!valid_id("C:x"), cfg!(windows));
+        assert!(!valid_id("a..b"));
         assert!(model_spec("small").is_ok());
         assert!(model_spec("large-v3-turbo").is_ok());
         assert_eq!(model_file_name("large-v3-turbo"), "ggml-large-v3-turbo-q5_0.bin");

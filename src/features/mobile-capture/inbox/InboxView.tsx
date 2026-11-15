@@ -470,7 +470,9 @@ export function InboxView({
   const previewOverride = !previewRef ? undefined
     : preview.error ? (
       <p className="text-sm text-destructive max-w-md text-center break-all">
-        {t("mobile.previewFailed", { error: preview.error })}
+        {preview.error.includes("inbox-file-too-large")
+          ? t("mobile.previewTooLarge")
+          : t("mobile.previewFailed", { error: preview.error })}
       </p>
     ) : previewCapturePayload ? (
       previewCapturePayload.kind === "memo" ? (

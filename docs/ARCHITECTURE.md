@@ -3381,6 +3381,40 @@ The same `src/` tree is built four different ways.
   (remove one entry for good; a missing key succeeds). Both validate the
   key against `^[A-Za-z0-9_-]{1,200}$`; the logic sits in pure functions
   over a directory so `cargo test` covers it
+- Every command that builds a path from an id (note / wiki / skill /
+  media ids, appData keys) passes it through one check in `lib.rs`
+  (`validate_id_component`): empty, `/`, `\`, `..`, a leading `.`
+  and control characters are refused (and `:` on Windows, where it means a
+  drive or an alternate data stream; elsewhere it stays one path component,
+  and older data can contain names such as `wiki:<id>`), so a relative path, an absolute path
+  or a Windows UNC path inside an imported note (`file-media://../../x`)
+  cannot make Rust read or write outside the data folder. The joined path
+  must also be a single component directly under its base directory. On
+  the TypeScript side `extractFileId` and the @-mention resolver apply the
+  same rule (`src/lib/storage/safe-id.ts`) before anything is loaded.
+  Commands that delete, open an external app or change the data folder
+  (`delete_*_file`, `open_media_in_app`, `set_graphium_root`,
+  `start_native_sidecar`) accept only the `main` window; the viewer
+  window can read and save notes but not run them. The sidecar gets
+  `CORS_ORIGINS=http://localhost:5174,...` in debug builds only; release
+  builds pass an empty value (the WebView origins are added by the sidecar)
+- Shared-folder writes (`shared_write`, `shared_delete`,
+  `shared_blob_write`, and the file check of `shared_blob_delete`) refuse a
+  target that is a symbolic link and require the destination folder, once
+  canonicalized, to sit under the shared root (the root itself may be a
+  link, e.g. a NAS mount). A passing directory check is remembered
+  in-process for 30 seconds (only passes, never refusals) so a burst of
+  writes over a NAS does not canonicalize on every call. Folder scanning
+  (`scan_directory`) refuses a root that is inside a hidden folder (any
+  dot-prefixed path component), under one of ten sensitive folders directly
+  inside `~/Library` (Keychains, Application Support, Preferences, Mail,
+  Messages, Safari, Cookies, Accounts, Containers, Group Containers), or at
+  or under `AppData` (Roaming, Local, LocalLow) in the home folder. The
+  filesystem root, the home folder itself, Documents / Desktop / Downloads,
+  cloud-sync folders and NAS mounts are accepted. The one-time move from the
+  old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
+  once done and is skipped afterwards; it copies files as before except that
+  it never overwrites an existing `models.json` in the new data folder
 - **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
   During an online meeting the desktop records two tracks side by side:
   what the machine is playing (the other participants, taken from the OS
@@ -3695,7 +3729,12 @@ The same `src/` tree is built four different ways.
   to `appdata/opened/<fileId>/<display name>` (path separators and
   characters Windows rejects are stripped from the name) next to
   `.graphium-base`, the SHA-256 of what it copied, and hands that copy to
-  the OS default app through the opener plugin. The original is never
+  the OS default app through the opener plugin. A file whose real
+  extension is an executable, script, shortcut or installer type (`exe`,
+  `bat`, `lnk`, `ps1`, `app`, `command`, `sh`, ...) is never copied or
+  opened — the command returns `blocked-executable-type:<ext>` and the UI
+  says it cannot be opened from here; saving the material is not
+  affected. The original is never
   handed out, so saving in Word or Excel cannot silently change the bytes
   that notes and knowledge cite. Opening again never overwrites a copy that
   was edited. On start and whenever the window regains focus,
@@ -3747,8 +3786,13 @@ The same `src/` tree is built four different ways.
   directory (`inbox_list`, returning name/size/mtime), read one file as
   base64 (`inbox_read`), delete an imported file (`inbox_discard`) or move
   it aside into `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`).
-  All four reject an empty root and any name containing a path separator
-  or `..`, so the reachable surface is exactly one flat directory. The
+  All four reject an empty root and any name containing a path separator,
+  NUL or `..`, so the reachable surface is exactly one flat directory.
+  Symbolic links placed inside `Inbox/` are skipped (`inbox_list` uses the
+  directory entry's own type; `inbox_read` and `inbox_mark_imported`
+  refuse them), and `inbox_read` refuses a file over 500 MB without
+  reading it, so that one file fails on its own and stays in the inbox
+  while the rest import. The
   inbox is a staging area rather than a category: importing hands the
   bytes to the active storage provider, so the file becomes an ordinary
   asset in the media library and leaves the inbox. After a successful
