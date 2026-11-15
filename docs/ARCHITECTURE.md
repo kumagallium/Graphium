@@ -3957,6 +3957,20 @@ live in `extensions/chrome/store/`, and the extension's privacy policy is
 - Server: `src/server/index.ts`, a Hono app on `@hono/node-server`
 - Storage: `server-fs` provider; notes live on the host filesystem
 - AI: ships with LLM and embedding endpoints wired up
+- Process user: the image starts through `docker/entrypoint.sh`, which drops
+  root with `su-exec` before running the server (compose also sets
+  `no-new-privileges`). When unsure it falls back to starting as root, as
+  earlier versions did, rather than failing to start. In order: a container
+  started with `user:` is left alone; under rootless Docker / Podman (uid 0
+  maps to an unprivileged host uid in `/proc/self/uid_map`) nothing is
+  changed; if `DATA_DIR` is owned by a non-root uid (a bind-mounted host
+  folder, or a volume already fixed) the server runs as that uid:gid and
+  root-owned files left in the top two levels are only warned about; if it
+  looks root-owned but `node` can already write it, the server runs as `node`
+  without touching it; otherwise (data written by earlier root-running
+  versions) it is `chown`ed to `node` once. If that `chown` fails the server
+  starts as root with a warning. `GRAPHIUM_RUN_AS_ROOT=1` keeps the old root
+  behaviour.
 
 ### 4.4 MCP server (stdio)
 

@@ -46,6 +46,9 @@ services:
       # (e.g. 192.168.1.10:5174) and extra browser origins allowed to write (usually empty).
       - GRAPHIUM_ALLOWED_HOSTS=${GRAPHIUM_ALLOWED_HOSTS:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
+    # 入口のスクリプトが root から node に落とす。権限の再取得は塞ぐ（su-exec と両立する）
+    security_opt:
+      - "no-new-privileges:true"
     depends_on:
       - crucible-api
     restart: unless-stopped
