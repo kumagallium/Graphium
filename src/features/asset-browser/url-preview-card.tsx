@@ -3,6 +3,7 @@
 // UrlReaderView が Reader 抽出に失敗したときの fallback として再利用する。
 // 元の MediaPreview.UrlPreview をそのまま切り出したもの。
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
 import { type MediaIndexEntry } from "./media-index";
@@ -34,15 +35,17 @@ export function UrlPreviewCard({ entry }: { entry: MediaIndexEntry }) {
           <p className="text-xs text-muted-foreground mt-2">{entry.urlMeta.description}</p>
         )}
       </div>
-      <a
-        href={entry.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 px-4 py-2 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-      >
-        <ExternalLink size={12} />
-        {t("asset.urlOpen")}
-      </a>
+      {safeExternalHref(entry.url) && (
+        <a
+          href={safeExternalHref(entry.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+        >
+          <ExternalLink size={12} />
+          {t("asset.urlOpen")}
+        </a>
+      )}
     </div>
   );
 }

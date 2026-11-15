@@ -2561,6 +2561,10 @@ export const en: Record<string, string> = {
   "block.remoteContent.pdf": "PDF from another site",
   "block.remoteContent.why": "Not fetched just because you opened this note. Click to load it.",
   "block.remoteContent.action": "Load",
+  "ai.chat.remoteImage.title": "Image from {host}",
+  "ai.chat.remoteImage.titleNoHost": "Image from another site",
+  "ai.chat.remoteImage.why": "Not loaded automatically. Loading it lets that site see your IP address.",
+  "ai.chat.remoteImage.action": "Load image",
   "pdfExport.remoteMediaOmitted": "Media from another site (not loaded, so not included in the PDF)",
 
   // ── Copying pasted remote images onto this device ──

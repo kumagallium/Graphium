@@ -23,6 +23,7 @@ import { PptxSlidesView, XlsxSheetsView } from "./OfficePreview";
 import type { XlsxSheet } from "../office-import/xlsx";
 import type { PptxSlide } from "../office-import/pptx";
 import { useT } from "../../i18n";
+import { sanitizeHtmlFragment } from "../../lib/sanitize-html";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -145,7 +146,8 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
           },
         );
         if (cancelled) return;
-        setContent({ kind: "docx", html: result.value });
+        // 他人から受け取った .docx も入るので、許可リストで清めてから差し込む
+        setContent({ kind: "docx", html: sanitizeHtmlFragment(result.value) });
       } catch (err) {
         if (cancelled) return;
         console.error("[document-viewer] プレビュー読み込み失敗:", err);

@@ -3,6 +3,7 @@
 // オフラインや API 失敗時は、ビルド時に生成された public/release_notes.json を
 // フォールバックとしてコミット履歴を表示する。
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useState, useEffect } from "react";
 import { useT } from "../../i18n";
@@ -38,7 +39,7 @@ function formatDate(iso: string | null): string {
 //   - `* xxx` / `- xxx` → 箇条書き
 //   - その他 → 段落
 //   - インライン: `[text](url)`, `#123`, `@user`, `**bold**`
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+export function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let remaining = text;
   let idx = 0;
@@ -52,11 +53,14 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
     }
     if (m.index > 0) parts.push(remaining.slice(0, m.index));
     const key = `${keyPrefix}-${idx++}`;
-    if (m[1]) {
+    if (m[1] && !safeExternalHref(m[3])) {
+      // http(s) / mailto 以外（javascript: 等）はリンクにせず文字として出す
+      parts.push(m[0]);
+    } else if (m[1]) {
       parts.push(
         <a
           key={key}
-          href={m[3]}
+          href={safeExternalHref(m[3])}
           target="_blank"
           rel="noopener noreferrer"
           className="text-blue-600 hover:underline"
@@ -346,7 +350,7 @@ export function ReleaseNotesPanel({ onClose }: { onClose: () => void }) {
               <section key={rel.tag_name} className="mb-6 last:mb-2">
                 <div className="flex items-baseline justify-between gap-2 mb-1.5 pb-1 border-b border-border">
                   <a
-                    href={rel.html_url}
+                    href={safeExternalHref(rel.html_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm font-semibold text-foreground hover:underline"

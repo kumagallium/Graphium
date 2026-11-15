@@ -11977,7 +11977,7 @@ export function NoteApp() {
       const ext = parseExternalSource(sourceId);
       if (ext) {
         if (ext.kind === "url") {
-          window.open(ext.key, "_blank", "noopener,noreferrer");
+          void openExternalUrl(ext.key);
           return;
         }
         if (ext.kind === "memo") {

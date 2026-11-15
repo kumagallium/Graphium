@@ -1,6 +1,7 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
@@ -586,8 +587,11 @@ function MediaCard({
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           {entry.type === "url" && (
+            (() => {
+              const href = safeExternalHref(entry.url);
+              return href ? (
             <a
-              href={entry.url}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -597,6 +601,8 @@ function MediaCard({
             >
               <ExternalLink size={12} />
             </a>
+              ) : null;
+            })()
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
@@ -2201,8 +2207,11 @@ export function AssetGalleryView({
                             {entry.name}
                           </span>
                           {entry.type === "url" && (
+                            (() => {
+                              const href = safeExternalHref(entry.url);
+                              return href ? (
                             <a
-                              href={entry.url}
+                              href={href}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
@@ -2212,6 +2221,8 @@ export function AssetGalleryView({
                             >
                               <ExternalLink size={12} />
                             </a>
+                              ) : null;
+                            })()
                           )}
                           {/* メモの印（1 件以上は常に、0 件は行に載せたときだけ）。名前の行に置き、行の高さを変えない */}
                           {(() => {

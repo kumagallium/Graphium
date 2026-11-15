@@ -2,6 +2,7 @@
 // PDF / URL embed / 画像 OCR テキストなどから共通で使う想定。
 // 引用は一旦「メモに保存」だけに揃え、PDF スコープのチャットは別 PR で扱う。
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { StickyNote, BookOpen, TextQuote } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
@@ -210,7 +211,7 @@ export function CitationBlockPreview({ source }: { source: CitationSource }) {
         <span>Source: {sourceLabel}</span>
         {source.entry.type === "url" && source.entry.url && (
           <a
-            href={source.entry.url + (source.textFragment ? `#:~:text=${encodeURIComponent(source.textFragment)}` : "")}
+            href={safeExternalHref(source.entry.url + (source.textFragment ? `#:~:text=${encodeURIComponent(source.textFragment)}` : ""))}
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "var(--color-primary)", textDecoration: "none" }}

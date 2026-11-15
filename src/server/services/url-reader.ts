@@ -16,6 +16,7 @@
 
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
+import { isClobberingId } from "../../lib/clobber-id";
 
 // 多くのサイトは "Graphium/1.0" のような非ブラウザ UA を素で 403 にする。
 // 現実的なブラウザ UA + 充実した Accept ヘッダにして互換性を上げる
@@ -258,6 +259,38 @@ export function sanitizeReaderHtml(html: string, baseUrl?: string): string {
 const DANGEROUS_ELEMENTS_SELECTOR =
   "script, style, iframe, object, embed, link, track, meta, noscript, template, base, form";
 
+/**
+ * SVG のアニメーション要素。`<a><animate attributeName="href" values="javascript:...">` のように、
+ * 属性検査の後で href を書き換えられるので要素ごと落とす（tagName は大文字小文字が混ざるため小文字で比べる）。
+ */
+const SVG_ANIMATION_TAGS = new Set([
+  "animate",
+  "set",
+  "animatetransform",
+  "animatemotion",
+  "mpath",
+  "discard",
+]);
+
+/**
+ * style 属性を丸ごと落とす条件。CSS のエスケープ（バックスラッシュ）で url( を隠す手口と、
+ * 画面全体を覆う配置（position / z-index）、外部読み込み（url( / @import / expression）を見る。
+ */
+const DANGEROUS_STYLE_RE = /\\|url\(|expression|@import|position|z-index/i;
+
+/** CSS の url(...) を取りうる presentation 属性。バックスラッシュ入りの値は落とす（`u\72l(` 対策）。 */
+const CSS_VALUE_ATTRS = new Set([
+  "fill",
+  "stroke",
+  "mask",
+  "filter",
+  "clip-path",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "cursor",
+]);
+
 /** URL を取る属性。 */
 const URL_ATTRS = new Set(["href", "src", "xlink:href", "action", "formaction"]);
 
@@ -276,6 +309,21 @@ function stripDangerousAttrs(el: SweepElement): void {
   for (const name of el.getAttributeNames()) {
     const lower = name.toLowerCase();
     if (lower.startsWith("on")) {
+      el.removeAttribute(name);
+      continue;
+    }
+    // name は DOM クロバリング（window / document の名前付きプロパティ）に使われるので落とす。
+    // id は脚注のアンカー（#fn1）に要るので残すが、window / document の既存名を隠す id
+    // （__TAURI_INTERNALS__ など）は落とす。
+    if (lower === "name" || (lower === "id" && isClobberingId(el.getAttribute(name) ?? ""))) {
+      el.removeAttribute(name);
+      continue;
+    }
+    if (lower === "style" && DANGEROUS_STYLE_RE.test(el.getAttribute(name) ?? "")) {
+      el.removeAttribute(name);
+      continue;
+    }
+    if (CSS_VALUE_ATTRS.has(lower) && (el.getAttribute(name) ?? "").includes("\\")) {
       el.removeAttribute(name);
       continue;
     }
@@ -341,6 +389,9 @@ function rewriteReaderMedia(html: string, baseUrl?: string): string {
   // <meta> は本文に居る理由が無い一方、http-equiv="refresh" は挿入時に処理する実装がある。
   for (const el of Array.from(doc.querySelectorAll(DANGEROUS_ELEMENTS_SELECTOR))) {
     el.remove();
+  }
+  for (const el of Array.from(doc.querySelectorAll("*"))) {
+    if (SVG_ANIMATION_TAGS.has(el.tagName.toLowerCase())) el.remove();
   }
   for (const el of Array.from(doc.querySelectorAll("*"))) stripDangerousAttrs(el);
 
