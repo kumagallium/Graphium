@@ -33,7 +33,7 @@ Two things to know before you switch:
 - Restart Graphium after changing the location so it takes effect everywhere.
 
 ::: tip Sync without a cloud account
-The settings hint says it best: point the save location at a Dropbox-, Google Drive-, or OneDrive-synced folder and your notes follow you across machines — no OAuth, no extra service. Graphium itself never talks to the cloud; the sync client does.
+The settings hint says it best: point the save location at a Dropbox-, Google Drive-, or OneDrive-synced folder and your notes follow you across machines — no OAuth, no extra service. For this kind of sync, Graphium itself never talks to the cloud; the sync client does.
 :::
 
 ## Your author identity
@@ -309,3 +309,17 @@ Like the bulk export, this reads the notes as they are saved; an edit made a mom
 - **Desktop app**: your data is plain files in the Graphium folder (`~/Documents/Graphium/` unless you moved it). Any backup tool that copies that folder — including its `media` subfolder — captures everything. Pointing the save location at a synced folder gives you continuous off-machine copies for free.
 
 A periodic **Download backup (JSON)** is cheap insurance on every platform — it captures notes, Knowledge, and skills in one file, independent of where the live data sits.
+
+## What goes over the network {#what-goes-over-the-network}
+
+Your notes are saved on your own computer (or in your browser), and Graphium has no account or server of its own for them. Apart from the AI provider and the tools you set up yourself, these are the main connections Graphium makes on its own or after one action (the one-time voice model download is described in [Voice notes](/voice-notes)). Each one is listed with what it sends, when it runs and how to stop it.
+
+| What | Where to | What is sent | When it runs | How to stop it |
+|---|---|---|---|---|
+| **Update check** (desktop app only) | GitHub Pages (`kumagallium.github.io`), and GitHub Releases as a fallback | A plain request for a small version file. No notes, no account details | Automatically about 5 seconds after launch and every 24 hours, and when you press **Check for updates** | Turn off **Check for updates automatically** in Settings → **About**. See [Updating](/desktop-app#updating) |
+| **Search model download** (desktop app only) | Hugging Face (`huggingface.co`) | Only a request for the model files (about 587 MB for the default, bge-m3). None of your text is sent, and the files are not fetched again once saved | Once, automatically, the first time the default on-this-computer model is needed (until it is ready, matching text is used). Pressing **Download** in Settings does the same | Choose an embedding model from an AI provider in Settings → **AI** instead (that sends the text being embedded to that provider). See [Settings](/settings) |
+| **World grounding** (desktop app, only while **Use world grounding** is on) | Wikipedia and OpenAlex (`api.openalex.org`), through the Graphium backend on your computer | The text of the claim or insight being checked, as search words, plus the app's name in the User-Agent and (to OpenAlex) the project's shared contact address in the `mailto` parameter. If a web-search MCP is connected, the search words also go there | When you press **Check world**, and in the background if you switched on **Auto-ground new knowledge** (off by default) | Switch off **Use world grounding** (and **Auto-ground new knowledge**) in Settings → **AI** → **Preview features**. See [World grounding](/ai-grounding) |
+| **Source lookup** | Crossref (`api.crossref.org`) | Only the DOI of the material | Only when you press the lookup button on a material, or the bulk **Fill in from DOI** button on the selected materials (one DOI at a time) | Don't press it |
+| **Phone capture to Google Drive** (the phone capture screen; sending only after you connect storage) | Google (the sign-in script from `accounts.google.com` and the Drive API) | The files you send from the phone queue, into a `Graphium/Inbox` folder of your own Drive. Graphium can reach only the files it creates | Opening the phone capture screen loads Google's sign-in script, even before you connect (nothing of yours is sent at that point). After you connect, files are sent automatically: right after you add them to the queue, when you come back to the screen, and when the phone is back online. Pressing **Send** does it at once | Don't connect storage on the phone. Once connected, choose **Disconnect** in the phone settings sheet. See [Mobile capture](/mobile) |
+
+The AI provider you register, the tools (MCP servers) you connect, and **Seal as evidence** each send data only when you use them, and are described on their own pages: [Setting up AI](/ai-setup), [Connecting an AI assistant (MCP)](/mcp-server) and [Notes & editor](/notes-and-editor).

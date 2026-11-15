@@ -26,11 +26,15 @@ Graphium is a block-based note editor. Notes are stored on your filesystem (desk
 | Which pages AI used (cited in an AI chat answer, or opened by an AI through Graphium's MCP server) | Small files in your own save folder (`appdata/ai-usage-*.json`) — page ids and times only, no questions or answers; never sent anywhere |
 | Personal information | Nowhere — not collected |
 
-If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not communicate with any cloud storage API.
+If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not send your notes to any cloud storage. The one exception is the phone capture screen: only if you connect your own Google Drive there, the files you send from the phone queue go into a `Graphium/Inbox` folder of your Drive (see "What goes over the network" in the [manual](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network)).
 
 ## Third-Party Services
 
-Graphium does not use any third-party services for storage or authentication.
+Graphium has no storage or sign-in service of its own, and your notes are not stored with any third party. Connections to outside services fall into three groups. The manual lists each one with what it sends, when it runs and how to stop it: [What goes over the network](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network).
+
+- **Nothing is sent by default:** your notes, media and settings stay on your computer or in your browser.
+- **Only when you choose it:** an AI provider or external tools (MCP servers) you set up, **Seal as evidence**, the lookup from a DOI (the DOI alone goes to Crossref), world grounding (Wikipedia and OpenAlex, only while it is on), and phone capture to your own Google Drive (the sign-in script from Google is loaded when you open the phone capture screen, even before you connect; nothing of yours is sent at that point).
+- **Automatic connections (desktop app):** the update check (GitHub Pages, with GitHub Releases as a fallback; it sends no notes or account details and can be turned off in Settings) and the one-time download of the on-this-computer search model from Hugging Face (only a request for the model files; none of your text is sent).
 
 If you configure an LLM provider (optional, opt-in) for AI features, your prompts are sent to that provider per their terms — Graphium does not relay or log this traffic. On the macOS desktop app, the API key you enter is stored in the macOS Keychain rather than on disk. The first launch of a version that supports Keychain storage automatically migrates any previously-stored plaintext key out of `models.json` and into the Keychain.
 

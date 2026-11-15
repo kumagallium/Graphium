@@ -154,7 +154,8 @@ async function scanNode() {
         `Newer security releases in ${bundledMajor}.x: ${newerSecurity.map((r) => `\`${r.version}\` (${r.date})`).join(", ")}.`,
         `Latest ${bundledMajor}.x is \`${latest.version}\`. Details: https://nodejs.org/en/blog/vulnerability`,
         "",
-        "Fix: raise `NODE_VERSION` in `scripts/fetch-node.mjs`, run `node scripts/fetch-node.mjs --force`,",
+        "Fix: raise `NODE_VERSION` in `scripts/fetch-node.mjs`, run `node scripts/fetch-node.mjs --update-hashes`",
+        "(updates the pinned SHA256 table; check the diff against the official release notes), then `--force`,",
         "smoke-test the sidecar (`/api/health`) and ship a patch release.",
       ].join("\n"),
     );
