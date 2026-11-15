@@ -35,6 +35,25 @@ import {
 } from "../services/grounding-search.js";
 import { runBuiltinGroundingSearch } from "../services/grounding-providers.js";
 
+/** 検索道具の発見（接続 + tools/list）にかけてよい時間。超えたら Web 検索なしで照合を続ける */
+export const DISCOVERY_TIMEOUT_MS = 12_000;
+let discoveryTimeoutMs = DISCOVERY_TIMEOUT_MS;
+/** テスト用: 発見の上限を差し替える（引数なしで既定に戻す） */
+export function setDiscoveryTimeoutForTest(ms: number = DISCOVERY_TIMEOUT_MS): void {
+  discoveryTimeoutMs = ms;
+}
+
+/** promise を ms で打ち切る（打ち切られた側の処理は裏で続くが、結果は捨てる） */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), ms);
+  });
+  // 打ち切ったあとに元の promise が失敗しても、未処理の拒否にしない
+  promise.catch(() => {});
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const app = new Hono();
 
 app.post("/check", async (c) => {
@@ -81,7 +100,13 @@ app.post("/check", async (c) => {
 
   // (2) 接続済み MCP 検索ツール（あれば）。広い一般 web を上乗せする。
   try {
-    const { tools, toolInfo, skipServers, freeTools, operatorServers } = await discoverAllMcpTools(c);
+    // 道具の発見（接続と tools/list）には全体の上限を置く。接続は 10 秒で切れるが tools/list には
+    // 時間切れが無く、検索サーバーが握手だけ返して黙ると照合が終わらなくなる。切れたら Web 検索なしで続ける
+    const { tools, toolInfo, skipServers, freeTools, operatorServers } = await withTimeout(
+      discoverAllMcpTools(c),
+      discoveryTimeoutMs,
+      "search discovery timeout",
+    );
     // 確認なしで動かしてよいと分かっている検索だけを使う（名前が検索らしいだけの道具は使わない）
     const searchTool = findSearchTool(tools, (name) => isTrustedGroundingTool(name, toolInfo, skipServers, freeTools, operatorServers));
     if (searchTool) {

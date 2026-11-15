@@ -2609,10 +2609,22 @@ The LLM judge runs in one of two modes, picked per request in
     ignored on this path):
     one search tool (picked by name) from a Registry server is used, unless
     it is explicitly `destructiveHint: true`. Servers the user adds in
-    Settings → AI are not used (the app sends no `X-MCP-Servers` header for
-    world grounding; the header-based branches — curated `approvalFreeTools`,
-    readOnlyHint on a "don't ask again" server — serve other clients that do
-    send it). Optional.
+    Settings → AI are not used, except curated search servers: the app sends
+    `X-MCP-Servers` (`buildGroundingMcpHeaderValue`,
+    `features/settings/mcp-servers-header.ts`) with only enabled **remote**
+    servers whose URL matches the curated catalog and whose
+    `approvalFreeTools` overlap the catalog's list (only the overlapping
+    names are sent), never stdio and never `skipApproval`; no header when
+    none qualify. The server trusts a tool via `isTrustedGroundingTool` as
+    before (curated `approvalFreeTools` name, readOnlyHint on a "don't ask
+    again" server, or an operator Registry server), and `findSearchTool`
+    additionally refuses names containing extract / crawl / map / research /
+    scrape / fetch, so URL-fetching tools are never picked. One search per check, with the query flattened to one
+    line and cut to the first 400 characters. Tool discovery (connect +
+    `tools/list`) is capped at 12 seconds and the search at 15; a timeout, a
+    thrown error or a result marked `isError` adds no evidence, and the check
+    carries on with Wikipedia + OpenAlex.
+    Optional.
 
   The verdict is grounded in real results rather than the model's memory;
   `null` means "searched and found no direct prior art — not a proof of
@@ -5071,7 +5083,8 @@ load. World grounding is not gated, so it only picks a search tool from an
 operator-configured Registry server (unless `destructiveHint: true`), or, for
 clients sending `X-MCP-Servers`, one on a curated list or `readOnlyHint` on a
 "don't ask again" server (name-only matches elsewhere are ignored). The app
-itself does not use user-added servers for world grounding.
+sends only the curated search servers (remote with `approvalFreeTools`) for
+world grounding; other user-added servers are not used.
 
 Prompt-injection guards: the chat system prompt carries
 `MATERIAL_AS_DATA_GUARD` (notes, retrieved passages, imported documents,

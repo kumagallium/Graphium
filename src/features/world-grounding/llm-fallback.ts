@@ -9,7 +9,9 @@
 
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
+import { buildGroundingMcpHeaderValue } from "../settings/mcp-servers-header";
 import {
+  getEnabledMcpServers,
   getGroundingLLMModel,
   getGroundingModelName,
   isAgentConfigured,
@@ -46,8 +48,11 @@ export type WorldGroundingFailure = {
   message?: string;
 };
 
-function buildHeaders(): Record<string, string> {
+export function buildHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
+  // 設定 → AI で足した厳選の検索サーバー（Tavily など）だけを送る。stdio やほかのサーバーは送らない
+  const mcpHeader = buildGroundingMcpHeaderValue(getEnabledMcpServers());
+  if (mcpHeader) h["X-MCP-Servers"] = mcpHeader;
   if (!isTauri()) {
     const model = getGroundingLLMModel();
     if (model) {
