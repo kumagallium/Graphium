@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitepress'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+// @ts-ignore 型宣言の無い .mjs
+import { inlineEscapedChangelog } from '../../scripts/changelog-escape.mjs'
 
 // Graphium ユーザーマニュアル。GitHub Pages の /Graphium/manual/ 配下に
 // deploy.yml が dist/manual/ としてコピーして公開する（アプリ本体の vite build とは独立）。
@@ -181,6 +183,26 @@ const jaSidebar = [
 
 export default defineConfig({
   base: '/Graphium/manual/',
+  // CHANGELOG は PR タイトル由来なので、取り込む前にコードの外の生 HTML をエスケープする（XSS 対策）
+  vite: {
+    plugins: [
+      {
+        name: 'escape-changelog-include',
+        enforce: 'pre',
+        transform(code: string, id: string) {
+          // CHANGELOG の include を含むすべての .md が対象（ファイル名では絞らない）
+          if (!id.endsWith('.md') || !/<!--@include:[^>]*CHANGELOG\.md/.test(code)) return null
+          const changelog = fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url))
+          const out = inlineEscapedChangelog(code, () => fs.readFileSync(changelog, 'utf8'))
+          // 置き換えが効かず生の include が残ると、エスケープ無しで取り込まれるため失敗させる
+          if (/<!--@include:[^>]*CHANGELOG\.md/.test(out)) {
+            throw new Error(`${id} の CHANGELOG include をエスケープ済みに置き換えられませんでした`)
+          }
+          return out
+        },
+      },
+    ],
+  },
   title: 'Graphium Manual',
   description:
     'How to use Graphium — features, workflows, and reference for the AI-native notebook that keeps track of how your ideas came to be.',

@@ -31,6 +31,7 @@ on:
       - "src-tauri/**"
       - "!src-tauri/tauri.conf.json"
       - "scripts/fetch-node.mjs"
+      - "scripts/node-hashes.mjs"
       - "scripts/fetch-fonts.mjs"
       - "scripts/bundle-server.mjs"
       - "src/lib/sidecar.ts"
@@ -52,12 +53,13 @@ jobs:
       - uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: x86_64-pc-windows-msvc
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
 
