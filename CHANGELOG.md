@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.137.1](https://github.com/kumagallium/Graphium/compare/v0.137.0...v0.137.1) - 2026-11-15
+
+- fix: keep the phone screen on while recording a voice memo by @kumagallium in https://github.com/kumagallium/Graphium/pull/1699
+- fix(security): fixes from a full security review (API token on every route, content sanitizing, parser limits, Tauri path checks, AI tool approval, CI pinning) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1690
+- fix: world grounding uses the web search connected in Settings (Tavily) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1691
+- fix(security): guard the desktop app's local API with a per-launch secret by @kumagallium in https://github.com/kumagallium/Graphium/pull/1700
+- fix(security): confirm the command before adding a local MCP server; state hints on every bundled MCP tool by @kumagallium in https://github.com/kumagallium/Graphium/pull/1695
+- fix(security): run the self-host container as a non-root user; make the image build again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1696
+
 ## [v0.137.0](https://github.com/kumagallium/Graphium/compare/v0.136.1...v0.137.0) - 2026-11-15
 
 - feat: MCP server instructions ask the assistant to offer saving at a natural stopping point by @kumagallium in https://github.com/kumagallium/Graphium/pull/1693
