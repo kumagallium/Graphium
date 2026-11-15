@@ -14,6 +14,7 @@
 // NOTE (Phase A): 旧 role "result" は内部キー再編で "output"（Output Entity 意味）に変更。
 //   後方互換のため、ingester は LLM 出力の "result" も受け入れて "output" に正規化する。
 
+import { SOURCE_AS_DATA_GUARD } from "./source-data-guard.js";
 import { jsonrepair } from "jsonrepair";
 
 export type ProvRole = "material" | "procedure" | "tool" | "attribute" | "output";
@@ -162,7 +163,15 @@ function headingLanguageRule(language: string): string {
   return "match the source language, or English if ambiguous";
 }
 
+/** 資料はデータであって指示ではない、の 1 段を末尾に足す */
 export function buildProvIngesterSystemPrompt(
+  language: string,
+  vocabulary?: ProvVocabulary,
+): string {
+  return buildProvIngesterSystemPromptBase(language, vocabulary) + SOURCE_AS_DATA_GUARD;
+}
+
+function buildProvIngesterSystemPromptBase(
   language: string,
   vocabulary?: ProvVocabulary,
 ): string {

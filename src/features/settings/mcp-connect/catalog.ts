@@ -33,10 +33,11 @@ export type CuratedServer = {
    */
   keyCheckUrl?: string;
   /**
-   * 道具がどれも読むだけ（検索など）と確かめた接続先。登録時に「実行前に確認しない」で入れる。
-   * Tavily は道具に readOnlyHint を付けていないので、これが無いと検索のたびに確認が出る
+   * 確認なしで動かしてよいと確かめた道具の名前（検索だけ）。登録時にこの一覧で入れる。
+   * Tavily は道具に readOnlyHint を付けていないので、これが無いと検索のたびに確認が出る。
+   * 一覧に無い道具（extract・crawl など URL を取りに行くもの）は確認を出す
    */
-  readOnly?: boolean;
+  approvalFreeTools?: string[];
   /** 最後に確かめた日（YYYY-MM-DD） */
   checkedAt: string;
   text: { en: CuratedText; ja: CuratedText };
@@ -70,8 +71,32 @@ export function curatedToOption(server: CuratedServer, locale: string): ConnectO
       },
     ],
     websiteUrl: server.signupUrl,
-    ...(server.readOnly ? { skipApproval: true } : {}),
+    ...(server.approvalFreeTools?.length ? { approvalFreeTools: [...server.approvalFreeTools] } : {}),
   };
+}
+
+/** URL を比べる形にそろえる（クエリ・ハッシュ・末尾のスラッシュを除く） */
+function comparableUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host.toLowerCase()}${u.pathname}`.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存済みの設定の読み替え用。URL が厳選一覧のサーバーと同じなら、その一覧の
+ * 「確認なしで動かしてよい道具」を返す（無ければ undefined）
+ */
+export function curatedApprovalFreeToolsForUrl(url: string): string[] | undefined {
+  const target = comparableUrl(url);
+  if (!target) return undefined;
+  for (const s of CURATED_SERVERS) {
+    if (!s.approvalFreeTools?.length) continue;
+    if (comparableUrl(s.url) === target) return [...s.approvalFreeTools];
+  }
+  return undefined;
 }
 
 /** キーを確かめた結果。unknown は確かめられなかった（ネットワークなど）ので、握手に進む */

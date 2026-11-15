@@ -4499,6 +4499,7 @@ export const ja: Record<string, string> = {
   "webClip.pair.title": "ブラウザの拡張機能をつなぎますか？",
   "webClip.pair.body": "Chrome の拡張機能が、この Graphium に Web クリップを送れるようにしてほしいと申し込んでいます。拡張機能の画面に同じ番号が出ているときだけ許可してください。",
   "webClip.pair.note": "いま拡張機能で「Graphium とつなぐ」を押していなければ、「許可しない」を選んでください。",
+  "webClip.pair.extensionId": "拡張機能の ID",
   "webClip.pair.approve": "許可する",
   "webClip.pair.deny": "許可しない",
 };

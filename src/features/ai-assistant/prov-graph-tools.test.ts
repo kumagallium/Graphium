@@ -181,6 +181,16 @@ describe("runProvTool", () => {
     expect(down).toMatch(/Upstream[^\n]*\n  \(none\)/);
   });
 
+  it("trace_lineage は範囲の外のノートを経由して着いた外部資料を出さない", async () => {
+    // arc（範囲内）→ quench（範囲外）→ pdf1。quench を出さないなら、その先の資料名も出さない
+    const scoped = (await runProvTool("trace_lineage", { ref: "RuAl2 アーク溶解", direction: "upstream" }, makeCtx(new Set(["arc"]))))!;
+    expect(scoped).not.toContain("急冷");
+    expect(scoped).not.toContain("79_JA201502.pdf");
+    // 範囲なしなら従来どおり出る
+    const all = (await runProvTool("trace_lineage", { ref: "RuAl2 アーク溶解", direction: "upstream" }, makeCtx()))!;
+    expect(all).toContain("79_JA201502.pdf (source file)");
+  });
+
   it("list_entities は記録されたラベルを横断件数の多い順に出す", async () => {
     const out = (await runProvTool("list_entities", {}, makeCtx()))!;
     const lines = out.split("\n").slice(1);

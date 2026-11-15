@@ -43,6 +43,11 @@ describe("WebClipPairingPrompt", () => {
     await waitFor(() => expect(screen.queryByTestId("web-clip-pair-number")).toBeNull());
   });
 
+  it("申し込み元の拡張機能の ID も出す", async () => {
+    open();
+    expect((await screen.findByTestId("web-clip-pair-extension-id")).textContent).toBe(REQ.extensionId);
+  });
+
   it("許可しない・Esc はどちらも approve=false", async () => {
     const decide = open();
     await screen.findByTestId("web-clip-pair-number");

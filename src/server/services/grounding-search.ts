@@ -22,23 +22,52 @@ export type GroundingSearchTool = {
 /** ツール名から「検索ツール」を見分ける正規表現。 */
 // 明確に web 検索とわかる名前を最優先する（fetch 系=URL 取得は claim 検索に使えないので避ける）。
 const PREFER_SEARCH_RE =
-  /(web[_\- ]?search|search[_\- ]?web|tavily|exa|brave|serp|duckduckgo|ddg|google[_\- ]?search)/i;
+  /(web[_\- ]?search|search[_\- ]?web|tavily|(?<![a-z])exa(?![a-z])|brave|serp|duckduckgo|ddg|google[_\- ]?search)/i;
+// exaSearch / ExaSearch のようなキャメルケース用（i フラグ無し。直後が大文字か英字以外なら当たる。example / hexagon は当たらない）。
+const EXA_CAMEL_RE = /(?<![A-Za-z])[eE]xa(?![a-z])/;
 // 一般的な検索系の名前（後段のフォールバック）。
 const SEARCH_TOOL_RE =
   /(^search$|_search$|^search_|web[_\- ]?query|find[_\- ]?sources?|knowledge[_\- ]?search)/i;
 
 /**
+ * 世界照合が使ってよい道具か（確認なしで動かしてよいと分かっているものだけ）。
+ * - 運用側 Registry（operatorServers）のサーバーの道具: readOnlyHint が無くても使う（main と同じ。
+ *   注釈を付けていない検索サーバーでも Web 検索が黙って止まらないように）。
+ *   ただし destructiveHint が明示的に true の道具は使わない
+ * - 以下の 2 つは X-MCP-Servers 付きで呼ぶ別クライアント向けの枝。
+ *   アプリは世界照合にこのヘッダーを付けない。ヘッダー付きで呼ぶクライアント用:
+ *   厳選一覧の「確認なしの道具」(freeTools)、「今後確認しない」サーバー(skipServers)の readOnlyHint 付きの道具
+ */
+export function isTrustedGroundingTool(
+  name: string,
+  toolInfo: Record<string, { server: string; readOnly: boolean; destructive?: boolean }>,
+  skipServers: ReadonlySet<string>,
+  freeTools: ReadonlyMap<string, ReadonlySet<string>>,
+  operatorServers: ReadonlySet<string> = new Set(),
+): boolean {
+  const info = toolInfo[name];
+  if (!info) return false;
+  if (operatorServers.has(info.server)) return info.destructive !== true;
+  if (freeTools.get(info.server)?.has(name)) return true;
+  return skipServers.has(info.server) && info.readOnly;
+}
+
+/**
  * 接続済みツール群から検索ツールを 1 つ選ぶ。
  * web 検索とわかる名前を優先し、無ければ一般的な検索名にフォールバックする。
  * execute を持たないツールは除外する。見つからなければ null。
+ *
+ * 世界照合は確認ダイアログを通さずに実行するので、名前が当たっただけの道具は選ばない。
+ * isTrusted が true を返すものに限る（isTrustedGroundingTool を参照）
  */
 export function findSearchTool(
   tools: Record<string, unknown>,
+  isTrusted: (name: string) => boolean,
 ): { name: string; tool: GroundingSearchTool } | null {
   const entries = Object.entries(tools).filter(
-    ([, t]) => t && typeof (t as { execute?: unknown }).execute === "function",
+    ([name, t]) => t && typeof (t as { execute?: unknown }).execute === "function" && isTrusted(name),
   );
-  let hit = entries.find(([name]) => PREFER_SEARCH_RE.test(name));
+  let hit = entries.find(([name]) => PREFER_SEARCH_RE.test(name) || EXA_CAMEL_RE.test(name));
   if (!hit) hit = entries.find(([name]) => SEARCH_TOOL_RE.test(name));
   if (!hit) return null;
   return { name: hit[0], tool: hit[1] as GroundingSearchTool };

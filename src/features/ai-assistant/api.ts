@@ -12,6 +12,28 @@ import { migrateToLatest } from "../../lib/document-migration";
 import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
 
 /**
+ * 直接登録した MCP サーバー（stdio / remote）を X-MCP-Servers ヘッダーの値にする。無ければ null。
+ * AI チャット専用（世界照合はこのヘッダーを送らない）。
+ */
+function mcpServersHeaderValue(): string | null {
+  const mcpServers = getEnabledMcpServers();
+  if (mcpServers.length === 0) return null;
+  // レジストリから選んだサーバーも具体 URL を持つ remote としてここに含まれる。
+  // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
+  return toAsciiJson(
+    mcpServers.map((s) =>
+      ({
+        ...(s.type === "stdio"
+          ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
+          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) }),
+        ...(s.skipApproval ? { skipApproval: true } : {}),
+        ...(s.approvalFreeTools?.length ? { approvalFreeTools: s.approvalFreeTools } : {}),
+      }),
+    ),
+  );
+}
+
+/**
  * Registry URL・LLM API キーが設定されている場合はヘッダーに含める。
  * mode="chat" のとき、AI チャット用のモデル（設定 → AI → チャットで選んだモデル、未設定なら default）の
  * 認証情報を送る。インフラ系（fetchModels / fetchProfiles）は default のみで十分。
@@ -26,22 +48,8 @@ function apiHeaders(
 ): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
 
-  // 直接登録した MCP サーバー（stdio / remote）を 1 本のヘッダーで送る。
-  // レジストリから選んだサーバーも具体 URL を持つ remote としてここに含まれる。
-  // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
-  const mcpServers = getEnabledMcpServers();
-  if (mcpServers.length > 0) {
-    h["X-MCP-Servers"] = toAsciiJson(
-      mcpServers.map((s) =>
-        ({
-          ...(s.type === "stdio"
-            ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
-            : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) }),
-          ...(s.skipApproval ? { skipApproval: true } : {}),
-        }),
-      ),
-    );
-  }
+  const mcpHeader = mcpServersHeaderValue();
+  if (mcpHeader) h["X-MCP-Servers"] = mcpHeader;
 
   // Web モード（非 Tauri）: クライアント保持の API キーをヘッダーで送信
   if (!isTauri()) {

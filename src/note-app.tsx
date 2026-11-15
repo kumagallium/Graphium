@@ -482,7 +482,7 @@ import { planThingGroups, composeThingBody, type ThingGroup } from "./features/w
 import type { ThingGroupProgressHooks, ThingGroupResult } from "./features/wiki/ThingGroupsSection";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
-import { setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
+import { wrapMaterialFrame, setWikiIndexForRetriever, setWikiTitleMap, setWikiKindMap, setWikiTopicMembers, setNoteTitleMap, getSourceTitleToRefMap } from "./features/wiki/retriever";
 import { setAgentProgress, clearAgentProgress } from "./features/ai-assistant/agent-progress";
 import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
@@ -4785,11 +4785,7 @@ function NoteEditorInner({
                 ? `以下のノート「${title}」の内容全体について質問があります。`
                 : `以下はノート「${title}」の現在の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。`,
               "",
-              "---",
-              `ノートタイトル: ${title}`,
-              "",
-              pageMarkdown,
-              "---",
+              wrapMaterialFrame("open-note", [`ノートタイトル: ${title}`, "", pageMarkdown].join("\n")),
               "",
               question,
             ].join("\n");
@@ -4813,11 +4809,8 @@ function NoteEditorInner({
             userMessage = [
               userMessage,
               "",
-              "---",
               "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
-              "",
-              ...noteContents,
-              "---",
+              wrapMaterialFrame("attached-notes", noteContents.join("\n")),
             ].join("\n");
           }
         }
@@ -4863,11 +4856,8 @@ function NoteEditorInner({
             userMessage = [
               userMessage,
               "",
-              "---",
               "以下はユーザーが引用・添付したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
-              "",
-              ...assetContents,
-              "---",
+              wrapMaterialFrame("attached-assets", assetContents.join("\n")),
             ].join("\n");
           }
         }
@@ -9453,11 +9443,8 @@ export function NoteApp() {
             userMessageForModel = [
               text,
               "",
-              "---",
               "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
-              "",
-              ...noteContents,
-              "---",
+              wrapMaterialFrame("attached-notes", noteContents.join("\n")),
             ].join("\n");
           }
         }

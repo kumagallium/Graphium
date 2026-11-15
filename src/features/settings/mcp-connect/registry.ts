@@ -63,8 +63,8 @@ export type ConnectOption = {
   transport: McpTransport;
   fields: ConnectField[];
   websiteUrl?: string;
-  /** 登録時に「実行前に確認しない」で入れる（厳選の読むだけの接続先） */
-  skipApproval?: boolean;
+  /** 登録時に「確認なしで動かしてよい道具」として入れる名前（厳選の接続先の検索道具） */
+  approvalFreeTools?: string[];
 };
 
 /** 一覧の 1 行。繋げるもの・このパソコンでは動かせないもの・まだ扱えないもの */
@@ -217,6 +217,6 @@ export function buildRemoteEntry(
     ...(apiKey ? { apiKey } : {}),
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     enabled: true,
-    ...(option.skipApproval ? { skipApproval: true } : {}),
+    ...(option.approvalFreeTools?.length ? { approvalFreeTools: [...option.approvalFreeTools] } : {}),
   };
 }

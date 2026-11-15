@@ -4458,6 +4458,7 @@ export const ko: Record<string, string> = {
   "webClip.pair.title": "브라우저 확장 프로그램을 연결하시겠습니까?",
   "webClip.pair.body": "Chrome 확장 프로그램이 이 Graphium에 웹 클립을 보낼 수 있게 해 달라고 요청하고 있습니다. 확장 프로그램에 같은 번호가 보일 때만 허용해 주세요.",
   "webClip.pair.note": "방금 확장 프로그램에서 'Connect to Graphium'을 누르지 않았다면 '허용 안 함'을 골라 주세요.",
+  "webClip.pair.extensionId": "확장 프로그램 ID",
   "webClip.pair.approve": "허용",
   "webClip.pair.deny": "허용 안 함",
 };

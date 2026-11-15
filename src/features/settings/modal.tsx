@@ -25,7 +25,7 @@ import { ChevronLeft,
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, ASTERISM_RECOMMENDED, fillAsterismRecommendedIfEmpty, detectMcpTransport, parseMcpServersJson, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, ASTERISM_RECOMMENDED, fillAsterismRecommendedIfEmpty, detectMcpTransport, parseMcpServersJson, inheritApprovalFields, uniqueMcpName, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
 import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
@@ -1659,7 +1659,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setMcpServers((prev) =>
         prev.map((s) =>
           s.id === mcpEditingId
-            ? { ...first, id: mcpEditingId, enabled: s.enabled, ...(s.skipApproval ? { skipApproval: true } : {}) }
+            ? {
+                ...first,
+                // 他のエントリと同名にしない（確認の免除は名前で照合されるため）
+                name: uniqueMcpName(prev.filter((o) => o.id !== mcpEditingId), first.name),
+                id: mcpEditingId,
+                enabled: s.enabled,
+                ...inheritApprovalFields(s, first),
+              }
             : s,
         ),
       );
@@ -1828,8 +1835,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         // フォームに欄の無いもの（追加のヘッダー・「今後確認しない」）は前の値を引き継ぐ
         const entry: McpServerEntry = {
           ...built,
+          name: uniqueMcpName(prev.filter((o) => o.id !== mcpEditingId), built.name),
           ...(built.type === "remote" && old?.type === "remote" && old.headers ? { headers: old.headers } : {}),
-          ...(old?.skipApproval ? { skipApproval: true } : {}),
+          ...inheritApprovalFields(old, built),
         };
         return prev.map((s) => (s.id === mcpEditingId ? entry : s));
       });

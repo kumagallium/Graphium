@@ -11,6 +11,7 @@ import { exportAsterismClaims } from "./export-asterism";
 import { buildProvJsonLdText, resolveExportScope } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, searchMedia } from "./media-search";
+import { jsonTextWithGuard, textWithGuard } from "./injection-guard";
 import { getSourceText } from "./source-text";
 import { DEFAULT_LIMIT, listTodos } from "./list-todos";
 import { listSourceCheck } from "./source-check-list";
@@ -64,7 +65,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
       if ("error" in resolved) return text(resolved.error);
       try {
         const out = buildProvJsonLdText(doc, noteId, { scope: resolved.scope, includeChats, includeBody, root });
-        return text(out ?? `このノートにはページがありません: ${doc.title ?? noteId}`);
+        return jsonTextWithGuard(out ?? `このノートにはページがありません: ${doc.title ?? noteId}`);
       } catch (err) {
         return text(`PROV の書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -120,7 +121,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
           new Date().toISOString(),
         );
         if ("error" in result) return text(`書き出せません: ${result.error}`);
-        return text(JSON.stringify(result));
+        return jsonTextWithGuard(JSON.stringify(result));
       } catch (err) {
         return text(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -163,7 +164,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         const body = await getSourceText({ sourceId, window, page, windowChars });
         // 断りの文（UNKNOWN_SOURCE: など）でなければ、読んだものとして全体グラフに渡す
         if (!/^[A-Z_]+: /.test(body)) ctx.activity?.push("read", sourceId);
-        return text(body);
+        return textWithGuard(body);
       } catch (err) {
         return text(`EXTRACT_FAILED: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -197,7 +198,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
             : "   使っているノート: なし（または Graphium の次回保存後に反映）";
         return `${i + 1}. ${h.name}\n   id: ${h.id}  (${h.type}, 取り込み ${h.uploadedAt.slice(0, 10) || "不明"})\n${used}`;
       });
-      return text(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
+      return textWithGuard(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
     },
   );
 
@@ -217,7 +218,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     async () => {
       if (!vaultExists()) return vaultMissing();
       try {
-        return text(checkKnowledge());
+        return textWithGuard(checkKnowledge());
       } catch (err) {
         return text(`点検に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -240,7 +241,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     async () => {
       if (!vaultExists()) return vaultMissing();
       try {
-        return text(listSourceCheck());
+        return textWithGuard(listSourceCheck());
       } catch (err) {
         return text(`一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -270,7 +271,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     async ({ folder, noteId, includeDone, limit }) => {
       if (!vaultExists()) return vaultMissing();
       try {
-        return text(listTodos({ folder, noteId, includeDone, limit }));
+        return textWithGuard(listTodos({ folder, noteId, includeDone, limit }));
       } catch (err) {
         return text(`一覧の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
