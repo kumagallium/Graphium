@@ -39,7 +39,7 @@ export const en = {
   "how.heading": "Keep, connect, trace.",
   "how.step1.title": "Keep",
   "how.step1.body":
-    "Web clips, transcribed recordings, text read from photos and PDFs, quick memos. With that many ways in, whatever you come across can go straight in.",
+    "Web clips, transcribed recordings, text read from photos and PDFs, quick memos, and photos or voice memos taken on your phone and sent to the desktop. With that many ways in, whatever you come across can go straight in.",
   "how.step2.title": "Connect to your AIs",
   "how.step2.body":
     "Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics. The Claude and ChatGPT desktop apps connect with one button in Settings — they can read your notes and also save what you worked out in the conversation back into them.",
@@ -155,7 +155,7 @@ export const ja: Record<keyof typeof en, string> = {
   "how.heading": "残す、つながる、辿る。",
   "how.step1.title": "残す",
   "how.step1.body":
-    "Web のクリップ、録音の文字起こし、写真や PDF から読み取った文字、思いついたメモ。入口がいくつもあるので、目にしたものをそのまま入れておけます。",
+    "Web のクリップ、録音の文字起こし、写真や PDF から読み取った文字、思いついたメモ、スマホで撮った写真や声のメモ（デスクトップへ送れます）。入口がいくつもあるので、目にしたものをそのまま入れておけます。",
   "how.step2.title": "AI とつながる",
   "how.step2.body":
     "Graphium の中の AI（API キー、GitHub Copilot のサブスク、ChatGPT Plus / Pro のプラン）が、記録をトピックに束ねます。Claude や ChatGPT のデスクトップアプリとも設定画面のボタン 1 つでつながり、ノートを読むだけでなく、会話でまとまったことを書き戻すこともできます。",
