@@ -1724,7 +1724,7 @@ fn input_append(
     if !valid_id(file_id) {
         return Err("不正なファイル ID".to_string());
     }
-    if pcm.len() % 2 != 0 {
+    if !pcm.len().is_multiple_of(2) {
         return Err("invalid audio chunk".to_string());
     }
     if pcm.len() > lim.chunk_max {
@@ -2467,9 +2467,9 @@ mod tests {
         // 1 回の大きさ
         assert_eq!(input_append(d, &mut gate, "a", &vec![0u8; 402], now, &lim).unwrap_err(), "chunk too large");
         // 1 本の上限: ちょうどまでは通り、超えたら断って一時ファイルと印も消す
-        input_append(d, &mut gate, "a", &vec![0u8; 400], now, &lim).unwrap();
-        input_append(d, &mut gate, "a", &vec![0u8; 400], now, &lim).unwrap();
-        input_append(d, &mut gate, "a", &vec![0u8; 200], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[0u8; 400], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[0u8; 400], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[0u8; 200], now, &lim).unwrap();
         assert_eq!(input_append(d, &mut gate, "a", &[0, 0], now, &lim).unwrap_err(), "audio too long");
         assert!(!input_part_path(d, "a").exists());
         assert!(!gate.held.contains_key("a"));
