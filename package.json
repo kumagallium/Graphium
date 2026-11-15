@@ -41,6 +41,7 @@
     "bench:adversarial": "tsx bench/adversarial.ts",
     "bench:performance": "tsx bench/performance.ts",
     "test:migration": "tsx bench/migration.ts",
+    "csp:check": "node scripts/check-csp.mjs",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
     "bundle:mcp": "node scripts/bundle-mcp.mjs",
     "test:e2e:mcp": "tsx e2e/mcp-smoke.mjs"
