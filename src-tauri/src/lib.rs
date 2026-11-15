@@ -205,8 +205,10 @@ fn check_app_window_label(label: &str) -> Result<(), String> {
 }
 
 /// ローカル API（sidecar）の合言葉を返す。画面は API への fetch に X-Graphium-Token として付ける。
+/// async にしてあるのは、同期のコマンドがメインスレッドで実行されるため。起動直後のメインスレッドは
+/// 窓の準備で塞がっていて、画面の最初の API 呼び出しがその間ずっと待たされる。
 #[tauri::command]
-fn get_api_token(window: tauri::WebviewWindow) -> Result<String, String> {
+async fn get_api_token(window: tauri::WebviewWindow) -> Result<String, String> {
     check_app_window_label(window.label())?;
     Ok(api_token().to_string())
 }

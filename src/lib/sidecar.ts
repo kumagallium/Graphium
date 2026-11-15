@@ -185,9 +185,29 @@ async function waitForHealth(): Promise<boolean> {
   return false;
 }
 
-/** sidecar サーバーを起動する */
-export async function startSidecar(): Promise<boolean> {
-  if (!isTauri()) return false;
+// 進行中の起動。起動は必ず 1 本にまとめる
+let startInFlight: Promise<boolean> | null = null;
+
+/**
+ * sidecar サーバーを起動する。
+ *
+ * 同時に呼ばれても起動は 1 本だけ走らせ、後から来た呼び出しは同じ結果を待つ。
+ * 2 本走ると、後の start_native_sidecar が先に起動した子を止めてしまい、先の呼び出しは
+ * 「動いていた sidecar が勝手に終了した」と見て停止のバナーを出す。起動直後は、画面の
+ * 最初の API 呼び出し（モデル一覧）が失敗して ensureSidecar 経由でここへ来るので、実際に重なる。
+ */
+export function startSidecar(): Promise<boolean> {
+  if (!isTauri()) return Promise.resolve(false);
+  if (!startInFlight) {
+    const p = startSidecarOnce().finally(() => {
+      if (startInFlight === p) startInFlight = null;
+    });
+    startInFlight = p;
+  }
+  return startInFlight;
+}
+
+async function startSidecarOnce(): Promise<boolean> {
 
   setState({ status: "starting", lastError: null, lastErrorAt: null, unexpectedExit: false });
   recentLogLines = [];
@@ -356,6 +376,8 @@ export async function startSidecar(): Promise<boolean> {
 /** sidecar サーバーが生きているか確認し、死んでいたら再起動 */
 export async function ensureSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
+  // 起動の途中なら、その結果を待つ（途中の sidecar を「応答なし」と見て起動し直さない）
+  if (startInFlight) return startInFlight;
   try {
     const res = await fetch(HEALTH_URL);
     // 別の sidecar（合言葉の違う）を ready にしない。dataDir があるのは自分の sidecar だけ
@@ -374,6 +396,8 @@ export async function ensureSidecar(): Promise<boolean> {
 /** sidecar を明示的に再起動する（UI からのトリガー用） */
 export async function restartSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
+  // 起動の途中なら終わるのを待ってから止める（途中で止めると、進行中の起動が失敗として残る）
+  if (startInFlight) await startInFlight.catch(() => false);
   await stopSidecar();
   return startSidecar();
 }
