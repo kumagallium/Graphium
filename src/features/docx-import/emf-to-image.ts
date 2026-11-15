@@ -119,6 +119,11 @@ export type DibDraw = {
   bmp: Uint8Array<ArrayBuffer>;
 };
 
+/** 取り出す bitmap 描画命令の件数の上限 */
+const MAX_DIB_DRAWS = 1024;
+/** 組み立てる BMP の合計バイトの上限（同一 DIB は共有して 1 回だけ数える） */
+const MAX_DIB_TOTAL_BYTES = 128 * 1024 * 1024;
+
 /**
  * STRETCHDIBITS / BITBLT レコードから bitmap 描画命令を配置情報ごと取り出す。
  * VESTA / Office の「図として貼り付け」は複数 bitmap（本体 + 座標軸等の
@@ -128,6 +133,12 @@ export type DibDraw = {
  */
 export function extractDibDraws(buf: ArrayBuffer): DibDraw[] {
   const draws: DibDraw[] = [];
+  // 同じ DIB を指す小さなレコードを大量に並べて確保量を増幅させる細工への対策:
+  // 同一の (offBmi, cbBmi, offBits, cbBits) は 1 つの BMP を共有し、
+  // 描画命令の件数と実際に確保する BMP の合計バイトに上限を置く。超えたら「読めなかった」として空を返す
+  const shared = new Map<string, Uint8Array<ArrayBuffer>>();
+  let totalBytes = 0;
+  let overflow = false;
   scanRecords(buf, (iType, off, _size, dv) => {
     // offBmiSrc/cbBmiSrc/offBitsSrc/cbBitsSrc のレコード内オフセット
     // STRETCHDIBITS: 48/52/56/60, BITBLT: 84/88/92/96 (MS-EMF §2.3.1)
@@ -141,16 +152,30 @@ export function extractDibDraws(buf: ArrayBuffer): DibDraw[] {
     if (cbBmi <= 0 || cbBits <= 0) return;
     if (off + offBmi + cbBmi > buf.byteLength) return;
     if (off + offBits + cbBits > buf.byteLength) return;
+    if (draws.length >= MAX_DIB_DRAWS) {
+      overflow = true;
+      return false;
+    }
     // BMP file header (14 bytes) + BITMAPINFO + bits
-    const fileSize = 14 + cbBmi + cbBits;
-    const bmp = new Uint8Array(fileSize);
-    const bdv = new DataView(bmp.buffer);
-    bmp[0] = 0x42; // 'B'
-    bmp[1] = 0x4d; // 'M'
-    bdv.setUint32(2, fileSize, true);
-    bdv.setUint32(10, 14 + cbBmi, true); // ピクセルデータ開始位置
-    bmp.set(new Uint8Array(buf, off + offBmi, cbBmi), 14);
-    bmp.set(new Uint8Array(buf, off + offBits, cbBits), 14 + cbBmi);
+    const key = `${off + offBmi}:${cbBmi}:${off + offBits}:${cbBits}`;
+    let bmp = shared.get(key);
+    if (!bmp) {
+      const fileSize = 14 + cbBmi + cbBits;
+      if (totalBytes + fileSize > MAX_DIB_TOTAL_BYTES) {
+        overflow = true;
+        return false;
+      }
+      totalBytes += fileSize;
+      bmp = new Uint8Array(fileSize);
+      const bdv = new DataView(bmp.buffer);
+      bmp[0] = 0x42; // 'B'
+      bmp[1] = 0x4d; // 'M'
+      bdv.setUint32(2, fileSize, true);
+      bdv.setUint32(10, 14 + cbBmi, true); // ピクセルデータ開始位置
+      bmp.set(new Uint8Array(buf, off + offBmi, cbBmi), 14);
+      bmp.set(new Uint8Array(buf, off + offBits, cbBits), 14 + cbBmi);
+      shared.set(key, bmp);
+    }
 
     const xDest = dv.getInt32(off + 24, true);
     const yDest = dv.getInt32(off + 28, true);
@@ -183,7 +208,7 @@ export function extractDibDraws(buf: ArrayBuffer): DibDraw[] {
       });
     }
   });
-  return draws;
+  return overflow ? [] : draws;
 }
 
 // ---------------------------------------------------------------------------
@@ -547,8 +572,15 @@ async function composeDibDrawsToPng(draws: DibDraw[], hdr: EmfHeader): Promise<B
   ctx.imageSmoothingQuality = "high";
 
   let drawn = 0;
+  // 同じ BMP 本体を指す描画命令は、デコードを 1 回にして使い回す（CPU の増幅を防ぐ）
+  const decoded = new Map<Uint8Array, Promise<HTMLImageElement | null>>();
   for (const d of draws) {
-    const img = await decodeBmp(d.bmp).catch(() => null);
+    let pending = decoded.get(d.bmp);
+    if (!pending) {
+      pending = decodeBmp(d.bmp).catch(() => null);
+      decoded.set(d.bmp, pending);
+    }
+    const img = await pending;
     if (!img) continue;
     const sw = Math.abs(d.cxSrc) || img.naturalWidth;
     const sh = Math.abs(d.cySrc) || img.naturalHeight;

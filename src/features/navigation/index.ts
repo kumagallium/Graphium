@@ -26,6 +26,7 @@ export {
   getActiveNotes,
   findIncomingReferences,
   buildIndexEntry,
+  tryBuildIndexEntry,
   saveIndexFile,
   buildKnowledgeMap,
   type GraphiumIndex,

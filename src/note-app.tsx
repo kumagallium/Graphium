@@ -10863,7 +10863,7 @@ export function NoteApp() {
       bytes: Uint8Array,
       name: string,
       fileId: string,
-    ): Promise<{ derived: number; skipped: number }> => {
+    ): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const lower = name.toLowerCase();
 
       if (lower.endsWith(".pptx")) {
@@ -10899,7 +10899,7 @@ export function NoteApp() {
 
       if (lower.endsWith(".xlsx")) {
         const { readXlsx } = await import("./features/office-import/xlsx");
-        const { sheets } = readXlsx(bytes);
+        const { sheets, truncated: bookTruncated } = readXlsx(bytes);
         const bookName = name.replace(/\.xlsx$/i, "");
 
         let derived = 0;
@@ -10913,7 +10913,11 @@ export function NoteApp() {
             console.warn(`[note-app] xlsx シート登録失敗: ${sheet.name}`, err);
           }
         }
-        return { derived, skipped: 0 };
+        // 上限で切ったシート（下の行を切った・後ろのシートを読まなかった）の件数を知らせる
+        const truncated = sheets.filter((s) => s.truncated).length + (bookTruncated ? 1 : 0);
+        // 空の行と列を詰めただけのシート（一部だけの取り込みではないが、行・列の位置がずれる）は別に数える
+        const compacted = sheets.filter((s) => s.compacted && !s.truncated).length;
+        return { derived, skipped: 0, truncated, compacted };
       }
 
       return { derived: 0, skipped: 0 };
@@ -10923,7 +10927,7 @@ export function NoteApp() {
 
   // 投入口から入ってきた File を展開する
   const handleExpandOffice = useCallback(
-    async (file: File, fileId: string): Promise<{ derived: number; skipped: number }> => {
+    async (file: File, fileId: string): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const bytes = new Uint8Array(await file.arrayBuffer());
       return expandOfficeBytes(bytes, file.name, fileId);
     },
@@ -10933,7 +10937,7 @@ export function NoteApp() {
   // 素材の詳細（3-dot メニュー）から既存の pptx / xlsx 素材を手動で展開する。
   // handleExtractDocxImages と同じ流儀（provider.getMediaBlobUrl → fetch）で実体を読む。
   const handleExpandOfficeEntry = useCallback(
-    async (entry: MediaIndexEntry): Promise<{ derived: number; skipped: number }> => {
+    async (entry: MediaIndexEntry): Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }> => {
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -13964,7 +13968,7 @@ export function NoteApp() {
     async (
       entry: MediaIndexEntry,
       onProgress: (done: number, total: number) => void,
-    ): Promise<{ extracted: number }> => {
+    ): Promise<{ extracted: number; skipped: number }> => {
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -14021,7 +14025,7 @@ export function NoteApp() {
         }
       }
       onProgress(files.length, files.length);
-      return { extracted };
+      return { extracted, skipped: stats.skipped };
     },
     [fm],
   );

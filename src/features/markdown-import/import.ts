@@ -262,54 +262,125 @@ function encodeMarkdownUrl(p: string): string {
   return p.replace(/ /g, "%20");
 }
 
-async function rewriteImageReferences(
+type ImageRef = { start: number; end: number; alt: string; url: string };
+
+/** 「from 以降で最初に見つかる位置」を引く関数に、結果の使い回しを付ける（位置は単調に増える前提） */
+function memoFind(find: (from: number) => number): (pos: number) => number {
+  let from = -1;
+  let res = -1;
+  return (pos) => {
+    if (from >= 0 && pos >= from && (res < 0 || pos <= res)) return res;
+    from = pos;
+    res = find(pos);
+    return res;
+  };
+}
+
+/**
+ * `![alt](url "title")` を出現順に探す。正規表現の `[^\]]*` などは閉じない `![` の繰り返しで
+ * 2 次になる（長さの上限を置くと長い data: URL が当たらなくなり、画像ブロックとの順序がずれる）ので、
+ * 「次の `]`・URL の終端・引用符」を使い回す線形の走査にしている。意味は従来の
+ * /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g と同じ。
+ */
+function scanImageRefs(md: string): ImageRef[] {
+  const n = md.length;
+  const isWs = (c: string) => /\s/.test(c);
+  const closeBracket = memoFind((from) => md.indexOf("]", from));
+  const urlStop = memoFind((from) => {
+    let k = from;
+    while (k < n && md[k] !== ")" && !isWs(md[k])) k++;
+    return k;
+  });
+  const nonWs = memoFind((from) => {
+    let k = from;
+    while (k < n && isWs(md[k])) k++;
+    return k;
+  });
+  const quote = memoFind((from) => md.indexOf('"', from));
+
+  const refs: ImageRef[] = [];
+  let i = md.indexOf("![");
+  while (i >= 0) {
+    const cb = closeBracket(i + 2);
+    if (cb < 0) break; // これ以降に `]` は無い
+    let end = -1;
+    let url = "";
+    if (md[cb + 1] === "(") {
+      const j = cb + 2;
+      const stop = urlStop(j);
+      if (stop > j && stop < n) {
+        url = md.slice(j, stop);
+        if (md[stop] === ")") {
+          end = stop + 1;
+        } else {
+          const k = nonWs(stop);
+          if (md[k] === '"') {
+            const q = quote(k + 1);
+            if (q >= 0 && md[q + 1] === ")") end = q + 2;
+          }
+        }
+      }
+    }
+    if (end >= 0) {
+      refs.push({ start: i, end, alt: md.slice(i + 2, cb), url });
+      i = md.indexOf("![", end);
+    } else {
+      i = md.indexOf("![", i + 1);
+    }
+  }
+  return refs;
+}
+
+export async function rewriteImageReferences(
   md: string,
   options: MarkdownImportOptions,
   orderedImageUrls: string[],
 ): Promise<string> {
   if (!options.resolveImage || !options.uploadImage) return md;
 
-  const regex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-  const matches: { full: string; alt: string; url: string; index: number }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(md)) !== null) {
-    matches.push({ full: m[0], alt: m[1], url: m[2], index: m.index });
-  }
+  const matches = scanImageRefs(md);
   if (matches.length === 0) return md;
 
   const replacements = new Map<string, string>();
   for (const ref of matches) {
-    const url = decodeURIComponent(ref.url);
-    if (/^[a-z]+:\/\//i.test(url) || url.startsWith("data:")) continue;
     if (replacements.has(ref.url)) continue;
     try {
+      // 壊れたパーセント符号（%E0 など）で例外になるので try の中で復号する
+      const url = decodeURIComponent(ref.url);
+      if (/^[a-z]+:\/\//i.test(url) || url.startsWith("data:")) continue;
       const file = await options.resolveImage(url);
       if (!file) continue;
       const newUrl = await options.uploadImage(file);
       replacements.set(ref.url, newUrl);
     } catch (err) {
-      console.warn("[markdown-import] image resolve failed:", url, err);
+      console.warn("[markdown-import] image resolve failed:", ref.url, err);
     }
   }
 
   // 出現順で upload URL を控える（docx-import 側の救済処理が image ブロックの順番で
   // 当てに行くため、source ↔ block の順序が一致するようにここで蓄積する）。
   // 解決済 URL はプレースホルダ data URL に書き換えて、BlockNote の URL 正規化を回避する。
-  return md.replace(regex, (_full, alt: string, url: string) => {
+  let out = "";
+  let pos = 0;
+  for (const { start, end, alt, url } of matches) {
+    out += md.slice(pos, start);
+    pos = end;
     const replaced = replacements.get(url);
     if (replaced) {
       const idx = orderedImageUrls.length;
       orderedImageUrls.push(replaced);
       const placeholder = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' data-graphium-idx='${idx}'/>`;
-      return `![${alt}](${placeholder})`;
+      out += `![${alt}](${placeholder})`;
+      continue;
     }
     // 既に http(s) / data など解決済の URL は出現順記録のみ行い、source は変更しない。
     const lower = url.toLowerCase();
     if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:")) {
       orderedImageUrls.push(url);
     }
-    return `![${alt}](${url})`;
-  });
+    out += `![${alt}](${url})`;
+  }
+  return out + md.slice(pos);
 }
 
 /** docx-import と同じ救済処理: image ブロックの url を出現順で差し替える */

@@ -18,6 +18,7 @@ import {
   Link2,
   Check,
   ExternalLink,
+  Info,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -60,7 +61,7 @@ export type MaterialActionsMenuProps = {
   onExtractDocxImages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
-  ) => Promise<{ extracted: number }>;
+  ) => Promise<{ extracted: number; skipped?: number }>;
   /**
    * PowerPoint (.pptx) / Excel (.xlsx) 素材を展開する（投入口の展開と同じ中身）。
    * まだ展開していないときだけメニューに出す（`hasExpandedOffice` 判定に
@@ -69,7 +70,7 @@ export type MaterialActionsMenuProps = {
   onExpandOffice?: (
     entry: MediaIndexEntry,
     onProgress?: (done: number, total: number) => void,
-  ) => Promise<{ derived: number; skipped: number }>;
+  ) => Promise<{ derived: number; skipped: number; truncated?: number; compacted?: number }>;
   /** onExpandOffice の展開済み判定に使う */
   mediaIndex?: MediaIndex | null;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
@@ -119,22 +120,27 @@ export function MaterialActionsMenu({
   // 埋め込み画像抽出（PDF / Word 共通の動線）
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  // エラーではない案内（一部だけ取り込んだ・画像を外したなど）
+  const [notice, setNotice] = useState<string | null>(null);
   const handleExtractEmbeddedImages = useCallback(async () => {
     if (extracting) return;
     setExtracting(true);
     setExtractError(null);
+    setNotice(null);
     try {
       if (entry.type === "pdf" && onExtractPdfPages) {
         await onExtractPdfPages(entry, () => {});
       } else if (entry.type === "document" && onExtractDocxImages) {
-        await onExtractDocxImages(entry, () => {});
+        const res = await onExtractDocxImages(entry, () => {});
+        // 変換できずに外れた画像があれば、案内として知らせる
+        if (res?.skipped) setNotice(t("asset.imagesSkippedNotice", { count: String(res.skipped) }));
       }
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : String(err));
     } finally {
       setExtracting(false);
     }
-  }, [entry, extracting, onExtractPdfPages, onExtractDocxImages]);
+  }, [entry, extracting, onExtractPdfPages, onExtractDocxImages, t]);
 
   // ファイル内のタイトルを読んで、名前の入力欄へ渡す
   const [readingTitle, setReadingTitle] = useState(false);
@@ -168,14 +174,21 @@ export function MaterialActionsMenu({
     if (expandingOffice || !onExpandOffice) return;
     setExpandingOffice(true);
     setExpandOfficeError(null);
+    setNotice(null);
     try {
-      await onExpandOffice(entry, () => {});
+      const res = await onExpandOffice(entry, () => {});
+      // 上限で一部だけ取り込んだ・画像を外したときは、エラーではなく案内として知らせる
+      const notes: string[] = [];
+      if (res?.truncated) notes.push(t("intake.officeTruncated", { count: String(res.truncated) }));
+      if (res?.compacted) notes.push(t("intake.officeCompacted", { count: String(res.compacted) }));
+      if (res?.skipped) notes.push(t("intake.officeSkipped", { count: String(res.skipped) }));
+      if (notes.length > 0) setNotice(notes.join("\n"));
     } catch (err) {
       setExpandOfficeError(err instanceof Error ? err.message : String(err));
     } finally {
       setExpandingOffice(false);
     }
-  }, [entry, expandingOffice, onExpandOffice]);
+  }, [entry, expandingOffice, onExpandOffice, t]);
 
   // 共有関連
   const sharedRoot = getSharedRoot();
@@ -502,6 +515,14 @@ export function MaterialActionsMenu({
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
             <span className="break-all">{extractError ?? expandOfficeError ?? shareError ?? downloadError ?? openInAppError ?? titleError}</span>
+          </div>
+        </div>
+      )}
+      {notice && !(extractError || expandOfficeError || shareError || downloadError || openInAppError || titleError) && (
+        <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-md p-2 z-50 text-[11px] text-muted-foreground">
+          <div className="flex items-start gap-1.5">
+            <Info size={12} className="mt-0.5 shrink-0" />
+            <span className="break-all whitespace-pre-line">{notice}</span>
           </div>
         </div>
       )}

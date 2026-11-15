@@ -2964,6 +2964,15 @@ fn shared_list(root: String, entry_type: String) -> Result<Vec<String>, String> 
             continue;
         }
         let content = fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+        // 中身の entry.id がファイル名（stem）と違うものは、別の entry を装ったファイルなので返さない。
+        // 壊れた JSON も一覧に出さない（TS 側でも読めずに捨てられるもの）
+        let id_matches = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| v.get("entry")?.get("id")?.as_str().map(|s| s == stem))
+            .unwrap_or(false);
+        if !id_matches {
+            continue;
+        }
         out.push(content);
     }
     Ok(out)
@@ -4179,6 +4188,26 @@ mod tests {
         let hash = format!("sha256:{}", "ab".repeat(32));
         assert!(!shared_blob_exists(root, hash).unwrap());
         assert!(!tmp.path().join("ab").exists());
+    }
+
+    #[test]
+    fn shared_list_drops_files_whose_inner_id_differs_from_file_name() {
+        // ファイル名（stem）と中身の entry.id が違うものは一覧に出さない
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().join("knowledge");
+        fs::create_dir_all(&dir).unwrap();
+        let real = "0192a000-0000-7000-8000-000000000001";
+        let other = "0192a000-0000-7000-8000-000000000002";
+        let shadow = "0192a000-0000-7000-8000-000000000003";
+        fs::write(dir.join(format!("{real}.json")), format!(r#"{{"entry":{{"id":"{real}"}}}}"#)).unwrap();
+        // 別の entry の id を書いた影
+        fs::write(dir.join(format!("{shadow}.json")), format!(r#"{{"entry":{{"id":"{other}"}}}}"#)).unwrap();
+        // 壊れた JSON
+        fs::write(dir.join("0192a000-0000-7000-8000-000000000004.json"), "not json").unwrap();
+        let out = shared_list(root, "knowledge".into()).unwrap();
+        assert_eq!(out.len(), 1);
+        assert!(out[0].contains(real));
     }
 
     #[test]
