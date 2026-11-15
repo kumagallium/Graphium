@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.135.0](https://github.com/kumagallium/Graphium/compare/v0.134.0...v0.135.0) - 2026-11-14
+
+- feat(topics): check passages against the whole source, keep misses visible, date the disagreements by @kumagallium in https://github.com/kumagallium/Graphium/pull/1684
+- [fix] MCP graph view: the app's own look (shared stylesheet) and readable on real-sized vaults by @kumagallium in https://github.com/kumagallium/Graphium/pull/1683
+
 ## [v0.134.0](https://github.com/kumagallium/Graphium/compare/v0.133.0...v0.134.0) - 2026-11-14
 
 - [docs] Manual: v0.133.0 badges and roadmap row for source passages behind topic sentences by @kumagallium in https://github.com/kumagallium/Graphium/pull/1676
