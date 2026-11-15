@@ -66,7 +66,7 @@ export function OcrToast({
 
   return (
     <div
-      className={`fixed ${stacked ? "bottom-16" : "bottom-4"} right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-3.5 py-1.5 text-xs transition-all duration-300 ${tone}`}
+      className={`fixed ${stacked ? "bottom-24" : "bottom-4"} right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-3.5 py-1.5 text-xs transition-all duration-300 ${tone}`}
       role="status"
     >
       {active ? (

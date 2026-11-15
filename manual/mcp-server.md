@@ -256,6 +256,15 @@ What the view shows:
 
 It is a view only. To change the note, open it in Graphium. Links in the view do not open. Clients without MCP Apps support (Claude Code, Codex and others) get a short text result as before; ask for `get_note` when the assistant should read the body.
 
+### When the assistant offers to save {#assistant-offers-to-save}
+
+At a natural stopping point in a conversation (a conclusion, a decision, a plan that came together), the assistant may ask in one line whether to save it to Graphium.
+
+- Answer "yes", or ask "save this", and it becomes a note. The note records that it came through an AI: the client name is kept in its provenance, and so is the model when the assistant reports it.
+- The assistant is told not to save unless you say yes or ask for it.
+- If you decline, it is told not to ask again in that conversation.
+- These are instructions to the assistant, not a switch in Graphium, so how closely they are followed depends on the assistant. When it does not ask, just say "save this".
+
 ### `create_note` vs. `save_answer`
 
 Both tools write something new into your vault, but into different layers, and Graphium treats each layer differently afterwards:

@@ -6,7 +6,8 @@
 import * as api from "./api";
 import { t as tStatic } from "../../i18n";
 import { getMeetingSettings } from "../settings/store";
-import type { PendingBlockWrite, MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
+import { ensureTranscribeModel, getModelDownloadState } from "./model-auto-download";
+import type { MeetingModelSize, PendingBlockWrite, MeetingRecorderState, MeetingRecStopResult, MeetingTranscribeSegment, MeetingTranscribeState } from "./types";
 import { sortSegments, type TranscriptSegment } from "./transcript-format";
 import { holdBackgroundWork } from "../../lib/background-work";
 
@@ -301,6 +302,8 @@ function onJobEvent(jobId: string, ev: JobEvent): void {
 function adoptTranscribeJob(
   jobId: string | null | undefined,
   fileIds: string[] = [],
+  /** 新しいジョブの開始時に手放した後の lastJobByFile（省略すると今の状態から） */
+  baseLastJobByFile: Record<string, "done" | "failed" | "cancelled"> = state.lastJobByFile,
 ): Partial<MeetingRecorderState> {
   if (!jobId) return {};
   if (state.transcribes[jobId]) return {};
@@ -308,18 +311,27 @@ function adoptTranscribeJob(
   let job: MeetingTranscribeState = { jobId, status: "running", ratio: 0, segmentCount: 0, fileIds };
   for (const ev of pendingByJob.get(jobId) ?? []) job = applyJobEvent(job, ev);
   pendingByJob.delete(jobId);
-  if (job.status !== "running") markFinished(jobId);
-  return { transcribes: { ...state.transcribes, [jobId]: job } };
+  if (job.status === "running") return { transcribes: { ...state.transcribes, [jobId]: job } };
+  // start の応答より先に終端が届いていた: ここで終わりを反映する（lastJobByFile も更新し、
+  // 終わりを待つ側・読み直す側が取り逃さないようにする。通常の終端と同じ形）
+  markFinished(jobId);
+  const lastJobByFile = { ...baseLastJobByFile };
+  for (const f of job.fileIds) lastJobByFile[f] = job.status;
+  return { transcribes: { ...state.transcribes, [jobId]: job }, lastJobByFile };
 }
 
-/** 既存録音の文字起こしを始める（素材のプレビューから） */
-export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
+/**
+ * 既存録音の文字起こしを始め、始めたジョブの id を返す（始められなければ null。失敗は状態に出る）。
+ * 終わりを待ちたいときは waitTranscribeJob(jobId)
+ */
+export async function startTranscribeJob(fileIds: string[]): Promise<string | null> {
   void attachListeners();
   const ms = getMeetingSettings();
   try {
     const { jobId } = await api.startTranscribe({ fileIds, language: ms.language, modelSize: ms.modelSize, vocabulary: buildVocabulary(undefined, ms.vocabulary) });
-    set({ ...resetFilesForNewJob(fileIds), ...adoptTranscribeJob(jobId, fileIds) });
-    return true;
+    const reset = resetFilesForNewJob(fileIds);
+    set({ ...reset, ...adoptTranscribeJob(jobId, fileIds, reset.lastJobByFile as MeetingRecorderState["lastJobByFile"]) });
+    return jobId;
   } catch (err) {
     const key = `failed-${Date.now()}`;
     markFinished(key);
@@ -329,8 +341,40 @@ export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
         [key]: { jobId: key, status: "failed", ratio: 0, segmentCount: 0, fileIds, message: String(err) },
       },
     });
-    return false;
+    return null;
   }
+}
+
+/** 既存録音の文字起こしを始める（素材のプレビューから） */
+export async function startTranscribeFor(fileIds: string[]): Promise<boolean> {
+  return (await startTranscribeJob(fileIds)) !== null;
+}
+
+/** そのジョブが終わった（成功・失敗・取り消し）か。終わったあとに表示を手放されたジョブも終わりとみなす */
+function isJobFinished(jobId: string): boolean {
+  const job = state.transcribes[jobId];
+  return job ? job.status !== "running" : finishedJobs.has(jobId);
+}
+
+/**
+ * startTranscribeJob が始めたジョブが終わるまで待つ（fileId ではなくジョブ単位）。
+ * 終わったら "finished"、timeoutMs を過ぎても終わらなければ "timeout"（ジョブは止めない）
+ */
+export function waitTranscribeJob(jobId: string, timeoutMs: number): Promise<"finished" | "timeout"> {
+  return new Promise((resolve) => {
+    if (isJobFinished(jobId)) return resolve("finished");
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribe(() => {
+      if (!isJobFinished(jobId)) return;
+      unsub();
+      if (timer) clearTimeout(timer);
+      resolve("finished");
+    });
+    timer = setTimeout(() => {
+      unsub();
+      resolve("timeout");
+    }, timeoutMs);
+  });
 }
 
 /** 終わったジョブに出すトーストの文言キー。取り消し・保存対象なしは出さない（null） */
@@ -481,9 +525,33 @@ export async function start(attachToBlockId?: string, noteTitle?: string): Promi
         : {}),
     });
     startTick();
+    // 録音が実際に始まったあとで、未取得のモデルを自動で取得する（ダイアログからでも文字起こしブロックからでも
+    // ここを通る。権限の拒否・開始の失敗では取得しない）。録音は止めない
+    if (ms.liveTranscribe) void autoFetchModelAfterStart(ms.modelSize);
   } catch (err) {
     pendingErrors = [];
     set({ phase: "error", error: { kind: "failed", context: "start", message: String(err) } });
+  }
+}
+
+// ── 録音の開始後のモデル自動取得 ──
+const modelFailureListeners = new Set<() => void>();
+/** 録音の開始後の自動取得が失敗したときに知らせてもらう（画面が録音まわりのトーストで 1 文出す） */
+export function onAutoModelDownloadFailed(cb: () => void): () => void {
+  modelFailureListeners.add(cb);
+  return () => modelFailureListeners.delete(cb);
+}
+
+/**
+ * 未取得で自動取得してよいときだけ取得する（取得済み・取り消し/削除済み・この起動で試し済みなら何もしない）。
+ * 失敗したときだけ知らせる（取り消し・自動では取らない場合は黙る）
+ */
+async function autoFetchModelAfterStart(size: MeetingModelSize): Promise<void> {
+  try {
+    const ok = await ensureTranscribeModel(size, { auto: true });
+    if (!ok && getModelDownloadState(size).status === "failed") modelFailureListeners.forEach((l) => l());
+  } catch {
+    modelFailureListeners.forEach((l) => l());
   }
 }
 
