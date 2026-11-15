@@ -101,11 +101,9 @@ Graphium は、ラベルを一切付けなくても、ふつうのリンクノ�
 > **その他のプラットフォーム**
 > Linux / Intel macOS 向けデスクトップ版は提供していません。これらをお使いの場合は、[GitHub Pages のブラウザ版](https://kumagallium.github.io/Graphium/)（インストール不要）をご利用いただくか、下記の [Docker セットアップ](#option-2-run-with-docker--editor-only) でセルフホストしてください。これらのプラットフォームへの対応はロードマップに含まれています。テスト協力者を歓迎します ([Issues](https://github.com/kumagallium/Graphium/issues))。
 
-### モバイル（停止中）
+### スマホ（記録専用）
 
-モバイル向けのクイックキャプチャ（PWA、＋ボタン、カメラからのメディア取り込みなど）は試作しましたが、デスクトップ版と Knowledge Layer の作り込みを優先するため、現在は **停止中** です。ブラウザ版そのものは iOS / Android のホーム画面に追加できますが、モバイル専用の機能（タイムラインビュー、クイックキャプチャ）は積極的にメンテナンスしていません。
-
-再開や手伝いに興味があれば [Issues](https://github.com/kumagallium/Graphium/issues) をご覧ください。
+スマホでは、[ブラウザ版](https://kumagallium.github.io/Graphium/app/)が記録用の画面として開きます。メモを書く、リンクを保存する、写真や動画を撮る、音声を録る、の入口があります。PWA として iOS / Android のホーム画面に追加できます。記録したものは、自分のクラウドストレージを通ってデスクトップアプリの受信箱に届き、整理はデスクトップで行います。スマホだけで完結するノートアプリにはしていません。くわしくはマニュアルの[スマホでの記録](https://kumagallium.github.io/Graphium/manual/ja/mobile)をご覧ください。
 
 ## ナレッジ層
 

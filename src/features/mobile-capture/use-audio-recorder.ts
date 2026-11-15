@@ -13,9 +13,12 @@
 //   ユーザー操作に紐付けるため。await を挟まない）。
 // - 停止・アンマウント・録り直しのどの経路でも MediaStream のトラックを止める。
 //   止め忘れると OS の録音インジケータが点きっぱなしになる。
+// - 録音中は画面を点けたままにする（use-screen-wake-lock）。画面が自動で消えると
+//   iOS ではマイク入力が止まることがある。
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_RECORDING_MS, buildRecordedAudioFile, pickAudioMimeType } from "./audio-recorder";
+import { useScreenWakeLock } from "./use-screen-wake-lock";
 
 export type AudioRecorderStatus =
   | "idle"
@@ -65,6 +68,9 @@ export function useAudioRecorder(): AudioRecorderState {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // アンマウント時に revoke するための最新 URL（state は cleanup から読めない）
   const recordedUrlRef = useRef<string | null>(null);
+
+  // 録音中だけ、画面が自動で消えないようにする
+  useScreenWakeLock(status === "recording");
 
   const stopTick = useCallback(() => {
     if (tickRef.current !== null) {

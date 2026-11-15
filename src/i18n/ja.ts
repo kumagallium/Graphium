@@ -2724,7 +2724,7 @@ export const ja: Record<string, string> = {
   "mobile.audio.start": "録音を開始",
   "mobile.audio.stop": "停止",
   "mobile.audio.requesting": "マイクの使用許可を待っています...",
-  "mobile.audio.recording": "録音中",
+  "mobile.audio.recording": "録音中 — 画面はこのままにしてください",
   "mobile.audio.processing": "書き出しています...",
   "mobile.audio.retake": "録り直す",
   "mobile.audio.capture": "これを使う",

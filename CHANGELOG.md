@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.137.0](https://github.com/kumagallium/Graphium/compare/v0.136.1...v0.137.0) - 2026-11-15
+
+- feat: MCP server instructions ask the assistant to offer saving at a natural stopping point by @kumagallium in https://github.com/kumagallium/Graphium/pull/1693
+- feat: read phone captures on arrival (auto OCR, auto transcription, model fetched on demand) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1692
+
 ## [v0.136.1](https://github.com/kumagallium/Graphium/compare/v0.136.0...v0.136.1) - 2026-11-15
 
 - docs: list phone capture among the ways in by @kumagallium in https://github.com/kumagallium/Graphium/pull/1688
