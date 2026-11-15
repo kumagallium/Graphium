@@ -101,11 +101,9 @@ Download the desktop app to save notes as plain JSON files on your filesystem. P
 > **Other platforms**
 > Linux and Intel macOS desktop builds are not provided. Please use the [browser version on GitHub Pages](https://kumagallium.github.io/Graphium/) (no install) or self-host with the [Docker setup](#option-2-run-with-docker--editor-only) described below. Bringing the desktop app to those platforms is on the roadmap; see [issues](https://github.com/kumagallium/Graphium/issues) if you'd like to help test.
 
-### Mobile (paused)
+### Phone (capture only)
 
-A mobile capture flow (PWA, quick memos, camera capture) was prototyped but is currently **paused** while the desktop and Knowledge Layer work matures. The browser version still installs on iOS / Android home screens, but mobile-specific features (timeline view, quick capture button) are not actively maintained at the moment.
-
-If you want to follow or help restart this work, see the [issues](https://github.com/kumagallium/Graphium/issues).
+On a phone, the [browser version](https://kumagallium.github.io/Graphium/app/) opens as a capture screen: write a memo, save a link, take a photo or video, or record a voice memo. It installs to the iOS / Android home screen as a PWA. What you capture is sent through your own cloud storage to the inbox of the desktop app, where the organizing happens. The phone is not a standalone note app, and that is intended. See [Mobile capture](https://kumagallium.github.io/Graphium/manual/mobile) in the manual.
 
 ## Knowledge layer
 
