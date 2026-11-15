@@ -6,7 +6,7 @@
 // このテストが唯一の自動検知点になる。
 
 import { describe, it, expect } from "vitest";
-import { createApp } from "./app.js";
+import { createApp, isAllowedWriteOrigin } from "./app.js";
 
 // apiHeaders（と認証系）が付けうるカスタムヘッダーの一覧。
 // features/ai-assistant/api.ts にヘッダーを追加したらここにも追加すること。
@@ -93,5 +93,98 @@ describe("Host 検証", () => {
       headers: { Host: "graphium.vercel.app" },
     });
     expect(res.status).not.toBe(403);
+  });
+});
+
+describe("他サイトからの書き込み系の要求（CSRF）", () => {
+  const app = createApp({ mode: "node" });
+  // 他のサイトが preflight 無しで送れる形（text/plain）。MCP の接続テストは stdio を起動するので、
+  // 届けば任意コマンドの実行になる。存在しないコマンドを渡し、403 で止まることだけを見る。
+  const body = JSON.stringify({ type: "stdio", name: "x", command: "/nonexistent/graphium-csrf-probe" });
+
+  it("他サイトの Origin が付いた POST は 403", async () => {
+    const res = await app.request("http://127.0.0.1:3001/api/mcp/test", {
+      method: "POST",
+      headers: { Host: "127.0.0.1:3001", Origin: "https://evil.example", "Content-Type": "text/plain" },
+      body,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('Origin が "null"（サンドボックスの iframe・file://）でも 403', async () => {
+    const res = await app.request("http://127.0.0.1:3001/api/mcp/test", {
+      method: "POST",
+      headers: { Host: "127.0.0.1:3001", Origin: "null", "Content-Type": "text/plain" },
+      body,
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("Tauri の WebView からの POST は通る", async () => {
+    const res = await app.request("http://127.0.0.1:3001/api/mcp/test", {
+      method: "POST",
+      headers: { Host: "127.0.0.1:3001", Origin: "tauri://localhost", "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(400); // 守りは通過し、中身の検査で 400
+  });
+
+  it("GET は Origin に関係なく通す（応答を読むのは CORS が止める）", async () => {
+    const res = await app.request("http://127.0.0.1:3001/api/health", {
+      headers: { Host: "127.0.0.1:3001", Origin: "https://evil.example" },
+    });
+    expect(res.status).not.toBe(403);
+  });
+
+  it.each([
+    [undefined, "/api/mcp/test", true], // ブラウザ以外（同梱の MCP サーバー・CLI）
+    ["http://localhost:5180", "/api/mcp/test", true], // dev の vite（任意のポート）
+    ["http://127.0.0.1:5174", "/api/mcp/test", true],
+    ["http://tauri.localhost", "/api/mcp/test", true], // Windows の WebView2
+    ["https://evil.example", "/api/mcp/test", false],
+    ["http://localhost.evil.example", "/api/mcp/test", false],
+    ["http://127.0.0.1.evil.example:3001", "/api/mcp/test", false],
+    ["chrome-extension://abcdefghijklmnopabcdefghijklmnop", "/api/clip", true],
+    ["chrome-extension://abcdefghijklmnopabcdefghijklmnop", "/api/clip/pair", true],
+    ["chrome-extension://abcdefghijklmnopabcdefghijklmnop", "/api/clipboard", false],
+    ["chrome-extension://abcdefghijklmnopabcdefghijklmnop", "/api/mcp/test", false],
+    ["https://graphium.example", "/api/mcp/test", false],
+  ])("Origin %s → %s は %s", (origin, path, expected) => {
+    expect(
+      isAllowedWriteOrigin({ origin, path, host: "127.0.0.1:3001", allowedOrigins: ["tauri://localhost", "http://tauri.localhost"] }),
+    ).toBe(expected);
+  });
+
+  it("セルフホストで画面と API が同じオリジンなら通す", () => {
+    expect(
+      isAllowedWriteOrigin({
+        origin: "https://graphium.example",
+        path: "/api/mcp/test",
+        host: "graphium.example",
+        allowedOrigins: [],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("API の応答を文書として開いても実行させない", () => {
+  const app = createApp({ mode: "node" });
+
+  it("JSON の応答にも CSP sandbox と nosniff が付く", async () => {
+    const res = await app.request("http://127.0.0.1:3001/api/health", { headers: { Host: "127.0.0.1:3001" } });
+    expect(res.headers.get("content-security-policy")).toContain("sandbox");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("拡張機能に開けるのはクリップの送信とペアリングの申し込みだけ", () => {
+    const ext = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+    const allowed = (path: string) =>
+      isAllowedWriteOrigin({ origin: ext, path, host: "127.0.0.1:3001", allowedOrigins: [] });
+    expect(allowed("/api/clip")).toBe(true);
+    expect(allowed("/api/clip/pair")).toBe(true);
+    expect(allowed("/api/clip/pair/123e4567")).toBe(true);
+    expect(allowed("/api/clip/pair-requests/123e4567")).toBe(false); // 承認は利用者の画面から
+    expect(allowed("/api/clip/pairing/reset")).toBe(false);
+    expect(allowed("/api/clip/inbox/abc")).toBe(false);
   });
 });
