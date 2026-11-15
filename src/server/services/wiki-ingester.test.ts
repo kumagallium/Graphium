@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   parseTopics,
+  parseBacking,
   parseIngesterOutput,
   buildIngesterSystemPrompt,
   buildFrameInstructions,
@@ -17,6 +18,27 @@ import {
   parseFrameValue,
   type ExistingWikiInfo,
 } from "./wiki-ingester.ts";
+
+describe("parseBacking の url", () => {
+  const base = { source: "external-paper", citation: "Smith 2020" };
+
+  it("http / https（大文字・前後の空白を含む）は url が残る", () => {
+    for (const u of ["http://example.com/a", "https://example.com/a", "HTTP://example.com/a", "  https://example.com/a  "]) {
+      const r = parseBacking([{ ...base, url: u }]);
+      expect(r?.[0].url).toBe(u.trim());
+    }
+  });
+
+  it("危ない・崩れた url は url だけ落ち、ほかの欄は残る", () => {
+    for (const u of ["https:evil", "https:/evil", "javascript:alert(1)", "data:text/html,x", "//evil.com"]) {
+      const r = parseBacking([{ ...base, url: u }]);
+      expect(r).toHaveLength(1);
+      expect(r?.[0].url).toBeUndefined();
+      expect(r?.[0].source).toBe("external-paper");
+      expect(r?.[0].citation).toBe("Smith 2020");
+    }
+  });
+});
 
 describe("parseTopics", () => {
   it("非配列・undefined は undefined を返す", () => {

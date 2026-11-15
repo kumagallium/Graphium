@@ -1,11 +1,17 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import urlApp, { isBlockedProxyTarget } from "./url.js";
+import { setHostResolverForTest } from "../services/safe-fetch.js";
 
 // Hono の app.request() でサーバ無しにルートを検証する。
 // 外部 fetch は globalThis.fetch を spy して差し替える。
 describe("url routes", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
+    setHostResolverForTest();
   });
 
   describe("POST /reader — PDF シグナル", () => {
@@ -231,5 +237,71 @@ describe("url routes", () => {
       expect(isBlockedProxyTarget("")).toBe(true);
       expect(isBlockedProxyTarget("not a url")).toBe(true);
     });
+  });
+});
+
+describe("宛先検査の穴（リダイレクト・末尾ドット・DNS 解決）", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setHostResolverForTest();
+  });
+  const redirect = (to: string) => new Response(null, { status: 302, headers: { location: to } });
+
+  it("image-proxy: 公開ホストから LAN・メタデータへの 302 は、その GET を送らずに 403", async () => {
+    for (const to of ["http://192.168.1.1/reboot", "http://169.254.169.254/latest/meta-data/", "http://localhost:3001/api/models"]) {
+      const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(redirect(to));
+      const res = await urlApp.request("/image-proxy?url=" + encodeURIComponent("https://public.example.com/x.png"));
+      expect(res.status, to).toBe(403);
+      expect(spy).toHaveBeenCalledTimes(1); // 最初の公開ホストへだけ。リダイレクト先へは送らない
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("image-proxy: 公開ホスト同士のリダイレクトは辿る（上限 5 回）", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    spy.mockResolvedValueOnce(redirect("https://cdn.example.net/y.png"));
+    spy.mockResolvedValueOnce(new Response("PNG", { status: 200, headers: { "content-type": "image/png" } }));
+    const ok = await urlApp.request("/image-proxy?url=" + encodeURIComponent("https://public.example.com/x.png"));
+    expect(ok.status).toBe(200);
+    spy.mockReset();
+    spy.mockImplementation(async () => redirect("https://loop.example.net/z.png"));
+    const loop = await urlApp.request("/image-proxy?url=" + encodeURIComponent("https://public.example.com/x.png"));
+    expect(loop.status).toBe(502);
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(6);
+  });
+
+  it("末尾ドットの localhost. も止める", () => {
+    expect(isBlockedProxyTarget("http://localhost./x.png")).toBe(true);
+    expect(isBlockedProxyTarget("http://127.0.0.1./x.png")).toBe(true);
+    expect(isBlockedProxyTarget("http://foo.localhost./x")).toBe(true);
+  });
+
+  it("image-proxy: プライベート IP に解決されるホスト名は送らずに 403", async () => {
+    setHostResolverForTest(async () => ["10.0.0.7"]);
+    const spy = vi.spyOn(globalThis, "fetch");
+    const res = await urlApp.request("/image-proxy?url=" + encodeURIComponent("https://innocent.example.com/x.png"));
+    expect(res.status).toBe(403);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("pdf-proxy: LAN は通す（利用者が指定した URL）が、メタデータ・リンクローカル・そこへのリダイレクトは止める", async () => {
+    const pdf = () => new Response("%PDF", { status: 200, headers: { "content-type": "application/pdf" } });
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => pdf());
+    const lan = await urlApp.request("/pdf-proxy?url=" + encodeURIComponent("http://192.168.1.20/doc.pdf"));
+    expect(lan.status).toBe(200);
+    spy.mockClear();
+    for (const target of ["http://169.254.169.254/latest/meta-data/", "http://metadata.google.internal./computeMetadata/v1/", "http://[fe80::1]/x.pdf"]) {
+      const r = await urlApp.request("/pdf-proxy?url=" + encodeURIComponent(target));
+      expect(r.status, target).toBe(403);
+    }
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockResolvedValueOnce(redirect("http://169.254.169.254/latest/meta-data/"));
+    const viaRedirect = await urlApp.request("/pdf-proxy?url=" + encodeURIComponent("https://public.example.com/a.pdf"));
+    expect(viaRedirect.status).toBe(403);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

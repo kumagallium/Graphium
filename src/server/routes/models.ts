@@ -10,7 +10,7 @@ import { listModels, addModel, updateModel, removeModel, getDefaultModel, getMod
 import { fetchAvailableModels, isCopilotCliAvailable } from "../services/llm.js";
 import { aiErrorCodeOf, errorBody } from "../../lib/ai-error-codes.js";
 import { isSubscriptionProvider } from "../../lib/subscription-providers.js";
-import { resolveCopilotBinaryAsync } from "../services/cli-binary-resolver.js";
+import { copilotCliPathProblem, resolveCopilotBinaryAsync } from "../services/cli-binary-resolver.js";
 import { copilotCliManager, CopilotCliError } from "../services/copilot-cli-manager.js";
 import { listCopilotModels } from "../services/copilot-subscription.js";
 import { isDuplicateModelName } from "../../lib/model-name-rules.js";
@@ -23,6 +23,59 @@ const app = new Hono();
 // クライアントを通らない呼び出し（curl 等）でも同じ規則で断る。
 const DUPLICATE_MODEL_NAME_ERROR =
   "Another model already has this name. Give this one a different name.";
+
+// 鍵なしの接続先（Ollama など）に入れるダミー値。送っても漏れるものが無い
+const KEYLESS_PLACEHOLDER = "local";
+
+const API_KEY_REENTRY_ERROR =
+  "The saved API key cannot be sent to a different server. Enter the API key again.";
+
+function urlOrigin(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存済みキーを、保存済みの接続先と別のオリジンへ送ろうとしているか。
+ * 接続先を差し替えるだけで保存済みキーを外へ送らせられないようにする（キーを読み出せない設計の穴埋め）。
+ * 対象外: 保存済みのキーが無い・ダミー値・サブスク型（apiBase が CLI のパスで URL でない）・
+ * 新しい接続先が空（既定に戻す）。
+ */
+function wouldSendStoredKeyElsewhere(
+  stored: { provider: string; apiKey: string; apiBase?: string | null },
+  nextApiBase: string | undefined,
+): boolean {
+  if (!stored.apiKey || stored.apiKey === KEYLESS_PLACEHOLDER) return false;
+  if (isSubscriptionProvider(stored.provider)) return false;
+  if (!nextApiBase) return false;
+  const next = urlOrigin(nextApiBase);
+  // 空でないのに http(s) の絶対 URL として読めない値（"//host/v1"・"host"・空白だけ）は
+  // 別のオリジンと同じ扱いにする（解釈の違いで保存済みキーが別の宛先へ出るのを防ぐ）
+  if (next === null) return true;
+  return next !== urlOrigin(stored.apiBase);
+}
+
+const COPILOT_CLI_PATH_ERROR =
+  "The Copilot CLI path must be an absolute path to an existing executable file (not a script, a network path, or a file inside the data folder).";
+
+/** copilot-subscription の api_base は CLI のパス。起動できるものだけ受ける（空は自動検出） */
+function invalidCopilotCliPath(provider: string | undefined, apiBase: string | null | undefined): boolean {
+  if (provider !== "copilot-subscription" || !apiBase || !apiBase.trim()) return false;
+  return copilotCliPathProblem(apiBase) !== null;
+}
+
+function copilotCliPathInvalid(c: Context) {
+  return c.json({ error: COPILOT_CLI_PATH_ERROR, code: "COPILOT_CLI_PATH_INVALID" }, 400);
+}
+
+function keyReentryRequired(c: Context) {
+  return c.json({ error: API_KEY_REENTRY_ERROR, code: "API_KEY_REENTRY_REQUIRED" }, 400);
+}
 
 // 登録済みモデル一覧
 app.get("/", (c) => {
@@ -270,9 +323,17 @@ app.post("/", async (c) => {
     if (!source) {
       return c.json({ error: "Source model not found" }, 404);
     }
-    apiKey = source.apiKey;
-    if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
+    if (wouldSendStoredKeyElsewhere(source, apiBase)) {
+      // 別の接続先へは保存済みキーを引き継がない。要求のキーがあればそれを使う
+      if (!body.api_key) return keyReentryRequired(c);
+      apiKey = body.api_key;
+    } else {
+      apiKey = source.apiKey;
+      if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
+    }
   }
+
+  if (invalidCopilotCliPath(body.provider, apiBase)) return copilotCliPathInvalid(c);
 
   // サブスク型プロバイダは API キー不要（各 CLI のサブスク認証を使う）。
   const requiresApiKey = !isSubscriptionProvider(body.provider);
@@ -348,6 +409,20 @@ app.put("/:id", async (c) => {
     }
   }
 
+  // copilot-subscription の api_base は CLI のパス。起動できるものだけ受ける
+  if (body.api_base !== undefined) {
+    const effectiveProvider = body.provider ?? getModel(id)?.provider;
+    if (invalidCopilotCliPath(effectiveProvider, body.api_base)) return copilotCliPathInvalid(c);
+  }
+
+  // 接続先を別のオリジンへ変えるなら、保存済みキーは引き継げない（キーの再入力が要る）
+  if (body.api_base !== undefined && !body.api_key) {
+    const current = getModel(id);
+    if (current && wouldSendStoredKeyElsewhere(current, body.api_base)) {
+      return keyReentryRequired(c);
+    }
+  }
+
   const updated = updateModel(id, {
     ...(body.model_name ? { name: body.model_name } : {}),
     ...(body.provider ? { provider: body.provider } : {}),
@@ -394,9 +469,17 @@ app.post("/available", async (c) => {
       return c.json({ error: "Source model not found" }, 404);
     }
     provider = source.provider;
-    apiKey = source.apiKey;
-    if (apiBaseUrl === undefined) apiBaseUrl = source.apiBase ?? undefined;
+    if (wouldSendStoredKeyElsewhere(source, apiBaseUrl)) {
+      // 別の接続先へは保存済みキーを送らない。要求のキーがあればそれを使う
+      if (!body.api_key) return keyReentryRequired(c);
+      apiKey = body.api_key;
+    } else {
+      apiKey = source.apiKey;
+      if (apiBaseUrl === undefined) apiBaseUrl = source.apiBase ?? undefined;
+    }
   }
+
+  if (invalidCopilotCliPath(provider, apiBaseUrl)) return copilotCliPathInvalid(c);
 
   // copilot-subscription は API キーを持たない（CLI の listModels で取得する）
   if (!provider || (!apiKey && !isSubscriptionProvider(provider))) {

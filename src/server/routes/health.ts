@@ -5,6 +5,7 @@
 
 import { Hono } from "hono";
 import { findModelsWithMissingApiKey } from "../config/models.js";
+import { isRequestAuthorized } from "../auth-token.js";
 
 const app = new Hono();
 
@@ -32,6 +33,10 @@ export function setSidecarIdentity(info: {
 }
 
 app.get("/", async (c) => {
+  // 合言葉が要る設定で未認証なら、生きていることだけ返す（dataDir・pid・モデル情報は出さない）
+  if (!isRequestAuthorized(c)) {
+    return c.json({ status: "healthy", components: { backend: "ok" } });
+  }
   // 認証状態: 保存済みの API キーが読めないモデルが居ないか確認する。
   // Keychain ダウングレード罠（旧バイナリ + Keychain 移行済み環境）の早期発見用。
   const missingKeyModels = findModelsWithMissingApiKey();

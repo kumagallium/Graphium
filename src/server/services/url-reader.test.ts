@@ -9,6 +9,7 @@ import {
   clearReaderCache,
   fetchAsReaderArticle,
 } from "./url-reader";
+import { setHostResolverForTest } from "./safe-fetch";
 
 const ARTICLE_HTML = `<!doctype html>
 <html lang="en">
@@ -82,8 +83,13 @@ describe("extractReaderFromHtml", () => {
 });
 
 describe("fetchAsReaderArticle (bot protection)", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
+    setHostResolverForTest();
   });
 
   function stubFetch(status: number, headers: Record<string, string>) {
@@ -615,5 +621,30 @@ describe("reader cache (LRU)", () => {
     expect(getCachedReaderArticle("https://example.com/p0")).toBeNull();
     // 新しいものは残っている
     expect(getCachedReaderArticle("https://example.com/new")).not.toBeNull();
+  });
+});
+
+describe("fetchAsReaderArticle の宛先検査（メタデータ宛・リダイレクト）", () => {
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setHostResolverForTest();
+  });
+
+  it("公開ホストからメタデータ宛への 302 は、その GET を送らずに 403", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } }));
+    await expect(fetchAsReaderArticle("https://public.example.com/a")).rejects.toMatchObject({ status: 403 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("メタデータ宛の直接指定は fetch せずに 403", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    await expect(fetchAsReaderArticle("http://169.254.169.254/")).rejects.toMatchObject({ status: 403 });
+    expect(spy).not.toHaveBeenCalled();
   });
 });

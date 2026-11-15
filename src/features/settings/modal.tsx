@@ -1269,7 +1269,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
           throw new Error(
             data.code === "DUPLICATE_MODEL_NAME"
               ? DUPLICATE_MODEL_NAME_ERROR
-              : data.error || `Error ${res.status}`,
+              : data.code === "API_KEY_REENTRY_REQUIRED"
+                ? t("aiError.apiKeyReentryRequired")
+                : data.code === "COPILOT_CLI_PATH_INVALID"
+                  ? t("aiError.copilotCliPathInvalid")
+                  : data.error || `Error ${res.status}`,
           );
         }
       }
@@ -1330,7 +1334,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.code === "DUPLICATE_MODEL_NAME" ? t("settings.addModel.duplicateName") : data.error || `Error ${res.status}`);
+          throw new Error(data.code === "DUPLICATE_MODEL_NAME" ? t("settings.addModel.duplicateName") : data.code === "API_KEY_REENTRY_REQUIRED" ? t("aiError.apiKeyReentryRequired") : data.code === "COPILOT_CLI_PATH_INVALID" ? t("aiError.copilotCliPathInvalid") : data.error || `Error ${res.status}`);
         }
       }
       setShowAddForm(false);
@@ -1548,7 +1552,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
           throw new Error(
             data.code === "DUPLICATE_MODEL_NAME"
               ? DUPLICATE_MODEL_NAME_ERROR
-              : data.error || `Error ${res.status}`,
+              : data.code === "API_KEY_REENTRY_REQUIRED"
+                ? t("aiError.apiKeyReentryRequired")
+                : data.code === "COPILOT_CLI_PATH_INVALID"
+                  ? t("aiError.copilotCliPathInvalid")
+                  : data.error || `Error ${res.status}`,
           );
         }
         updated = true;

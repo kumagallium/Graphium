@@ -4773,10 +4773,30 @@ deployment is one of:
 - A self-hosted Docker behind the user's own boundary (VPN, LAN, or
   reverse proxy).
 
-Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
-`X-MCP-Servers`, `X-Registry-URL`/`X-Registry-Key`) are passthrough to
-upstream LLM / MCP / Registry APIs, not authentication for the Graphium
-server itself. `X-MCP-Servers` carries the user's directly-registered MCP servers; the
+**Self-host token (`GRAPHIUM_AUTH_TOKEN`).** When set, node mode requires it on
+**every** `/api/*` request (a shared middleware in `src/server/app.ts`, not only
+the storage routes). A request passes with an `X-Graphium-Token` header equal to
+the token, or with the `graphium_auth` cookie (`sha256("graphium-auth-cookie:" +
+token)` in hex; the server hands it out — `HttpOnly; SameSite=Strict; Path=/api;
+Max-Age` 30 days, no `Secure` so LAN `http` works — on a response to a
+header-authenticated request, for same-origin loads such as `<img>` that cannot
+carry a header). Both sides are hashed with SHA-256 and compared with
+`timingSafeEqual`. Not checked: `OPTIONS`, `GET /api/storage/capabilities`,
+`GET /api/health` (when a token is set, an unauthenticated caller gets only
+liveness — no `dataDir`, pid or model info), and the extension's endpoints
+(`POST /api/clip`, `GET /api/clip/ping`, `POST /api/clip/pair`,
+`POST /api/clip/pair/:id`), which are guarded by `X-Graphium-Clip-Token` and the
+`Origin` rule below. With no token set (desktop sidecar, dev) nothing is
+checked. The browser frontend adds the header to every request whose target is
+the API (`installApiAuthFetch`, `src/lib/api-auth-fetch.ts`) and never to another
+origin. At start-up the server warns loudly when it listens beyond loopback
+without a token, because the MCP connection test starts a local command: an open
+LAN port is remote command execution.
+
+Other tokens you may see in headers (`X-LLM-API-Key`, `X-MCP-Servers`,
+`X-Registry-URL`/`X-Registry-Key`) are passthrough to upstream LLM / MCP /
+Registry APIs, not authentication for the Graphium server itself.
+`X-MCP-Servers` carries the user's directly-registered MCP servers; the
 `agent` route resolves each into a connection. Two transports:
 
 - **stdio (local)** — the server spawns the configured `command`/`args`
@@ -4796,16 +4816,20 @@ server would let any page the user opens run a command. In node mode,
 `createApp` therefore rejects `POST` / `PUT` / `PATCH` / `DELETE` with `403`
 unless the `Origin` header is absent (a non-browser client such as the
 bundled MCP server — browsers always send `Origin` on these methods), in the
-CORS list or a Tauri WebView origin, a loopback origin (the dev server on any
-port), the server's own host (self-hosting the UI and API on one origin), or a
+CORS list (`CORS_ORIGINS`, default `http://localhost:5174`) or a Tauri WebView
+origin, the server's own host (self-hosting the UI and API on one origin), or a
 `chrome-extension://` origin on the extension's own write paths only
 (`/api/clip`, `/api/clip/pair`, `/api/clip/pair/:id` — approving a pairing
-stays in the app) (`isAllowedWriteOrigin` in `src/server/app.ts`). `GET` is
-not restricted: those routes only read, and CORS keeps the response from the
-page.
+stays in the app) (`isAllowedWriteOrigin` in `src/server/app.ts`). A loopback
+origin on an *arbitrary* port is **not** trusted (a page served from any other
+local port — a notebook, a static server — could otherwise start commands). The
+dev server keeps working because the Vite `/api` proxy rewrites `Origin` to the
+backend's own origin, and only when the incoming `Origin` is the dev server's own
+(`vite.config.ts`); any other `Origin` is forwarded unchanged and gets `403`.
+`GET` is not restricted: those routes only read, and CORS keeps the response from
+the page.
 
-Because the loopback origin itself is trusted, the server must never let a
-page run script *as* that origin. `image-proxy` relays outside images and
+The server never lets a page run script *as* an allowed origin. `image-proxy` relays outside images and
 `/api/storage/media/:id` returns imported files as stored, so an SVG or HTML
 body opened directly would otherwise run on `http://127.0.0.1:<port>`. Every
 `/api/*` response in node mode therefore carries
@@ -4843,6 +4867,40 @@ DNS rebinding. The app-facing endpoints (`GET /api/clip/inbox`,
 `X-Graphium-Token` when `GRAPHIUM_AUTH_TOKEN` is set. Bodies are capped at
 1 MB, text at 50,000 characters, URLs at 2,048 characters and http(s) only,
 and at most 1,000 clips wait in the inbox.
+
+**Saved keys stay with their server.** `GET /api/models` never returns a key,
+and the server will not send a saved key somewhere new. `POST
+/api/models/available` and `POST /api/models` with `source_model_id` plus an
+`api_base` on a different origin than the saved model's, and `PUT
+/api/models/:id` changing `api_base` to another origin without a new `api_key`,
+answer `400 API_KEY_REENTRY_REQUIRED` (keyless endpoints such as Ollama and the
+subscription providers are exempt). For Registry calls, the env
+`CRUCIBLE_API_KEY` is attached only when the target has the same origin as
+`CRUCIBLE_API_URL`; an `X-Registry-URL` pointing elsewhere gets only an explicit
+`X-Registry-Key`, and Registry requests do not follow redirects. A
+`copilot-subscription` model's `api_base` is a CLI path: it must be an absolute
+path to an existing regular file that is not a UNC path, not `.js`/`.mjs`/`.cjs`
+(the SDK would run it with node), and not inside `DATA_DIR` (the managed CLI
+location is the one exception); the same check applies to
+`GRAPHIUM_COPILOT_CLI_PATH`, and a path that fails it is ignored in favour of
+auto-detection. Files that can hold secrets (`models.json`, `appdata/*`) are
+written with mode `0600` (not applied on Windows).
+
+**Outbound fetches.** `image-proxy` follows redirects by hand (at most five),
+checks each hop's destination *before* sending (loopback, private, link-local,
+cloud metadata; the hostname's trailing dot is stripped and every DNS-resolved
+address is checked too), and so does `pdf-proxy` with a narrower rule — a URL the
+user typed may point at the LAN, so only link-local and cloud-metadata
+destinations are blocked (`src/server/services/safe-fetch.ts`). `/api/url/reader`,
+`/api/wiki/fetch-url` and `/api/prov/ingest-url` apply the same narrower rule,
+including to every redirect target: link-local and cloud-metadata destinations
+are refused. A DNS answer that changes between the check and the connection is
+not covered. In Vercel mode the storage routes answer `404` except the
+`capabilities` route itself. Ids in storage routes always reject path
+separators, NUL and a leading `.`; on Windows they also reject reserved device
+names and `:` (a drive or an alternate data stream there — elsewhere it stays
+one path component, and older data can contain names such as `wiki:<id>`).
+Appdata keys may contain `:` on every platform (the file name encodes it).
 
 Crucible is a **discovery source, not a connection**. The settings UI
 calls `/api/tools` (with `X-Registry-URL`/`X-Registry-Key`) to list a

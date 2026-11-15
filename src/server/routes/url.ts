@@ -10,6 +10,7 @@ import {
   setCachedReaderArticle,
   type ReaderError,
 } from "../services/url-reader.js";
+import { BlockedTargetError, guardedFetch, isBlockedUrl } from "../services/safe-fetch.js";
 
 const app = new Hono();
 
@@ -76,12 +77,18 @@ app.get("/pdf-proxy", async (c) => {
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: { "User-Agent": PDF_PROXY_USER_AGENT, Accept: "application/pdf,*/*" },
-      signal: AbortSignal.timeout(PDF_PROXY_TIMEOUT_MS),
-      redirect: "follow",
-    });
-  } catch {
+    // 利用者が自分で指定する URL なので LAN は止めない。リンクローカルとクラウドのメタデータだけ、
+    // リダイレクト先も含めて止める（要求を送る前に 1 段ずつ検査する）
+    res = await guardedFetch(
+      url,
+      {
+        headers: { "User-Agent": PDF_PROXY_USER_AGENT, Accept: "application/pdf,*/*" },
+        signal: AbortSignal.timeout(PDF_PROXY_TIMEOUT_MS),
+      },
+      "metadata-only",
+    );
+  } catch (err) {
+    if (err instanceof BlockedTargetError) return c.json({ error: "This host is not allowed" }, 403);
     return c.json({ error: "Failed to fetch the PDF" }, 502);
   }
 
@@ -144,23 +151,22 @@ app.get("/image-proxy", async (c) => {
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      // pdf-proxy と同じ実在ブラウザ UA。非ブラウザ UA を 403 にする配信元への互換性。
-      headers: { "User-Agent": PDF_PROXY_USER_AGENT, Accept: "image/*,*/*;q=0.8" },
-      signal: AbortSignal.timeout(IMAGE_PROXY_TIMEOUT_MS),
-      redirect: "follow",
-    });
-  } catch {
+    // リダイレクトは自動で辿らず、1 段ずつ（最大 5 回）要求を送る前に宛先を検査する
+    // （公開ホストから LAN・ループバックへ 302 で飛ばされても、その GET は送らない）。
+    // ホスト名は DNS で解決した全アドレスも見る。検査後に接続先が変わる DNS リバインディングは
+    // ここでは防げない —— それにはカスタム DNS lookup とソケット単位の検査が要る。
+    res = await guardedFetch(
+      url,
+      {
+        // pdf-proxy と同じ実在ブラウザ UA。非ブラウザ UA を 403 にする配信元への互換性。
+        headers: { "User-Agent": PDF_PROXY_USER_AGENT, Accept: "image/*,*/*;q=0.8" },
+        signal: AbortSignal.timeout(IMAGE_PROXY_TIMEOUT_MS),
+      },
+      "strict",
+    );
+  } catch (err) {
+    if (err instanceof BlockedTargetError) return c.json({ error: "This host is not allowed" }, 403);
     return c.json({ error: "Failed to fetch the image" }, 502);
-  }
-
-  // redirect: "follow" なので、公開ホストからプライベート宛へ飛ばされていないか最終 URL で
-  // 見直す。ホスト名がプライベート IP に解決されるケース（DNS rebinding 含む）はここでは
-  // 防げない —— それにはカスタム DNS lookup とソケット単位の検査が要る。
-  // res.url はリダイレクト後の最終 URL。空になる実装もあるので元の url にフォールバックする。
-  if (isBlockedProxyTarget(res.url || url)) {
-    void res.body?.cancel();
-    return c.json({ error: "This host is not allowed" }, 403);
   }
 
   if (!res.ok || !res.body) {
@@ -194,64 +200,15 @@ app.get("/image-proxy", async (c) => {
 });
 
 /**
- * プロキシ先として拒否すべき URL か。
+ * プロキシ先として拒否すべき URL か（字面だけ。DNS は引かない。実際の取得は guardedFetch が解決後も見る）。
  *
  * 目的は「Reader 本文の画像が自動でプロキシされる」ことで新たに増える到達性を塞ぐこと。
  * 記事側が `<img src="http://192.168.1.1/admin?action=reboot">` を仕込んでも sidecar に
- * LAN を叩かせない。本文側は https だけを書き換え対象にしているので二重の防御だが、
- * 保存動線や将来の呼び出し元も含めてここで一括して止める。
- *
- * 見るのは URL の hostname だけ。WHATWG URL parser が `http://2130706433/` や
- * `http://0x7f.0.0.1/` を 127.0.0.1 に正規化するので数値表記は素通りしないが、
- * プライベート IP に解決される「普通のホスト名」は判定できない。
+ * LAN を叩かせない。ホスト名の末尾ドット（`localhost.`）は落としてから判定する。
+ * 判定の本体は services/safe-fetch.ts。
  */
 export function isBlockedProxyTarget(rawUrl: string): boolean {
-  let u: URL;
-  try {
-    u = new URL(rawUrl);
-  } catch {
-    return true;
-  }
-  const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
-  if (host.startsWith("[")) return isPrivateIpv6(host);
-  return isPrivateIpv4(host);
-}
-
-function isPrivateIpv4(host: string): boolean {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!m) return false;
-  const octets = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-  if (octets.some((o) => o > 255)) return false; // IP リテラルとして不正 → ホスト名扱い
-  const [a, b] = octets;
-  return (
-    a === 0 || // 0.0.0.0/8 ("this network")
-    a === 10 ||
-    a === 127 || // loopback
-    (a === 100 && b >= 64 && b <= 127) || // CGNAT
-    (a === 169 && b === 254) || // link-local（169.254.169.254 = クラウドのメタデータ）
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    a >= 224 // multicast / reserved / 255.255.255.255
-  );
-}
-
-function isPrivateIpv6(bracketed: string): boolean {
-  const h = bracketed.replace(/^\[|\]$/g, "");
-  if (h === "::1" || h === "::") return true;
-  if (/^f[cd][0-9a-f]{2}:/.test(h)) return true; // ULA fc00::/7
-  if (/^fe[89ab][0-9a-f]:/.test(h)) return true; // link-local fe80::/10
-  // IPv4-mapped / IPv4-compatible は埋め込まれた v4 で判定する。URL parser は
-  // ::ffff:127.0.0.1 を ::ffff:7f00:1 に畳むので 16bit グループ 2 つからも復元する。
-  const dotted = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
-  if (dotted) return isPrivateIpv4(dotted[1]);
-  const hex = /^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
-  if (hex) {
-    const hi = parseInt(hex[1], 16);
-    const lo = parseInt(hex[2], 16);
-    return isPrivateIpv4(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
-  }
-  return false;
+  return isBlockedUrl(rawUrl, "strict");
 }
 
 export default app;

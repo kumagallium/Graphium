@@ -1181,8 +1181,18 @@ export function parseBacking(raw: unknown): BackingEntry[] | undefined {
     if (!(BACKING_SOURCE_VALUES as readonly string[]).includes(source)) continue;
     const citation = typeof obj.citation === "string" ? obj.citation.trim() : "";
     if (citation.length === 0) continue;
-    const url =
-      typeof obj.url === "string" && obj.url.trim().length > 0 ? obj.url.trim() : undefined;
+    // url は http / https の絶対 URL だけ残す（javascript: などは落とし、ほかの項目は残す）
+    let url: string | undefined;
+    if (typeof obj.url === "string" && obj.url.trim().length > 0) {
+      try {
+        const raw = obj.url.trim();
+        const u = new URL(raw);
+        // "https:evil" のようにスラッシュ 2 つが無い形は new URL が通すので、書式でも確かめる
+        if ((u.protocol === "http:" || u.protocol === "https:") && /^https?:\/\//i.test(raw)) url = raw;
+      } catch {
+        // 絶対 URL でないものは落とす
+      }
+    }
     const internalClaimId =
       typeof obj.internalClaimId === "string" && obj.internalClaimId.trim().length > 0
         ? obj.internalClaimId.trim()

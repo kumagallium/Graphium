@@ -475,6 +475,8 @@ export const en: Record<string, string> = {
   "aiError.noModelRegistered": "No usable AI model was found. Add a model, or choose a different one, in Settings → AI.",
   "aiError.copilotSubscriptionAuthExpired": "You have been signed out of GitHub Copilot. Sign in again from \"Sign in again\" in Settings → AI.",
   "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI.",
+  "aiError.apiKeyReentryRequired": "The saved API key cannot be sent to a different server. Enter the API key again for the new address.",
+  "aiError.copilotCliPathInvalid": "The Copilot CLI path is not usable. Enter the full path of the copilot program itself (not a script, a network path, or a file in the Graphium data folder).",
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
   "aiError.embeddingModelUnsupported": "This AI provider cannot make embeddings. Under Settings → AI → Embedding model, pick a model that runs on this computer, or add an OpenAI-compatible model.",
   "aiError.embeddingModelNotDownloaded": "The on-device embedding model isn't downloaded yet. Download it under Settings → AI → Embedding model.",

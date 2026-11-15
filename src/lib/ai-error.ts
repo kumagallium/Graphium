@@ -62,6 +62,8 @@ const CODE_TO_I18N_KEY: Record<AiErrorCode, string> = {
   AI_CALL_TIMEOUT: "aiError.callTimeout",
   // 設定画面の既存の文言キーをそのまま使う（新しい aiError.* は増やさない）
   DUPLICATE_MODEL_NAME: "settings.addModel.duplicateName",
+  API_KEY_REENTRY_REQUIRED: "aiError.apiKeyReentryRequired",
+  COPILOT_CLI_PATH_INVALID: "aiError.copilotCliPathInvalid",
 };
 
 /** Copilot のログイン切れ通知イベント。note-app がトースト表示と設定 AI タブ誘導のために listen する */
