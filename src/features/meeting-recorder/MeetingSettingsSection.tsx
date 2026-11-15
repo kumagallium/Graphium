@@ -16,6 +16,7 @@ import {
   type MeetingModelSize,
 } from "../settings/store";
 import * as api from "./api";
+import { acceptAutoDownload, declineAutoDownload } from "./model-auto-download";
 import type { MeetingModelStatus } from "./types";
 import { ModelFitHint } from "../settings/ModelFitHint";
 
@@ -335,6 +336,8 @@ export function MeetingSettingsSection({
   };
 
   const download = (size: MeetingModelSize) => {
+    // 利用者が自分で押した「取得」。取り消し・削除したときの「自動では取り直さない」印は外す
+    acceptAutoDownload(size);
     setErrors((x) => ({ ...x, [size]: undefined }));
     setNotices((x) => ({ ...x, [size]: undefined }));
     setDownloading((d) => ({ ...d, [size]: { received: 0, total: 0 } }));
@@ -387,8 +390,16 @@ export function MeetingSettingsSection({
       maskTerms={settings.maskTerms}
       onMaskTerms={(v) => update({ meetingMaskTerms: v })}
       onDownload={download}
-      onCancel={(s) => void api.cancelModelDownload(s).catch(() => {})}
-      onDelete={(s) => void api.deleteModel(s).then(refresh).catch(() => {})}
+      onCancel={(s) => {
+        // 利用者が取得を取り消した: 受信箱や録音の開始から、自動では取り直さない
+        declineAutoDownload(s);
+        void api.cancelModelDownload(s).catch(() => {});
+      }}
+      onDelete={(s) => {
+        // 利用者がモデルを削除した: 自動では取り直さない
+        declineAutoDownload(s);
+        void api.deleteModel(s).then(refresh).catch(() => {});
+      }}
     />
   );
 }

@@ -836,3 +836,32 @@ describe("段のスイッチ（標準・精密を使うか）", () => {
     expect(getPreciseModelName()).toBe("strong");
   });
 });
+
+describe("文字起こしモデルの「自動では取り直さない」印", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("既定は印なし。付ける・外すが保存され、ほかの設定は変わらない", async () => {
+    const { isMeetingModelAutoDownloadDeclined, setMeetingModelAutoDownloadDeclined } = await import("./store");
+    setMeetingSettings({ meetingVocabulary: "ゼーベック" });
+    expect(isMeetingModelAutoDownloadDeclined("large-v3-turbo")).toBe(false);
+    setMeetingModelAutoDownloadDeclined("large-v3-turbo", true);
+    expect(isMeetingModelAutoDownloadDeclined("large-v3-turbo")).toBe(true);
+    expect(isMeetingModelAutoDownloadDeclined("small")).toBe(false);
+    expect(getMeetingSettings().vocabulary).toBe("ゼーベック");
+    // 読み直しても残る
+    expect(loadSettings().meetingAutoDownloadDeclined).toEqual(["large-v3-turbo"]);
+    setMeetingModelAutoDownloadDeclined("large-v3-turbo", false);
+    expect(isMeetingModelAutoDownloadDeclined("large-v3-turbo")).toBe(false);
+    // 空になったらキーごと持たない
+    expect("meetingAutoDownloadDeclined" in loadSettings()).toBe(false);
+  });
+
+  it("壊れた値は無視する", async () => {
+    const { isMeetingModelAutoDownloadDeclined } = await import("./store");
+    localStorage.setItem("graphium-settings", JSON.stringify({ meetingAutoDownloadDeclined: ["huge", 3, "small"] }));
+    expect(isMeetingModelAutoDownloadDeclined("small")).toBe(true);
+    expect(isMeetingModelAutoDownloadDeclined("base")).toBe(false);
+  });
+});
