@@ -16,6 +16,7 @@
 
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
+import { BlockedTargetError, guardedFetch } from "./safe-fetch.js";
 
 // 多くのサイトは "Graphium/1.0" のような非ブラウザ UA を素で 403 にする。
 // 現実的なブラウザ UA + 充実した Accept ヘッダにして互換性を上げる
@@ -61,7 +62,7 @@ export type ReaderArticle = {
 };
 
 export type ReaderError = {
-  status: 400 | 422 | 500;
+  status: 400 | 403 | 422 | 500;
   message: string;
   /**
    * 機械可読なエラー種別。ルート側が message 文字列に依存せず分岐するために使う。
@@ -84,16 +85,24 @@ export type ReaderError = {
 export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> {
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: ACCEPT,
-        "Accept-Language": ACCEPT_LANGUAGE,
+    // 利用者が自分で指定する URL なので LAN は止めない。リンクローカルとクラウドのメタデータだけ、
+    // リダイレクト先も含めて止める（リダイレクトは 1 段ずつ検査してから辿る）
+    res = await guardedFetch(
+      url,
+      {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: ACCEPT,
+          "Accept-Language": ACCEPT_LANGUAGE,
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-    });
+      "metadata-only",
+    );
   } catch (err) {
+    if (err instanceof BlockedTargetError) {
+      throw { status: 403, message: "This host is not allowed" } satisfies ReaderError;
+    }
     const message = err instanceof Error ? err.message : "URL fetch failed";
     throw { status: 500, message } satisfies ReaderError;
   }

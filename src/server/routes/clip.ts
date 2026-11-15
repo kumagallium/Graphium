@@ -29,8 +29,9 @@ import {
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
-import { randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { getServerMode } from "../config/models.js";
+import { authTokenMatches, isRequestAuthorized } from "../auth-token.js";
 
 /** 1 件のクリップ（拡張機能から届いた形を整えたもの） */
 export type WebClip = {
@@ -104,11 +105,7 @@ export function readOrCreateClipToken(): string {
 
 /** 定数時間で比べる（長さが違えば false） */
 export function tokenMatches(given: string | undefined, expected: string): boolean {
-  if (!given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return authTokenMatches(given, expected);
 }
 
 function isHttpUrl(value: string): boolean {
@@ -193,8 +190,7 @@ async function extensionAuth(c: Context, next: Next) {
 }
 
 async function appAuth(c: Context, next: Next) {
-  const expected = process.env.GRAPHIUM_AUTH_TOKEN;
-  if (expected && c.req.header("x-graphium-token") !== expected) {
+  if (!isRequestAuthorized(c)) {
     return c.json({ error: "Authentication failed" }, 401);
   }
   await next();

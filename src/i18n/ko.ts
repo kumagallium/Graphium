@@ -449,6 +449,8 @@ export const ko: Record<string, string> = {
   "aiError.noModelRegistered": "사용할 수 있는 AI 모델을 찾지 못했습니다. 설정 → AI에서 모델을 추가하거나 다른 모델을 골라 주세요.",
   "aiError.copilotSubscriptionAuthExpired": "GitHub Copilot에서 로그아웃되었습니다. 설정 → AI에서 '다시 로그인'을 눌러 주세요.",
   "aiError.invalidApiKey": "모델 API 키가 잘못되었거나 만료되었습니다. 설정 → AI에서 키를 확인해 주세요.",
+  "aiError.apiKeyReentryRequired": "저장된 API 키는 다른 서버로 보낼 수 없습니다. 새 주소에 맞게 API 키를 다시 입력해 주세요.",
+  "aiError.copilotCliPathInvalid": "Copilot CLI 경로를 사용할 수 없습니다. copilot 실행 파일의 전체 경로를 입력해 주세요(스크립트, 네트워크 경로, Graphium 데이터 폴더 안의 파일은 지정할 수 없습니다).",
   "aiError.apiKeyForbidden": "API 키에 이 작업을 할 권한이 없습니다.",
   "aiError.embeddingModelUnsupported": "이 AI 프로바이더는 임베딩을 만들 수 없습니다. 설정 → AI → 임베딩 모델에서 이 컴퓨터에서 실행되는 모델을 고르거나, OpenAI 호환 모델을 추가해 주세요.",
   "aiError.embeddingModelNotDownloaded": "이 컴퓨터에서 실행되는 임베딩 모델을 아직 내려받지 않았습니다. 설정 → AI → 임베딩 모델에서 내려받아 주세요.",

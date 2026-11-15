@@ -475,6 +475,8 @@ export const ja: Record<string, string> = {
   "aiError.noModelRegistered": "使える AI モデルが見つかりませんでした。設定 → AI で、モデルを追加するか、使うモデルを選び直してください。",
   "aiError.copilotSubscriptionAuthExpired": "GitHub Copilot のログインが切れています。設定 → AI の「もう一度ログイン」からログインし直してください。",
   "aiError.invalidApiKey": "モデルの API キーが無効か期限切れです。設定 → AI でキーを確認してください。",
+  "aiError.apiKeyReentryRequired": "保存してあるキーは、別のサーバーには送れません。新しいアドレスに合わせて、API キーをもう一度入力してください。",
+  "aiError.copilotCliPathInvalid": "Copilot CLI の場所が使えません。copilot 本体のフルパスを入力してください（スクリプトやネットワーク上の場所、Graphium のデータフォルダ内のファイルは指定できません）。",
   "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",
   "aiError.embeddingModelUnsupported": "この AI の接続先は埋め込みに対応していません。設定 → AI → 埋め込みモデルで「このパソコンで」のモデルを選ぶか、OpenAI 互換モデルを追加してください。",
   "aiError.embeddingModelNotDownloaded": "このパソコンで動く埋め込みモデルがまだ取得されていません。設定 → AI → 埋め込みモデルで取得してください。",

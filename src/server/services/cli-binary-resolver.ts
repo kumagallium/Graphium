@@ -6,11 +6,12 @@
 // が llm.ts を静的 import すると dependency-cruiser の no-circular に引っかかる）。
 
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { isManagedCopilotCliPath, managedCopilotCliPath } from "./copilot-cli-location.js";
+import { getDataDir } from "../config/models.js";
 
 // 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み（動作確認済み）。
 let cachedAutoCopilotPath: string | undefined | null = null;
@@ -223,6 +224,45 @@ function detectWorkingCopilot(): string | undefined {
 }
 
 /**
+ * 利用者が指定する Copilot CLI のパス（api_base・環境変数・X-LLM-API-Key ヘッダー）の検査。
+ * このパスは子プロセスとして起動されるので、任意のファイルを指せると任意コードの実行になる
+ * （保存 API で書いた DATA_DIR 内のファイル、Windows の UNC 先の実行ファイルなど）。
+ * 通すのは: 絶対パス・UNC でない・.js/.mjs/.cjs でない（SDK は .js を node で実行する）・
+ * 実在する通常ファイル・DATA_DIR の配下でない（Graphium が取得した CLI の置き場所だけは例外）。
+ * 理由を返す。null なら問題なし。
+ */
+export function copilotCliPathProblem(p: string): string | null {
+  const path = p.trim();
+  if (!path) return "empty";
+  if (path.startsWith("\\\\") || path.startsWith("//")) return "unc";
+  if (!isAbsolute(path)) return "not-absolute";
+  if (/\.(js|mjs|cjs)$/i.test(path)) return "script";
+  let real: string;
+  try {
+    if (!statSync(path).isFile()) return "not-file";
+    real = realpathSync(path);
+  } catch {
+    return "not-found";
+  }
+  // symlink の実体が .js でも、渡されたパスが .js で終わらなければ通常の実行ファイルとして起動される
+  // （npm 版 copilot の bin/copilot は npm-loader.js への symlink）。実体の拡張子は見ない。
+  if (isManagedCopilotCliPath(path)) return null;
+  const dataRoots = [resolve(getDataDir())];
+  try {
+    dataRoots.push(realpathSync(getDataDir()));
+  } catch {
+    /* DATA_DIR がまだ無ければ resolve 済みの値だけで見る */
+  }
+  // 大文字小文字を区別しない FS（Windows・macOS 既定）では綴りを変えるだけで抜けられるので、小文字にそろえて比べる
+  const fold = (v: string) => (process.platform === "win32" || process.platform === "darwin" ? v.toLowerCase() : v);
+  for (const root of dataRoots) {
+    const prefix = fold(root.endsWith(sep) ? root : root + sep);
+    if (fold(resolve(path)).startsWith(prefix) || fold(real).startsWith(prefix)) return "in-data-dir";
+  }
+  return null;
+}
+
+/**
  * Copilot CLI の実行パスと出どころを解決する。
  * 優先順: 明示パス（config.apiBase）→ 環境変数 GRAPHIUM_COPILOT_CLI_PATH →
  * 自動検出（動くものだけ・プロセス内キャッシュ）→ Graphium が取得した CLI（存在すれば）。
@@ -230,11 +270,12 @@ function detectWorkingCopilot(): string | undefined {
 function resolveExplicit(
   explicit?: string | null,
 ): { path: string; source: CopilotCliSource } | undefined {
-  if (explicit && explicit.trim().length > 0) {
+  // 検査（copilotCliPathProblem）を通らない指定は採用しない（自動検出に進む）
+  if (explicit && explicit.trim().length > 0 && copilotCliPathProblem(explicit) === null) {
     return { path: explicit.trim(), source: "configured" };
   }
   const fromEnv = process.env.GRAPHIUM_COPILOT_CLI_PATH;
-  if (fromEnv && fromEnv.trim().length > 0) {
+  if (fromEnv && fromEnv.trim().length > 0 && copilotCliPathProblem(fromEnv) === null) {
     return { path: fromEnv.trim(), source: "configured" };
   }
   return undefined;

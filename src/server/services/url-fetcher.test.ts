@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { extractFromHtml } from "./url-fetcher";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { extractFromHtml, fetchPageAsText } from "./url-fetcher";
+import { setHostResolverForTest } from "./safe-fetch";
 
 describe("extractFromHtml", () => {
   it("&amp;lt; を二重デコードせず &lt; のまま残す", () => {
@@ -84,5 +85,36 @@ describe("extractFromHtml", () => {
     const { text } = extractFromHtml(html, 50);
     expect(text.length).toBeLessThanOrEqual(100); // 50 chars + marker
     expect(text).toContain("[... truncated]");
+  });
+});
+
+describe("fetchPageAsText の宛先検査（メタデータ宛・リダイレクト）", () => {
+  const redirect = (to: string) => new Response(null, { status: 302, headers: { location: to } });
+  // 実際の DNS に出ないよう、名前解決は公開アドレスに固定する
+  beforeEach(() => {
+    setHostResolverForTest(async () => ["93.184.216.34"]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setHostResolverForTest();
+  });
+
+  it("公開ホストからメタデータ宛への 302 は、その GET を送らずに 403", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(redirect("http://169.254.169.254/latest/meta-data/"));
+    await expect(fetchPageAsText("https://public.example.com/a")).rejects.toMatchObject({ status: 403 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("メタデータ宛の直接指定は fetch せずに 403", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    await expect(fetchPageAsText("http://169.254.169.254/")).rejects.toMatchObject({ status: 403 });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("LAN 宛は止めない", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("<html><head><title>t</title></head><body>hi</body></html>", { status: 200, headers: { "content-type": "text/html" } }),
+    );
+    await expect(fetchPageAsText("http://192.168.1.10/doc")).resolves.toMatchObject({ title: "t" });
   });
 });
