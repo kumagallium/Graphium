@@ -384,6 +384,20 @@ try {
     `未登録: ${missingTools.join(", ")} / 想定外: ${extraTools.join(", ")}`,
   );
 
+  // 全道具が書き込むか・壊しうるかを明示している（未指定だと MCP の既定で「壊しうる・外に開いている」と扱われる）
+  const noReadOnly = tools.filter((t) => typeof t.annotations?.readOnlyHint !== "boolean").map((t) => t.name);
+  check("全ツールが annotations.readOnlyHint を明示している", noReadOnly.length === 0, `未指定: ${noReadOnly.join(", ")}`);
+  const noDestructive = tools
+    .filter((t) => t.annotations?.readOnlyHint === false && typeof t.annotations?.destructiveHint !== "boolean")
+    .map((t) => t.name);
+  check(
+    "書き込むツール（readOnlyHint: false）は destructiveHint を明示している",
+    noDestructive.length === 0,
+    `未指定: ${noDestructive.join(", ")}`,
+  );
+  const noOpenWorld = tools.filter((t) => typeof t.annotations?.openWorldHint !== "boolean").map((t) => t.name);
+  check("全ツールが annotations.openWorldHint を明示している", noOpenWorld.length === 0, `未指定: ${noOpenWorld.join(", ")}`);
+
   console.log("\n[read]");
   const search = await call("search_notes", { query: "焼結" });
   check("search_notes が両方のノートを引く", search.includes(NOTE_A) && search.includes(NOTE_B));

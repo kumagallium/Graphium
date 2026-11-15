@@ -733,6 +733,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         sources: z.array(z.string()).optional().describe("資料の id の一覧。省略時は今の資料の一覧"),
         ...common,
       },
+      // 既存のページの本文を書き直す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await reviseTopic(input, ctx, root())),
   );
@@ -750,6 +752,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         body: z.string().describe("統合後の本文（Markdown）。文末に [[source:<id>]] を付ける"),
         ...common,
       },
+      // トピックをまとめ、吸収した側をゴミ箱へ移す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await mergeTopics(input, ctx, root())),
   );
@@ -764,6 +768,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
       inputSchema: {
         pageIds: z.array(z.string()).min(1).describe("アーカイブするページの id"),
       },
+      // アーカイブへ移す
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async (input) => text(await archivePage(input, ctx, root())),
   );
@@ -778,6 +784,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
       inputSchema: {
         pageId: z.string().describe("戻すページの id"),
       },
+      // 既存ページの状態を書き換える（統合で吸収されゴミ箱へ移ったページも戻せ、記録に残らず undo も効かない）ので安全側
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async (input) => text(await restorePage(input, ctx, root())),
   );
@@ -793,7 +801,7 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         limit: z.number().int().min(1).max(100).optional().describe("最大件数（既定 20）"),
         pageId: z.string().optional().describe("このページに関わる操作だけに絞る"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (input) => text(await listOperations(input, ctx, root())),
   );
@@ -812,6 +820,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         confirm: z.boolean().optional().describe("影響を確認したうえで実行するとき true"),
         ...common,
       },
+      // 手入れの操作を取り消す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await undoOperation(input, ctx, root())),
   );

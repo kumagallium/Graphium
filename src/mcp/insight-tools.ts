@@ -1055,7 +1055,8 @@ export function registerInsightTools(server: McpServer, ctx: ToolContext = {}): 
         language: z.enum(GENERATION_LANGUAGES as [GenerationLanguage, ...GenerationLanguage[]]).optional().describe("洞察を書く言語（ja / en / ko。既定 ja）"),
         restart: z.boolean().optional().describe("true なら今の巡を捨てて、新しい巡の最初から始める"),
       },
-      annotations: { readOnlyHint: false },
+      // 課題の台帳のほか、restart で今の巡の記録を破棄するので安全側
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => {
       try {
@@ -1079,6 +1080,8 @@ export function registerInsightTools(server: McpServer, ctx: ToolContext = {}): 
         output: z.string().describe("課題への答えの JSON（文字列のまま）"),
         ...common,
       },
+      // 保存はせず、課題の台帳に記録して審査の課題を返す
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (input) => text(await submitInsights(input, ctx, root())),
   );
@@ -1097,6 +1100,8 @@ export function registerInsightTools(server: McpServer, ctx: ToolContext = {}): 
         output: z.string().describe("審査の答えの JSON（文字列のまま）"),
         ...common,
       },
+      // 既存の洞察への支持追加・矛盾のリンクがある
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await submitInsightReview(input, ctx, root())),
   );

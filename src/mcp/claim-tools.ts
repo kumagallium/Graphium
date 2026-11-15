@@ -882,6 +882,8 @@ export function registerClaimTools(server: McpServer, ctx: ToolContext = {}): vo
         noteId: z.string().describe("知見を作る元のノートの id"),
         language: z.enum(GENERATION_LANGUAGES as [GenerationLanguage, ...GenerationLanguage[]]).optional().describe("知見を書く言語（ja / en / ko。既定 ja）"),
       },
+      // 課題の台帳に記録するだけ。資料が登録済みの URL なら取りに行く
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => {
       try {
@@ -905,7 +907,8 @@ export function registerClaimTools(server: McpServer, ctx: ToolContext = {}): vo
         query: z.string().describe("探したい内容のキーワード（日本語でも英語でも可）"),
         limit: z.number().int().optional().describe("返す件数（既定 20・最大 50）"),
       },
-      annotations: { readOnlyHint: false },
+      // 課題の台帳に番号を足すだけ
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (input) => textWithGuard(await findClaimsForTask(input, root())),
   );
@@ -923,6 +926,8 @@ export function registerClaimTools(server: McpServer, ctx: ToolContext = {}): vo
         output: z.string().describe("課題への答えの JSON（文字列のまま）"),
         ...common,
       },
+      // 既存の知見への書き足し・差し替えがある。URL 資料は台帳の控えを使うので取り直さない
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await submitClaims(input, ctx, root())),
   );
@@ -939,6 +944,8 @@ export function registerClaimTools(server: McpServer, ctx: ToolContext = {}): vo
         output: z.string().describe("清書の JSON（文字列のまま）"),
         ...common,
       },
+      // 既存の知見の本文を差し替える
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await submitRewrite(input, ctx, root())),
   );

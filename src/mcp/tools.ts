@@ -101,7 +101,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           ),
         folder: z.string().optional().describe(FOLDER_SCOPE_DESCRIPTION),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ query, limit, kind, folder }) => {
       if (!vaultExists()) return vaultMissing();
@@ -136,7 +136,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         limit: z.number().int().min(1).max(200).optional().describe("最大件数（既定 100）"),
         folder: z.string().optional().describe(FOLDER_SCOPE_DESCRIPTION),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ limit, folder }) => {
       if (!vaultExists()) return vaultMissing();
@@ -181,7 +181,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "会話をノートに保存するときは、まずこれで既存のフォルダを見て、内容に合うものを選ぶ" +
         "（似た名前の新しいフォルダを作らないため）。合うものが無いときだけ新しい名前を付ける。",
       inputSchema: {},
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
       if (!vaultExists()) return vaultMissing();
@@ -219,7 +219,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       inputSchema: {
         topicId: z.string().describe("トピック ID、または list_topics に出てきたタイトル"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ topicId }) => {
       if (!vaultExists()) return vaultMissing();
@@ -263,7 +263,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       inputSchema: {
         noteId: z.string().describe("ノート ID（search_notes の結果に含まれる）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
       if (!vaultExists()) return vaultMissing();
@@ -385,7 +385,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .optional()
           .describe("text = 手順の一覧（既定）、mermaid = 手順の流れの図（Mermaid flowchart。手順は 60 件まで）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId, format }) => {
       if (!vaultExists()) return vaultMissing();
@@ -444,7 +444,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .describe("ラベル種別で絞る"),
         partial: z.boolean().optional().describe("部分一致を許すか（既定 true）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ text: needle, entityId, label, partial }) => {
       if (!vaultExists()) return vaultMissing();
@@ -489,7 +489,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .describe("何ノート以上に出てくるものに絞るか（既定 1）。2 にすると横断するものだけ"),
         limit: z.number().int().min(1).max(200).optional().describe("最大件数（既定 100）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ label, minNotes, limit }) => {
       if (!vaultExists()) return vaultMissing();
@@ -534,7 +534,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .describe("辿る向き（既定 both）"),
         depth: z.number().int().min(1).max(5).optional().describe("何段辿るか（既定 2）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId, direction, depth }) => {
       if (!vaultExists()) return vaultMissing();
@@ -593,6 +593,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         datasetId: z.string().describe("送り先の Asterism データセット ID"),
         exportedAt: z.string().optional().describe("送った書き出しの exported_at（ISO 8601）。分かれば渡す"),
       },
+      // 送信済みの台帳に id を足すだけ（知見は変えない）
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ ids, datasetId, exportedAt }) => {
       if (!vaultExists()) return vaultMissing();
@@ -647,6 +649,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       },
       // 対応しているクライアントでは、作ったノートを会話の中にプレビューとして描く（app-tools.ts）
       _meta: NOTE_PREVIEW_TOOL_META,
+      // 新しいノートを足すだけ（呼ぶたびに別のノートができる）
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ title, body, sessionId, model, citations, folder }) => {
       try {
@@ -718,6 +722,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               "存在しなければ文字のまま残る",
           ),
       },
+      // 新しい回答ページを足すだけ（呼ぶたびに別のページができる）
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ question, answer, sessionId, model, citations }) => {
       try {
