@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.136.0](https://github.com/kumagallium/Graphium/compare/v0.135.0...v0.136.0) - 2026-11-15
+
+- feat: one memory any AI can use — ChatGPT desktop registration and new positioning by @kumagallium in https://github.com/kumagallium/Graphium/pull/1678
+- fix(security): refuse cross-site writes to the local API and sandbox API responses by @kumagallium in https://github.com/kumagallium/Graphium/pull/1687
+
 ## [v0.135.0](https://github.com/kumagallium/Graphium/compare/v0.134.0...v0.135.0) - 2026-11-14
 
 - feat(topics): check passages against the whole source, keep misses visible, date the disagreements by @kumagallium in https://github.com/kumagallium/Graphium/pull/1684
