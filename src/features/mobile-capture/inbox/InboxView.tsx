@@ -9,6 +9,7 @@
 // 受信箱 = 一時置き場。フォルダを接続した瞬間に中身が見え（取り込み操作は不要）、
 // 取り込んだものは「もはやモバイルのものではない」＝普通の素材として扱う。
 
+import { safeExternalHref } from "../../../lib/safe-href";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -487,7 +488,7 @@ export function InboxView({
             {previewCapturePayload.title ?? extractDomain(previewCapturePayload.url)}
           </p>
           <a
-            href={previewCapturePayload.url}
+            href={safeExternalHref(previewCapturePayload.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-primary break-all inline-flex items-start gap-1 hover:underline"

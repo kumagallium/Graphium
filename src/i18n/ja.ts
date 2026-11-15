@@ -2563,6 +2563,10 @@ export const ja: Record<string, string> = {
   "block.remoteContent.pdf": "外部サイトの PDF",
   "block.remoteContent.why": "ノートを開いただけでは取りに行きません。クリックすると読み込みます。",
   "block.remoteContent.action": "読み込む",
+  "ai.chat.remoteImage.title": "{host} の画像",
+  "ai.chat.remoteImage.titleNoHost": "ほかのサイトの画像",
+  "ai.chat.remoteImage.why": "自動では読み込みません。読み込むと、そのサイトにあなたの IP アドレスが伝わります。",
+  "ai.chat.remoteImage.action": "画像を読み込む",
   "pdfExport.remoteMediaOmitted": "外部サイトのメディア（読み込んでいないため PDF に含めていません）",
 
   // ── 貼り付け時のローカル取り込み ──

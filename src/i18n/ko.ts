@@ -2533,6 +2533,10 @@ export const ko: Record<string, string> = {
   "block.remoteContent.pdf": "다른 사이트의 PDF",
   "block.remoteContent.why": "노트를 연 것만으로는 가져오지 않습니다. 클릭하면 불러옵니다.",
   "block.remoteContent.action": "불러오기",
+  "ai.chat.remoteImage.title": "{host}의 이미지",
+  "ai.chat.remoteImage.titleNoHost": "다른 사이트의 이미지",
+  "ai.chat.remoteImage.why": "자동으로 불러오지 않습니다. 불러오면 해당 사이트에 IP 주소가 전달됩니다.",
+  "ai.chat.remoteImage.action": "이미지 불러오기",
   "pdfExport.remoteMediaOmitted": "다른 사이트의 미디어(불러오지 않아 PDF에 포함하지 않음)",
 
   // ── Copying pasted remote images onto this device ──

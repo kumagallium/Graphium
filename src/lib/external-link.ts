@@ -8,6 +8,7 @@
 // が、クライアントが openUrl() を一度も呼んでいなかった。ここで橋渡しする。
 
 import { isTauri } from "./platform";
+import { safeExternalHref } from "./safe-href";
 
 /**
  * 外部 URL を OS のデフォルトブラウザで開く。
@@ -16,7 +17,13 @@ import { isTauri } from "./platform";
  *
  * openUrl が失敗したら window.open にフォールバックする（取りこぼしより誤動作の方がマシ）。
  */
-export async function openExternalUrl(url: string): Promise<void> {
+export async function openExternalUrl(rawUrl: string): Promise<void> {
+  // 入口で検査する。外部由来の URL（javascript: / data: / file: 等）はここで止める
+  const url = safeExternalHref(rawUrl);
+  if (!url) {
+    console.warn("[external-link] 許可されないスキームの URL は開かない");
+    return;
+  }
   if (isTauri()) {
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -46,6 +53,11 @@ function isExternalHttpUrl(href: string): boolean {
   }
 }
 
+/** HTML の <a href> と SVG の <a href> / <a xlink:href> のどれからでも href 文字列を取る。 */
+function anchorHref(anchor: Element): string | null {
+  return anchor.getAttribute("href") ?? anchor.getAttribute("xlink:href");
+}
+
 /**
  * Tauri 環境でのみ、ドキュメント全体のアンカークリックを横取りして
  * 外部 http(s) リンクを openUrl() に流すグローバルハンドラを仕込む。
@@ -62,16 +74,25 @@ export function installExternalLinkHandler(): void {
       // 修飾キー併用（新規タブ等の OS 操作）は尊重して素通し
       if (e.defaultPrevented || e.button !== 0) return;
       const target = e.target as HTMLElement | null;
-      const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
+      // SVG の <a>（href が SVGAnimatedString・xlink:href のみの場合もある）と <area> も拾う。
+      // 拾わないと既定動作でメインウィンドウ自体が外部ページへ遷移する。
+      const anchor = target?.closest?.("a, area") as Element | null;
       if (!anchor) return;
-      const href = anchor.getAttribute("href");
-      if (!href || !isExternalHttpUrl(href)) return;
+      const href = anchorHref(anchor);
+      if (!href) return;
+      if (!isExternalHttpUrl(href)) {
+        // 実行できるスキーム（javascript: / vbscript:）は遷移させない
+        // eslint-disable-next-line no-control-regex
+        const norm = href.replace(/[\u0000-\u0020\u007f-\u009f]+/g, "");
+        if (/^(javascript|vbscript):/i.test(norm)) e.preventDefault();
+        return;
+      }
       // エディタ本文（contenteditable）内のリンクはサイドピークのリーダーで開く
       // （note-app / side-peek のクリックハンドラが担当）。ここで openUrl すると
       // 「外部ブラウザとピークが同時に開く」二重動作になるので素通しする。
       if (anchor.closest('[contenteditable="true"]')) return;
       e.preventDefault();
-      void openExternalUrl(anchor.href);
+      void openExternalUrl(new URL(href, window.location.href).toString());
     },
     true,
   );

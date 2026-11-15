@@ -604,3 +604,20 @@ describe("上付き・下付き → <sup> / <sub>", () => {
     expect(result[1].content.rows[0].cells[0]).toEqual([text("m"), text("<sup>2</sup>")]);
   });
 });
+
+describe("インライン画像の素材名エスケープ（監査 #84）", () => {
+  it("名前の ] ( ) で画像記法を抜けられない", () => {
+    const blocks = [
+      {
+        id: "1",
+        type: "paragraph",
+        content: [{ type: "inlineImage", props: { fileId: "img-9", name: "a](https://attacker.example/t.png)![b.png" } }],
+      },
+    ];
+    const out = sanitizeBlocksForMarkdown(blocks as any, SCHEMA);
+    const text = (out[0] as any).content[0].text as string;
+    expect(text).toBe("![a\\]\\(https://attacker.example/t.png\\)!\\[b.png](media:img-9)");
+    // エスケープされていない `](` は 1 か所（素材参照）だけ
+    expect(text.match(/(?<!\\)\]\(/g)).toHaveLength(1);
+  });
+});

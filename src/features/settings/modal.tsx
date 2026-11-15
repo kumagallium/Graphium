@@ -1,5 +1,6 @@
 // 設定モーダル（タブ構成: General / AI Setup）
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronLeft,
   Settings as SettingsIcon,
@@ -5743,7 +5744,7 @@ function KbEntryRow({
             <span key={i} className="text-xs">
               {s.url ? (
                 <a
-                  href={s.url}
+                  href={safeExternalHref(s.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"

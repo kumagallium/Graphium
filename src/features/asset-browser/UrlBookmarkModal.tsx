@@ -1,6 +1,7 @@
 // URL ブックマーク登録モーダル
 // 外部 URL を入力し、メタデータを取得してアセットとして登録する
 
+import { safeExternalHref } from "../../lib/safe-href";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Loader2, ExternalLink } from "lucide-react";
@@ -264,14 +265,19 @@ export function UrlBookmarkModal({ onRegister, onClose }: UrlBookmarkModalProps)
                       </p>
                     )}
                   </div>
+                  {(() => {
+                    const href = safeExternalHref(currentMeta.url);
+                    return href ? (
                   <a
-                    href={currentMeta.url}
+                    href={href}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors shrink-0"
                   >
                     <ExternalLink size={14} />
                   </a>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             </>

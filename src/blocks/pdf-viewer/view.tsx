@@ -8,6 +8,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import "../../lib/pdfjs-config";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
+import { PdfExportHtml } from "./export-html";
 import { isLocalMediaRef, remoteRefHost } from "../../features/asset-browser/local-media-ref";
 import {
   allowRemoteContentFor,
@@ -229,13 +230,7 @@ export const PdfViewerBlock = createReactBlockSpec(
      */
     toExternalHTML: (props) => {
       const { url, name } = props.block.props;
-      // URL 未設定のブロックは書き出す中身を持たない
-      if (!url) return <p />;
-      return (
-        <p>
-          <a href={url}>{name || url}</a>
-        </p>
-      );
+      return <PdfExportHtml url={url} name={name} />;
     },
   },
 );

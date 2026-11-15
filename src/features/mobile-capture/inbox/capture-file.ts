@@ -12,6 +12,8 @@
 // - 未知バージョン / 形状不正は null を返し、呼び出し側（importer）が従来どおり
 //   「その他」素材として取り込む — **データを落とさない**。
 
+import { safeExternalHref } from "../../../lib/safe-href";
+
 /** 捕獲ファイルの形式バージョン。互換を壊す変更で上げる（旧デスクトップは素材扱いに退避）。 */
 export const GRAPHIUM_CAPTURE_FILE_VERSION = 1 as const;
 
@@ -126,7 +128,8 @@ function isNonEmptyString(value: unknown): value is string {
  * どちらかを満たさなければ null（呼び出し側は従来の素材取り込みへフォールバック）。
  *
  * null になるもの: 専用拡張子でない / JSON でない / graphium バージョン不一致
- * （未知の新バージョン含む）/ kind 不明 / 必須フィールド（memo.text, url.url）欠落。
+ * （未知の新バージョン含む）/ kind 不明 / 必須フィールド（memo.text, url.url）欠落 /
+ * url.url が http(s) でない。
  * createdAt は無くても弾かない（着地側が取り込み時刻で補う — データ優先）。
  */
 export function parseGraphiumCaptureFile(
@@ -157,6 +160,9 @@ export function parseGraphiumCaptureFile(
   }
   if (obj.kind === "url") {
     if (!isNonEmptyString(obj.url)) return null;
+    // http(s) 以外（javascript: / file: / smb: 等）は URL 捕獲として受けない。
+    // 受信箱のプレビューや素材のリンクにそのまま載り、題と宛先を食い違わせた偽リンクにできるため
+    if (!/^https?:\/\//i.test(obj.url.trim()) || !safeExternalHref(obj.url)) return null;
     return {
       graphium: GRAPHIUM_CAPTURE_FILE_VERSION,
       kind: "url",

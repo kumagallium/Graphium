@@ -648,3 +648,53 @@ describe("fetchAsReaderArticle の宛先検査（メタデータ宛・リダイ�
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("sanitizeReaderHtml: SVG アニメーション・style・name（監査 #32 #96 #54 #38）", () => {
+  it("<animate> / <set> / <animateTransform> / <mpath> を落とす（href を javascript: に書き換える手口）", () => {
+    const out = sanitizeReaderHtml(
+      `<svg><a><animate attributeName="href" values="javascript:alert(1)" begin="0s" fill="freeze"/><set attributeName="href" to="javascript:alert(2)"/><animateTransform attributeName="transform"/><rect width="9" height="9"/></a></svg>`,
+    );
+    expect(out).not.toMatch(/animate|<set|javascript:/i);
+    expect(out).toContain("<rect");
+  });
+
+  it("SVG の <a> の xlink:href / href の javascript: は無害化される", () => {
+    const out = sanitizeReaderHtml(
+      `<svg><a xlink:href="javascript:alert(1)"><text>x</text></a><a href=" JaVa\tScript:alert(2)"><text>y</text></a></svg>`,
+    );
+    expect(out).not.toMatch(/javascript:/i);
+  });
+
+  it("画面を覆う style / CSS エスケープの url( / @import / expression を属性ごと落とす", () => {
+    for (const style of [
+      "position:fixed;inset:0",
+      "z-index:9999",
+      "background-image:u\\72l(https://t.example/x.png)",
+      "background:url(https://t.example/x.png)",
+      "width:expression(alert(1))",
+      "@import 'https://t.example/a.css'",
+    ]) {
+      const out = sanitizeReaderHtml(`<svg style="${style}"><rect width="1" height="1"/></svg>`);
+      expect(out, style).not.toContain("style=");
+    }
+  });
+
+  it("害のない style は残す", () => {
+    const out = sanitizeReaderHtml(`<svg style="width:100px"><rect width="1" height="1"/></svg>`);
+    expect(out).toContain("style=");
+  });
+
+  it("fill=u\\72l(...) のような presentation 属性のエスケープも落とす", () => {
+    const out = sanitizeReaderHtml(`<svg><rect fill="u\\72l(https://t.example/x)" width="1" height="1"/></svg>`);
+    expect(out).not.toContain("t.example");
+  });
+
+  it("name 属性を落とし、id は残す", () => {
+    const out = sanitizeReaderHtml(`<p><img name="x" id="__TAURI_INTERNALS__" src="data:image/png;base64,AAAA"><a id="fn1" name="fn1">1</a></p>`);
+    expect(out).not.toContain("name=");
+    expect(out).toContain('id="fn1"');
+    // id でも名前付きプロパティになるので、isTauri() を騙す名前は落とす
+    expect(out).not.toContain("__TAURI_INTERNALS__");
+    expect(sanitizeReaderHtml('<a id="__TAURI__">t</a><a id="location">u</a>')).not.toMatch(/id=/);
+  });
+});
