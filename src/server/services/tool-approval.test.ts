@@ -7,6 +7,8 @@ import {
   pendingApprovalRunCountForTest,
   resolveToolApproval,
   skippedToolResult,
+  approvalExemptionsFromServers,
+  isApprovalExempt,
   toolsNeedingApproval,
   withToolApproval,
   type ApprovalRequestEvent,
@@ -28,6 +30,46 @@ describe("toolsNeedingApproval", () => {
 
   it("今後確認しないと決めたサーバーの道具は確かめない", () => {
     expect(toolsNeedingApproval(tools, info, new Set(["tavily"]))).toEqual(["post_message"]);
+  });
+});
+
+describe("確認の免除を道具の名前に絞る（厳選の接続先）", () => {
+  const tavilyInfo: Record<string, MCPToolInfo> = {
+    "tavily-search": { server: "tavily", readOnly: false },
+    "tavily-extract": { server: "tavily", readOnly: false },
+    // サーバーが全部に readOnlyHint を付けてきても、一覧に無い道具は確認する
+    "tavily-crawl": { server: "tavily", readOnly: true },
+    list_channels: { server: "slack", readOnly: true },
+  };
+  const tools = { "tavily-search": {}, "tavily-extract": {}, "tavily-crawl": {}, list_channels: {} };
+  const { skipServers, freeTools } = approvalExemptionsFromServers([
+    { name: "tavily", approvalFreeTools: ["tavily-search", "tavily_search"] },
+    { name: "slack" },
+  ]);
+
+  it("検索だけ確認なし。extract・crawl は readOnlyHint があっても確認する", () => {
+    expect(toolsNeedingApproval(tools, tavilyInfo, skipServers, freeTools)).toEqual(["tavily-extract", "tavily-crawl"]);
+  });
+
+  it("一覧を持たないサーバーの readOnlyHint による免除は従来どおり", () => {
+    expect(isApprovalExempt("list_channels", tavilyInfo.list_channels, skipServers, freeTools)).toBe(true);
+  });
+
+  it("利用者が今後確認しないと決めたサーバーは、一覧にない道具も免除（従来どおり）", () => {
+    const s = approvalExemptionsFromServers([{ name: "tavily", skipApproval: true, approvalFreeTools: ["tavily-search"] }]);
+    expect(toolsNeedingApproval(tools, tavilyInfo, s.skipServers, s.freeTools)).toEqual([]);
+  });
+});
+
+describe("同名のサーバーが並ぶとき", () => {
+  it("免除は付けない（どちらの設定か分からないため。別コマンドが確認なしになるのを防ぐ）", () => {
+    const s = approvalExemptionsFromServers([
+      { name: "foo", skipApproval: true },
+      { name: "foo" },
+      { name: "bar", skipApproval: true },
+    ]);
+    expect(s.skipServers.has("foo")).toBe(false);
+    expect(s.skipServers.has("bar")).toBe(true);
   });
 });
 

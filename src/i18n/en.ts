@@ -4513,6 +4513,7 @@ export const en: Record<string, string> = {
   "webClip.pair.title": "Connect the browser extension?",
   "webClip.pair.body": "A Chrome extension asks to send web clips to this Graphium. Allow it only if the extension shows the same number:",
   "webClip.pair.note": "If you did not press \"Connect to Graphium\" in the extension just now, choose Don't allow.",
+  "webClip.pair.extensionId": "Extension ID",
   "webClip.pair.approve": "Allow",
   "webClip.pair.deny": "Don't allow",
 };

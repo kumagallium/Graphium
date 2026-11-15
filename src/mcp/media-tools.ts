@@ -27,6 +27,7 @@ import { join } from "node:path";
 import type { MediaIndexEntry, MediaType } from "../features/asset-browser/media-index";
 import { computeBlobHash } from "../lib/storage/shared/hash";
 import { MEDIA_TYPES } from "./media-search";
+import { READ_INJECTION_GUARD } from "./injection-guard";
 import { readMediaIndex } from "./sources";
 import { writeFileAtomic } from "./upkeep/atomic-write";
 import { acquireWriteLock } from "./upkeep/guard";
@@ -171,6 +172,22 @@ function nameExt(name: string): string | undefined {
   if (dot <= 0 || dot === base.length - 1) return undefined;
   return base.slice(dot + 1);
 }
+
+/**
+ * add_material が断る拡張子。実行ファイル・スクリプト・ショートカットなど、
+ * 「アプリで開く」や OS の関連付けで実行されうるもの。外の AI が仕込めないようにする
+ */
+export const BLOCKED_MATERIAL_EXTS: ReadonlySet<string> = new Set([
+  "exe", "bat", "cmd", "com", "scr", "pif", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh",
+  "hta", "lnk", "url", "jar", "app", "command", "terminal", "sh", "bash", "zsh", "csh", "ksh", "scpt", "workflow",
+  "dll", "reg", "cpl", "gadget", "inf", "action",
+  // インストーラ・ショートカット／設定ファイル・アプリ形式・OS が関連付けで起動するもの
+  // （解析用の .py や、マクロ付き Office は資料としての正当な利用があるので断らない）
+  "chm", "jnlp", "msc", "sct", "wsc", "xll", "wll", "ws", "bas", "tool", "run", "xbap", "ocx", "iqy", "diagcab",
+  "library-ms", "settingcontent-ms",
+  "xlam", "ppam", "appx", "msix", "appinstaller", "appref-ms", "application", "pkg", "dmg", "desktop", "webloc", "scf", "ps1xml",
+  "psd1",
+]);
 
 /** 保存に使う拡張子。名前を優先し、無ければ MIME から。決められなければ null（拡張子なし） */
 export function mediaExt(name: string, mimeType: string): string | null {
@@ -388,7 +405,8 @@ async function addMaterialLocked(input: AddMaterialInput, root: string): Promise
   if (!vaultExists(root)) throw new MediaToolError(vaultMissingMessage(root));
   if (input.path !== undefined) throw new MediaToolError("path は受け付けません。bytes_base64 でファイルの中身を渡してください");
   if (input.folder !== undefined) throw new MediaToolError("folder は v1 では受け付けません");
-  const name = typeof input.name === "string" ? input.name.trim() : "";
+  // 末尾のドット・空白は OS が落とすので（"evil.cmd." は evil.cmd になる）、検査の前に落とす
+  const name = typeof input.name === "string" ? input.name.trim().replace(/[.\s]+$/, "") : "";
   if (!name || name.includes("\0")) throw new MediaToolError("name が空です");
   if (typeof input.bytes_base64 !== "string" || input.bytes_base64.length === 0) {
     throw new MediaToolError("bytes_base64 が空です");
@@ -404,6 +422,14 @@ async function addMaterialLocked(input: AddMaterialInput, root: string): Promise
     throw new MediaToolError(`大きすぎます（上限 ${MAX_MEDIA_BYTES / 1024 / 1024} MiB）`);
   }
   const mimeType = (typeof input.mimeType === "string" && input.mimeType.trim()) || guessMimeType(name);
+  // 実行ファイル・スクリプト・ショートカットの拡張子は、名前の末尾でも MIME から決まる拡張子でも断る
+  const nameExtLower = nameExt(name)?.toLowerCase();
+  const mimeExtLower = EXT_FROM_MIME[mimeType]?.toLowerCase();
+  if ((nameExtLower && BLOCKED_MATERIAL_EXTS.has(nameExtLower)) || (mimeExtLower && BLOCKED_MATERIAL_EXTS.has(mimeExtLower))) {
+    throw new MediaToolError(
+      `実行ファイル・スクリプト・ショートカットの素材（.${nameExtLower ?? mimeExtLower}）は追加できません。資料として必要なら、拡張子を .txt などにして中身を渡してください`,
+    );
+  }
 
   const lock = await acquireWriteLock(root);
   if (!lock.ok) throw new MediaToolError(lock.message);
@@ -474,9 +500,12 @@ async function addMaterialUnderLock(
 // ── 登録 ─────────────────────────────────────────────────────
 
 /** 失敗を isError の JSON にして返す。想定外の例外もメッセージだけを出す */
-async function guarded<T>(fn: () => Promise<T> | T) {
+async function guarded<T>(fn: () => Promise<T> | T, withGuard = false) {
   try {
-    return json(await fn());
+    const res = json(await fn());
+    // 素材の名前は第三者の書いたものでありうるので、読み出しの道具には「資料はデータ」の注意を 2 件目の text で添える
+    if (withGuard) res.content.push({ type: "text" as const, text: READ_INJECTION_GUARD });
+    return res;
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));
   }
@@ -500,7 +529,7 @@ export function registerMediaTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: true },
     },
-    async (args) => guarded(() => listMedia(args)),
+    async (args) => guarded(() => listMedia(args), true),
   );
 
   server.registerTool(

@@ -29,6 +29,7 @@ import {
 import { discoverAllMcpTools } from "../services/mcp-discovery.js";
 import {
   findSearchTool,
+  isTrustedGroundingTool,
   runGroundingSearch,
   normalizeUrlForMatch,
 } from "../services/grounding-search.js";
@@ -80,8 +81,9 @@ app.post("/check", async (c) => {
 
   // (2) 接続済み MCP 検索ツール（あれば）。広い一般 web を上乗せする。
   try {
-    const { tools } = await discoverAllMcpTools(c);
-    const searchTool = findSearchTool(tools);
+    const { tools, toolInfo, skipServers, freeTools, operatorServers } = await discoverAllMcpTools(c);
+    // 確認なしで動かしてよいと分かっている検索だけを使う（名前が検索らしいだけの道具は使わない）
+    const searchTool = findSearchTool(tools, (name) => isTrustedGroundingTool(name, toolInfo, skipServers, freeTools, operatorServers));
     if (searchTool) {
       const search = await runGroundingSearch(searchTool, body.claimText);
       if (search.evidenceText && search.urls.length > 0) {

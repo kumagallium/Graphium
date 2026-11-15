@@ -46,6 +46,7 @@ import type { ExistingClaimIndex } from "../server/services/ingest-existing-inde
 import type { CaptureIndex } from "../features/mobile-capture/capture-store";
 import { recordMemoKnowledged } from "../features/mobile-capture/memo-knowledged";
 import { titleRelevance } from "../server/services/ingest-existing-index";
+import { textWithGuard } from "./injection-guard";
 import { claimsGateMessage } from "./feature-flags";
 import { loadClaimSource, sha256, type ClaimSource } from "./claim-source";
 import {
@@ -906,7 +907,7 @@ export function registerClaimTools(server: McpServer, ctx: ToolContext = {}): vo
       },
       annotations: { readOnlyHint: false },
     },
-    async (input) => text(await findClaimsForTask(input, root())),
+    async (input) => textWithGuard(await findClaimsForTask(input, root())),
   );
 
   server.registerTool(

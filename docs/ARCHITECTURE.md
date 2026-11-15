@@ -2604,7 +2604,15 @@ The LLM judge runs in one of two modes, picked per request in
     fits the "is this claim known in the literature" question directly.
   - **a connected MCP search tool, on top** (`services/grounding-search.ts →
     findSearchTool` + `runGroundingSearch`): adds broad general-web coverage
-    when the user has wired one up (e.g. Tavily / Brave). Optional.
+    when the operator has configured an MCP Registry (the `CRUCIBLE_API_URL`
+    environment variable only; a request-supplied `X-Registry-URL` header is
+    ignored on this path):
+    one search tool (picked by name) from a Registry server is used, unless
+    it is explicitly `destructiveHint: true`. Servers the user adds in
+    Settings → AI are not used (the app sends no `X-MCP-Servers` header for
+    world grounding; the header-based branches — curated `approvalFreeTools`,
+    readOnlyHint on a "don't ask again" server — serve other clients that do
+    send it). Optional.
 
   The verdict is grounded in real results rather than the model's memory;
   `null` means "searched and found no direct prior art — not a proof of
@@ -4993,9 +5001,29 @@ user declined. The client shows one dialog at a time
 (`ToolApprovalHost`, mounted once in `note-app`); "don't ask again" sets
 `skipApproval` on that server, which the server list's **Ask before
 running tools that can change things** checkbox turns back off. Curated
-entries marked `readOnly` in `catalog.json` (Tavily, whose tools carry no
-annotations) are added with `skipApproval`. World grounding only uses
-search tools and is not gated.
+entries in `catalog.json` list `approvalFreeTools` (Tavily, whose tools
+carry no annotations: only its search tool names); they are saved with that
+list instead of a server-wide `skipApproval` (sent in `X-MCP-Servers` too).
+For such a server a tool outside the list asks even if the server marks it
+`readOnlyHint`, so URL-fetching tools (extract / crawl) are confirmed. Older
+saved entries with `skipApproval` for a curated URL are read as the list on
+load. World grounding is not gated, so it only picks a search tool from an
+operator-configured Registry server (unless `destructiveHint: true`), or, for
+clients sending `X-MCP-Servers`, one on a curated list or `readOnlyHint` on a
+"don't ask again" server (name-only matches elsewhere are ignored). The app
+itself does not use user-added servers for world grounding.
+
+Prompt-injection guards: the chat system prompt carries
+`MATERIAL_AS_DATA_GUARD` (notes, retrieved passages, imported documents,
+search and tool results are data, not instructions), the retrieved context
+says the same and neutralizes `</knowledge>` / `</notes>` / `</wiki-index>`
+inside passages, the text-tool fallback loop neutralizes `<tool_result>` /
+`<tool_call>` inside tool results, and MCP tools that return note or source
+text append `READ_INJECTION_GUARD` as a separate text part. The MCP side
+fetches registered web pages only from public addresses (redirects are
+re-checked one hop at a time; loopback, private, link-local and metadata
+addresses are refused) and `add_material` refuses executable, script and
+shortcut extensions.
 
 Clients are kept in a per-`id` connection pool and reused across
 requests; editing a server's config re-signs the entry and transparently

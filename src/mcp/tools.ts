@@ -8,6 +8,7 @@
 //   - 会話の内容から手順・来歴を推論して書き戻すツールは作らない。推論された来歴は
 //     検証できず、記録としての意味を失うため。
 
+import { textWithGuard } from "./injection-guard";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -118,7 +119,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         (h, i) =>
           `${i + 1}. ${h.title}\n   noteId: ${h.noteId}  (${h.kind}, score ${h.score})\n   ${h.snippet}`,
       );
-      return text(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
+      return textWithGuard(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
     },
   );
 
@@ -165,7 +166,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         total > topics.length
           ? `${total} 件中 ${topics.length} 件のトピック（残りは limit を上げると見られます）`
           : `${topics.length} 件のトピック`;
-      return text(`${header}\n\n${lines.join("\n\n")}`);
+      return textWithGuard(`${header}\n\n${lines.join("\n\n")}`);
     },
   );
 
@@ -246,7 +247,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         parts.push(`\n## メンバー知見（${detail.members.length} 件）\n` + memberLines.join("\n"));
       }
 
-      return text(parts.join("\n"));
+      return textWithGuard(parts.join("\n"));
     },
   );
 
@@ -364,7 +365,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       }
 
       parts.push(`\n## 本文\n\n${noteToMarkdown(doc)}`);
-      return text(parts.join("\n"));
+      return textWithGuard(parts.join("\n"));
     },
   );
 
@@ -399,7 +400,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         );
       }
 
-      if (format === "mermaid") return text(renderStepFlowMermaid(doc));
+      if (format === "mermaid") return textWithGuard(renderStepFlowMermaid(doc));
 
       // ラベルは索引ではなくノート本体から組む（索引に載っていないノートでも出る）
       const inline = buildIndexEntry(noteId, doc).inlineLabels ?? [];
@@ -421,7 +422,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .join("\n");
       });
 
-      return text(`# ${doc.title ?? noteId} の手順（${steps.length} 件）\n\n${blocks.join("\n\n")}`);
+      return textWithGuard(`# ${doc.title ?? noteId} の手順（${steps.length} 件）\n\n${blocks.join("\n\n")}`);
     },
   );
 
@@ -463,7 +464,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           .join("\n");
         return `■ ${g.label}: ${g.text}  — ${g.noteCount} ノート\n${notes}`;
       });
-      return text(lines.join("\n\n"));
+      return textWithGuard(lines.join("\n\n"));
     },
   );
 
@@ -502,7 +503,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       const lines = groups.map(
         (g) => `${g.label.padEnd(9)} ${g.text}  — ${g.noteCount} ノート / ${g.occurrenceCount} 箇所`,
       );
-      return text(`${groups.length} 件のラベル（横断件数の多い順）\n\n${lines.join("\n")}`);
+      return textWithGuard(`${groups.length} 件のラベル（横断件数の多い順）\n\n${lines.join("\n")}`);
     },
   );
 
@@ -561,7 +562,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               )
               .join("\n");
 
-      return text(
+      return textWithGuard(
         [
           `# ${startTitle} の来歴`,
           "",

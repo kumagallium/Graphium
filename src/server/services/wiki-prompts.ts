@@ -6,6 +6,7 @@ import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-se
 import { estimateTokens } from "../../lib/context-estimate.js";
 import { buildExistingClaimIndex, INGEST_INPUT_BUDGET_TOKENS, type ExistingClaimIndex } from "./ingest-existing-index.js";
 import { formatProvSummaryForPrompt } from "./prov-prompt-injection.js";
+import { SOURCE_AS_DATA_GUARD } from "./source-data-guard.js";
 import { buildRewriterSystemPrompt, buildRewriterUserMessage, type RewriteSection } from "./wiki-rewriter.js";
 import { buildIngesterSystemPrompt, type ExistingWikiInfo } from "./wiki-ingester.js";
 
@@ -34,6 +35,8 @@ export type IngestPrompt = {
   existingIndex: ExistingClaimIndex;
 };
 
+export { SOURCE_AS_DATA_GUARD };
+
 /** 知見抽出のシステムプロンプト・ユーザーメッセージ・既存の知見一覧を組む */
 export function buildIngestPrompt(input: IngestPromptInput): IngestPrompt {
   // 取り込んだ外部文書（PDF / Word / URL / チャット）は noteId に prefix が付く
@@ -57,7 +60,8 @@ export function buildIngestPrompt(input: IngestPromptInput): IngestPrompt {
   const existingWikis = input.existingWikiTitles || [];
   const buildPrompt = (existingIndex: ExistingClaimIndex) =>
     buildIngesterSystemPrompt(input.language || "en", existingWikis, input.skills, { isDocument, isMemo, existingIndex })
-    + buildKnowledgeSchemaPromptSection(input.knowledgeSchema);
+    + buildKnowledgeSchemaPromptSection(input.knowledgeSchema)
+    + SOURCE_AS_DATA_GUARD;
   const emptyIndex = buildExistingClaimIndex([], "");
   const fixedTokens = estimateTokens(buildPrompt(emptyIndex)) + estimateTokens(userMessage);
   const existingIndex = buildExistingClaimIndex(
@@ -81,6 +85,7 @@ export type RewritePromptInput = {
 export function buildRewritePrompt(input: RewritePromptInput): { systemPrompt: string; userMessage: string } {
   let systemPrompt = buildRewriterSystemPrompt(input.language || "en", input.skills);
   systemPrompt += buildKnowledgeSchemaPromptSection(input.knowledgeSchema);
+  systemPrompt += SOURCE_AS_DATA_GUARD;
   const userMessage = buildRewriterUserMessage({
     existingSections: input.existingSections,
     newSections: input.newSections,

@@ -319,9 +319,14 @@ export async function getAssistantConnectStatus(env: AssistantConnectEnv = defau
 
 /** Claude Desktop の設定ファイルに graphium を足す（ほかの項目は触らない） */
 function writeClaudeDesktopConfig(env: AssistantConnectEnv): void {
-  const path = claudeDesktopConfigPath(env);
+  const configured = claudeDesktopConfigPath(env);
+  // dotfiles へのシンボリックリンクなら、リンクを残してリンク先を書き換える（Codex 側と同じ）
+  const path = existsSync(configured) ? realpathSync(configured) : configured;
   let config: Record<string, unknown> = {};
+  // 新しく作るときは本人だけが読める権限にする（ほかの MCP の API キーが入ることがある）
+  let mode = 0o600;
   if (existsSync(path)) {
+    mode = statSync(path).mode & 0o777;
     const raw = readFileSync(path, "utf8");
     if (raw.trim()) {
       let parsed: unknown;
@@ -349,8 +354,10 @@ function writeClaudeDesktopConfig(env: AssistantConnectEnv): void {
   servers[SERVER_NAME] = { command: env.node, args: [env.script] };
   config.mcpServers = servers;
   // 途中で落ちても元のファイルを壊さないよう、隣に書いてから置き換える
+  // 元の権限を引き継ぐ（umask 任せにすると 0600 のファイルが 0644 になる）
   const tmp = `${path}.graphium-tmp`;
-  writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode });
+  chmodSync(tmp, mode);
   renameSync(tmp, path);
 }
 

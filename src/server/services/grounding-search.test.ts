@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  findSearchTool,
+  findSearchTool, isTrustedGroundingTool,
   pickQueryParam,
   extractUrls,
   normalizeUrlForMatch,
@@ -14,6 +14,25 @@ function fakeTool(over: Partial<GroundingSearchTool> = {}): GroundingSearchTool 
   return { execute: vi.fn(async () => ""), ...over };
 }
 
+describe("findSearchTool（選べる道具を絞る）", () => {
+  it("信頼できない道具は名前が検索らしくても選ばない", () => {
+    const tools = { create_saved_search: fakeTool(), tavily_search: fakeTool() };
+    expect(findSearchTool(tools, (n) => n === "tavily_search")?.name).toBe("tavily_search");
+    expect(findSearchTool({ create_saved_search: fakeTool() }, () => false)).toBeNull();
+  });
+  it("exa は単語として当たるときだけ（example / exact は当たらない）", () => {
+    expect(findSearchTool({ create_example_page: fakeTool() }, () => true)).toBeNull();
+    expect(findSearchTool({ exact_lookup: fakeTool() }, () => true)).toBeNull();
+    expect(findSearchTool({ exa_search: fakeTool() }, () => true)?.name).toBe("exa_search");
+  });
+  it("exa のキャメルケース（exaSearch / ExaSearch）も当たる。hexagon は当たらない", () => {
+    expect(findSearchTool({ exaSearch: fakeTool() }, () => true)?.name).toBe("exaSearch");
+    expect(findSearchTool({ ExaSearch: fakeTool() }, () => true)?.name).toBe("ExaSearch");
+    expect(findSearchTool({ hexagon_tool: fakeTool() }, () => true)).toBeNull();
+    expect(findSearchTool({ example: fakeTool() }, () => true)).toBeNull();
+  });
+});
+
 describe("findSearchTool", () => {
   it("web 検索とわかる名前を最優先する", () => {
     const tools = {
@@ -21,25 +40,25 @@ describe("findSearchTool", () => {
       web_search: fakeTool(),
       some_search_helper: fakeTool(),
     };
-    expect(findSearchTool(tools)?.name).toBe("web_search");
+    expect(findSearchTool(tools, () => true)?.name).toBe("web_search");
   });
 
   it("tavily / exa / brave なども検索ツールとして拾う", () => {
-    expect(findSearchTool({ tavily_search: fakeTool() })?.name).toBe("tavily_search");
-    expect(findSearchTool({ exa_search: fakeTool() })?.name).toBe("exa_search");
+    expect(findSearchTool({ tavily_search: fakeTool() }, () => true)?.name).toBe("tavily_search");
+    expect(findSearchTool({ exa_search: fakeTool() }, () => true)?.name).toBe("exa_search");
   });
 
   it("一般的な search 名にフォールバックする", () => {
-    expect(findSearchTool({ search: fakeTool() })?.name).toBe("search");
-    expect(findSearchTool({ knowledge_search: fakeTool() })?.name).toBe("knowledge_search");
+    expect(findSearchTool({ search: fakeTool() }, () => true)?.name).toBe("search");
+    expect(findSearchTool({ knowledge_search: fakeTool() }, () => true)?.name).toBe("knowledge_search");
   });
 
   it("検索ツールが無ければ null", () => {
-    expect(findSearchTool({ read_file: fakeTool(), write_file: fakeTool() })).toBeNull();
+    expect(findSearchTool({ read_file: fakeTool(), write_file: fakeTool() }, () => true)).toBeNull();
   });
 
   it("execute を持たないエントリは除外する", () => {
-    expect(findSearchTool({ web_search: { description: "x" } as unknown })).toBeNull();
+    expect(findSearchTool({ web_search: { description: "x" } as unknown }, () => true)).toBeNull();
   });
 });
 
@@ -165,5 +184,37 @@ describe("runGroundingSearch", () => {
     });
     const out = await runGroundingSearch({ name: "web_search", tool }, "x");
     expect(out).toEqual({ evidenceText: "", urls: [] });
+  });
+});
+
+describe("isTrustedGroundingTool（世界照合が使う道具の信頼判定）", () => {
+  const exec = { execute: async () => ({}) };
+  const tools = { create_saved_search: exec, "tavily-search": exec, "tavily-extract": exec, brave_search: exec };
+  const toolInfo = {
+    create_saved_search: { server: "evil", readOnly: false },
+    "tavily-search": { server: "tavily", readOnly: false },
+    "tavily-extract": { server: "tavily", readOnly: true },
+    brave_search: { server: "brave", readOnly: true },
+  };
+  const free = new Map([["tavily", new Set(["tavily-search"])]]);
+
+  it("確認なしの一覧にある検索は選ばれ、名前が検索らしいだけの信頼できない道具は選ばれない", () => {
+    const got = findSearchTool(tools, (n) => isTrustedGroundingTool(n, toolInfo, new Set(), free));
+    expect(got?.name).toBe("tavily-search");
+  });
+  it("一覧外の道具・「今後確認しない」でないサーバーの readOnly は使わない", () => {
+    expect(isTrustedGroundingTool("tavily-extract", toolInfo, new Set(), free)).toBe(false);
+    expect(isTrustedGroundingTool("brave_search", toolInfo, new Set(), free)).toBe(false);
+    expect(isTrustedGroundingTool("create_saved_search", toolInfo, new Set(["evil"]), free)).toBe(false);
+  });
+  it("「今後確認しない」にしたサーバーの readOnly の道具は使える", () => {
+    expect(isTrustedGroundingTool("brave_search", toolInfo, new Set(["brave"]), free)).toBe(true);
+  });
+  it("運用側 Registry のサーバーは注釈が無くても使える（destructiveHint 明示は除く）", () => {
+    expect(isTrustedGroundingTool("brave_search", toolInfo, new Set(), free, new Set(["brave"]))).toBe(true);
+    expect(isTrustedGroundingTool("create_saved_search", toolInfo, new Set(), free, new Set(["evil"]))).toBe(true);
+    const d = { x_search: { server: "op", readOnly: false, destructive: true } };
+    expect(isTrustedGroundingTool("x_search", d, new Set(), free, new Set(["op"]))).toBe(false);
+    expect(isTrustedGroundingTool("x_search", d, new Set(), free, new Set())).toBe(false);
   });
 });

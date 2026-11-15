@@ -107,7 +107,7 @@ function getOrConnect(s: MCPServerInfo): Promise<MCPClient> {
  * readOnly は readOnlyHint が true と明示されたときだけ true。印の無い道具は
  * MCP の仕様（readOnlyHint の既定は false）どおり「書き換えるかもしれない」とみなす
  */
-export type MCPToolInfo = { server: string; title?: string; readOnly: boolean };
+export type MCPToolInfo = { server: string; title?: string; readOnly: boolean; destructive?: boolean };
 
 /**
  * 道具の一覧を取り、AI SDK の道具と annotations をそろえて返す。
@@ -126,6 +126,8 @@ async function listWithInfo(
       server: server.name,
       ...(typeof title === "string" && title ? { title } : {}),
       readOnly: d.annotations?.readOnlyHint === true,
+      // destructiveHint が明示的に true のときだけ付ける（印が無ければ付けない）
+      ...(d.annotations?.destructiveHint === true ? { destructive: true } : {}),
     };
   }
   return { tools, info };

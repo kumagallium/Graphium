@@ -6,7 +6,8 @@
 //
 // - 確かめるのは annotations で readOnlyHint: true が付いていない道具（印の無いものを含む。
 //   MCP の仕様では readOnlyHint の既定は false）。利用者が「今後確認しない」と決めた
-//   サーバーの道具は確かめない
+//   サーバーの道具は確かめない。厳選の接続先（Tavily）は「確認なしの道具の名前」だけを免除し、
+//   URL を取りに行く道具（extract・crawl など）は確かめる
 // - 返事が来ないまま TOOL_APPROVAL_TIMEOUT_MS が過ぎたら、やめたことにする
 // - やめたときは道具を呼ばず、その旨を AI に返す（AI は回答の中で利用者に伝える）
 //
@@ -65,17 +66,57 @@ export function pendingApprovalRunCountForTest(): number {
   return pendingByRun.size;
 }
 
-/** 確かめが要る道具の名前（読むだけの印があるもの・確認しないサーバーのものを除く） */
+/** サーバー名 -> 確認なしで動かしてよい道具の名前（厳選の接続先が検索だけを免除するもの） */
+export type ApprovalFreeTools = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** 手動登録のサーバーから、確認の免除の設定を取り出す */
+export function approvalExemptionsFromServers(
+  servers: readonly { name: string; skipApproval?: boolean; approvalFreeTools?: readonly string[] }[],
+): { skipServers: Set<string>; freeTools: Map<string, Set<string>> } {
+  // 免除は名前で照合されるので、同名が複数あるときは（どれがどれか分からないため）免除を付けない
+  const counts = new Map<string, number>();
+  for (const s of servers) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
+  const unique = (name: string) => counts.get(name) === 1;
+  const skipServers = new Set(servers.filter((s) => s.skipApproval && unique(s.name)).map((s) => s.name));
+  const freeTools = new Map<string, Set<string>>();
+  for (const s of servers) {
+    if (!unique(s.name)) continue;
+    if (s.approvalFreeTools && s.approvalFreeTools.length > 0) freeTools.set(s.name, new Set(s.approvalFreeTools));
+  }
+  return { skipServers, freeTools };
+}
+
+/**
+ * 確かめなしで動かしてよい道具か。
+ * - 利用者が「今後確認しない」と決めたサーバーの道具は免除
+ * - 「確認なしの道具の一覧」を持つサーバー（厳選の接続先）は、一覧にある名前だけ免除。
+ *   一覧に無い道具は、サーバー自身が readOnlyHint を付けていても確認する
+ * - それ以外のサーバーは readOnlyHint: true の道具だけ免除
+ */
+export function isApprovalExempt(
+  name: string,
+  info: MCPToolInfo,
+  skipServers: ReadonlySet<string>,
+  freeTools?: ApprovalFreeTools,
+): boolean {
+  if (skipServers.has(info.server)) return true;
+  const free = freeTools?.get(info.server);
+  if (free) return free.has(name);
+  return info.readOnly;
+}
+
+/** 確かめが要る道具の名前（免除される道具を除く。判定は isApprovalExempt） */
 export function toolsNeedingApproval(
   tools: Record<string, unknown>,
   toolInfo: Record<string, MCPToolInfo>,
   skipServers: ReadonlySet<string>,
+  freeTools?: ApprovalFreeTools,
 ): string[] {
   return Object.keys(tools).filter((name) => {
     const info = toolInfo[name];
     // 出どころの分からない道具（MCP 以外）は対象外
     if (!info) return false;
-    return !info.readOnly && !skipServers.has(info.server);
+    return !isApprovalExempt(name, info, skipServers, freeTools);
   });
 }
 
