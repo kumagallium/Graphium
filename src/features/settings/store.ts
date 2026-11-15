@@ -389,6 +389,12 @@ export type Settings = {
   meetingModelSize: MeetingModelSize;
   /** 会議の文字起こしの言語（既定 auto = 窓ごとに判定） */
   meetingLanguage: MeetingLanguage;
+  /**
+   * 利用者が設定画面で取得を取り消した・削除した文字起こしモデルの大きさ。
+   * ここにあるモデルは、受信箱や録音の開始から自動では取得し直さない
+   * （設定の「取得」や音声の「文字起こし」ボタンなど、利用者が自分で押したときに外れる）。空なら持たない
+   */
+  meetingAutoDownloadDeclined?: MeetingModelSize[];
   /** 文字起こしのヒントにする用語（カンマ区切り。既定は空） */
   meetingVocabulary: string;
   /** 録音中に文字起こしを進めるか（既定 ON） */
@@ -919,6 +925,14 @@ function loadStoredSettings(): Settings {
       meetingLanguage: MEETING_LANGUAGES.includes(parsed.meetingLanguage as MeetingLanguage)
         ? (parsed.meetingLanguage as MeetingLanguage)
         : "auto",
+      ...(Array.isArray(parsed.meetingAutoDownloadDeclined) &&
+      parsed.meetingAutoDownloadDeclined.some((x) => MEETING_MODEL_SIZES.includes(x))
+        ? {
+            meetingAutoDownloadDeclined: MEETING_MODEL_SIZES.filter((x) =>
+              (parsed.meetingAutoDownloadDeclined as unknown[]).includes(x),
+            ),
+          }
+        : {}),
       meetingLiveTranscribe:
         typeof parsed.meetingLiveTranscribe === "boolean" ? parsed.meetingLiveTranscribe : true,
     };
@@ -1338,6 +1352,21 @@ export function getMeetingSettings(): {
     aiModel: s.meetingAiModel ?? "",
     maskTerms: s.meetingMaskTerms ?? "",
   };
+}
+
+/** 利用者が取り消した・削除した文字起こしモデルか（自動では取得し直さない印） */
+export function isMeetingModelAutoDownloadDeclined(size: MeetingModelSize): boolean {
+  return loadSettings().meetingAutoDownloadDeclined?.includes(size) === true;
+}
+
+/** 自動で取得し直さない印を付ける / 外す（他の設定は触らない。変わらなければ保存しない） */
+export function setMeetingModelAutoDownloadDeclined(size: MeetingModelSize, declined: boolean): void {
+  const s = loadSettings();
+  const cur = s.meetingAutoDownloadDeclined ?? [];
+  if (cur.includes(size) === declined) return;
+  const next = declined ? [...cur, size] : cur.filter((x) => x !== size);
+  const { meetingAutoDownloadDeclined: _old, ...rest } = s;
+  saveSettings({ ...rest, ...(next.length > 0 ? { meetingAutoDownloadDeclined: next } : {}) });
 }
 
 /** 会議の文字起こし設定を 1 項目ずつ即時保存する（他の設定は触らない） */

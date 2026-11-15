@@ -10,6 +10,8 @@ export function MeetingStartDialog({
   busy = false,
   errorMessage,
   modelMissing = false,
+  modelDownloadMb = null,
+  modelDownloading = false,
   captureSystem = true,
   onCaptureSystemChange,
   guideOnly = false,
@@ -27,6 +29,14 @@ export function MeetingStartDialog({
   errorMessage?: string | null;
   /** 録音中の文字起こしが ON なのにモデルが未取得（録音だけ行う） */
   modelMissing?: boolean;
+  /**
+   * 録音を始めると自動で取得するモデルの大きさの目安（MB）。指定すると、未取得の注意文のかわりに
+   * 「録音を始めると取得します。今回の録音は、取得が終わってから文字起こしできます」を出す
+   * （取り消し・削除した人など、自動では取得しないときは null のまま）
+   */
+  modelDownloadMb?: number | null;
+  /** すでに取得している最中（受信箱・設定からなど）。modelDownloadMb があれば「取得しています」の文にする */
+  modelDownloading?: boolean;
   /** 「相手の声も録る」（オンライン会議のとき）。オフなら自分の声だけ */
   captureSystem?: boolean;
   onCaptureSystemChange?: (value: boolean) => void;
@@ -132,7 +142,15 @@ export function MeetingStartDialog({
             {t("meeting.micDenied")}
           </p>
         )}
-        {modelMissing && <p className="mt-3 text-xs text-muted-foreground">{t("meeting.modelMissingNotice")}</p>}
+        {modelMissing && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {modelDownloadMb === null
+              ? t("meeting.modelMissingNotice")
+              : t(modelDownloading ? "meeting.modelDownloadingNotice" : "meeting.modelAutoDownloadNotice", {
+                  size: String(modelDownloadMb),
+                })}
+          </p>
+        )}
         {errorMessage && <p className="mt-3 text-xs text-destructive">{errorMessage}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button

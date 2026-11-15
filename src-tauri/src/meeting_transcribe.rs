@@ -147,6 +147,9 @@ pub struct TranscribeState {
     jobs: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// 処理中の fileId → jobId（同じ素材の二重処理を防ぐ）
     files: Mutex<HashMap<String, String>>,
+    /// 画面側から受け取り中の一時 wav（同じ fileId の begin / append / finish / discard を直列にする）。
+    /// ロックの順は files → inputs
+    inputs: Mutex<InputGate>,
 }
 
 // ---------------------------------------------------------------------------
@@ -949,6 +952,23 @@ fn persist(file_id: &str, language: &str, size: &str, segments: &[Segment]) -> R
     write_atomic(&txt, render_plain(segments).as_bytes())
 }
 
+/// 素材の実体の大きさ（バイト）を、読まずに返す。無ければ None。
+/// 実体の探し方は read_media_file と同じ（find_media_data_file）。大きな音声を丸ごと読む前に断るために使う
+fn media_file_size_in(dir: &std::path::Path, file_id: &str) -> Result<Option<u64>, String> {
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    let Some(path) = crate::find_media_data_file(dir, file_id) else {
+        return Ok(None);
+    };
+    Ok(std::fs::metadata(&path).ok().map(|m| m.len()))
+}
+
+#[tauri::command]
+pub fn meeting_media_file_size(file_id: String) -> Result<Option<u64>, String> {
+    media_file_size_in(&crate::media_dir()?, &file_id)
+}
+
 #[tauri::command]
 pub fn save_media_transcript(file_id: String, json: String) -> Result<(), String> {
     if !valid_id(&file_id) {
@@ -1378,7 +1398,9 @@ fn read_track_kind(file_id: &str) -> Option<&'static str> {
 /// stereo は左 = system、右 = mic として別々に処理し、1 つの transcript.json にまとめる。
 /// mono（古い録音）は meta の name からトラックを判定する（不明なら null）
 fn transcribe_file(engine: &Engine, cx: &JobCtx, file_id: &str) -> Result<bool, String> {
-    let path = crate::media_dir()?.join(format!("{file_id}.wav"));
+    // 会議録音は media/<fileId>.wav。無ければ、画面側で直して渡された一時置き場の wav（スマホの音声など）
+    let media_wav = crate::media_dir()?.join(format!("{file_id}.wav"));
+    let path = pick_input_wav(&media_wav, &input_tmp_wav_path(file_id)?);
     let mut reader = hound::WavReader::open(&path).map_err(|e| format!("WAV を開けません: {e}"))?;
     let spec = reader.spec();
     if !(spec.channels == 1 || spec.channels == 2)
@@ -1485,6 +1507,10 @@ pub fn meeting_transcribe_start(
         for id in &file_ids {
             files.insert(id.clone(), job_id.clone());
         }
+        // 受け取り済みの一時 wav は、ここからジョブのもの（受け取りの印を外す。files → inputs の順）
+        if let Ok(mut gate) = state.inputs.lock() {
+            input_release_for_job(&mut gate, &file_ids);
+        }
     }
     let cx = JobCtx {
         app,
@@ -1496,6 +1522,9 @@ pub fn meeting_transcribe_start(
     };
     std::thread::spawn(move || {
         run_guarded(cx, |cx| {
+            // 一時の wav は、Engine::load の失敗・panic・取り消し・成功のどれでも、この関数を出るときに消える
+            // （run_guarded が files から外すより先に Drop される）
+            let _cleanup = InputCleanup::new(file_ids.clone());
             let engine = match Engine::load(&path) {
                 Ok(e) => e,
                 Err(m) => return Outcome::Error(m),
@@ -1525,11 +1554,344 @@ pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_i
     Ok(())
 }
 
+// ---- 画面側で直した音声の受け取り（スマホの m4a / weba など） ----
+// WebView が 16 kHz・mono・16 bit に直した PCM を、分けて送ってもらって一時置き場の wav にする。
+// media/<fileId>.wav は作らない（素材の一覧に二重に出ないように）。
+//
+// 排他: 受け取り（begin〜finish、そして文字起こしジョブが始まるまで）は fileId ごとに 1 本だけ
+// `InputGate` が持つ。すでに受け取り中・文字起こし中の fileId への begin は "busy" で断る。
+// 一時の wav は、ジョブの成功・失敗・取り消し・panic のどれでも `InputCleanup`（Drop）が消す。
+/// 1 本の上限（2 時間分。16 kHz・mono・16 bit）。超えたら断る
+pub const INPUT_MAX_SEC: u64 = 2 * 3600;
+const INPUT_MAX_BYTES: u64 = INPUT_MAX_SEC * SAMPLE_RATE as u64 * 2;
+/// 一時置き場の合計の上限（1 GiB。2 時間の 1 本が約 220 MiB なので、同時 2 本と実行中の 1 本が入る）
+const INPUT_TOTAL_MAX_BYTES: u64 = 1024 * 1024 * 1024;
+/// 同時に受け取れる本数
+const INPUT_MAX_CONCURRENT: usize = 2;
+/// 1 回の append で受け取れる大きさ（画面側は 1 MiB ずつ送る）
+const INPUT_CHUNK_MAX_BYTES: usize = 4 * 1024 * 1024;
+/// 受け取りの印が、動きの無いまま残ってよい時間。画面の再読み込みなどで finish / discard が
+/// 届かなかったときに、同じ fileId が「busy」のまま固まらないようにする
+const INPUT_HOLD_STALE: Duration = Duration::from_secs(120);
+const WAV_HEADER_LEN: u64 = 44;
+
+#[derive(Clone, Copy)]
+struct InputLimits {
+    max_bytes: u64,
+    total_max: u64,
+    max_concurrent: usize,
+    chunk_max: usize,
+    stale: Duration,
+}
+
+const INPUT_LIMITS: InputLimits = InputLimits {
+    max_bytes: INPUT_MAX_BYTES,
+    total_max: INPUT_TOTAL_MAX_BYTES,
+    max_concurrent: INPUT_MAX_CONCURRENT,
+    chunk_max: INPUT_CHUNK_MAX_BYTES,
+    stale: INPUT_HOLD_STALE,
+};
+
+/// 受け取り中の fileId（最後に動いた時刻つき）。begin で入り、ジョブの開始か discard で出る
+#[derive(Default)]
+pub struct InputGate {
+    held: HashMap<String, std::time::Instant>,
+}
+
+impl InputGate {
+    fn is_fresh(&self, id: &str, now: std::time::Instant, stale: Duration) -> bool {
+        self.held.get(id).is_some_and(|t| now.saturating_duration_since(*t) < stale)
+    }
+}
+
+/// 一時置き場（`appdata/transcribe-input/`）。素材の置き場（media）の外。作らずに場所だけ返す
+fn input_tmp_dir_path() -> Result<PathBuf, String> {
+    Ok(crate::appdata_dir()?.join("transcribe-input"))
+}
+
+fn input_tmp_wav_path(file_id: &str) -> Result<PathBuf, String> {
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    Ok(input_tmp_dir_path()?.join(format!("{file_id}.wav")))
+}
+
+/// 一時置き場の wav があればそれ（画面側で 16 kHz・mono に直したもの）、無ければ media の wav（会議録音）。
+/// どちらも無ければ media 側を返し、開く所でエラーにする
+fn pick_input_wav(media_wav: &std::path::Path, tmp_wav: &std::path::Path) -> PathBuf {
+    if tmp_wav.exists() {
+        tmp_wav.to_path_buf()
+    } else {
+        media_wav.to_path_buf()
+    }
+}
+
+/// 16 kHz・mono・16 bit の WAV ヘッダ（data_len は PCM のバイト数）
+fn wav_header(data_len: u32) -> [u8; 44] {
+    let mut h = [0u8; 44];
+    h[0..4].copy_from_slice(b"RIFF");
+    h[4..8].copy_from_slice(&(36 + data_len).to_le_bytes());
+    h[8..16].copy_from_slice(b"WAVEfmt ");
+    h[16..20].copy_from_slice(&16u32.to_le_bytes());
+    h[20..22].copy_from_slice(&1u16.to_le_bytes()); // PCM
+    h[22..24].copy_from_slice(&1u16.to_le_bytes()); // mono
+    h[24..28].copy_from_slice(&(SAMPLE_RATE as u32).to_le_bytes());
+    h[28..32].copy_from_slice(&(SAMPLE_RATE as u32 * 2).to_le_bytes());
+    h[32..34].copy_from_slice(&2u16.to_le_bytes());
+    h[34..36].copy_from_slice(&16u16.to_le_bytes());
+    h[36..40].copy_from_slice(b"data");
+    h[40..44].copy_from_slice(&data_len.to_le_bytes());
+    h
+}
+
+fn input_part_path(dir: &std::path::Path, file_id: &str) -> PathBuf {
+    dir.join(format!("{file_id}.wav.part"))
+}
+
+/// このモジュールが一時置き場に作る名前か（`<有効な ID>.wav` と `<有効な ID>.wav.part`）。掃除はこれだけを消す
+fn is_own_input_name(name: &str) -> bool {
+    let stem = name.strip_suffix(".wav.part").or_else(|| name.strip_suffix(".wav"));
+    stem.is_some_and(valid_id)
+}
+
+/// 一時置き場にある、自分の名前のファイルの大きさの合計
+fn input_dir_bytes(dir: &std::path::Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    rd.flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(is_own_input_name))
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
+}
+
+fn discard_input_at(dir: &std::path::Path, file_id: &str) {
+    if valid_id(file_id) {
+        let _ = std::fs::remove_file(dir.join(format!("{file_id}.wav")));
+        let _ = std::fs::remove_file(input_part_path(dir, file_id));
+    }
+}
+
+/// 書き込み中の `.wav.part` を新しく作る。次のときは断る（"busy" など）:
+/// - その fileId の文字起こしジョブが動いている / すでに受け取り中
+/// - 受け取り中が上限（同時 2 本）/ 一時置き場の合計が上限
+fn input_begin(
+    dir: &std::path::Path,
+    gate: &mut InputGate,
+    jobs: &HashMap<String, String>,
+    file_id: &str,
+    now: std::time::Instant,
+    lim: &InputLimits,
+) -> Result<(), String> {
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    if jobs.contains_key(file_id) || gate.is_fresh(file_id, now, lim.stale) {
+        return Err("busy".to_string());
+    }
+    // 動きの無いまま残った印と、その一時ファイルは片付ける
+    let stale: Vec<String> =
+        gate.held.iter().filter(|(_, t)| now.saturating_duration_since(**t) >= lim.stale).map(|(k, _)| k.clone()).collect();
+    for id in stale {
+        gate.held.remove(&id);
+        if !jobs.contains_key(&id) {
+            discard_input_at(dir, &id);
+        }
+    }
+    if gate.held.len() >= lim.max_concurrent {
+        return Err("too many inputs".to_string());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("一時フォルダを作れません: {e}"))?;
+    if input_dir_bytes(dir) >= lim.total_max {
+        return Err("input storage full".to_string());
+    }
+    std::fs::write(input_part_path(dir, file_id), wav_header(0)).map_err(|e| format!("一時ファイルを作れません: {e}"))?;
+    gate.held.insert(file_id.to_string(), now);
+    Ok(())
+}
+
+/// PCM を末尾に足す。偶数バイトでなければ断る。1 回・1 本・合計の上限を超えるなら断る
+/// （1 本・合計の超過は一時ファイルも捨てる）
+fn input_append(
+    dir: &std::path::Path,
+    gate: &mut InputGate,
+    file_id: &str,
+    pcm: &[u8],
+    now: std::time::Instant,
+    lim: &InputLimits,
+) -> Result<(), String> {
+    use std::io::Write;
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    if !pcm.len().is_multiple_of(2) {
+        return Err("invalid audio chunk".to_string());
+    }
+    if pcm.len() > lim.chunk_max {
+        return Err("chunk too large".to_string());
+    }
+    if !gate.held.contains_key(file_id) {
+        return Err("input not started".to_string());
+    }
+    let part = input_part_path(dir, file_id);
+    let len = std::fs::metadata(&part).map_err(|_| "input not started".to_string())?.len();
+    let reject = |gate: &mut InputGate, msg: &str| {
+        let _ = std::fs::remove_file(&part);
+        gate.held.remove(file_id);
+        Err(msg.to_string())
+    };
+    if len.saturating_sub(WAV_HEADER_LEN) + pcm.len() as u64 > lim.max_bytes {
+        return reject(gate, "audio too long");
+    }
+    if input_dir_bytes(dir) + pcm.len() as u64 > lim.total_max {
+        return reject(gate, "input storage full");
+    }
+    let mut f = std::fs::OpenOptions::new().append(true).open(&part).map_err(|e| format!("一時ファイルを開けません: {e}"))?;
+    f.write_all(pcm).map_err(|e| format!("一時ファイルへ書けません: {e}"))?;
+    gate.held.insert(file_id.to_string(), now);
+    Ok(())
+}
+
+/// ヘッダの長さを確定し、`<fileId>.wav` にする（受け取り中の印は、ジョブが始まるまで残す）
+fn input_finish(dir: &std::path::Path, gate: &mut InputGate, file_id: &str, now: std::time::Instant) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom, Write};
+    if !valid_id(file_id) {
+        return Err("不正なファイル ID".to_string());
+    }
+    if !gate.held.contains_key(file_id) {
+        return Err("input not started".to_string());
+    }
+    let part = input_part_path(dir, file_id);
+    let len = std::fs::metadata(&part).map_err(|_| "input not started".to_string())?.len();
+    let data_len = len.saturating_sub(WAV_HEADER_LEN);
+    {
+        let mut f = std::fs::OpenOptions::new().write(true).open(&part).map_err(|e| format!("一時ファイルを開けません: {e}"))?;
+        f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        f.write_all(&wav_header(data_len as u32)).map_err(|e| format!("一時ファイルへ書けません: {e}"))?;
+    }
+    let wav = dir.join(format!("{file_id}.wav"));
+    let _ = std::fs::remove_file(&wav); // Windows は上書き rename が通らない
+    std::fs::rename(&part, &wav).map_err(|e| format!("一時ファイルを確定できません: {e}"))?;
+    gate.held.insert(file_id.to_string(), now);
+    Ok(())
+}
+
+/// 受け取りをやめて一時ファイルを消す。ジョブが使っている fileId のファイルは消さない（ジョブの終わりに消える）
+fn input_discard(dir: &std::path::Path, gate: &mut InputGate, jobs: &HashMap<String, String>, file_id: &str) {
+    gate.held.remove(file_id);
+    if !jobs.contains_key(file_id) {
+        discard_input_at(dir, file_id);
+    }
+}
+
+/// ジョブが始まった fileId の受け取りの印を外す（ファイルはジョブのものになる）
+fn input_release_for_job(gate: &mut InputGate, file_ids: &[String]) {
+    for id in file_ids {
+        gate.held.remove(id);
+    }
+}
+
+/// 一時置き場の掃除（起動時）。フォルダが無ければ何もしない（空のフォルダを作らない）。
+/// 消すのは自分が作る名前だけ
+fn clear_input_dir(dir: &std::path::Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        if e.file_name().to_str().is_some_and(is_own_input_name) && e.path().is_file() {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+/// ジョブの終わりに（Drop で）一時の wav を消す。成功・失敗・取り消し・Engine::load の失敗・panic のどれでも通る
+struct InputCleanup {
+    dir: Option<PathBuf>,
+    ids: Vec<String>,
+}
+
+impl InputCleanup {
+    fn new(ids: Vec<String>) -> Self {
+        Self { dir: input_tmp_dir_path().ok(), ids }
+    }
+}
+
+impl Drop for InputCleanup {
+    fn drop(&mut self) {
+        if let Some(dir) = &self.dir {
+            for id in &self.ids {
+                discard_input_at(dir, id);
+            }
+        }
+    }
+}
+
+/// 起動時に呼ぶ。実行中のジョブはまだ無いので、前回の残りを消してよい
+pub fn cleanup_input_tmp() {
+    if let Ok(dir) = input_tmp_dir_path() {
+        clear_input_dir(&dir);
+    }
+}
+
+fn lock_err<T>(_: T) -> String {
+    "state poisoned".to_string()
+}
+
+#[tauri::command]
+pub fn meeting_transcribe_input_begin(state: tauri::State<'_, TranscribeState>, file_id: String) -> Result<(), String> {
+    // ロックの順は files → inputs（meeting_transcribe_start と同じ）
+    let jobs = state.files.lock().map_err(lock_err)?;
+    let mut gate = state.inputs.lock().map_err(lock_err)?;
+    input_begin(&input_tmp_dir_path()?, &mut gate, &jobs, &file_id, std::time::Instant::now(), &INPUT_LIMITS)
+}
+
+/// 本文は直した PCM（16 kHz・mono・16 bit のリトルエンディアン）の生バイト。fileId はヘッダ `x-file-id`
+#[tauri::command]
+pub fn meeting_transcribe_input_append(
+    state: tauri::State<'_, TranscribeState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
+    let file_id = request
+        .headers()
+        .get("x-file-id")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| "不正なファイル ID".to_string())?
+        .to_string();
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("invalid audio chunk".to_string());
+    };
+    let mut gate = state.inputs.lock().map_err(lock_err)?;
+    input_append(&input_tmp_dir_path()?, &mut gate, &file_id, bytes, std::time::Instant::now(), &INPUT_LIMITS)
+}
+
+#[tauri::command]
+pub fn meeting_transcribe_input_finish(state: tauri::State<'_, TranscribeState>, file_id: String) -> Result<(), String> {
+    let mut gate = state.inputs.lock().map_err(lock_err)?;
+    input_finish(&input_tmp_dir_path()?, &mut gate, &file_id, std::time::Instant::now())
+}
+
+#[tauri::command]
+pub fn meeting_transcribe_input_discard(state: tauri::State<'_, TranscribeState>, file_id: String) -> Result<(), String> {
+    let jobs = state.files.lock().map_err(lock_err)?;
+    let mut gate = state.inputs.lock().map_err(lock_err)?;
+    input_discard(&input_tmp_dir_path()?, &mut gate, &jobs, &file_id);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // テスト
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn media_file_size_reads_metadata_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a1.m4a"), b"12345").unwrap();
+        assert_eq!(super::media_file_size_in(tmp.path(), "a1").unwrap(), Some(5));
+        assert_eq!(super::media_file_size_in(tmp.path(), "none").unwrap(), None);
+        // パスの外へ出る ID は断る
+        assert!(super::media_file_size_in(tmp.path(), "../a1").is_err());
+        assert!(super::media_file_size_in(tmp.path(), "").is_err());
+    }
+
     #[test]
     fn meeting_sidecar_path_name() {
         assert_eq!(super::sidecar_path_name("abc", "cleanup").unwrap(), "abc.cleanup.json");
@@ -1971,6 +2333,232 @@ mod tests {
         assert_eq!(v["windowSec"], 20);
         assert_eq!(v["segments"][0]["startMs"], 1);
         assert!(v["segments"][0]["noSpeechProb"].is_number());
+    }
+
+    fn input_lim() -> super::InputLimits {
+        super::InputLimits {
+            max_bytes: 1000,
+            total_max: 3000,
+            max_concurrent: 2,
+            chunk_max: 400,
+            stale: std::time::Duration::from_secs(120),
+        }
+    }
+
+    #[test]
+    fn meeting_input_wav_roundtrip_and_pick() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = INPUT_LIMITS;
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        input_begin(d, &mut gate, &jobs, "abc", now, &lim).unwrap();
+        // 書き込み中は .wav として見えない
+        assert!(!d.join("abc.wav").exists());
+        let pcm: Vec<u8> = (0..1000i16).flat_map(|v| v.to_le_bytes()).collect();
+        input_append(d, &mut gate, "abc", &pcm[..1000], now, &lim).unwrap();
+        input_append(d, &mut gate, "abc", &pcm[1000..], now, &lim).unwrap();
+        input_finish(d, &mut gate, "abc", now).unwrap();
+        assert!(!d.join("abc.wav.part").exists());
+        let r = hound::WavReader::open(d.join("abc.wav")).unwrap();
+        let spec = r.spec();
+        assert_eq!((spec.channels, spec.sample_rate, spec.bits_per_sample), (1, SAMPLE_RATE as u32, 16));
+        assert_eq!(r.duration(), 1000);
+        let got: Vec<i16> = r.into_samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(got[999], 999);
+    }
+
+    #[test]
+    fn meeting_input_pick_prefers_tmp_over_media() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let media = d.join("media.wav");
+        let tmp = d.join("tmp.wav");
+        // どちらも無い・media だけ → media 側（開く所でエラーになる / 会議録音）
+        assert_eq!(pick_input_wav(&media, &tmp), media);
+        std::fs::write(&media, b"x").unwrap();
+        assert_eq!(pick_input_wav(&media, &tmp), media);
+        // 一時置き場の wav があれば、media に wav があってもそちら（44.1 kHz の wav を直して渡した場合）
+        std::fs::write(&tmp, b"y").unwrap();
+        assert_eq!(pick_input_wav(&media, &tmp), tmp);
+        std::fs::remove_file(&media).unwrap();
+        assert_eq!(pick_input_wav(&media, &tmp), tmp);
+    }
+
+    #[test]
+    fn meeting_input_wav_rejects_bad_input() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = input_lim();
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        assert!(input_begin(d, &mut gate, &jobs, "../x", now, &lim).is_err());
+        assert!(input_append(d, &mut gate, "abc", &[0, 0], now, &lim).is_err()); // begin 前
+        input_begin(d, &mut gate, &jobs, "abc", now, &lim).unwrap();
+        assert!(input_append(d, &mut gate, "abc", &[0], now, &lim).is_err()); // 奇数バイト
+        assert!(input_finish(d, &mut gate, "nope", now).is_err());
+    }
+
+    #[test]
+    fn meeting_input_busy_when_same_file_in_progress_or_in_job() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = input_lim();
+        let mut gate = InputGate::default();
+        let mut jobs: HashMap<String, String> = HashMap::new();
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[1, 0, 2, 0], now, &lim).unwrap();
+        // 受け取り中の同じ fileId の begin は断る（.part も壊さない）
+        assert_eq!(input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap_err(), "busy");
+        assert_eq!(std::fs::metadata(input_part_path(d, "a")).unwrap().len(), WAV_HEADER_LEN + 4);
+        input_finish(d, &mut gate, "a", now).unwrap();
+        // finish 後もジョブが始まるまでは busy（確定した wav を上書きさせない）
+        assert_eq!(input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap_err(), "busy");
+        // ジョブが始まったら印は外れ、ジョブが動いている間は busy のまま
+        input_release_for_job(&mut gate, &["a".to_string()]);
+        jobs.insert("a".to_string(), "job1".to_string());
+        assert_eq!(input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap_err(), "busy");
+        // ジョブ中の discard は、ジョブが使う wav を消さない
+        input_discard(d, &mut gate, &jobs, "a");
+        assert!(d.join("a.wav").exists());
+        // ジョブが終われば（files から外れて Drop が消す）また受け取れる
+        jobs.clear();
+        discard_input_at(d, "a");
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap();
+    }
+
+    #[test]
+    fn meeting_input_discard_releases_and_removes() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = input_lim();
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap();
+        input_finish(d, &mut gate, "a", now).unwrap();
+        input_discard(d, &mut gate, &jobs, "a");
+        assert!(!d.join("a.wav").exists());
+        assert!(!input_part_path(d, "a").exists());
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap();
+    }
+
+    #[test]
+    fn meeting_input_limits() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = input_lim();
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        // 同時の本数（2 本まで）
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap();
+        input_begin(d, &mut gate, &jobs, "b", now, &lim).unwrap();
+        assert_eq!(input_begin(d, &mut gate, &jobs, "c", now, &lim).unwrap_err(), "too many inputs");
+        // 1 回の大きさ
+        assert_eq!(input_append(d, &mut gate, "a", &vec![0u8; 402], now, &lim).unwrap_err(), "chunk too large");
+        // 1 本の上限: ちょうどまでは通り、超えたら断って一時ファイルと印も消す
+        input_append(d, &mut gate, "a", &[0u8; 400], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[0u8; 400], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &[0u8; 200], now, &lim).unwrap();
+        assert_eq!(input_append(d, &mut gate, "a", &[0, 0], now, &lim).unwrap_err(), "audio too long");
+        assert!(!input_part_path(d, "a").exists());
+        assert!(!gate.held.contains_key("a"));
+    }
+
+    #[test]
+    fn meeting_input_total_limit() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = std::time::Instant::now();
+        let lim = InputLimits { max_bytes: 100_000, ..input_lim() };
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        std::fs::write(d.join("old.wav"), vec![0u8; 2000]).unwrap();
+        std::fs::write(d.join("memo.txt"), vec![0u8; 5000]).unwrap(); // 自分の名前でないものは数えない
+        input_begin(d, &mut gate, &jobs, "a", now, &lim).unwrap(); // 2000 + 44
+        input_append(d, &mut gate, "a", &vec![0u8; 400], now, &lim).unwrap();
+        input_append(d, &mut gate, "a", &vec![0u8; 400], now, &lim).unwrap(); // 2844
+        assert_eq!(input_append(d, &mut gate, "a", &vec![0u8; 400], now, &lim).unwrap_err(), "input storage full");
+        assert!(!input_part_path(d, "a").exists());
+        // すでに合計が上限なら begin も断る
+        std::fs::write(d.join("old2.wav"), vec![0u8; 1000]).unwrap();
+        assert_eq!(input_begin(d, &mut gate, &jobs, "b", now, &lim).unwrap_err(), "input storage full");
+    }
+
+    #[test]
+    fn meeting_input_stale_hold_is_reclaimed() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let t0 = std::time::Instant::now();
+        let lim = input_lim();
+        let mut gate = InputGate::default();
+        let jobs = HashMap::new();
+        input_begin(d, &mut gate, &jobs, "a", t0, &lim).unwrap();
+        input_begin(d, &mut gate, &jobs, "b", t0, &lim).unwrap();
+        // 動きの無いまま時間が過ぎた印は、同じ fileId でも別の fileId でも新しい受け取りを止めない
+        let later = t0 + std::time::Duration::from_secs(121);
+        input_begin(d, &mut gate, &jobs, "a", later, &lim).unwrap();
+        input_begin(d, &mut gate, &jobs, "c", later, &lim).unwrap();
+        assert!(!input_part_path(d, "b").exists()); // 放置された b の一時ファイルは片付く
+    }
+
+    #[test]
+    fn meeting_input_cleanup_only_own_names_and_no_dir_creation() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        // フォルダが無ければ何もしない（作らない）
+        let missing = d.join("transcribe-input");
+        clear_input_dir(&missing);
+        assert!(!missing.exists());
+        std::fs::create_dir_all(&missing).unwrap();
+        for n in ["a.wav", "b.wav.part", "keep.txt", "keep.wav.bak", ".hidden.wav"] {
+            std::fs::write(missing.join(n), b"x").unwrap();
+        }
+        std::fs::create_dir_all(missing.join("sub.wav")).unwrap();
+        clear_input_dir(&missing);
+        assert!(!missing.join("a.wav").exists());
+        assert!(!missing.join("b.wav.part").exists());
+        assert!(missing.join("keep.txt").exists());
+        assert!(missing.join("keep.wav.bak").exists());
+        assert!(missing.join(".hidden.wav").exists()); // valid_id を通らない名前は自分のものではない
+        assert!(missing.join("sub.wav").is_dir());
+    }
+
+    #[test]
+    fn meeting_input_cleanup_guard_removes_on_drop_even_on_panic() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_path_buf();
+        std::fs::write(d.join("a.wav"), b"x").unwrap();
+        std::fs::write(input_part_path(&d, "a"), b"x").unwrap();
+        // 正常に抜けたとき（Engine::load の失敗などの早期 return も同じ）
+        {
+            let _g = InputCleanup { dir: Some(d.clone()), ids: vec!["a".to_string()] };
+        }
+        assert!(!d.join("a.wav").exists());
+        assert!(!input_part_path(&d, "a").exists());
+        // panic で巻き戻るとき
+        std::fs::write(d.join("b.wav"), b"x").unwrap();
+        let d2 = d.clone();
+        let r = std::panic::catch_unwind(move || {
+            let _g = InputCleanup { dir: Some(d2), ids: vec!["b".to_string()] };
+            panic!("boom");
+        });
+        assert!(r.is_err());
+        assert!(!d.join("b.wav").exists());
     }
 
     /// 実録音の再処理（手動・実モデルが要る）。録音中と同じく 1 秒ずつ届いたものとして窓を切る。

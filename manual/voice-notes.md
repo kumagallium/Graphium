@@ -3,7 +3,7 @@
 A meeting is full of decisions that nobody wrote down. A **voice note** records a meeting — or just your own voice — on your computer, turns it into text there, and lets you walk from a decision in the summary back to the sentence someone actually said.
 
 - **No bot joins the call.** Graphium records what your computer plays and what your microphone hears, so it works the same for Zoom, Teams, Gather, or a browser tab.
-- **Audio never leaves your computer.** Recording and transcription both run locally; the only network use is the one-time download of the speech model. See [the FAQ](/faq) for the numbers behind this.
+- **Audio never leaves your computer.** Recording and transcription both run locally; the only network use is the one-time download of the speech model, which Graphium starts for you. See [the FAQ](/faq) for the numbers behind this.
 - **It is a block in a note.** The transcript sits in your note like any other block, so you can write around it, summarize it, and link to it.
 
 ::: info Desktop app only
@@ -121,6 +121,15 @@ Tick **Hide names and contact details** above the tabs of a voice note block whe
 - A misheard name cannot be corrected, because it is hidden instead.
 :::
 
+## Audio from your phone or a recorder {#other-audio}
+
+Audio that is not a meeting recording can be transcribed too, for example a voice memo sent from your phone (.m4a, .weba) or a .wav file from a recorder. Open the audio in your [materials](/materials-and-citations) and press **Transcribe**.
+
+- **Audio from the phone inbox is transcribed by itself** in the desktop app, right after you import it, once the model is ready. See [Mobile capture](/mobile#sending-captures-to-your-desktop).
+- **Audio from the inbox is processed one file at a time.** While a file is being processed, its button is disabled and reads **Transcribing…**. **This audio is being processed right now.** appears only if you press the button when that same file is already being processed.
+- **Up to 2 hours, and 500 MB for the original file.** A longer one says **This audio is over 2 hours long. Audio up to 2 hours can be transcribed.** A file that is too large says **This audio is too large to transcribe.** The audio itself is kept either way.
+- **No speaker labels.** A meeting recording separates **Me** and **Others**; this audio is not split by speaker.
+
 ## Models and settings {#settings}
 
 ![Settings → AI → Voice notes: model, language, frequent terms, transcribe while recording, AI model for clean-up and summaries, always-hide words](/screenshots/voice-note-settings.png)
@@ -136,7 +145,13 @@ Open [Settings](/settings) → **AI** → **Voice notes** (desktop app only); cl
 | **AI model for clean-up and summaries** | Shown once an AI model is registered. **Same as the advanced work model** by default. Pick a stronger model here if the clean copy leaves mishearings in — transcription itself never uses it. |
 | **Always hide these words** | Shown with the AI model. Comma-separated words, up to 300 characters — names of people, clients or projects. In a voice note that [hides names and contact details](#hiding), they always become **[redacted]**, even if the model misses them. |
 
-The model is downloaded once, the first time you need it, and kept on your computer. Until it is downloaded Graphium says **The transcription model isn't downloaded yet, so only the recording will be made** — the recording is still saved, and you can transcribe it after downloading.
+The model is downloaded once and kept on your computer. Graphium starts the download by itself (about 574 MB for the default model) at three moments:
+
+- when you start a recording, only if **Transcribe while recording** is on (**Starting a recording will download the transcription model (about 574 MB). This recording can be transcribed once the download finishes.**),
+- when you press **Transcribe** on a recording, and
+- when audio arrives from your phone in the [mobile inbox](/mobile#sending-captures-to-your-desktop) and you import it.
+
+While it downloads, the recording is still made, and it can be transcribed once the download finishes. To stop a download, press **Cancel** under **Voice notes** in Settings. If you cancel a download or **Delete** the model there, Graphium does not download it again on its own; press **Transcribe** or **Download** when you want it back. If the download that starts with a recording fails, you see **The transcription model could not be downloaded. Recording continues as usual. You can download it in Settings under "Voice notes"**. Graphium tries the automatic download only once per launch. After a failure it does not try again by itself during the same launch; press **Transcribe**, or **Download** in Settings, to try again.
 
 ## Limits to know about {#limits}
 

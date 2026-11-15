@@ -74,3 +74,13 @@ export const onModelCancelled = (cb: (e: MeetingModelCancelledEvent) => void) =>
   listen<MeetingModelCancelledEvent>("meeting-model-cancelled", (ev) => cb(ev.payload));
 export const onTranscribeCancelled = (cb: (e: MeetingTranscribeCancelledEvent) => void) =>
   listen<MeetingTranscribeCancelledEvent>("meeting-transcribe-cancelled", (ev) => cb(ev.payload));
+
+// ── 画面側で直した音声（16 kHz・mono・16 bit）を Rust の一時置き場へ分けて渡す ──
+export const transcribeInputBegin = (fileId: string) => invoke<void>("meeting_transcribe_input_begin", { fileId });
+/** 生バイトで送る（JSON 配列にすると重い）。fileId はヘッダで渡す */
+export const transcribeInputAppend = (fileId: string, bytes: Uint8Array) =>
+  invoke<void>("meeting_transcribe_input_append", bytes, { headers: { "x-file-id": fileId } });
+export const transcribeInputFinish = (fileId: string) => invoke<void>("meeting_transcribe_input_finish", { fileId });
+export const transcribeInputDiscard = (fileId: string) => invoke<void>("meeting_transcribe_input_discard", { fileId });
+/** 素材の実体の大きさ（バイト）。読まずに返す。素材が無いときは null */
+export const mediaFileSize = (fileId: string) => invoke<number | null>("meeting_media_file_size", { fileId });
