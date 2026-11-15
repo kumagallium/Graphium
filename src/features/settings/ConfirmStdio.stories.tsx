@@ -51,7 +51,7 @@ export const Single: Story = {
   },
 };
 
-/** 長い引数（300 文字で切る）と、制御文字・双方向制御文字の置き換え */
+/** 長い引数（切らずに全部見せる。本文だけスクロールする）と、制御文字・双方向制御文字の置き換え */
 export const LongAndControlChars: Story = {
   name: "長い引数・制御文字",
   args: {

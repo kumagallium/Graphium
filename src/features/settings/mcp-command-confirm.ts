@@ -7,8 +7,8 @@
 
 import type { McpServerEntry, McpStdioServer } from "./store";
 
-/** 1 サーバーあたりに出す最大文字数（コマンド行と env 行をそれぞれ切る） */
-export const MCP_CONFIRM_MAX_CHARS = 300;
+/** サーバー名に出す最大文字数（見出しなので切る。コマンド行と env 行は切らない） */
+export const MCP_CONFIRM_NAME_MAX_CHARS = 80;
 
 // 見た目をごまかせる文字: 制御文字(Cc)・書式文字(Cf: ゼロ幅・双方向制御・ソフトハイフン・タグ文字・BOM など)・
 // 行/段落区切り・見えない詰め物（Hangul filler・Braille 空白）・結合/異体字セレクタ・
@@ -26,7 +26,7 @@ export function escapeForDisplay(text: string): string {
 }
 
 /** 最大文字数で切り、切ったときは … を付ける（サロゲートペアを割らない） */
-export function truncateForDisplay(text: string, max = MCP_CONFIRM_MAX_CHARS): string {
+export function truncateForDisplay(text: string, max = MCP_CONFIRM_NAME_MAX_CHARS): string {
   const chars = Array.from(text);
   return chars.length <= max ? text : `${chars.slice(0, max).join("")}…`;
 }
@@ -37,18 +37,22 @@ function quoteArg(arg: string): string {
   return arg === "" || /[\s"]/.test(arg) ? `"${safe.replace(/"/g, '\\"')}"` : safe;
 }
 
-/** command と args を空白でつないだ 1 行（制御文字は置き換え済み・300 文字で切る） */
+/**
+ * command と args を空白でつないだ 1 行（制御文字は置き換え済み）。
+ *
+ * 長くても切らない。切ると、詰め物の後ろに置いた部分（`bash -c "…長い詰め物…; curl … | sh"`）が
+ * 見えないまま「次のコマンドを実行します」に承諾させることになる。長い分はダイアログの中で巻く
+ */
 export function formatCommandLine(entry: McpStdioServer): string {
   // command も空白を含むなら囲む（どこまでが実行ファイルかを見分けられるように）
-  const line = [quoteArg(entry.command), ...entry.args.map(quoteArg)].join(" ");
-  return truncateForDisplay(line);
+  return [quoteArg(entry.command), ...entry.args.map(quoteArg)].join(" ");
 }
 
-/** env があれば "env: KEY1, KEY2"（値は出さない）。無ければ null */
+/** env があれば "env: KEY1, KEY2"（値は出さない。名前は全部出す）。無ければ null */
 export function formatEnvLine(entry: McpStdioServer): string | null {
   const keys = Object.keys(entry.env ?? {});
   if (keys.length === 0) return null;
-  return truncateForDisplay(`env: ${keys.map(escapeForDisplay).join(", ")}`);
+  return `env: ${keys.map(escapeForDisplay).join(", ")}`;
 }
 
 function formatOne(entry: McpStdioServer): string {
@@ -65,7 +69,7 @@ function formatOne(entry: McpStdioServer): string {
 export function buildCommandSummary(entries: readonly McpStdioServer[]): string {
   if (entries.length === 1) return formatOne(entries[0]);
   return entries
-    .map((e) => `${truncateForDisplay(escapeForDisplay(e.name), 80)}:\n${formatOne(e)}`)
+    .map((e) => `${truncateForDisplay(escapeForDisplay(e.name))}:\n${formatOne(e)}`)
     .join("\n\n");
 }
 
