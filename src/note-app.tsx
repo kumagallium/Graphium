@@ -331,6 +331,10 @@ import {
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
+import { selectInboxOcrTargets } from "./features/mobile-capture/inbox/ocr-targets";
+import { selectInboxTranscribeTargets } from "./features/mobile-capture/inbox/transcribe-targets";
+import { enqueueInboxTranscribe } from "./features/meeting-recorder/inbox-auto-transcribe";
+import { InboxTranscribeToast, type InboxTranscribeToastState } from "./features/meeting-recorder/InboxTranscribeToast";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import { useWebClipInbox, appendClipQuote, WebClipPairingPrompt, WEB_CLIP_FOLDER } from "./features/web-clip";
 import {
@@ -8783,6 +8787,8 @@ export function NoteApp() {
     }
   }, [listMaterialPeekEntry, listMaterialPeekFocus]);
   const [ingestToast, setIngestToastRaw] = useState<IngestToastState>(null);
+  // 受信箱の音声の文字起こしの知らせ（ナレッジ生成のトーストとは別。取得中・完了・閉じるまで残る知らせ）
+  const [inboxTranscribeToast, setInboxTranscribeToast] = useState<InboxTranscribeToastState>(null);
   // トーストの更新はすべてここを通す（チョークポイント）。状態遷移に startedAt / endedAt を刻み、
   // 各段・各項目の所要時間をトーストに出す。更新側の 99 か所は時刻を意識しない
   const setIngestToast = useCallback((update: SetStateAction<IngestToastState>) => {
@@ -13884,6 +13890,54 @@ export function NoteApp() {
         },
       });
       await fm.refreshMediaIndex();
+      // 届いた写真は、一括取り込みと同じく裏で文字を読み取る（送れば、あとは探せる状態にする）
+      intakeOcr.enqueue(selectInboxOcrTargets(res.imported, getLatestMediaIndex()?.media));
+      // 届いた音声も、デスクトップなら裏で文字起こしする（1 本ずつ順に。モデルが無ければ取得して待つ）
+      // 知らせはナレッジ生成のトースト（ingestToast）とは別の専用トースト（InboxTranscribeToast）に出す。
+      // 取得の進み具合は 1 件を置き換え続け、文字にできなかった音声は赤い error にせず（取り込みは成功している）、
+      // 閉じるまで残る中立の知らせにする
+      const addTranscribeNotice = (id: string, text: string) =>
+        setInboxTranscribeToast((prev) => ({
+          download: prev?.download ?? null,
+          modelReady: prev?.modelReady ?? false,
+          notices: [...(prev?.notices ?? []), { id, text }],
+        }));
+      const mediaForTranscribe = getLatestMediaIndex()?.media;
+      enqueueInboxTranscribe(
+        selectInboxTranscribeTargets(res.imported, mediaForTranscribe),
+        {
+          modelDownloading: ({ mb, percent }) =>
+            setInboxTranscribeToast((prev) => ({
+              download: { mb, percent },
+              modelReady: false,
+              notices: prev?.notices ?? [],
+            })),
+          modelDownloadEnded: (ok) =>
+            setInboxTranscribeToast((prev) => ({
+              download: null,
+              // 失敗・取り消しは、あとの 1 文（モデルが無い知らせ）で伝える
+              modelReady: ok,
+              notices: prev?.notices ?? [],
+            })),
+          skipped: ({ failed, tooLong, noModel }) => {
+            const stamp = Date.now();
+            const unreadable = failed + tooLong;
+            if (unreadable > 0) {
+              // 読めない・長すぎるが混ざっても 1 つの知らせにまとめる
+              addTranscribeNotice(
+                `audio-${stamp}`,
+                failed === 0
+                  ? tStatic("mobile.transcribeSkippedTooLong", { count: String(tooLong) })
+                  : tooLong === 0
+                    ? tStatic("mobile.transcribeSkipped", { count: String(failed) })
+                    : tStatic("mobile.transcribeSkippedMixed", { count: String(unreadable), long: String(tooLong) }),
+              );
+            }
+            if (noModel > 0) addTranscribeNotice(`model-${stamp}`, tStatic("mobile.transcribeNoModel", { count: String(noModel) }));
+          },
+        },
+        (id) => mediaForTranscribe?.find((m) => m.fileId === id)?.mimeType,
+      );
       const failed = res.failed.length;
       pushResultToast(
         failed > 0 ? "error" : "success",
@@ -13897,7 +13951,7 @@ export function NoteApp() {
       console.error("[inbox] import failed", e);
       pushResultToast("error", e instanceof Error ? e.message : String(e));
     }
-  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot]);
+  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot, intakeOcr.enqueue]);
 
   // ── Web クリップ（ブラウザ拡張機能 → sidecar の受け取り待ち → メモ・URL 素材・ノート） ──
   // 設計: docs/internal/web-clip-design.md。書き込みはすべて既存のハンドラ経由。
@@ -18196,6 +18250,7 @@ export function NoteApp() {
           ノート内自動 OCR のトースト（autoOcr.toast）と同時に出ることがあるため、
           重ならないよう一段上にずらす */}
       <OcrToast state={intakeOcr.toast} stacked />
+      <InboxTranscribeToast state={inboxTranscribeToast} onDismiss={() => setInboxTranscribeToast(null)} />
       {/* 会議の録音: 開始確認・録音バー・完了トースト（デスクトップのみ） */}
       <MeetingRecorderMount
         insertBlock={insertMeetingBlock}

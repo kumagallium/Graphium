@@ -621,7 +621,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "get_note が返すのと同じ表記で書けば数式・書式として保存される。" +
         "誰がどの経路で書いたかは来歴として記録される。作成後、Graphium を再読み込みすると一覧に出る。" +
         "citations を指定すると本文末尾に " +
-        "References 節を作る（実在する noteId は @リンク、存在しない id は文字のまま残す）。",
+        "References 節を作る（実在する noteId は @リンク、存在しない id は文字のまま残す）。" +
+        "会話に区切りがついたら（結論・決定・手順がまとまったら）、保存するかを 1 行で利用者に聞く（1 つの区切りにつき 1 回まで。断られたらその会話では聞かない。雑談・短い質問・Graphium から読んだ内容の要約・コード作業の報告では聞かない。迷ったら聞かない）。頼まれていないのに保存はしない。",
       inputSchema: {
         title: z.string().describe("ノートのタイトル。命題形か問い形で書く（「〜について」は避ける）"),
         body: z.string().describe("Markdown 本文"),
@@ -695,7 +696,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "「あとで見返せるようにこの回答を残しておいて」のような依頼に使う。" +
         "本文が単発の作業記録・メモなら create_note を、AI が引き続き面倒を見るべき知識なら save_answer を使う。" +
         "citations を指定すると本文中の [[source:<id>]] 引用が解決され、末尾に References 節も作る" +
-        "（実在する id は @リンク、存在しない id は文字のまま残る）。",
+        "（実在する id は @リンク、存在しない id は文字のまま残る）。" +
+        "頼まれていないのに保存しない。",
       inputSchema: {
         question: z.string().describe("問い。回答ページのタイトルになる（命題形・問い形が望ましい）"),
         answer: z
