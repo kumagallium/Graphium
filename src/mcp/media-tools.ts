@@ -527,7 +527,7 @@ export function registerMediaTools(server: McpServer): void {
         type: z.enum(MEDIA_TYPES).optional().describe("素材の種類で絞る"),
         limit: z.number().int().min(1).max(LIST_MAX_LIMIT).optional().describe(`最大件数（既定 ${LIST_DEFAULT_LIMIT}）`),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (args) => guarded(() => listMedia(args), true),
   );
@@ -544,7 +544,7 @@ export function registerMediaTools(server: McpServer): void {
         id: z.string().describe("素材の id"),
         inline: z.boolean().optional().describe("中身を base64 で含める（既定 false）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (args) => guarded(() => getMediaFile(args)),
   );
@@ -565,6 +565,8 @@ export function registerMediaTools(server: McpServer): void {
         path: z.string().optional().describe("受け付けない（指定すると失敗する）"),
         folder: z.string().optional().describe("受け付けない（v1 では指定すると失敗する）"),
       },
+      // 新しく足すだけ。同じ中身なら既存の id を返す
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (args) => guarded(() => addMaterial(args)),
   );

@@ -715,6 +715,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
           .optional()
           .describe("トピックを書く言語（ja / en / ko。既定 ja）"),
       },
+      // 課題の台帳に記録するだけ。資料が登録済みの URL なら取りに行く
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => wrap(() => startTopicTask(input, ctx, root())),
   );
@@ -730,7 +732,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         taskId: z.string().describe("start_topic_task が返した taskId"),
         output: z.string().describe("振り分けの答えの JSON（文字列のまま）"),
       },
-      annotations: { readOnlyHint: false },
+      // 課題の台帳に振り分けを記録するだけ
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (input) => wrap(() => submitTopicRoutes(input, root())),
   );
@@ -746,7 +749,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         taskId: z.string().describe("start_topic_task が返した taskId"),
         ref: z.string().describe("書く件の番号（w1 など）"),
       },
-      annotations: { readOnlyHint: true },
+      // 登録済みの URL 資料はネットワークから取り直して読む
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (input) => wrap(() => getTopicWriteTask(input, root())),
   );
@@ -767,6 +771,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         model: z.string().optional().describe("本文を書いた LLM のモデル ID（例: claude-opus-5）。来歴に記録される"),
         sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
       },
+      // 既存のトピックを改訂する。URL 資料は照合のため取り直す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     async (input) => wrap(() => submitTopicPage(input, ctx, root())),
   );

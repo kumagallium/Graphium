@@ -26,7 +26,7 @@ import { ChevronLeft,
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpTransport, type SavedRegistry, type AsterismSettings, ASTERISM_RECOMMENDED, fillAsterismRecommendedIfEmpty, detectMcpTransport, parseMcpServersJson, inheritApprovalFields, uniqueMcpName, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, type FeatureFlags, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, type ColorMode, LATIN_FONTS, JP_FONTS, COLOR_MODES, ATOMIZE_INGEST_BUDGET_MAX, applyFontMode, applyColorMode, type McpServerEntry, type McpStdioServer, type McpTransport, type SavedRegistry, type AsterismSettings, ASTERISM_RECOMMENDED, fillAsterismRecommendedIfEmpty, detectMcpTransport, parseMcpServersJson, inheritApprovalFields, uniqueMcpName, toMcpServersJson, getEmbeddingModel, followModelRename, followModelDeletion, mapModelNameSettings, isMissingModelName, isUnsupportedEmbeddingModelName, DUPLICATE_MODEL_NAME_ERROR } from "./store";
 import { isDuplicateModelName } from "../../lib/model-name-rules";
 import { embeddingStore } from "../../lib/embedding-store";
 import {
@@ -70,6 +70,8 @@ import { confirmAction } from "../../ui/confirm-dialog";
 import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
+import { confirmStdioCommands } from "./confirm-stdio";
+import { needsStdioConfirm } from "./mcp-command-confirm";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
@@ -1657,12 +1659,23 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // README からコピペした mcpServers JSON を取り込む。
   // 編集中なら 1 件目で対象を置き換える（内部 id と enabled は引き継ぐので、
   // 名前を変えても一覧の位置とトグル状態は保たれる）。2 件目以降は追加扱い。
-  const handleImportMcpJson = useCallback(() => {
+  const handleImportMcpJson = useCallback(async () => {
     const { servers, error } = parseMcpServersJson(mcpJson);
     if (error) {
       setMcpJsonError(error);
       return;
     }
+    // stdio は接続テストやチャットでこのパソコン上でそのまま実行されるので、足す前に
+    // 実行されるコマンドを見せて確認する（新しく入る・command/args/env が変わるものだけ。まとめて 1 回）
+    const needConfirm: McpStdioServer[] = [];
+    servers.forEach((s, i) => {
+      const old =
+        mcpEditingId && i === 0
+          ? mcpServers.find((o) => o.id === mcpEditingId)
+          : mcpServers.find((o) => o.name === s.name);
+      if (needsStdioConfirm(old, s)) needConfirm.push(s);
+    });
+    if (!(await confirmStdioCommands(needConfirm))) return;
     if (mcpEditingId) {
       const [first, ...rest] = servers;
       setMcpServers((prev) =>
@@ -1691,7 +1704,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       upsertMcpServers(servers);
     }
     resetMcpForm();
-  }, [mcpJson, mcpEditingId, upsertMcpServers, resetMcpForm]);
+  }, [mcpJson, mcpEditingId, mcpServers, upsertMcpServers, resetMcpForm]);
 
   /**
    * 1 サーバーに実際に接続してツール一覧が取れるかを確かめる。
@@ -1834,7 +1847,17 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   }, [mcpType, mcpCommand, mcpArgs, mcpEnv, mcpUrl, mcpName, mcpTransport, mcpApiKey]);
 
   // フォーム送信（追加 or 編集）
-  const handleSubmitMcpForm = useCallback(() => {
+  const handleSubmitMcpForm = useCallback(async () => {
+    // stdio は足す前（接続テストより前）に実行されるコマンドを見せて確認する。
+    // 新規、または command/args/env が変わる編集だけ。名前だけの編集は出さない
+    const preview = buildMcpEntryFromForm(
+      mcpEditingId ?? "preview",
+      true,
+    );
+    const oldEntry = mcpEditingId ? mcpServers.find((s) => s.id === mcpEditingId) : undefined;
+    if (preview && needsStdioConfirm(oldEntry, preview)) {
+      if (!(await confirmStdioCommands([preview]))) return;
+    }
     if (mcpEditingId) {
       // 編集: 既存の enabled を引き継いで同 id を置き換える
       setMcpServers((prev) => {
@@ -1857,7 +1880,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
     }
     resetMcpForm();
     setSaved(false);
-  }, [mcpEditingId, buildMcpEntryFromForm, resetMcpForm]);
+  }, [mcpEditingId, mcpServers, buildMcpEntryFromForm, resetMcpForm]);
 
   // 既存エントリを編集フォームに読み込む。
   // 登録は README からのコピペ（JSON）なので、編集も同じ JSON で行う。
