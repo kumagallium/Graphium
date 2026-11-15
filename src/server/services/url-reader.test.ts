@@ -695,6 +695,10 @@ describe("sanitizeReaderHtml: SVG アニメーション・style・name（監査 
     expect(out).toContain('id="fn1"');
     // id でも名前付きプロパティになるので、isTauri() を騙す名前は落とす
     expect(out).not.toContain("__TAURI_INTERNALS__");
-    expect(sanitizeReaderHtml('<a id="__TAURI__">t</a><a id="location">u</a>')).not.toMatch(/id=/);
+    expect(sanitizeReaderHtml('<a id="__TAURI__">t</a><a id="process">u</a>')).not.toMatch(/id=/);
+    // window に元からある名前（location・History など）は上書きにならないので、見出しのアンカーとして残す
+    const kept = sanitizeReaderHtml('<h2 id="location">a</h2><h2 id="History">b</h2>');
+    expect(kept).toContain('id="location"');
+    expect(kept).toContain('id="History"');
   });
 });
