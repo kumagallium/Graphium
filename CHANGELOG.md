@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.136.1](https://github.com/kumagallium/Graphium/compare/v0.136.0...v0.136.1) - 2026-11-15
+
+- docs: list phone capture among the ways in by @kumagallium in https://github.com/kumagallium/Graphium/pull/1688
+
 ## [v0.136.0](https://github.com/kumagallium/Graphium/compare/v0.135.0...v0.136.0) - 2026-11-15
 
 - feat: one memory any AI can use — ChatGPT desktop registration and new positioning by @kumagallium in https://github.com/kumagallium/Graphium/pull/1678
