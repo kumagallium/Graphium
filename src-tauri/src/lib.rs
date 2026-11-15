@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -181,6 +181,38 @@ fn sidecar_cors_origins() -> &'static str {
     }
 }
 
+/// この起動の間だけ有効なローカル API の合言葉（メモリにだけ持つ。ファイルには書かない）。
+/// uuid v4 を 2 つつないだ 64 文字の 16 進。プロセスの間は同じ値を返す。
+fn api_token() -> &'static str {
+    static TOKEN: OnceLock<String> = OnceLock::new();
+    TOKEN.get_or_init(|| {
+        format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        )
+    })
+}
+
+/// アプリ自身の窓（main と別ウィンドウ viewer）だけ合言葉を渡す。
+/// capabilities の ACL はアプリ自前のコマンドには効かないので、ラベルを見て断る。
+fn check_app_window_label(label: &str) -> Result<(), String> {
+    if label == MAIN_LABEL || label == VIEWER_LABEL {
+        Ok(())
+    } else {
+        Err("このウィンドウからは実行できません".to_string())
+    }
+}
+
+/// ローカル API（sidecar）の合言葉を返す。画面は API への fetch に X-Graphium-Token として付ける。
+/// async にしてあるのは、同期のコマンドがメインスレッドで実行されるため。起動直後のメインスレッドは
+/// 窓の準備で塞がっていて、画面の最初の API 呼び出しがその間ずっと待たされる。
+#[tauri::command]
+async fn get_api_token(window: tauri::WebviewWindow) -> Result<String, String> {
+    check_app_window_label(window.label())?;
+    Ok(api_token().to_string())
+}
+
 /// 子プロセスを Rust 側で起動する。
 /// 戻り値は spawn できた PID。renderer 側はその後 `sidecar-log` /
 /// `sidecar-closed` イベントをリッスンしてバックエンドの状態を追う。
@@ -251,10 +283,15 @@ fn start_native_sidecar(
         // 127.0.0.1 の API 応答を読めてしまう。Tauri の WebView 3 オリジンは sidecar 側で常に足される
         .env("CORS_ORIGINS", sidecar_cors_origins())
         .env("DATA_DIR", &data_dir)
-        // 親プロセスの環境から継がせない。デスクトップ版の画面には合言葉を入れる場所が無く、
-        // GRAPHIUM_AUTH_TOKEN を継ぐと全 API が 401 になる。bind は 127.0.0.1 固定で足りるので
-        // GRAPHIUM_BIND_HOST / GRAPHIUM_ALLOWED_HOSTS も継がせない（継ぐと待ち受け先・許可ホストが変わる）
-        .env_remove("GRAPHIUM_AUTH_TOKEN")
+        // 起動ごとの合言葉（get_api_token と同じ値）を渡す。親プロセスの環境の
+        // GRAPHIUM_AUTH_TOKEN は継がせず、アプリ自身が作った値で上書きする。
+        // 値はログ・イベントに出さない。画面は get_api_token で受け取り X-Graphium-Token に付ける。
+        // GRAPHIUM_DESKTOP=1 は、<img> / pdf.js がヘッダーを付けられない画像・PDF の中継と、
+        // 未認証の health の最小応答（pid）をデスクトップ版だけ開けるための印。
+        // bind は 127.0.0.1 固定で足りるので GRAPHIUM_BIND_HOST / GRAPHIUM_ALLOWED_HOSTS は
+        // 継がせない（継ぐと待ち受け先・許可ホストが変わる）
+        .env("GRAPHIUM_AUTH_TOKEN", api_token())
+        .env("GRAPHIUM_DESKTOP", "1")
         .env_remove("GRAPHIUM_BIND_HOST")
         .env_remove("GRAPHIUM_ALLOWED_HOSTS")
         // macOS の Keychain 経由で API キーを扱うよう sidecar に明示する。
@@ -4061,6 +4098,7 @@ pub fn run() {
             viewer_close_ack,
             shutdown_ack,
             kill_pid,
+            get_api_token,
             save_bytes_with_dialog,
             print_webview,
             set_background_work_active,
@@ -5656,6 +5694,22 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let r = root.to_str().unwrap();
         assert!(ensure_dir_within_root(r, &root.join("notes")).is_err());
         assert!(!dir_check_cache_hit(r, &root.join("notes")));
+    }
+
+    #[test]
+    fn get_api_token_is_64_hex_and_stable() {
+        let a = api_token();
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(a, api_token());
+    }
+
+    #[test]
+    fn get_api_token_gate_allows_only_app_windows() {
+        assert!(check_app_window_label(MAIN_LABEL).is_ok());
+        assert!(check_app_window_label(VIEWER_LABEL).is_ok());
+        assert!(check_app_window_label("other").is_err());
+        assert!(check_app_window_label("").is_err());
     }
 
     #[test]

@@ -35,6 +35,16 @@ export function setSidecarIdentity(info: {
 app.get("/", async (c) => {
   // 合言葉が要る設定で未認証なら、生きていることだけ返す（dataDir・pid・モデル情報は出さない）
   if (!isRequestAuthorized(c)) {
+    // デスクトップ版だけ pid と desktop を足す。合言葉の違う別の Graphium の sidecar が 3001 を
+    // 握っているとき、画面がそれと見分けて止められるようにするため（dataDir・version・モデル情報は出さない）
+    if (process.env.GRAPHIUM_DESKTOP === "1") {
+      return c.json({
+        status: "healthy",
+        components: { backend: "ok" },
+        pid: sidecarIdentity.pid,
+        desktop: true,
+      });
+    }
     return c.json({ status: "healthy", components: { backend: "ok" } });
   }
   // 認証状態: 保存済みの API キーが読めないモデルが居ないか確認する。

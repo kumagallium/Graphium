@@ -29,12 +29,41 @@ export function authCookieValue(token: string): string {
   return createHash("sha256").update(`graphium-auth-cookie:${token}`, "utf8").digest("hex");
 }
 
+// デスクトップ版で、起動時に環境変数から取り込んだ合言葉（captureDesktopAuthToken）
+let capturedToken: string | undefined;
+
+/** 今効いている合言葉（未設定なら undefined）。合言葉を見るコードは必ずこれを通す */
+export function getAuthToken(): string | undefined {
+  return capturedToken ?? (process.env.GRAPHIUM_AUTH_TOKEN || undefined);
+}
+
+/**
+ * デスクトップ版（GRAPHIUM_DESKTOP=1）の合言葉を環境変数から取り込み、環境変数からは消す。
+ *
+ * sidecar は Copilot CLI・claude / codex・security・ログインシェルなどを子プロセスとして起動し、
+ * その多くは環境を丸ごと継ぐ。合言葉を環境に残すと、それらに渡ってしまう。
+ * 起動の最初（子プロセスを起動する前）に 1 度だけ呼ぶ。セルフホストでは何もしない
+ * （利用者が設定した環境変数をそのまま使う）。
+ */
+export function captureDesktopAuthToken(): void {
+  if (process.env.GRAPHIUM_DESKTOP !== "1") return;
+  const token = process.env.GRAPHIUM_AUTH_TOKEN;
+  if (!token) return;
+  capturedToken = token;
+  delete process.env.GRAPHIUM_AUTH_TOKEN;
+}
+
+/** テスト用: 取り込んだ合言葉を捨てる */
+export function __resetCapturedAuthTokenForTest(): void {
+  capturedToken = undefined;
+}
+
 /**
  * 要求が合言葉を満たしているか。
  * 戻り値: "none" = 合言葉が未設定（素通し）/ "header" / "cookie" / "denied"
  */
 export function checkRequestAuth(c: Context): "none" | "header" | "cookie" | "denied" {
-  const expected = process.env.GRAPHIUM_AUTH_TOKEN;
+  const expected = getAuthToken();
   if (!expected) return "none";
   if (authTokenMatches(c.req.header("x-graphium-token"), expected)) return "header";
   const cookie = getCookie(c, AUTH_COOKIE_NAME);

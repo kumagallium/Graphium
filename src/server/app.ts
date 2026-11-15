@@ -1,10 +1,10 @@
 // Hono アプリ構築（index.ts / Vercel エントリポイントから共用）
 // サーバー起動（serve()）はここに含めず、呼び出し側に委ねる
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { setCookie } from "hono/cookie";
-import { AUTH_COOKIE_MAX_AGE, AUTH_COOKIE_NAME, authCookieValue, checkRequestAuth } from "./auth-token.js";
+import { AUTH_COOKIE_MAX_AGE, AUTH_COOKIE_NAME, authCookieValue, checkRequestAuth, getAuthToken } from "./auth-token.js";
 import { setServerMode } from "./config/models.js";
 import { setServerMode as setProfilesServerMode } from "./config/profiles.js";
 import healthRoutes from "./routes/health.js";
@@ -197,6 +197,8 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
       // host_permissions で CORS の外から送るので要らず、Web ページからは送らせない（routes/clip.ts）
       allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token", "X-MCP-Servers", "X-Registry-Key"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      // デスクトップ版は全要求に X-Graphium-Token が付いて preflight が増えるので、結果を 10 分覚えさせる
+      maxAge: 600,
     }),
   );
 
@@ -233,11 +235,18 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   //   - GET / HEAD /api/storage/capabilities（画面が「合言葉が要るか」を知るため）
   //   - GET / HEAD /api/health（生死確認。合言葉が要るときは内部の値を返さない。health.ts）
   //   - 拡張機能の口（/api/clip の POST・/ping・/pair・/pair/:id）。X-Graphium-Clip-Token と Origin で守る
+  //   - デスクトップ版（GRAPHIUM_DESKTOP=1）だけ: GET / HEAD の /api/url/image-proxy・/api/url/pdf-proxy。
+  //     WebView の <img> と pdf.js は別オリジン（127.0.0.1）へヘッダーも Cookie も付けられない。
+  //     合言葉なしで通した要求は c に authBypassed を立てる。pdf-proxy はそれを見て、ループバック・LAN・
+  //     プライベートの宛先も止める（"strict"）。合言葉つきのときだけ LAN の PDF を取れる。
+  //     セルフホストでは今までどおり検査する
+  //   デスクトップ版の合言葉はアプリが起動ごとに作って渡す（src-tauri の get_api_token）
   // ヘッダーで通ったら Cookie を配る（<img> などヘッダーを付けられない同一オリジンの読み込み用）。
   // Secure は付けない（LAN の http で使うため）。
   if (mode !== "vercel") {
     app.use("/api/*", async (c, next) => {
-      if (!process.env.GRAPHIUM_AUTH_TOKEN) return next();
+      const authToken = getAuthToken();
+      if (!authToken) return next();
       const method = c.req.method;
       const path = c.req.path.replace(/\/+$/, "");
       if (method === "OPTIONS") return next();
@@ -245,10 +254,20 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
       if ((method === "GET" || method === "HEAD") && path === "/api/health") return next();
       if (method === "POST" && /^\/api\/clip(\/pair(\/[^/]+)?)?$/.test(path)) return next();
       if (method === "GET" && path === "/api/clip/ping") return next();
+      if (
+        process.env.GRAPHIUM_DESKTOP === "1" &&
+        (method === "GET" || method === "HEAD") &&
+        (path === "/api/url/image-proxy" || path === "/api/url/pdf-proxy")
+      ) {
+        // 合言葉つきで来た要求まで「検査を外した」扱いにしない
+        if (checkRequestAuth(c) === "denied") (c as Context).set("authBypassed", true);
+        return next();
+      }
       const result = checkRequestAuth(c);
       if (result === "denied") return c.json({ error: "Authentication failed" }, 401);
-      if (result === "header") {
-        setCookie(c, AUTH_COOKIE_NAME, authCookieValue(process.env.GRAPHIUM_AUTH_TOKEN), {
+      // デスクトップ版は Cookie を配らない（ヘッダーで足りる。ポートを区別しない Cookie を残さない）
+      if (result === "header" && process.env.GRAPHIUM_DESKTOP !== "1") {
+        setCookie(c, AUTH_COOKIE_NAME, authCookieValue(authToken), {
           httpOnly: true,
           sameSite: "Strict",
           path: "/api",

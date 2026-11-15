@@ -60,6 +60,60 @@ export function reduceSidecarClosed(
   };
 }
 
+/**
+ * health の応答が「自分の sidecar」のものか。
+ *
+ * 画面の fetch は包み（api-auth-fetch.ts）が起動ごとの合言葉を付ける。合言葉が合えば
+ * 応答に dataDir が入り、違う（古い版・別の Graphium が 3001 を握っている）と
+ * dataDir の無い最小の応答になる。res.ok だけでは別の sidecar を ready にしてしまうので、
+ * dataDir があることまで確かめる。
+ */
+export function isOwnSidecarHealth(body: unknown): boolean {
+  const dataDir = (body as { dataDir?: unknown } | null | undefined)?.dataDir;
+  return typeof dataDir === "string" && dataDir !== "";
+}
+
+export type ExistingSidecarVerdict = {
+  /** reuse = 自分の現行 sidecar。replace = 止めて入れ替える */
+  action: "reuse" | "replace";
+  /** 止める相手の pid（取れなければ 0。止められないので spawn に進んで失敗の表示に任せる） */
+  pid: number;
+  /** 入れ替える理由（ログ用） */
+  reason: string;
+};
+
+/**
+ * 3001 で既に動いている sidecar の health 応答から、再利用か入れ替えかを決める。
+ *
+ *   - dataDir も version も一致 → 再利用
+ *   - dataDir 不一致 → 他人の sidecar（消えた worktree の幽霊 / 別 dev サーバー）
+ *   - dataDir 無し（未認証の最小応答）→ 合言葉の違う sidecar（別の起動の Graphium など）。
+ *     最小応答にも pid が入るので止められる
+ *   - version 不一致 → 自動更新前の「古い自分」
+ * pid が取れない相手（合言葉つきのセルフホストのサーバーなど）は pid 0 を返す。
+ */
+export function judgeExistingSidecar(
+  body: unknown,
+  dataDir: string,
+  expectedVersion: string,
+): ExistingSidecarVerdict {
+  const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const remoteDataDir = typeof b.dataDir === "string" ? b.dataDir : "";
+  const remotePid = typeof b.pid === "number" && b.pid > 0 ? b.pid : 0;
+  const remoteVersion = typeof b.version === "string" ? b.version : "";
+  const sameDataDir = remoteDataDir === dataDir;
+  const sameVersion = expectedVersion === "" || remoteVersion === expectedVersion;
+  if (sameDataDir && sameVersion) {
+    return { action: "reuse", pid: remotePid, reason: "matching dataDir + version" };
+  }
+  const reason = !sameDataDir
+    ? remoteDataDir
+      ? `foreign dataDir=${remoteDataDir} (expected ${dataDir})`
+      : "unauthenticated response (different token or foreign server)"
+    : `stale version=${remoteVersion || "?"} (expected ${expectedVersion})`;
+  return { action: "replace", pid: remotePid, reason };
+}
+
 let recentLogLines: string[] = [];
 const RECENT_LOG_LIMIT = 80;
 // Rust 側 event listener の cleanup。startSidecar を複数回呼んだ場合に
@@ -121,7 +175,8 @@ async function waitForHealth(): Promise<boolean> {
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
       const res = await fetch(HEALTH_URL);
-      if (res.ok) return true;
+      // 合言葉の違う別の sidecar が 3001 を握っていても ok で返るので、dataDir まで確かめる
+      if (res.ok && isOwnSidecarHealth(await res.json().catch(() => null))) return true;
     } catch {
       // まだ起動していない
     }
@@ -130,9 +185,29 @@ async function waitForHealth(): Promise<boolean> {
   return false;
 }
 
-/** sidecar サーバーを起動する */
-export async function startSidecar(): Promise<boolean> {
-  if (!isTauri()) return false;
+// 進行中の起動。起動は必ず 1 本にまとめる
+let startInFlight: Promise<boolean> | null = null;
+
+/**
+ * sidecar サーバーを起動する。
+ *
+ * 同時に呼ばれても起動は 1 本だけ走らせ、後から来た呼び出しは同じ結果を待つ。
+ * 2 本走ると、後の start_native_sidecar が先に起動した子を止めてしまい、先の呼び出しは
+ * 「動いていた sidecar が勝手に終了した」と見て停止のバナーを出す。起動直後は、画面の
+ * 最初の API 呼び出し（モデル一覧）が失敗して ensureSidecar 経由でここへ来るので、実際に重なる。
+ */
+export function startSidecar(): Promise<boolean> {
+  if (!isTauri()) return Promise.resolve(false);
+  if (!startInFlight) {
+    const p = startSidecarOnce().finally(() => {
+      if (startInFlight === p) startInFlight = null;
+    });
+    startInFlight = p;
+  }
+  return startInFlight;
+}
+
+async function startSidecarOnce(): Promise<boolean> {
 
   setState({ status: "starting", lastError: null, lastErrorAt: null, unexpectedExit: false });
   recentLogLines = [];
@@ -169,12 +244,9 @@ export async function startSidecar(): Promise<boolean> {
     const res = await fetch(HEALTH_URL);
     if (res.ok) {
       const body = await res.json().catch(() => ({}) as Record<string, unknown>);
-      const remoteDataDir = typeof body?.dataDir === "string" ? body.dataDir : "";
-      const remotePid = typeof body?.pid === "number" ? body.pid : 0;
-      const remoteVersion = typeof body?.version === "string" ? body.version : "";
-      const sameDataDir = remoteDataDir === dataDir;
-      const sameVersion = expectedVersion === "" || remoteVersion === expectedVersion;
-      if (sameDataDir && sameVersion) {
+      const verdict = judgeExistingSidecar(body, dataDir, expectedVersion);
+      const remotePid = verdict.pid;
+      if (verdict.action === "reuse") {
         console.log("[sidecar] Backend already running (matching dataDir + version)");
         // 再利用する sidecar の PID を控える。これがないと終了時に kill 対象が
         // 分からず孤児として残り、次回起動で再利用される（今回の 404 の一因）。
@@ -182,9 +254,7 @@ export async function startSidecar(): Promise<boolean> {
         setState({ status: "ready", unexpectedExit: false });
         return true;
       }
-      const reason = !sameDataDir
-        ? `foreign dataDir=${remoteDataDir || "?"} (expected ${dataDir})`
-        : `stale version=${remoteVersion || "?"} (expected ${expectedVersion})`;
+      const reason = verdict.reason;
       console.warn(
         `[sidecar] Replacing sidecar on 3001 (pid=${remotePid}, ${reason}). Killing.`,
       );
@@ -306,9 +376,12 @@ export async function startSidecar(): Promise<boolean> {
 /** sidecar サーバーが生きているか確認し、死んでいたら再起動 */
 export async function ensureSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
+  // 起動の途中なら、その結果を待つ（途中の sidecar を「応答なし」と見て起動し直さない）
+  if (startInFlight) return startInFlight;
   try {
     const res = await fetch(HEALTH_URL);
-    if (res.ok) {
+    // 別の sidecar（合言葉の違う）を ready にしない。dataDir があるのは自分の sidecar だけ
+    if (res.ok && isOwnSidecarHealth(await res.json().catch(() => null))) {
       setState({ status: "ready", unexpectedExit: false });
       return true;
     }
@@ -323,6 +396,8 @@ export async function ensureSidecar(): Promise<boolean> {
 /** sidecar を明示的に再起動する（UI からのトリガー用） */
 export async function restartSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
+  // 起動の途中なら終わるのを待ってから止める（途中で止めると、進行中の起動が失敗として残る）
+  if (startInFlight) await startInFlight.catch(() => false);
   await stopSidecar();
   return startSidecar();
 }
