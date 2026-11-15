@@ -3405,7 +3405,8 @@ The same `src/` tree is built four different ways.
   `start_native_sidecar`) accept only the `main` window; the viewer
   window can read and save notes but not run them. The sidecar gets
   `CORS_ORIGINS=http://localhost:5174,...` in debug builds only; release
-  builds pass an empty value (the WebView origins are added by the sidecar)
+  builds pass only the three WebView origins (an empty value would make the
+  sidecar fall back to its default, `http://localhost:5174`)
 - Shared-folder writes (`shared_write`, `shared_delete`,
   `shared_blob_write`, and the file check of `shared_blob_delete`) refuse a
   target that is a symbolic link and require the destination folder, once

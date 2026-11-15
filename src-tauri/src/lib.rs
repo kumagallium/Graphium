@@ -170,13 +170,14 @@ mod sidecar_job {
     }
 }
 
-/// sidecar に渡す CORS_ORIGINS。debug ビルドだけ dev の vite（5174）を足す。release は空文字
-/// （「追加の許可なし」。Tauri の WebView のオリジンは sidecar が自前で許可リストに足す）。
+/// sidecar に渡す CORS_ORIGINS。debug ビルドだけ dev の vite（5174）を足す。release は
+/// WebView の 3 オリジンだけを明示して渡す。空文字にはしない: sidecar は空の CORS_ORIGINS を
+/// 「未指定」とみなして既定の http://localhost:5174 に戻すので、空だと 5174 が許可されたままになる。
 fn sidecar_cors_origins() -> &'static str {
     if cfg!(debug_assertions) {
         "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost"
     } else {
-        ""
+        "tauri://localhost,http://tauri.localhost,https://tauri.localhost"
     }
 }
 
@@ -5689,10 +5690,12 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
     #[test]
     fn sidecar_cors_origins_matches_build_profile() {
         let v = sidecar_cors_origins();
-        if cfg!(debug_assertions) {
-            assert!(v.contains("http://localhost:5174"));
-        } else {
-            assert!(v.is_empty());
+        // どちらのビルドでも WebView の 3 オリジンは入り、空にはならない
+        // （空文字だと sidecar は既定の http://localhost:5174 に戻す）
+        assert!(!v.is_empty());
+        for origin in ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"] {
+            assert!(v.split(',').any(|o| o == origin), "{origin} が無い");
         }
+        assert_eq!(v.contains("http://localhost:5174"), cfg!(debug_assertions));
     }
 }
