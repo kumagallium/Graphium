@@ -3,11 +3,11 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>An inspiration notebook for the AI era.</b>
+  <b>Your memory, for every AI.</b>
 </p>
 <p align="center">
-  The more you write, the more the dots connect into insight.<br />
-  Every line — the ones you wrote and the ones the AI handed you — traces back to the note it came from, so you can trust it enough to explore.
+  Stop re-explaining yourself to AI.<br />
+  Keep what you read, hear and jot down in one place on your own computer. Graphium's built-in AI and the Claude and ChatGPT desktop apps answer from your own records, with the source attached, and switching AIs doesn't erase the memory.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
@@ -38,20 +38,20 @@
 
 Graphium is a personal open-source project that combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The result is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
 
-## How it works — write, expand, trace
+## How it works — keep, connect, trace
 
-### 1. Write
-Jot ideas down as they come and connect them with `@` references. Up to here, it feels as light as any note app.
+### 1. Keep
+Web clips, transcribed recordings, text read from photos and PDFs, quick memos and notes linked with `@` references. With that many ways in, whatever you come across can go straight in.
 
 <p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
 
-### 2. Expand with AI
-Connect your own AI — an API key or your GitHub Copilot subscription — and it lifts claims and insights out of your notes: connections you didn't notice yourself.
+### 2. Connect to your AIs
+Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics and lifts claims and insights out of them. The Claude and ChatGPT desktop apps, Codex and other MCP clients connect too: one button in the desktop app registers Graphium with them, and they can both read your notes and save what a conversation worked out.
 
 <p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge topic list built from the bread-baking notes" width="760" /></p>
 
 ### 3. Trace to the origin
-Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.
+Any answer, and any line you wrote, walks back to its source note in one click. Notes an outside AI writes carry a mark saying so, so you can hand work to AI with confidence.
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="An insight page with its lineage panel showing the source claim and source notes" width="760" /></p>
 
@@ -169,7 +169,7 @@ Some people read more comfortably with letterforms designed for dyslexia. Graphi
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
 
-Graphium also runs as an **[MCP](https://modelcontextprotocol.io) server**. Claude Desktop, Claude Code, or any MCP client can search your notes, read a procedure step by step with the materials and conditions of each step, find every note that used a given material or instrument, trace what a note was derived from, add new notes, and help maintain the knowledge layer — merge duplicate topics, rewrite or archive a topic, all recorded and undoable from Graphium (quit Graphium first). Your vault stays on your machine. Reading and adding notes do not need Graphium to be running; maintaining knowledge pages does need it quit.
+Graphium also runs as an **[MCP](https://modelcontextprotocol.io) server**. The desktop app registers it with Claude Desktop, Claude Code, Codex and the ChatGPT desktop app in one click (**⚙ Settings → AI → Use your notes from other AI assistants**; in ChatGPT it works from Work-mode conversations). Claude Desktop, Claude Code, or any MCP client can search your notes, read a procedure step by step with the materials and conditions of each step, find every note that used a given material or instrument, trace what a note was derived from, add new notes, and help maintain the knowledge layer — merge duplicate topics, rewrite or archive a topic, all recorded and undoable from Graphium (quit Graphium first). Your vault stays on your machine. Reading and adding notes do not need Graphium to be running; maintaining knowledge pages does need it quit.
 
 <details>
 <summary><b>Connecting an MCP client</b></summary>
