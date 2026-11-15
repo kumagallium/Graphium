@@ -16,7 +16,8 @@ import "react-pdf/dist/Page/TextLayer.css";
 import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 import { useT } from "../../i18n";
-import { apiBase } from "../../lib/platform";
+import { apiBase, isTauri } from "../../lib/platform";
+import { getTauriApiToken } from "../../lib/api-auth-fetch";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
@@ -66,6 +67,15 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProp
   const pagesWrapperRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  // デスクトップ版で pdf-proxy を読むときに pdf.js へ付けさせる合言葉（それ以外は null）
+  const [proxyToken, setProxyToken] = useState<string | null>(null);
+  const documentOptions = useMemo(
+    () =>
+      proxyToken && blobUrl?.startsWith(`${apiBase()}/`)
+        ? { ...PDFJS_DOC_OPTIONS, httpHeaders: { "X-Graphium-Token": proxyToken } }
+        : PDFJS_DOC_OPTIONS,
+    [proxyToken, blobUrl],
+  );
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -108,7 +118,21 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProp
       // 同一オリジン（sidecar）の PDF プロキシ経由で読む。
       // blob:/data: 等のローカル URL はそのまま使う。
       if (/^https?:\/\//i.test(entry.url)) {
-        setBlobUrl(`${apiBase()}/url/pdf-proxy?url=${encodeURIComponent(entry.url)}`);
+        const proxied = `${apiBase()}/url/pdf-proxy?url=${encodeURIComponent(entry.url)}`;
+        if (isTauri()) {
+          // デスクトップ版: pdf.js は fetch の包みを通らないことがあるので、合言葉を自分で付けさせる。
+          // 合言葉なしの pdf-proxy は公開の宛先しか取らない（LAN・ループバック上の PDF が開けない）。
+          // 合言葉を受け取ってから読み込みを始める（途中で options が変わると読み直しになる）
+          void getTauriApiToken().then((token) => {
+            if (cancelled) return;
+            setProxyToken(token);
+            setBlobUrl(proxied);
+          });
+          return () => {
+            cancelled = true;
+          };
+        }
+        setBlobUrl(proxied);
       } else {
         setBlobUrl(entry.url);
       }
@@ -643,7 +667,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProp
         <div ref={pagesWrapperRef} lang="">
           <Document
             file={blobUrl}
-            options={PDFJS_DOC_OPTIONS}
+            options={documentOptions}
             onLoadSuccess={onDocumentLoad}
             onLoadError={onDocumentError}
             loading={<div className="text-muted-foreground text-sm text-center py-8">{t("common.loading")}</div>}

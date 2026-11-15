@@ -3,7 +3,7 @@
 // GET  /api/url/pdf-proxy   — リモート PDF をサーバ経由でストリームし PdfViewer に表示させる
 // GET  /api/url/image-proxy — リモート画像をサーバ経由でストリームする（Reader 本文の表示 +「Graphium に保存」）
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
   fetchAsReaderArticle,
   getCachedReaderArticle,
@@ -78,14 +78,16 @@ app.get("/pdf-proxy", async (c) => {
   let res: Response;
   try {
     // 利用者が自分で指定する URL なので LAN は止めない。リンクローカルとクラウドのメタデータだけ、
-    // リダイレクト先も含めて止める（要求を送る前に 1 段ずつ検査する）
+    // リダイレクト先も含めて止める（要求を送る前に 1 段ずつ検査する）。
+    // ただしデスクトップ版で合言葉なしに通した要求（authBypassed。app.ts）は、
+    // ほかのプログラムが中継に使えないようループバック・LAN も止める
     res = await guardedFetch(
       url,
       {
         headers: { "User-Agent": PDF_PROXY_USER_AGENT, Accept: "application/pdf,*/*" },
         signal: AbortSignal.timeout(PDF_PROXY_TIMEOUT_MS),
       },
-      "metadata-only",
+      (c as Context).get("authBypassed") ? "strict" : "metadata-only",
     );
   } catch (err) {
     if (err instanceof BlockedTargetError) return c.json({ error: "This host is not allowed" }, 403);

@@ -3788,10 +3788,44 @@ The same `src/` tree is built four different ways.
   own sidecar auto-restart) and then stops any leftover orphan sidecar
   processes before copying files.
 - The sidecar binds to loopback only (`127.0.0.1`; override with
-  `GRAPHIUM_BIND_HOST`). Most of the local API is unauthenticated, so the
-  server must never be reachable from other machines on the network. The
-  Docker image sets `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a
-  container the exposure boundary is the container port mapping.
+  `GRAPHIUM_BIND_HOST`). Outside the desktop app, most of the local API is
+  unauthenticated, so the server must never be reachable from other machines
+  on the network (plain dev and Docker without `GRAPHIUM_AUTH_TOKEN`). The Docker image sets
+  `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a container the exposure boundary is the container
+  port mapping.
+- **The desktop app's local API is guarded by a per-launch secret.** Other
+  programs on the same machine (and browser extensions) can reach
+  `127.0.0.1:3001`, so the app reuses the self-host token mechanism
+  (`GRAPHIUM_AUTH_TOKEN`, `src/server/auth-token.ts`) with a value nobody
+  types. Rust creates it once per launch (two uuid v4 values, 64 hex
+  characters, held in memory only, never written to a file or to
+  `sidecar-log`), hands it to the sidecar as `GRAPHIUM_AUTH_TOKEN` together
+  with `GRAPHIUM_DESKTOP=1`, and returns it from the `get_api_token` command,
+  which only the `main` and `viewer` windows may call. The webview wraps
+  `fetch` (`src/lib/api-auth-fetch.ts`) and adds `X-Graphium-Token` to
+  requests for the API origin only. Exceptions: the Web Clip endpoints used
+  by the Chrome extension (guarded by their own clip token and Origin check),
+  `GET /api/health` (a minimal reply with `pid` and `desktop: true` when
+  unauthenticated, so the app can recognize and replace a sidecar started
+  with a different secret), and — desktop only — `GET`/`HEAD`
+  `/api/url/image-proxy` and `/api/url/pdf-proxy`, because `<img>` cannot
+  attach headers or cookies to a cross-origin request. Both only fetch
+  a URL and return none of the user's notes; without the secret `image-proxy`
+  and `pdf-proxy` refuse loopback, LAN and private destinations (`strict`), and
+  only requests carrying the secret keep the narrower `pdf-proxy` rule. The
+  PDF viewer hands the secret to pdf.js (`httpHeaders`), so PDFs on the local
+  network still open; the `pdf-proxy` exemption is the fallback for a request
+  that arrives without it. The desktop sidecar sets no auth cookie. At boot it
+  moves the secret out of its environment (`captureDesktopAuthToken` in
+  `src/server/auth-token.ts`), so the programs it launches (Copilot CLI,
+  `claude` / `codex`, `security`, a login shell) do not inherit it. The
+  environment the process was started with can still be visible to a
+  process of the same OS user (for example with `ps eww`);
+  the guard is against other programs and browser extensions that only reach
+  the HTTP port, not against code running as the same user. `/api/storage/capabilities`
+  reports `requiresAuth: false` on the desktop so the UI never asks for a
+  token. `src/lib/sidecar.ts` treats a health reply as its own sidecar only
+  when it carries `dataDir`.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
   Syncthing — the desktop side of Graphium never talks to those services).
