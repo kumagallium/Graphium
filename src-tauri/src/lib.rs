@@ -3990,6 +3990,11 @@ pub fn run() {
             meeting_transcribe::meeting_model_delete,
             meeting_transcribe::meeting_transcribe_start,
             meeting_transcribe::meeting_transcribe_cancel,
+            meeting_transcribe::meeting_transcribe_input_begin,
+            meeting_transcribe::meeting_transcribe_input_append,
+            meeting_transcribe::meeting_transcribe_input_finish,
+            meeting_transcribe::meeting_transcribe_input_discard,
+            meeting_transcribe::meeting_media_file_size,
             meeting_transcribe::save_media_transcript,
             meeting_transcribe::read_media_transcript,
             meeting_transcribe::save_media_sidecar,
@@ -4136,6 +4141,9 @@ pub fn run() {
             // 旧形式（拡張子なし）メディアの拡張子付与マイグレーション。
             // フロントエンドのロード前に同期実行するので、読み込みとの競合はない。
             migrate_media_extensions();
+
+            // 文字起こし用に渡された一時の wav（前回の取り消し漏れ・異常終了の残り）を消す
+            meeting_transcribe::cleanup_input_tmp();
 
             // 記憶した拡大縮小の倍率を、main を見せる前に当てる。
             // 初回の描画から正しい幅になり、`innerWidth < 768` の判定などが

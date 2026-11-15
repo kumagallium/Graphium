@@ -3493,7 +3493,28 @@ The same `src/` tree is built four different ways.
   shipped with the app: `ggml-large-v3-turbo-q5_0` (574 MB, the default and
   recommended), `ggml-small` (488 MB) or `ggml-base` (148 MB) is downloaded once from Hugging Face into
   `appdata/models/whisper/`, written to a `.part` file and renamed only
-  after its SHA-256 matches the value compiled into the app. Every window is
+  after its SHA-256 matches the value compiled into the app. It is fetched
+  when transcription first needs it, not at install: by the "Transcribe"
+  button (always), and automatically in two places: once a recording has
+  actually started with live transcription on (the one place in the
+  recorder store that both the start dialog and the transcript block's
+  "start recording" go through, so a denied permission or a failed start
+  never triggers a download; a failed download is reported with one line in
+  the recorder's own toast and the recording carries on), and when audio
+  arrives through the mobile inbox
+  (`src/features/meeting-recorder/model-auto-download.ts`; one shared
+  download state, so every screen shows the same progress). The automatic
+  starts try once per app launch, never repeat after a failure in the same
+  launch (waiting for a download that another screen started gives up after
+  5 minutes without any progress, and that give-up does not count as the
+  one try), and stay off once the user has cancelled the download or deleted
+  the model in Settings (a flag in the settings; pressing "Transcribe" or
+  "Download" clears it). The inbox reports the download, the files that
+  could not be transcribed and the files left untranscribed for lack of the
+  model in a toast of its own (`InboxTranscribeToast`, separate from the
+  knowledge-generation toast), and
+  the recording dialog says that the recording being started can be
+  transcribed once the download finishes. Every window is
   decoded with a terminology hint: the note's title (automatic date-time
   titles excluded) plus the user's "frequent terms" setting, joined with
   commas, keeping the last 160 characters, is passed as whisper's initial
@@ -3562,6 +3583,39 @@ The same `src/` tree is built four different ways.
   without a model, or an older one, can be transcribed afterwards from the
   media list. The minutes note is built on top of these files in a later
   step.
+  **Other audio** (a phone's m4a / weba / wav that arrived through the
+  mobile inbox or was added by hand) is not a stereo `media/<fileId>.wav`,
+  and Rust cannot read those formats, so the WebView converts it first
+  (`audio-convert.ts`: `decodeAudioData` in a 16 kHz `AudioContext` — or the
+  default rate plus an `OfflineAudioContext` where that cannot be created —
+  then a mono downmix and 16-bit samples). Only meeting recordings skip this
+  step. Before decoding, the length is read from the `<audio>` metadata and
+  anything over 2 hours is refused, and so is a source file over 500 MB
+  whether or not a length was available (the two refusals have separate
+  messages), because decoding expands the whole file in memory. The size is
+  checked before the file is read, with the small `meeting_media_file_size`
+  command (file metadata only), so an oversized file is refused without being
+  loaded; if the size cannot be obtained the file is read as before. The PCM is
+  sent to Rust in pieces through four commands,
+  `meeting_transcribe_input_begin` / `_append` / `_finish` / `_discard`, which
+  assemble `appdata/transcribe-input/<fileId>.wav` — never a file in `media/`,
+  so the media list does not show it twice. `transcribe_file` prefers that
+  temporary WAV and falls back to `media/<fileId>.wav` (meeting recordings).
+  A mono file has no "others / self" side, so its segments carry
+  `track: null`, and the plain-text `.txt` written next to the transcript
+  has lines of the form `[mm:ss] text` with no `them:` / `me:` label (stereo
+  meeting recordings keep `[mm:ss] them: text` / `[mm:ss] me: text`). The commands are exclusive per `fileId` together with the
+  transcription jobs: a `begin` for a file that is already being received or
+  transcribed fails with `busy` and the panel says the audio is being processed
+  (a reception mark left without activity is reclaimed after 2 minutes). Limits are enforced in Rust: 2 hours per
+  file, 1 GiB for the whole folder, two files being received at a time, 4 MiB
+  per piece. The temporary WAV is removed by a drop guard when the job ends
+  however it ends (model load failure, panic, cancel, done), and a launch
+  sweeps leftovers by name without creating the folder. Audio arriving
+  through the inbox is transcribed one file at a time in the background; a
+  file that cannot be read, is too long, or times out never blocks the next,
+  and the toast says how many could not be transcribed and that the audio is
+  still saved.
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs
@@ -3980,6 +4034,7 @@ can read your vault, add notes to it, maintain the knowledge layer
 (topics and answer pages), and act as the model for claim extraction — never
 editing the notes themselves.
 
+- Server instructions: `src/mcp/server-instructions.ts` is returned in the MCP `initialize` response (built in `src/mcp/create-server.ts`). It asks the assistant to offer, in one line, to save a conversation at a natural stopping point, and never to save unasked. It is a request to the model, so whether it asks is up to the client and model.
 - Entry: `src/mcp/index.ts`, bundled by `pnpm bundle:mcp` into
   `dist-mcp/graphium-mcp.mjs` (a single file, run with `node`)
 - Desktop distribution: `scripts/bundle-server.mjs` also runs

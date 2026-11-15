@@ -17,8 +17,14 @@ vi.mock("./api", () => ({
   startTranscribe: vi.fn(),
 }));
 
+vi.mock("./model-auto-download", () => ({
+  ensureTranscribeModel: vi.fn(async () => true),
+  getModelDownloadState: vi.fn(() => ({ status: "idle", received: 0, total: 0, expectedBytes: 0 })),
+}));
+
 import * as api from "./api";
 import * as store from "./store";
+import { ensureTranscribeModel, getModelDownloadState } from "./model-auto-download";
 
 const stopResult = { id: "r1", fileId: "f1", tracks: { system: true, mic: true }, durationMs: 5000, droppedPackets: 0 };
 
@@ -389,6 +395,118 @@ describe("meeting-recorder store", () => {
       handlers.tcancel({ jobId: "j1" });
       expect(job("j1")?.status).toBe("cancelled");
     });
+  });
+});
+
+describe("録音を始めたあとのモデル自動取得", () => {
+  beforeEach(() => {
+    vi.mocked(ensureTranscribeModel).mockResolvedValue(true);
+    vi.mocked(getModelDownloadState).mockReturnValue({ status: "idle", received: 0, total: 0, expectedBytes: 0 });
+  });
+
+  it("確認ダイアログを開いただけでは取得しない", async () => {
+    await store.openConfirm();
+    expect(ensureTranscribeModel).not.toHaveBeenCalled();
+  });
+
+  it("録音の開始が失敗したら（権限の拒否・開始の失敗）取得しない", async () => {
+    vi.mocked(api.getPermission).mockResolvedValue({ screen: "denied", mic: "granted" });
+    await store.start();
+    vi.mocked(api.getPermission).mockResolvedValue({ screen: "granted", mic: "granted" });
+    vi.mocked(api.startRecording).mockRejectedValue(new Error("boom"));
+    store.__resetForTest();
+    await store.start();
+    expect(ensureTranscribeModel).not.toHaveBeenCalled();
+  });
+
+  it("録音が始まったら 1 回だけ自動取得を呼ぶ（文字起こしブロックからでも同じ）", async () => {
+    await store.start();
+    expect(ensureTranscribeModel).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ensureTranscribeModel).mock.calls[0][1]).toEqual({ auto: true });
+    store.__resetForTest();
+    await store.startFromBlock("b1");
+    expect(ensureTranscribeModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("取得が失敗したら知らせる。取り消し・自動では取らないときは知らせない", async () => {
+    const failed = vi.fn();
+    const off = store.onAutoModelDownloadFailed(failed);
+    vi.mocked(ensureTranscribeModel).mockResolvedValue(false);
+    await store.start();
+    await vi.waitFor(() => expect(ensureTranscribeModel).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(failed).not.toHaveBeenCalled();
+    store.__resetForTest();
+    vi.mocked(getModelDownloadState).mockReturnValue({ status: "failed", received: 0, total: 0, expectedBytes: 0 });
+    await store.start();
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
+    off();
+  });
+});
+
+describe("ジョブ単位で終わりを待つ（startTranscribeJob / waitTranscribeJob）", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("startTranscribeJob は始めたジョブの id を返し、始められなければ null（待たない）", async () => {
+    vi.mocked(api.startTranscribe).mockResolvedValue({ jobId: "j1" });
+    expect(await store.startTranscribeJob(["a"])).toBe("j1");
+    vi.mocked(api.startTranscribe).mockRejectedValue("model missing");
+    expect(await store.startTranscribeJob(["b"])).toBeNull();
+    expect(await store.startTranscribeFor(["b"])).toBe(false);
+  });
+
+  it("終端イベントが start の応答より先に届いても、待ちは解ける（adopt が終わりを反映する）", async () => {
+    await store.attachListeners();
+    // start の応答より前に error が届く（Engine::load の即失敗）
+    vi.mocked(api.startTranscribe).mockImplementation(async () => {
+      handlers.terror({ jobId: "early", message: "boom" });
+      return { jobId: "early" };
+    });
+    const jobId = await store.startTranscribeJob(["x"]);
+    expect(jobId).toBe("early");
+    expect(store.getState().transcribes["early"].status).toBe("failed");
+    // fileId の終わり方も更新される
+    expect(store.getState().lastJobByFile["x"]).toBe("failed");
+    expect(await store.waitTranscribeJob("early", 1000)).toBe("finished");
+  });
+
+  it("動いているジョブは終端イベントで解ける", async () => {
+    await store.attachListeners();
+    vi.mocked(api.startTranscribe).mockResolvedValue({ jobId: "j2" });
+    const jobId = (await store.startTranscribeJob(["y"])) as string;
+    const p = store.waitTranscribeJob(jobId, 10_000);
+    handlers.tprogress({ jobId: "j2", fileId: "y", ratio: 0.5 });
+    handlers.tdone({ jobId: "j2", fileIds: ["y"] });
+    expect(await p).toBe("finished");
+  });
+
+  it("別のジョブの終わりでは解けない（fileId ではなくジョブ単位）", async () => {
+    await store.attachListeners();
+    vi.mocked(api.startTranscribe).mockResolvedValueOnce({ jobId: "old" }).mockResolvedValueOnce({ jobId: "new" });
+    await store.startTranscribeJob(["z"]);
+    handlers.tdone({ jobId: "old", fileIds: ["z"] }); // 同じ fileId の前のジョブが終わる
+    const jobId = (await store.startTranscribeJob(["z"])) as string;
+    expect(store.getState().lastJobByFile["z"]).toBeUndefined(); // 新しいジョブの開始で手放される
+    const p = store.waitTranscribeJob(jobId, 50);
+    expect(await p).toBe("timeout");
+  });
+
+  it("表示を手放された（clearTranscribe 済みの）終了ジョブも終わりとみなす", async () => {
+    await store.attachListeners();
+    vi.mocked(api.startTranscribe).mockResolvedValue({ jobId: "j3" });
+    await store.startTranscribeJob(["w"]);
+    handlers.tdone({ jobId: "j3", fileIds: ["w"] });
+    store.clearTranscribe("j3");
+    expect(await store.waitTranscribeJob("j3", 1000)).toBe("finished");
+  });
+
+  it("終わらないジョブは時間切れで待ちをやめる（ジョブは止めない）", async () => {
+    vi.mocked(api.startTranscribe).mockResolvedValue({ jobId: "j4" });
+    const jobId = (await store.startTranscribeJob(["v"])) as string;
+    expect(await store.waitTranscribeJob(jobId, 30)).toBe("timeout");
+    expect(store.getState().transcribes["j4"].status).toBe("running");
   });
 });
 
