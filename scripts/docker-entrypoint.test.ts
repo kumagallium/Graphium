@@ -50,11 +50,12 @@ beforeEach(() => {
   script("stat", `[ "$#" = 3 ] && [ "$1" = "-c" ] && [ "$2" = "%u:%g" ] || exit 1\necho "$FAKE_OWNER"`);
   // find: 所有者直し（-depth）だけ記録する。FAKE_FIND_FAIL=1 で失敗
   script("find", `case " $* " in *" -depth "*) ${RECORD("find").replace(/\n/g, "; ")}; [ "\${FAKE_FIND_FAIL:-}" != 1 ] || exit 1;; esac`);
-  // su-exec: 下調べ（find / sh）は結果だけ返し、それ以外（サーバーの起動）は記録する
+  // su-exec: 下調べ（true / find / sh）は結果だけ返し、それ以外（サーバーの起動）は記録する
   script(
     "su-exec",
     [
       `case "$2" in`,
+      `  true) [ "\${FAKE_SUEXEC_FAIL:-}" = 1 ] && exit 1; exit 0;;`,
       `  find) [ -z "\${FAKE_ROOT_ENTRY:-}" ] || echo "$FAKE_ROOT_ENTRY"; exit 0;;`,
       `  sh) [ "\${FAKE_NODE_CAN_WRITE:-}" = 1 ] && exit 0; exit 1;;`,
       `esac`,
@@ -123,11 +124,21 @@ describe("docker/entrypoint.sh", () => {
     expect(r.stderr).toBe("");
   });
 
-  it("bind mount の中に root 所有のファイルが残っていれば警告する（直さない）", () => {
+  it("bind mount の中に以前の版（root）のファイルが残っていれば、直さずに root のまま起動して直し方を知らせる", () => {
     const r = run({ FAKE_UID: "0", FAKE_OWNER: "1001:1001", FAKE_ROOT_ENTRY: "/x/old.json" });
-    expect(r.stderr).toContain("root 所有");
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("今までどおり root で起動します");
     expect(r.stderr).toContain("/x/old.json");
-    expect(r.lines).toEqual(["su-exec|1001:1001|env|HOME=/tmp|node|server.mjs"]);
+    expect(r.stderr).toContain("chown -R 1001:1001");
+    // root 以外に落とすと既存のノートに書けなくなるので、落とさない
+    expect(r.lines).toEqual(["node|server.mjs"]);
+  });
+
+  it("ユーザーを切り替えられない環境（cap_drop など）では、落ちずに root のまま起動する", () => {
+    const r = run({ FAKE_UID: "0", FAKE_OWNER: "1000:1000", FAKE_SUEXEC_FAIL: "1" });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("ユーザーを切り替えられません");
+    expect(r.lines).toEqual(["node|server.mjs"]);
   });
 
   it("DATA_DIR が無ければ作る（空白入りのパスでも）", () => {

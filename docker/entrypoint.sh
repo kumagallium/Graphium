@@ -8,6 +8,7 @@
 #   2. GRAPHIUM_RUN_AS_ROOT=1                                   → root のまま（逃げ道）
 #   3. rootless（コンテナの root がホストの一般ユーザー）       → そのまま
 #   4. データの持ち主が root 以外（bind mount・直したあと）     → その uid:gid で動かす
+#      （中に root が作ったファイルが残っていれば、直し方を知らせて root のまま）
 #   5. 持ち主は root に見えるが node がそのまま書ける        → 何も直さず node で動かす（Docker Desktop の bind mount）
 #   6. 持ち主が root（以前の版が書いた名前付きボリューム）     → 持ち主を node に直してから node で動かす
 set -eu
@@ -49,6 +50,13 @@ node_uid="$(id -u node)"
 owner="$(stat -c '%u:%g' "$DATA_DIR")"
 uid="${owner%%:*}"
 
+# ユーザーを切り替えられない環境（cap_drop で SETUID / SETGID を落としている など）では、
+# 切り替えようとして落ちるより、今までどおり root で起動する
+if ! su-exec node:node true 2>/dev/null; then
+  echo "graphium: WARNING: ユーザーを切り替えられません（SETUID / SETGID の権限が無い など）。root のまま起動します" >&2
+  exec "$@"
+fi
+
 # 4. 持ち主が root 以外: その uid:gid で動かす（ホストのフォルダの持ち主を書き換えない）。
 #    名前付きボリュームを直したあとの 2 回目以降もここを通る（持ち主は node）
 if [ "$uid" != "0" ]; then
@@ -57,7 +65,10 @@ if [ "$uid" != "0" ]; then
   # 動かす uid から見た持ち主で調べる（Docker Desktop の共有は、見る側によって持ち主が変わる）
   rootowned="$(su-exec "$owner" find "$DATA_DIR" -maxdepth 2 -user 0 2>/dev/null | head -n 1 || true)"
   if [ -n "$rootowned" ]; then
-    echo "graphium: WARNING: $DATA_DIR の中に root 所有のファイルがあります（例: $rootowned）。$owner からは書けません。ホスト側で chown -R $owner <フォルダ> してください" >&2
+    # root 以外で起動すると、その分のノートに書けなくなる。ホスト側の持ち主は書き換えたくないので、
+    # 今までどおり root で起動し、直し方だけ知らせる（直したあとの起動から root 以外になる）
+    echo "graphium: WARNING: $DATA_DIR の中に、以前の版が root で作ったファイルが残っています（例: $rootowned）。今までどおり root で起動します。root 以外で動かすには、ホスト側で一度 chown -R $owner <フォルダ> してください" >&2
+    exec "$@"
   fi
   if [ "$uid" = "$node_uid" ]; then
     exec su-exec node:node "$@"
@@ -69,7 +80,8 @@ fi
 # 5. 持ち主は root に見えるが、node がそのまま書ける: 持ち主を実際には区別しない共有
 #    （Docker Desktop の bind mount）。直す必要が無いので、何も書き換えずに node で動かす。
 #    上の 2 段を全部書けるかで見る（リンクは先を見に行かない）
-if su-exec node:node sh -c 'find "$1" -maxdepth 2 | while IFS= read -r p; do [ -L "$p" ] || [ -w "$p" ] || exit 1; done' sh "$DATA_DIR" 2>/dev/null; then
+#    最初に DATA_DIR 自身を見る（node が途中のフォルダを辿れないと find は何も出さず、書けると誤って判定する）
+if su-exec node:node sh -c '[ -w "$1" ] || exit 1; find "$1" -maxdepth 2 | while IFS= read -r p; do [ -L "$p" ] || [ -w "$p" ] || exit 1; done' sh "$DATA_DIR" 2>/dev/null; then
   exec su-exec node:node "$@"
 fi
 
