@@ -432,6 +432,8 @@ import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
 import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
 import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage, setSourceDateLookup } from "./features/wiki/wiki-service";
+import { findSourceDrift, type SourceDrift } from "./features/wiki/source-drift";
+import { SourceDriftNotice } from "./features/wiki/SourceDriftNotice";
 import { relinkTopicMentions } from "./features/wiki/topic-mention-links";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -12051,6 +12053,15 @@ export function NoteApp() {
   // 照合・消去の保存は fm.handleSaveWikiFile が doc キャッシュと wikiMetas を更新し、
   // ピークはキャッシュ側の wikiMeta を読むので、開いたまま結果が反映される。
   const renderPeekWikiContext = ({ wikiId, wikiMeta, sourceCheckStale, openNote }: PeekWikiContextArgs) => (
+    <>
+    {typeof wikiMeta.topicMarkdown === "string" && (
+      <SourceDriftNotice
+        pageKey={`${wikiId}:${wikiMeta.lastIngestedAt ?? ""}`}
+        loadSourceDrift={() => loadSourceDriftFor(wikiId)}
+        titleOf={sourceDriftTitleOf}
+        onReread={(sourceId) => { void ingestNoteIds([sourceId]); }}
+      />
+    )}
     <WikiContextDrawer
       wikiMeta={wikiMeta}
       noteIndex={fm.noteIndex}
@@ -12082,6 +12093,7 @@ export function NoteApp() {
       onWriteRationale={openRationalePromptForWiki}
       onUpdateWikiMeta={(patch) => void updateWikiMetaPatch(wikiId, patch)}
     />
+    </>
   );
 
   // 食い違いの節で引用に添える資料の日付（ノートは作成日、論文は出どころ情報の年）。
@@ -12133,6 +12145,25 @@ export function NoteApp() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fm, capture.captureIndex]);
+
+  // 書いたあとで資料（ノート）から消えた一節を、ページを開いたときに確かめる（AI は使わない）。
+  // 書いたあとで更新されたノートだけ本文を読み、引用した一節がまだあるかを照らす（source-drift.ts）
+  const loadSourceDriftFor = useCallback(async (wikiId: string): Promise<SourceDrift[]> => {
+    const doc = fm.getCachedDoc(`wiki:${wikiId}`) ?? (await fm.loadDoc(`wiki:${wikiId}`));
+    if (!doc) return [];
+    const modified = new Map<string, string>();
+    for (const n of fm.noteIndex?.notes ?? []) {
+      // アプリの外での編集（ファイルの更新日時）も拾う。どちらか新しい方
+      const a = n.modifiedAt;
+      const b = n.fileModifiedAt;
+      modified.set(n.noteId, b && (!a || b > a) ? b : a);
+    }
+    const { resolveSource } = buildTopicSourceResolvers();
+    return findSourceDrift(doc, (id) => modified.get(id), async (id) => (await resolveSource(id))?.text);
+  }, [fm, buildTopicSourceResolvers]);
+  const sourceDriftTitleOf = (sourceId: string) =>
+    fm.noteIndex?.notes.find((n) => n.noteId === sourceId)?.title ?? sourceId;
+
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
   // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
@@ -17437,6 +17468,7 @@ export function NoteApp() {
             // 同じ資料を引いているページ（機械的な相互参照）。索引のメタだけで引けるので毎描画で計算してよい
             const relatedPages = wikiIdForBanner ? findRelatedBySharedSources(wikiIdForBanner, fm.wikiFiles, fm.wikiMetas) : [];
             return (
+              <>
               <WikiBanner
                 wikiMeta={fm.activeDoc.wikiMeta}
                 loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
@@ -17508,6 +17540,15 @@ export function NoteApp() {
                 sourceCheckLlmCalls={sourceCheckLlmCallsFor(wikiIdForBanner ?? "", fm.activeDoc)}
                 sourceCheckStale={activeDocSourceCheckStale}
               />
+              {wikiIdForBanner && typeof fm.activeDoc.wikiMeta.topicMarkdown === "string" && (
+                <SourceDriftNotice
+                  pageKey={`${wikiIdForBanner}:${fm.activeDoc.modifiedAt ?? ""}`}
+                  loadSourceDrift={() => loadSourceDriftFor(wikiIdForBanner)}
+                  titleOf={sourceDriftTitleOf}
+                  onReread={(sourceId) => { void ingestNoteIds([sourceId]); }}
+                />
+              )}
+              </>
             );
           })()}
           <NoteEditor
