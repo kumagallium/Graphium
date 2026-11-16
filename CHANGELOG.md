@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.137.2](https://github.com/kumagallium/Graphium/compare/v0.137.1...v0.137.2) - 2026-11-16
+
+- docs: lead with records in one place, AI later (landing page, README, CONCEPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1702
+
 ## [v0.137.1](https://github.com/kumagallium/Graphium/compare/v0.137.0...v0.137.1) - 2026-11-15
 
 - fix: keep the phone screen on while recording a voice memo by @kumagallium in https://github.com/kumagallium/Graphium/pull/1699
