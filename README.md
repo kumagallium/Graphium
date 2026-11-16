@@ -3,11 +3,13 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>Your memory, for every AI.</b>
+  <sub>Graphium · Your records in one place, readable by AI</sub>
 </p>
 <p align="center">
-  Stop re-explaining yourself to AI.<br />
-  Keep what you read, hear and jot down in one place on your own computer. Graphium's built-in AI and the Claude and ChatGPT desktop apps answer from your own records, with the source attached, and switching AIs doesn't erase the memory.
+  <b>Wake your sleeping records. Make them ready for AI.</b>
+</p>
+<p align="center">
+  Photos of paper notes, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
@@ -36,22 +38,22 @@
   <a href="https://kumagallium.github.io/Graphium/"><img src="public/landing/hero.png" alt="Graphium's graph view: notes, claims, and insights connected" width="880" /></a>
 </p>
 
-Graphium is a personal open-source project that combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The result is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
+Graphium is a personal open-source project that puts scattered records in one place, turns them into text, and makes them searchable. It combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The aim is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
 
-## How it works — keep, connect, trace
+## How it works — put in, find, connect to AI
 
-### 1. Keep
-Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, and notes linked with `@` references. With that many ways in, whatever you come across can go straight in.
+### 1. Put in
+Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos from your phone, and bulk import of old files. With that many ways in, old records and today's records land in the same place. Web clips, transcribing recordings, and receiving what you captured on your phone run in the desktop app.
 
 <p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
 
-### 2. Connect to your AIs
-Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics and lifts claims and insights out of them. The Claude and ChatGPT desktop apps, Codex and other MCP clients connect too: one button in the desktop app registers Graphium with them, and they can both read your notes and save what a conversation worked out.
+### 2. Find
+What you put in is already text, so you can search it by words. Link notes to each other with `@` and see the connections as a graph. Up to here, it works without AI.
 
-<p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge topic list built from the bread-baking notes" width="760" /></p>
+<p align="center"><img src="docs/screenshots/network-graph.png" alt="Network graph showing how notes connect to each other" width="760" /></p>
 
-### 3. Trace to the origin
-Any answer, and any line you wrote, walks back to its source note in one click. Notes an outside AI writes carry a mark saying so, so you can hand work to AI with confidence.
+### 3. Connect to AI
+When you start using AI, the same records are what the AI reads. Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics and lifts claims and insights out of them. The Claude and ChatGPT desktop apps, Codex and other MCP clients connect with one button in Settings (desktop app). You don't have to explain yourself again each time, because the AI answers from the same records. Any answer walks back to its source note in one click, and notes an outside AI writes carry a mark saying so.
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="An insight page with its lineage panel showing the source claim and source notes" width="760" /></p>
 
@@ -134,7 +136,7 @@ The layer has four document kinds, each with a distinct role:
 
 Knowledge pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Knowledge edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
-The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI** to activate it. Without an LLM, you can still put records in, search them by words, and link them with `@`.
 
 ## Composer (⌘K)
 
