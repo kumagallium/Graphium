@@ -209,6 +209,25 @@ Automated watching catches kinds of problems that are already known. It cannot c
 
 Fixes are delivered as ordinary updates. The desktop app can receive them through automatic updates.
 
+## Other protections built in {#more}
+
+A short list of protections that did not come up in the sections above.
+
+| What you can count on | What Graphium does |
+|---|---|
+| No tracking or analytics | The app contains no usage tracking, no analytics and no crash reporting |
+| The screen can do little to the OS (desktop) | The screen has no permission to run arbitrary commands, and none to read or write arbitrary files directly |
+| Nothing outside the storage folder is touched | A crafted note or file name cannot read or write outside the storage folder. Such names are refused |
+| Imported content is cleaned before it is shown | Articles imported from a URL and the contents of Word files have risky elements removed before they appear on screen |
+| Risky files are not opened (desktop) | When you open a file in another app, the common kinds of executables, scripts and shortcuts are not opened |
+| Deleted notes can come back | A note moved to the trash can be restored. On desktop, a permanently deleted note normally still sits in the OS trash. In the browser version and when self-hosting, permanent deletion cannot be undone |
+| You can check that nothing was rewritten | A version you saved by hand can be sealed as evidence. Sealing sends only a short value computed from the content (a hash), never the text or files. A proof of time is added on desktop only. See [Using Graphium as a lab notebook](/lab-notebook) |
+| You choose what the AI sees | In chat, you choose the scope given to the AI and the folders it searches. See [Chat & Ask](/ai-chat-and-ask) |
+| Edits by an outside AI can be undone | When an outside AI assistant rewrites, merges or archives a knowledge page, the operation is recorded and can be undone one at a time later. See [Connecting from an AI assistant (MCP)](/mcp-server) |
+| Other people's notes in a shared folder are not overwritten | Inside Graphium, other people's notes are read-only. To change one, you duplicate it and send a suggested change. Who can edit the file itself is decided by the folder's permissions |
+| Google Drive access is kept narrow | Capturing from your phone asks only for access to files and folders Graphium created. It cannot see the rest of your Drive |
+| Downloaded components are checked before use | The bundled runtime (Node.js) is checked against the official hash when the app is built. The search and transcription models fetched later are checked when they are downloaded |
+
 ## When you self-host {#self-hosting}
 
 If you run Graphium on your own server, part of the protection becomes your own configuration.
