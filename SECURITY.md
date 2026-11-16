@@ -54,8 +54,14 @@ Graphium handles research notes and, when AI features are used, third-party LLM 
   app renders arbitrary bookmark/OG images and fetches user-pasted URLs for
   link previews.
 - **Loopback-only local API** — the desktop sidecar and the local server bind
-  to `127.0.0.1` (v0.16.10+; override with `GRAPHIUM_BIND_HOST`), so the mostly
-  unauthenticated local API is not reachable from other machines.
+  to `127.0.0.1` (v0.16.10+; override with `GRAPHIUM_BIND_HOST`), so the local
+  API is not reachable from other machines.
+- **Per-launch secret and cross-site write guard (desktop)** — the desktop app
+  generates a secret at each launch, keeps it only in memory, and the sidecar
+  refuses API requests without it (v0.137.1+; the Web Clip endpoints, the
+  image / PDF relay and a liveness check are the exceptions). Writes from
+  another site's `Origin` are refused (v0.136.0+). See `docs/ARCHITECTURE.md`
+  §6.1.
 - **No central account service** — the hosted PWA is a static site with no
   backend of ours; your data stays in your chosen storage location and your
   keys stay on your device.
@@ -70,6 +76,10 @@ Graphium handles research notes and, when AI features are used, third-party LLM 
   are scoped to their purpose. Process termination is limited to Graphium's own
   sidecar process, and file save goes through a native save dialog rather than
   accepting an arbitrary path from JavaScript.
+
+A plain-language overview with diagrams is in the user manual:
+[Security](https://kumagallium.github.io/Graphium/manual/security)
+([日本語](https://kumagallium.github.io/Graphium/manual/ja/security)).
 
 ## Keeping dependencies and runtimes patched
 
