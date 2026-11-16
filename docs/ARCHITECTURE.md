@@ -1721,7 +1721,17 @@ Notes:
   source's date — a note's creation date, or a paper's year from its
   source info — added mechanically when the body is rendered
   (`setSourceDateLookup`, set by `note-app`), so a reader can tell which
-  figure came later. Claims are no
+  figure came later. A note can also change after the page was written,
+  and the page isn't revised until the note is read again. So when a
+  source-backed page is opened, `findSourceDrift`
+  (`src/features/wiki/source-drift.ts`) picks the cited notes modified
+  after the page last read them (note `modifiedAt` / `fileModifiedAt`
+  against the page's provenance), reads only those, and checks each
+  stored passage against the note's current text with the same string
+  match. Only a passage that is gone is reported — an unrelated edit to
+  the note is not — in `SourceDriftNotice` above the page (full view and
+  side peek), with **Re-read this note**, which ingests the note again.
+  No model call; PDFs, Word files and URLs are not checked this way. Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
   before (Topics never did). **Existing Claim-derived Topics** (no

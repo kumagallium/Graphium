@@ -4328,6 +4328,11 @@ export const ko: Record<string, string> = {
   "sourceCheck.quoteLocation.paragraph": "{paragraph}번째 단락",
   "sourceCheck.quoteLocation.srPrefix": "출처 안의 위치:",
   "sourceCheck.passageNotFound": "이 문장을 쓸 때 AI가 옮긴 다음 구절은 자료에서 찾지 못했습니다:",
+  "sourceDrift.summary": "이 페이지가 인용한 구절 중 {count}건이 원래 노트에서 사라졌습니다. 페이지를 쓴 뒤 노트가 편집되었습니다.",
+  "sourceDrift.source": "@{title} ({date} 편집)",
+  "sourceDrift.reread": "이 노트 다시 읽기",
+  "sourceDrift.passage": "기록한 구절:",
+  "sourceDrift.hint": "다시 읽으면 이 노트를 인용하는 페이지가 지금 노트 내용으로 다시 작성됩니다. AI를 사용합니다.",
   "sourceCheck.sourceKind.note": "노트",
   "sourceCheck.sourceKind.pdf": "PDF",  // 영어 유지
   "sourceCheck.sourceKind.document": "문서",
