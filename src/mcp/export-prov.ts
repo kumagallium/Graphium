@@ -151,6 +151,7 @@ export function buildProvJsonLdText(
           noteId: id,
           captureIndex,
           mediaIndex,
+          noteIndex: index,
           planContext: { index, planDocs: docs },
         }),
       });
@@ -176,6 +177,7 @@ export function buildProvJsonLdText(
     noteId,
     captureIndex,
     mediaIndex,
+    noteIndex: index,
     planContext: { index, planDocs },
   });
   const out = buildNoteProvJsonLd({

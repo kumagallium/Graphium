@@ -11,6 +11,7 @@ import type { BlockLink } from "../block-link/link-types";
 import type { CaptureIndex } from "../mobile-capture/capture-store";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { noteLinkKind } from "../../lib/note-link-kind";
 import { splitMemoBodyAndSource } from "../mobile-capture/memo-insert";
 import { collectOperationRows, findPlanNotesOf, normalizeOperationName } from "../network-graph/plan-flow";
 import type {
@@ -34,6 +35,8 @@ export type CollectNoteProvExtrasInput = {
   wikiEntities?: WikiEntityInfo[];
   /** 書き出す人（メモ・チャットの Agent に使う） */
   identity?: { name?: string; email?: string };
+  /** ノートの索引（noteLinks の相手の種類と題を引く）。未指定なら planContext.index を使う */
+  noteIndex?: GraphiumIndex | null;
   /** 計画の線の名前（実績）を引くための材料。無ければ edgeLabelForLink は作らない */
   planContext?: {
     index: GraphiumIndex | null;
@@ -84,8 +87,14 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
  * - assets: ノートが参照する素材（引用・出典・メディアの使用・メモの出典素材）のうち索引にあるもの
  * - tableMeta / chats / folders / partOfPlanNoteId / modifiedAt は doc からそのまま
  *
- * 仕様の「noteLinks(derived_from)→note」は取り込まない: noteLinks は「このノートから作った子ノート」
- * （工程の行ノートなど）への参照で、向きが wasDerivedFrom と逆になるため。親は derivedFromNoteId で出る。
+ * - references: doc.noteLinks のうち向きの無い「つながり」（本文の @・貼り付けたリンク・表の行に
+ *   紐付けた既存ノート）。派生（wasDerivedFrom）や影響とは読ませない。
+ *
+ * noteLinks は派生（このノートから作った子ノート。相手の derivedFromNoteId がこのノート）と
+ * つながりが同じ形で混ざる。子ノートは相手側の wasDerivedFrom で出るので references には入れない
+ * （向きが逆になるため）。親は derivedFromNoteId で出る。
+ * 相手の種類は索引の derivedFromNoteId で決めるので、索引が無い・索引に相手が無いときは出さない。
+ * ゴミ箱の相手は除く（アーカイブは除かない）。
  */
 export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NoteProvExtras {
   const { doc, noteId } = input;
@@ -157,6 +166,25 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
     influences.push({ kind: "wiki", id: target, ...(label ? { label } : {}) });
   }
   if (influences.length > 0) extras.influences = influences;
+
+  // ── ノート間のつながり（向きの無い参照）──
+  const refIndex = input.noteIndex ?? input.planContext?.index ?? null;
+  if (refIndex) {
+    const byId = new Map(refIndex.notes.map((n) => [n.noteId, n]));
+    const references: NonNullable<NoteProvExtras["references"]> = [];
+    const seenRef = new Set<string>();
+    for (const link of doc.noteLinks ?? []) {
+      const target = link.targetNoteId;
+      if (!target || target === noteId || seenRef.has(target)) continue;
+      const entry = byId.get(target);
+      // 索引に無い相手は派生かつながりか決められないので出さない。ゴミ箱の相手も出さない
+      if (!entry || entry.deletedAt) continue;
+      if (noteLinkKind(noteId, entry.derivedFromNoteId) === "derivation") continue;
+      seenRef.add(target);
+      references.push({ id: target, ...(entry.title ? { label: entry.title } : {}) });
+    }
+    if (references.length > 0) extras.references = references;
+  }
 
   // ── 表の名前と取り込み元 ──
   const tableMeta: NonNullable<NoteProvExtras["tableMeta"]> = {};

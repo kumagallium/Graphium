@@ -867,7 +867,7 @@ namespace `https://graphium.app/ns#` (a domain the project does not own); treat 
 | `p-plan` | `http://purl.org/net/p-plan#` | planned procedures: `Plan`, `Step`, `MultiStep`, `Variable`, `Activity`, `Entity` |
 | `oa` | `http://www.w3.org/ns/oa#` | memos as annotations |
 | `dc` | `http://purl.org/dc/elements/1.1/` | `dc:creator` / `dc:date` / `dc:publisher` / `dc:identifier` / `dc:format` |
-| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
+| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:references`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
 | `foaf`, `rdfs`, `rdf`, `xsd` | as usual | person names and mailbox hash, labels / comments / `seeAlso`, `rdf:value`, `xsd:dateTime` |
 | `graphium` | `https://kumagallium.github.io/Graphium/ns#` | notes the standard has no word for (see the tables below) |
 
@@ -904,7 +904,14 @@ table):
   → the note, template, shared note or intake path it was made from (derived
   note, `templateFrom`, `forkedFrom`, `importSource`). `prov:wasInfluencedBy`
   → materials cited with `@`, linked Knowledge entries, and memos inserted
-  into the note. `dcterms:isPartOf` → the plan note, when the note belongs to
+  into the note. `dcterms:references` → other notes the body points at (an
+  `@` mention, a pasted link, or an existing note attached to a table row).
+  It has no direction of its own: it says only that this note's text points at
+  that note, never that one was derived from or influenced by the other. A
+  child note made with "derive" is not listed here (it carries its own
+  `prov:wasDerivedFrom`), and neither are notes in the trash or notes missing
+  from the index. The target is a stub (`graphium:external: true`, label = its
+  title). `dcterms:isPartOf` → the plan note, when the note belongs to
   a paper plan (the plan side is a stub with no plan type). `graphium:provenanceBundle`
   → the edit-log Bundle. The referenced sources, templates and so on are
   declared as stubs (`graphium:external: true`, label = the raw id) unless
@@ -1225,6 +1232,7 @@ without knowing Graphium's internals.
 | A note, template or shared note it was derived from | `Entity` stub | `prov:wasDerivedFrom` from the note |
 | A material cited with `@`, a linked Knowledge entry | `Entity` | `prov:wasInfluencedBy` from the note |
 | A link to another note's output ("informed by") | `Usage` / `Derivation` relation and an external `Entity` stub | `activity`, `entity`, `label` = the line's name |
+| A note the body points at (`@`, pasted link, table-row link) | `Entity` stub (the real note `Entity` in a plan export) | `dcterms:references` from the note. It carries no derivation direction |
 | The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
 | A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
 | The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
