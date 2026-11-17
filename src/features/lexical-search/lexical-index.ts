@@ -85,6 +85,11 @@ export type LexicalTermStat = {
 };
 
 export type LexicalSearchOptions = {
+  /**
+   * 断片の文章を見て、当たりに入れるかを決める。false を返した断片は、件数の上限にも
+   * ソースごとの上限にも数えない（語のどれか 1 つで当たっただけの断片を先に落とすのに使う）
+   */
+  accept?: (text: string) => boolean;
   /** 対象の種類（省略で全部） */
   kinds?: LexicalSourceKind[];
   /** 除外するソース id */
@@ -338,6 +343,8 @@ export class LexicalIndex {
     const hits: LexicalHit[] = [];
     for (const r of raw) {
       if (r.terms.length < minMatch) continue;
+      // 断片の文章で絞る（件数の上限・ソースごとの上限を数える前に落とす）
+      if (options.accept && !options.accept((r.text as string) ?? "")) continue;
       const sid = r.sourceId as string;
       const n = perSourceCount.get(sid) ?? 0;
       if (n >= perSource) continue;

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MediaIndex } from "../asset-browser/media-index";
 import type { CaptureIndex } from "../mobile-capture/capture-store";
 import type { GraphiumIndex } from "../navigation/index-file";
-import { bestHitsBySource, lexicalSearch } from "../lexical-search";
+import { lexicalSearch, phraseHitsBySource } from "../lexical-search";
 import "./record-dashboard.css";
 import { useRecordCopy } from "./copy";
 import { buildRecords } from "./from-indexes";
@@ -33,9 +33,6 @@ export type RecordsViewProps = {
 function sourceIdOf(item: RecordItem): string {
   return item.id.slice(item.id.indexOf(":") + 1);
 }
-
-/** 本文で探すときに見るチャンク数の上限（記録ごと 1 件に畳む前） */
-const BODY_SCAN_LIMIT = 200;
 
 /**
  * 全文の索引が使えるかどうか。索引づくりの進捗では描き直さず、使えるようになったとき・
@@ -72,8 +69,9 @@ export function RecordsView({
   const findInBody = useCallback(
     (query: string) => {
       const out = new Map<string, BodyHit>();
-      for (const [id, h] of bestHitsBySource(query, ["note", "wiki"], { limit: BODY_SCAN_LIMIT })) out.set(`note:${id}`, tidyBodyHit(h.snippet));
-      for (const [id, h] of bestHitsBySource(query, ["asset"], { limit: BODY_SCAN_LIMIT })) out.set(`media:${id}`, tidyBodyHit(h.snippet));
+      // 入れた言葉がそのまま入っている断片だけを当たりにする（題や見出しの照合と同じく、部分一致）
+      for (const [id, h] of phraseHitsBySource(query, ["note", "wiki"])) out.set(`note:${id}`, tidyBodyHit(h.snippet));
+      for (const [id, h] of phraseHitsBySource(query, ["asset"])) out.set(`media:${id}`, tidyBodyHit(h.snippet));
       return out;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 索引が使えるようになったら引き直す

@@ -352,8 +352,10 @@ export type MediaSearchOptions = {
 const ASSET_TEXT_BASE_SCORE = 25;
 const ASSET_TEXT_RELATIVE_SCORE_MAX = 10;
 
-/** Cmd+K の素材検索で対象にする種類。memo は transient（メモは searchMemos が別に探す）、video/audio は名前でしか当たらないので外す */
+/** Cmd+K の素材検索で対象にする種類。memo は transient（メモは searchMemos が別に探す）。video/audio は下の別扱い */
 const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document"]);
+/** 録音・動画は、文字起こしで当たったとき（assetHits にある）だけ出す。名前だけでは出さない（従来どおり） */
+const TRANSCRIPT_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["audio", "video"]);
 
 /**
  * クエリを mediaIndex に対して評価し、素材を返す。
@@ -386,7 +388,7 @@ export function searchMedia(
   const hits: MediaHit[] = [];
 
   for (const entry of entries) {
-    if (!SEARCHABLE_MEDIA_TYPES.has(entry.type)) continue;
+    if (!SEARCHABLE_MEDIA_TYPES.has(entry.type) && !(TRANSCRIPT_MEDIA_TYPES.has(entry.type) && assetHits?.has(entry.fileId))) continue;
     // アーカイブ済みはギャラリー同様に隠す
     if (entry.archivedAt) continue;
 
