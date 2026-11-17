@@ -64,9 +64,10 @@ export function desiredAssetSources(
     includeDocx?: boolean;
     /**
      * 録音・動画の文字起こしを載せる。渡したときだけ対象にする（文字起こしを読めるのはデスクトップ版だけ）。
-     * 返す値は印に混ぜる（文字起こしが終わるたびに値を変えると、その素材だけ読み直される）
+     * 返す値は印に混ぜる（文字起こしが終わるたびに値を変えると、その素材だけ読み直される）。
+     * null を返した素材は載せない（この起動で読んで、文字起こしがまだ無いと分かっている素材）
      */
-    transcriptEpoch?: (fileId: string) => number;
+    transcriptEpoch?: (fileId: string) => number | null;
   } = {},
 ): { desired: DesiredSource[]; plans: Map<string, AssetTextPlan>; names: Map<string, string> } {
   const desired: DesiredSource[] = [];
@@ -105,12 +106,10 @@ export function desiredAssetSources(
       plans.set(m.fileId, { mode: "pdf" });
       names.set(m.fileId, m.name);
     } else if ((m.type === "audio" || m.type === "video") && options.transcriptEpoch) {
-      // 文字起こしがあるかどうかは素材の索引に無いので、読んでみて空なら「空で索引済み」にする
-      desired.push({
-        kind: "asset",
-        sourceId: m.fileId,
-        fingerprint: `transcript:${m.uploadedAt ?? ""}:${options.transcriptEpoch(m.fileId)}`,
-      });
+      // 文字起こしがあるかどうかは素材の索引に無いので、loader が読んでみて決める
+      const epoch = options.transcriptEpoch(m.fileId);
+      if (epoch === null) continue;
+      desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `transcript:${m.uploadedAt ?? ""}:${epoch}` });
       plans.set(m.fileId, { mode: "transcript" });
       names.set(m.fileId, m.name);
     }

@@ -157,4 +157,17 @@ describe("desiredSharedSources", () => {
   it("空一覧は空（スイッチ OFF / ルート未設定のときの掃除に使う）", () => {
     expect(desiredSharedSources([])).toEqual([]);
   });
+
+  describe("文字起こしがまだ無いと分かっている素材", () => {
+    it("transcriptEpoch が null を返した録音は載せない（ほかの素材は載る）", () => {
+      const media = [
+        { fileId: "a1", name: "a.m4a", type: "audio", uploadedAt: "2026-11-17T00:00:00.000Z" },
+        { fileId: "a2", name: "b.m4a", type: "audio", uploadedAt: "2026-11-17T00:00:00.000Z" },
+      ] as unknown as Parameters<typeof desiredAssetSources>[0];
+      const { desired, plans } = desiredAssetSources(media, { transcriptEpoch: (id) => (id === "a1" ? null : 2) });
+      expect(desired.map((d) => d.sourceId)).toEqual(["a2"]);
+      expect(desired[0].fingerprint).toBe("transcript:2026-11-17T00:00:00.000Z:2");
+      expect(plans.has("a1")).toBe(false);
+    });
+  });
 });
