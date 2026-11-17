@@ -9,6 +9,7 @@ import "./record-dashboard.css";
 import { RECORD_COPY, type RecordCopy } from "./copy";
 import {
   countOrigins,
+  dayKeyOf,
   daysAgo,
   formatDate,
   formatTime,
@@ -18,6 +19,7 @@ import {
   matchesOrigin,
   matchesQuery,
   matchesWho,
+  timeOf,
 } from "./model";
 import { RecordDay } from "./RecordDay";
 import { Marked, ORIGIN_STYLE, WhoLabel, WhoMark } from "./RecordRow";
@@ -228,7 +230,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
     // 左は絞っただけの記録をすべて残し、探す言葉に当たらない行は薄くする。
     // 右に、当たった記録だけを新しい順に並べる
     const days = groupByDay(faceted);
-    const found = [...hits].sort((a, b) => (a.at < b.at ? 1 : -1));
+    const found = [...hits].sort((a, b) => timeOf(b.at) - timeOf(a.at));
     return (
       <div className="rd-root" data-layout="find" lang={locale}>
         <div className="rd-stage">
@@ -270,7 +272,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
                             <Icon size={12} aria-hidden="true" />
                           </span>
                           <span>
-                            {formatDate(it.at.slice(0, 10), locale)} {formatTime(it.at)}
+                            {formatDate(dayKeyOf(it.at), locale)} {formatTime(it.at)}
                           </span>
                           <span>{copy.origin[it.origin]}</span>
                           <WhoLabel who={it.who} copy={copy} />

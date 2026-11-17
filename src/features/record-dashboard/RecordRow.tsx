@@ -2,8 +2,10 @@
 // 並びは「いつ ｜ どこで・誰が ｜ 何を」。LP の絵（MomentsPicture の Found）の 1 行を、
 // アプリの 4 種類の記録（ノート / AI のページ / 素材 / メモ）に合わせて作り直したもの。
 import {
+  File,
   FileDown,
   FileText,
+  Film,
   Globe,
   Image as ImageIcon,
   LayoutTemplate,
@@ -16,6 +18,7 @@ import {
   Smartphone,
   Sparkles,
   StickyNote,
+  Table2,
   Users,
   Waypoints,
 } from "lucide-react";
@@ -24,10 +27,9 @@ import { RECORD_COPY, type RecordCopy } from "./copy";
 import { formatTime } from "./model";
 import type { RecordItem, RecordLocale, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
-/** 出どころごとのアイコンと色の系統。色は 4 系統＋無彩色に抑える */
-export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain" | "rose" | "amber" | "sky" | "forest" }> = {
+/** 出どころごとのアイコンと色の系統。色は 3 系統＋無彩色に抑える */
+export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain" | "amber" | "sky" | "forest" }> = {
   written: { icon: PenLine, tone: "plain" },
-  meeting: { icon: Mic, tone: "rose" },
   webClip: { icon: Globe, tone: "amber" },
   quote: { icon: Quote, tone: "amber" },
   aiChat: { icon: MessagesSquare, tone: "sky" },
@@ -41,9 +43,13 @@ export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain
 
 const MEDIA_ICON: Record<RecordMediaType, LucideIcon> = {
   image: ImageIcon,
+  video: Film,
   audio: Mic,
   pdf: FileText,
   url: Link2,
+  document: FileText,
+  data: Table2,
+  other: File,
 };
 
 /** 探す言葉に当たる部分に印を付ける */
@@ -99,7 +105,7 @@ export function WhoLabel({ who, copy }: { who: RecordWho; copy: RecordCopy }) {
   );
 }
 
-function What({ item, query }: { item: RecordItem; query?: string }) {
+function What({ item, query, copy }: { item: RecordItem; query?: string; copy: RecordCopy }) {
   // メモは題を持たないので、本文そのものが「何を」になる。引用は左に線を引いて区別する
   if (item.kind === "memo") {
     return (
@@ -120,7 +126,7 @@ function What({ item, query }: { item: RecordItem; query?: string }) {
         <p className="rd-title">
           <Marked text={item.title ?? ""} query={query} />
         </p>
-        {(item.domain || item.detail) && (
+        {(item.domain || item.detail || item.pageCount !== undefined) && (
           <p className="rd-detail">
             {item.domain && <span className="rd-domain">{item.domain}</span>}
             {item.detail && (
@@ -128,6 +134,7 @@ function What({ item, query }: { item: RecordItem; query?: string }) {
                 <Marked text={item.detail} query={query} />
               </span>
             )}
+            {!item.detail && item.pageCount !== undefined && <span>{copy.pages(item.pageCount)}</span>}
           </p>
         )}
       </div>
@@ -179,7 +186,7 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
           <WhoLabel who={item.who} copy={copy} />
         </span>
         <div className="rd-lcell rd-lcell-what">
-          <What item={item} query={query} />
+          <What item={item} query={query} copy={copy} />
           <Trace item={item} copy={copy} />
         </div>
         <span className="rd-kind">{copy.kind[item.kind]}</span>
@@ -199,7 +206,7 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
           <WhoLabel who={item.who} copy={copy} />
           <span className="rd-kind">{copy.kind[item.kind]}</span>
         </p>
-        <What item={item} query={query} />
+        <What item={item} query={query} copy={copy} />
         <Trace item={item} copy={copy} />
       </div>
     </li>
