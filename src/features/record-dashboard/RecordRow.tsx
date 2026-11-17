@@ -163,9 +163,11 @@ export type RecordRowProps = {
   dim?: boolean;
   /** 日付も出す（日のまとまりの外で 1 行だけ見せるとき） */
   dateLabel?: string;
+  /** 見つかった記録の側で指している行（色を付けて、同じ記録だと示す） */
+  active?: boolean;
 };
 
-export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, dateLabel }: RecordRowProps) {
+export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, dateLabel, active }: RecordRowProps) {
   const copy = RECORD_COPY[locale];
   const time = (
     <time className="rd-time" dateTime={item.at}>
@@ -176,7 +178,14 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
 
   if (variant === "ledger") {
     return (
-      <li className="rd-lrow" data-kind={item.kind} data-dim={dim ? "true" : undefined} tabIndex={0}>
+      <li
+        className="rd-lrow"
+        data-record-id={item.id}
+        data-kind={item.kind}
+        data-dim={dim ? "true" : undefined}
+        data-active={active ? "true" : undefined}
+        tabIndex={0}
+      >
         {time}
         <span className="rd-lcell rd-lcell-where">
           <OriginBadge origin={item.origin} copy={copy} />
@@ -195,7 +204,14 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
   }
 
   return (
-    <li className="rd-row" data-kind={item.kind} data-dim={dim ? "true" : undefined} tabIndex={0}>
+    <li
+      className="rd-row"
+      data-record-id={item.id}
+      data-kind={item.kind}
+      data-dim={dim ? "true" : undefined}
+      data-active={active ? "true" : undefined}
+      tabIndex={0}
+    >
       {time}
       <span className="rd-node">
         <WhoMark type={item.who.type} />

@@ -1500,3 +1500,89 @@
     padding-left: 66px;
   }
 }
+
+/* ── 構図 B を横並びにする（2026-11-17 決定） ─────────────────────────────
+   重ねるのは LP の絵としての演出で、アプリでは左の右端が隠れ、強い影が常に乗る。
+   横に並べて上端をそろえ、「同じ記録だ」というつながりは動きで示す:
+   見つかった記録を指すと左の同じ行に色が付き、押すとその行まで動く */
+.rd-stage {
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rd-log {
+  padding-right: 12px;
+}
+
+.rd-find {
+  top: 16px;
+  margin: 0;
+  border-color: var(--rule);
+  box-shadow: var(--shadow-1);
+}
+
+.rd-row[data-active="true"],
+.rd-lrow[data-active="true"] {
+  --rd-bg: var(--forest-soft);
+  background: var(--forest-soft);
+  opacity: 1;
+}
+
+.rd-hits li[data-active="true"] {
+  background: var(--paper-2);
+}
+
+/* 上に張り付く日付の見出しに、動いた先の行が隠れないようにする */
+.rd-row,
+.rd-lrow {
+  scroll-margin-block: 56px;
+}
+
+@container rd (max-width: 720px) {
+  .rd-stage {
+    gap: 12px;
+  }
+
+  .rd-find {
+    margin: 0;
+  }
+
+  .rd-log {
+    padding: 20px 4px;
+  }
+}
+
+/* 見つかった記録のパネルは、画面の高さに収める（中の一覧だけがスクロールする）。
+   収めないと、パネルが画面より高いとき、下のほうの記録に届かない。
+   置き場所の高さが画面と違うときは、--rd-viewport で渡す */
+.rd-find {
+  display: flex;
+  flex-direction: column;
+  /* 上の 16px と、置き場所の下の余白の分を引く（引かないと、一覧の末尾でパネルの上端が切れる） */
+  max-height: calc(var(--rd-viewport, 100dvh) - 96px);
+}
+
+.rd-find > * {
+  flex: none;
+}
+
+.rd-find > .rd-hits {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@container rd (max-width: 720px) {
+  .rd-find {
+    max-height: none;
+  }
+
+  .rd-find > .rd-hits {
+    overflow: visible;
+  }
+}

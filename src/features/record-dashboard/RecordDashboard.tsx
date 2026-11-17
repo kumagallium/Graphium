@@ -1,10 +1,10 @@
 // 記録のダッシュボード（デザイン提案・Storybook のみ。アプリ本体にはまだ組み込んでいない）。
 // 同じ部品（記録 1 行・1 日分のまとまり）を、3 通りの構図に並べて見比べる。
 //   stream … 1 本の流れ。上で絞って、下を読む
-//   find   … 左に日ごとの記録、右に言葉で見つかる様子を重ねる（LP の絵の組み合わせ案）
+//   find   … 左に日ごとの記録、右に言葉で見つかった記録を横に並べる（採用。LP の絵の組み合わせ案が元）
 //   ledger … いつ・どこで・誰が・何を の 4 列の台帳。左で絞る
 import { Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import "./record-dashboard.css";
 import { RECORD_COPY, type RecordCopy } from "./copy";
 import {
@@ -191,6 +191,7 @@ function DayList({
   copy,
   variant = "rail",
   dimMisses,
+  activeId,
 }: {
   days: RecordDayGroup[];
   now: string;
@@ -199,6 +200,7 @@ function DayList({
   copy: RecordCopy;
   variant?: "rail" | "ledger";
   dimMisses?: boolean;
+  activeId?: string | null;
 }) {
   const [budget, setBudget] = useState(ROW_BUDGET);
   const searching = query.trim().length > 0;
@@ -206,12 +208,13 @@ function DayList({
     variant === "ledger"
       ? day.items.length
       : bundleRuns(day.items, BUNDLE_MIN, (it) => !!dimMisses && searching && matchesQuery(it, query)).length;
-  const visible = daysWithinBudget(days, budget, countRows);
+  // 探しているあいだ（当たった日だけが並ぶ）は区切らない。見つかった記録から、その行へ飛べるようにするため
+  const visible = dimMisses && searching ? days.length : daysWithinBudget(days, budget, countRows);
   const rest = days.length - visible;
   return (
     <>
       {days.slice(0, visible).map((d) => (
-        <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} variant={variant} dimMisses={dimMisses} />
+        <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} variant={variant} dimMisses={dimMisses} activeId={activeId} />
       ))}
       {rest > 0 && (
         <button type="button" className="rd-more-days" onClick={() => setBudget((b) => b + ROW_BUDGET)}>
@@ -258,6 +261,16 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
   const [kind, setKind] = useState<RecordKind | null>(null);
   // 狭い幅では見つかった記録を初めの数件だけ出す（下の記録が押し下げられないように）
   const [hitsOpen, setHitsOpen] = useState(false);
+  // 見つかった記録の側で指している記録（左の同じ行に色を付ける）
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // 見つかった記録を押したら、左の同じ行まで動かす
+  const jumpTo = (id: string) => {
+    setActiveId(id);
+    const row = rootRef.current?.querySelector(`[data-record-id="${CSS.escape(id)}"]`);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+  };
 
   const toggleOrigin = (o: RecordOrigin) =>
     setOrigins((prev) => {
@@ -283,7 +296,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
     const days = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => matchesQuery(it, query)));
     const found = [...hits].sort((a, b) => timeOf(b.at) - timeOf(a.at));
     return (
-      <div className="rd-root" data-layout="find" lang={locale}>
+      <div className="rd-root" data-layout="find" lang={locale} ref={rootRef}>
         <div className="rd-stage">
           <section className="rd-log">
             <header className="rd-log-head">
@@ -295,7 +308,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
             </div>
             <Legend copy={copy} variant="rail" />
             {days.length === 0 && <Empty copy={copy} />}
-            <DayList days={days} now={now} locale={locale} query={query} copy={copy} dimMisses />
+            <DayList days={days} now={now} locale={locale} query={query} copy={copy} dimMisses activeId={activeId} />
           </section>
           <aside className="rd-find" aria-label={copy.findTitle}>
             <SearchField value={query} onChange={setQuery} copy={copy} count={found.length} strong />
@@ -307,7 +320,17 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
                   {(hitsOpen ? found : found.slice(0, HITS_MAX)).map((it) => {
                     const { icon: Icon, tone } = ORIGIN_STYLE[it.origin];
                     return (
-                      <li key={it.id} tabIndex={0}>
+                      <li
+                        key={it.id}
+                        tabIndex={0}
+                        data-active={activeId === it.id ? "true" : undefined}
+                        onMouseEnter={() => setActiveId(it.id)}
+                        onFocus={() => setActiveId(it.id)}
+                        onClick={() => jumpTo(it.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") jumpTo(it.id);
+                        }}
+                      >
                         <p className="rd-hit">
                           <Marked text={it.title ?? it.text ?? ""} query={query} />
                         </p>
