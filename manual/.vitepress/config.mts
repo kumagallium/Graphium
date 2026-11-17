@@ -23,6 +23,7 @@ const enSidebar = [
     items: [
       { text: 'What is Graphium?', link: '/' },
       { text: 'Getting started', link: '/getting-started' },
+      { text: 'Security', link: '/security' },
     ],
   },
   {
@@ -54,7 +55,6 @@ const enSidebar = [
       { text: 'Desktop app', link: '/desktop-app' },
       { text: 'Storage & sync', link: '/storage-and-sync' },
       { text: 'Connecting an AI assistant (MCP)', link: '/mcp-server' },
-      { text: 'Security', link: '/security' },
     ],
   },
   {
@@ -106,6 +106,7 @@ const jaSidebar = [
     items: [
       { text: 'Graphium とは', link: '/ja/' },
       { text: 'はじめる', link: '/ja/getting-started' },
+      { text: 'セキュリティのしくみ', link: '/ja/security' },
     ],
   },
   {
@@ -137,7 +138,6 @@ const jaSidebar = [
       { text: 'デスクトップアプリ', link: '/ja/desktop-app' },
       { text: '保存と同期', link: '/ja/storage-and-sync' },
       { text: 'AI アシスタントから使う (MCP)', link: '/ja/mcp-server' },
-      { text: 'セキュリティのしくみ', link: '/ja/security' },
     ],
   },
   {

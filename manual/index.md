@@ -47,6 +47,7 @@ features:
 ## How this manual is organized
 
 - **[Getting started](/getting-started)** — the everyday basics first, then the doors to the deeper layers.
+- **[Security](/security)** — what Graphium does to protect your notes, what it cannot protect, and what you can do.
 - **Everyday use** — the editor, outside materials, and capturing from your phone.
 - **Going further** — AI at your side, steps and the provenance graph, and the Knowledge layer.
 - **Platforms & data** — the desktop app and where your data lives.
