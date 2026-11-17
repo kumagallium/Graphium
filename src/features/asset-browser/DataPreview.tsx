@@ -11,14 +11,15 @@
 // あくまで「素材をその場で眺める」ためのビュー。ノートに表を作るのは
 // 従来どおり /データ の取り込みダイアログの役目
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { detectImportOptions } from "../data-import/detect";
 import { extractHeaderMeta } from "../data-import/header-meta";
-import { parseDelimited, splitLines } from "../data-import/parse";
+import { splitLines } from "../data-import/parse";
 import { readDataFileText } from "../data-import/read-file";
 import { SortableTable } from "../table-meta/expand-modal";
 import { useT } from "../../i18n";
+import { limitPreviewTable, parsePreviewText } from "./data-preview-parse";
 import type { MediaIndexEntry } from "./media-index";
 
 /** 元のテキストのタブに出す行数の上限（巨大なファイルで描画を止めない） */
@@ -71,7 +72,9 @@ export function DataPreview({ entry }: { entry: MediaIndexEntry }) {
         // 元のテキストのタブ用。末尾の改行で生じる空行は行数に数えない
         const lines = allLines.slice();
         while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
-        const parsed = parseDelimited(text, options);
+        // 大きな本文は小分けで変換する（その間は「読み込み中」のまま）。
+        // 待つ間にアンマウント・素材の切り替えがあれば結果は捨てる
+        const parsed = await parsePreviewText(text, allLines, options);
         if (cancelled) return;
         const table =
           parsed.headers.length > 0
@@ -183,6 +186,9 @@ function TablePanel({
   table: { headers: string[]; rows: string[][]; meta: { key: string; value: string }[] };
 }) {
   const t = useT();
+  // 描画する行・列は Excel のプレビューと同じ上限で切る（巨大な表で描画を止めない）。
+  // 総行数の表示は全行の数のまま。並べ替えは切ったあとの行に対して行う（Excel と同じ）
+  const shown = useMemo(() => limitPreviewTable(table.headers, table.rows), [table.headers, table.rows]);
   return (
     <>
       {/* 前置きの測定条件（あれば）。表の出所を添える情報なので控えめに */}
@@ -202,10 +208,20 @@ function TablePanel({
         })}
         <span className="ml-3">{t("tableMeta.expandSortHint")}</span>
       </div>
+      {shown.cut && (
+        <div className="text-[11px] text-muted-foreground">
+          {t("asset.officePreview.truncated", {
+            rows: String(shown.rows.length),
+            totalRows: String(table.rows.length),
+            cols: String(shown.header.length),
+            totalCols: String(table.headers.length),
+          })}
+        </div>
+      )}
       {/* max-h でこの div を実際のスクロールコンテナにする。無いと親（ピーク全体）が
           スクロールしてしまい、列見出しの sticky が効かない */}
       <div className="overflow-auto min-h-0 max-h-[70dvh] border border-border rounded">
-        <SortableTable header={table.headers} rows={table.rows} />
+        <SortableTable header={shown.header} rows={shown.rows} />
       </div>
     </>
   );

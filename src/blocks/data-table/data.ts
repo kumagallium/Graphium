@@ -108,30 +108,45 @@ export function peekDataTableFromBlock(block: any): DataTableData | null {
 }
 
 /**
- * 本文が読めていれば同期で表を返す。まだなら null。
+ * 素材 ID と読み方から、本文が読めていれば同期で表を返す。まだなら null。
  * 本文が SYNC_PARSE_MAX_CHARS を超えるときは同期で変換しない（描画中に呼ばれるので
  * 固まる）。裏で変換を始めて null を返し、終われば subscribeDataTableData で知らせる。
+ * チャートとデータ表が同じ素材を読むとき、結果（rows の配列）を共有するための口
  */
-export function peekDataTable(source: TableSource): DataTableData | null {
-  if (!source.fileId) return null;
-  const cached = parsedCache.get(cacheKey(source.fileId, source.options));
+export function peekDelimitedAsset(fileId: string, options: DelimitedImportOptions): DataTableData | null {
+  if (!fileId) return null;
+  const cached = parsedCache.get(cacheKey(fileId, options));
   if (cached) return cached;
-  const text = peekAssetText(source.fileId);
+  const text = peekAssetText(fileId);
   if (text === undefined) return null;
   if (text.length > SYNC_PARSE_MAX_CHARS) {
     // 失敗しても表が出ないだけ（呼び出し側は null を「未読」として扱う）
-    loadDataTable(source).catch(() => {});
+    loadDelimitedAsset(fileId, options).catch(() => {});
     return null;
   }
-  return parseInto(source.fileId, source.options, text);
+  return parseInto(fileId, options, text);
 }
 
-/** 素材を読んで表にする。素材が無い・読めないときは reject */
+/** データ表のソースから同期で表を引く。まだなら null（ふるまいは peekDelimitedAsset と同じ） */
+export function peekDataTable(source: TableSource): DataTableData | null {
+  if (!source.fileId) return null;
+  return peekDelimitedAsset(source.fileId, source.options);
+}
+
+/** データ表のソースから素材を読んで表にする。素材が無い・読めないときは reject */
 export async function loadDataTable(source: TableSource): Promise<DataTableData> {
   if (!source.fileId) throw new Error("data table source has no fileId");
-  const { fileId, options } = source;
+  return loadDelimitedAsset(source.fileId, source.options);
+}
+
+/** 素材 ID と読み方から素材を読んで表にする。素材が無い・読めないときは reject */
+export async function loadDelimitedAsset(
+  fileId: string,
+  options: DelimitedImportOptions
+): Promise<DataTableData> {
+  if (!fileId) throw new Error("data table source has no fileId");
   const key = cacheKey(fileId, options);
-  // peekDataTable は使わない（大きな本文では peek が load を呼ぶので循環する）
+  // peekDelimitedAsset は使わない（大きな本文では peek が load を呼ぶので循環する）
   const cached = parsedCache.get(key);
   if (cached) return cached;
   const running = inflight.get(key);

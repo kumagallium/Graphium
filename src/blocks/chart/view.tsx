@@ -96,7 +96,9 @@ import {
   valueAxisTickLabels,
 } from "./chart-layout";
 import { legendItems, type LegendItemSeries } from "./legend-icon";
-import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import { loadAssetTable, primeAssetText } from "./asset-source";
+import { loadDelimitedAsset } from "../data-table/data";
+import { shouldApplyAssetPick } from "./pick-guard";
 import {
   hasRichMarkup,
   isRich,
@@ -403,47 +405,80 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     setShowSettings(false);
     requestChartAssetSource(editor, (result: ChartAssetSourceResult) => {
       if (reopenSettings) setShowSettings(true);
-      const source: ChartAssetSource = {
-        fileId: result.fileId,
-        fileName: result.fileName,
-        options: result.options,
-      };
-      const key = assetSourceKey(result.fileId);
-      const table = tableFromAssetText(result.text, result.options);
-      // 読んだ本文と表をそのまま載せる（描画のために素材を読み直さない）
-      primeAssetText(result.fileId, result.text);
+      void applyPickedAsset(result, target);
+    });
+  };
+
+  // 確定の通し番号。表の変換を待つ間に別の確定が入ったら、古い方は書かない
+  const pickSeqRef = useRef(0);
+
+  const applyPickedAsset = async (
+    result: ChartAssetSourceResult,
+    target: { kind: "add" } | { kind: "retarget"; sourceKey: string }
+  ) => {
+    const seq = ++pickSeqRef.current;
+    const source: ChartAssetSource = {
+      fileId: result.fileId,
+      fileName: result.fileName,
+      options: result.options,
+    };
+    const key = assetSourceKey(result.fileId);
+    // 読んだ本文を先に登録する（描画のために素材を読み直さない）
+    primeAssetText(result.fileId, result.text);
+    // 大きな本文は小分けで変換される（固まらない）。データ表と結果を共有する
+    let table: TableData | null = null;
+    try {
+      table = await loadDelimitedAsset(result.fileId, result.options);
+    } catch {
+      // 読めなかった: 素材だけ足し、参照切れとして描く（useAssetTables の失敗時と同じ）
+    }
+    // 待つ間の変更を踏まえ、最新のブロックと設定から書く
+    const latest = (editor as any).getBlock?.(block.id);
+    if (!shouldApplyAssetPick({ blockExists: !!latest, seq, latestSeq: pickSeqRef.current })) return;
+    const latestConfig = parseChartBlockConfig(
+      String(latest.props?.config ?? ""),
+      String(latest.props?.sourceBlockId ?? "")
+    );
+    const assetSources = latestConfig.assetSources.some((a) => a.fileId === source.fileId)
+      ? latestConfig.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
+      : [...latestConfig.assetSources, source];
+    let series: ChartSeriesConfig[] = latestConfig.series;
+    if (table) {
       assetTables.prime(source, table);
-      const assetSources = config.assetSources.some((a) => a.fileId === source.fileId)
-        ? config.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
-        : [...config.assetSources, source];
-      let series: ChartSeriesConfig[];
       if (target.kind === "add") {
         let added = seriesForNewSource(table, key);
         // 既にこの素材がグループなら、そのキーで使われている Y 列は重ねて足さない
         const usedY = new Set(
-          config.series.filter((s) => s.sourceBlockId === key).map((s) => s.yColumn)
+          latestConfig.series.filter((s) => s.sourceBlockId === key).map((s) => s.yColumn)
         );
         if (usedY.size > 0) added = added.filter((s) => !usedY.has(s.yColumn));
-        series = [...config.series, ...added];
+        series = [...latestConfig.series, ...added];
       } else {
         // 対象グループの系列だけをまとめて付け替え、元の位置に戻す
         const idx: number[] = [];
-        config.series.forEach((s, i) => {
+        latestConfig.series.forEach((s, i) => {
           if (s.sourceBlockId === target.sourceKey) idx.push(i);
         });
         const moved = retargetSeriesGroup(
-          idx.map((i) => config.series[i]),
+          idx.map((i) => latestConfig.series[i]),
           key,
           table
         );
-        const next = [...config.series];
+        const next = [...latestConfig.series];
         idx.forEach((i, n) => {
           next[i] = moved[n];
         });
         // 既存グループと同じ素材になった場合、同じ (参照先, X, Y) は先のものを残す
         series = dedupeSeries(next);
       }
-      updateConfig({ assetSources, series });
+    }
+    (editor as any).updateBlock(latest, {
+      props: {
+        ...latest.props,
+        // どの系列も指さなくなった素材は落とす（描いていない素材を来歴に残さない）。
+        // 読めなかった素材は系列が無いので落ちる＝何も足さない
+        config: serializeChartBlockConfig(pruneAssetSources({ ...latestConfig, assetSources, series })),
+      },
     });
   };
 
