@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.137.5](https://github.com/kumagallium/Graphium/compare/v0.137.4...v0.137.5) - 2026-11-17
+
+- [infra] One-off workflow to back up release secrets, encrypted by @kumagallium in https://github.com/kumagallium/Graphium/pull/1710
+- [infra] Remove the one-off secret backup workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1712
+- [infra] Run release signing jobs in the release environment by @kumagallium in https://github.com/kumagallium/Graphium/pull/1701
+
 ## [v0.137.4](https://github.com/kumagallium/Graphium/compare/v0.137.3...v0.137.4) - 2026-11-17
 
 - [docs] Add a Security page to the manual and link it from the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1706
