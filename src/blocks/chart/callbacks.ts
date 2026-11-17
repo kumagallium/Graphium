@@ -16,7 +16,10 @@ export type ChartAssetSourceResult = {
   fileName: string;
   /** 取り込みダイアログで確定した読み方 */
   options: DelimitedImportOptions;
-  /** その読み方で読んだ結果（描画をすぐ始めるために持ち回る） */
+  /**
+   * 取り込みダイアログの変換結果。大きなファイルでは rows が先頭の標本だけになる
+   * （DataImportResult.rowsComplete を参照）。チャートは text から読み直すので使っていない
+   */
   parsed: ParsedDelimited;
   /** 素材の本文（キャッシュに登録して読み直しを避ける） */
   text: string;

@@ -6,6 +6,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { DataImportModal } from "./DataImportModal";
+import { SYNC_PARSE_MAX_ROWS } from "./large-file";
 
 const meta: Meta<typeof DataImportModal> = {
   title: "Features/DataImport/DataImportModal",
@@ -54,6 +55,15 @@ const HUGE_LOG = [
   ...Array.from({ length: 5000 }, (_, i) => `${i},${(i % 97) / 10}`),
 ].join("\n");
 
+/** 全行を同期で変換する上限（SYNC_PARSE_MAX_ROWS）を超える合成データ。story の中で作る */
+const VERY_LARGE_LOG = [
+  "# Long run log",
+  "# Device Model: LOGGER-9000",
+  "time,value,flag",
+  ...Array.from({ length: SYNC_PARSE_MAX_ROWS + 5000 }, (_, i) => `${i},${(i % 97) / 10},ok`),
+  "# [END]",
+].join("\n");
+
 const noop = () => {};
 
 /** 典型的な装置 CSV。前置き 6 行・後書き 2 行が自動で外れる */
@@ -81,6 +91,17 @@ export const HugeLog: Story = {
   args: {
     fileName: "run-2026-08-14.log",
     text: HUGE_LOG,
+    onCancel: noop,
+    onConfirm: noop,
+  },
+};
+
+/** 行数が SYNC_PARSE_MAX_ROWS を超える大きなファイル。設定は先頭から推定し、プレビューも先頭だけ */
+export const VeryLargeLog: Story = {
+  args: {
+    fileName: "run-very-large.log",
+    text: VERY_LARGE_LOG,
+    rowLimit: null,
     onCancel: noop,
     onConfirm: noop,
   },

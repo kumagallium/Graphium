@@ -13,7 +13,12 @@ import { useEffect, useMemo, useState } from "react";
 import { t, useLocaleSubscription } from "../../i18n";
 import { detectImportOptions } from "./detect";
 import { extractHeaderMeta } from "./header-meta";
-import { parseDelimited, splitLines } from "./parse";
+import {
+  DETECT_SAMPLE_LINES,
+  PREVIEW_SAMPLE_ROWS,
+  SYNC_PARSE_MAX_ROWS,
+} from "./large-file";
+import { countDataRows, parseDelimitedLines, parseDelimitedSample, splitLines } from "./parse";
 import { DOC_TABLE_DEFAULT_MAX_ROWS, DOC_TABLE_HARD_MAX_ROWS, defaultImportTarget } from "./target";
 import type { DelimitedImportOptions, DelimiterKind, ImportTarget, ParsedDelimited } from "./types";
 
@@ -33,7 +38,16 @@ const DEFAULT_ROW_LIMIT = 2000;
 
 export type DataImportResult = {
   options: DelimitedImportOptions;
+  /**
+   * 変換結果。rowsComplete が false のとき rows は先頭の標本（PREVIEW_SAMPLE_ROWS 行）
+   * だけで、全行ではない。headers / headerLines / footerLines は全体の変換と同じ。
+   * 全行が要る使い方をするなら rowsComplete を確かめること
+   */
   parsed: ParsedDelimited;
+  /** 範囲内のデータ行の総数（parsed.rows が標本のときも全体の数） */
+  rowCount: number;
+  /** parsed.rows が全行か。大きなファイル（SYNC_PARSE_MAX_ROWS 超）では false */
+  rowsComplete: boolean;
   /** 行き先（文書の表 / データ表）。ブロックを作るのはホスト側 */
   target: ImportTarget;
 };
@@ -122,13 +136,26 @@ export function DataImportModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  const parsed = useMemo(() => parseDelimited(text, options), [text, options]);
+  // 行数は割らずに数える。大きなファイルは全行をセルに割ると固まる（23 万行で 5 秒）ので、
+  // 上限を超えたら先頭の標本だけ変換する。行を割り直さないよう、lines を使い回す
+  const rowCount = useMemo(() => countDataRows(lines, options), [lines, options]);
+  const isLarge = rowCount > SYNC_PARSE_MAX_ROWS;
+  const parsed = useMemo(
+    () =>
+      isLarge
+        ? parseDelimitedSample(lines, options, PREVIEW_SAMPLE_ROWS)
+        : parseDelimitedLines(lines, options),
+    [lines, options, isLarge]
+  );
   const meta = useMemo(() => extractHeaderMeta(parsed.headerLines), [parsed.headerLines]);
   const canImport = parsed.headers.length > 0;
   // データ表は本文に表を作らないので行数の上限は要らない
   const effectiveRowLimit = target === "dataTable" ? null : rowLimit;
-  // 文書の表にすると固まる量は入口で止める（データ表なら制限なし）
-  const overHardLimit = target === "table" && parsed.rows.length > DOC_TABLE_HARD_MAX_ROWS;
+  // 文書の表にすると固まる量は入口で止める（データ表なら制限なし）。
+  // 挿入形式を選べない画面（チャートが素材から直接読む）は内部の target が "table" だが
+  // 表を作らないので、上限は掛けない
+  const overHardLimit =
+    showTargetChoice && target === "table" && rowCount > DOC_TABLE_HARD_MAX_ROWS;
   const switchTarget = (next: ImportTarget) => {
     setTarget(next);
     // 文書の表向けに丸めていた終了行は、データ表なら全部読める
@@ -172,13 +199,25 @@ export function DataImportModal({
             {canImport
               ? t("dataImport.summary", {
                   headerRow: String(options.headerRow),
-                  rows: String(parsed.rows.length),
+                  rows: String(rowCount),
                   columns: String(parsed.headers.length),
                   delimiter: t(`dataImport.delimiter.${options.delimiter}`),
                 })
               : t("dataImport.summaryEmpty")}
           </span>
         </div>
+
+        {/* 大きなファイルは設定を先頭の標本から推定し、プレビューも先頭だけ。警告ではないので地味に出す */}
+        {isLarge && (
+          <div className="px-4 py-2 border-b border-border bg-muted/30">
+            <p className="text-[11px] text-muted-foreground">
+              {/* 再取り込みは前回の設定を使うので「推定した」とは言わない */}
+              {initialOptions
+                ? t("dataImport.sampledPreviewNotice")
+                : t("dataImport.sampledNotice", { lines: String(DETECT_SAMPLE_LINES) })}
+            </p>
+          </div>
+        )}
 
         {/* 挿入形式。行が多いデータは本文の表に展開せず、素材を参照するデータ表にする */}
         {showTargetChoice && canImport && (
@@ -212,15 +251,15 @@ export function DataImportModal({
             <p className="text-[11px] text-foreground">
               {t("dataImport.target.tableTooLarge", {
                 limit: String(DOC_TABLE_HARD_MAX_ROWS),
-                count: String(parsed.rows.length),
+                count: String(rowCount),
               })}
             </p>
           </div>
         )}
-        {!overHardLimit && showTargetChoice && canImport && target === "table" && parsed.rows.length > DOC_TABLE_DEFAULT_MAX_ROWS && (
+        {!overHardLimit && showTargetChoice && canImport && target === "table" && rowCount > DOC_TABLE_DEFAULT_MAX_ROWS && (
           <div className="px-4 py-2 border-b border-border bg-amber-500/10">
             <p className="text-[11px] text-foreground">
-              {t("dataImport.target.recommendedDataTable", { count: String(parsed.rows.length) })}
+              {t("dataImport.target.recommendedDataTable", { count: String(rowCount) })}
             </p>
           </div>
         )}
@@ -236,11 +275,11 @@ export function DataImportModal({
         {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告。
             上限を外した行き先（チャート）ではどちらも出ない */}
         {effectiveRowLimit !== null &&
-          (truncatedTotal !== null || parsed.rows.length > effectiveRowLimit) && (
+          (truncatedTotal !== null || rowCount > effectiveRowLimit) && (
             <div className="px-4 py-2 border-b border-border bg-amber-500/10">
               <p className="text-[11px] text-foreground">
-                {parsed.rows.length > effectiveRowLimit
-                  ? t("dataImport.rowLimitWarning", { count: String(parsed.rows.length) })
+                {rowCount > effectiveRowLimit
+                  ? t("dataImport.rowLimitWarning", { count: String(rowCount) })
                   : t("dataImport.rowLimitNotice", {
                       limit: String(effectiveRowLimit),
                       total: String(truncatedTotal),
@@ -385,10 +424,10 @@ export function DataImportModal({
               ) : (
                 <p className="text-[11px] text-muted-foreground">{t("dataImport.noTable")}</p>
               )}
-              {parsed.rows.length > PREVIEW_ROW_LIMIT && (
+              {rowCount > PREVIEW_ROW_LIMIT && (
                 <p className="mt-2 text-[11px] text-muted-foreground opacity-70">
                   {t("dataImport.moreRows", {
-                    count: String(parsed.rows.length - PREVIEW_ROW_LIMIT),
+                    count: String(rowCount - PREVIEW_ROW_LIMIT),
                   })}
                 </p>
               )}
@@ -427,7 +466,7 @@ export function DataImportModal({
           <button
             type="button"
             disabled={!canImport || overHardLimit}
-            onClick={() => onConfirm({ options, parsed, target })}
+            onClick={() => onConfirm({ options, parsed, rowCount, rowsComplete: !isLarge, target })}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {confirmLabel ?? t("dataImport.confirm")}

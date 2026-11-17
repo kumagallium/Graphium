@@ -4032,6 +4032,8 @@ export const en: Record<string, string> = {
   "dataImport.tablePreview": "Table preview",
   "dataImport.truncated": "…and {count} more lines",
   "dataImport.moreRows": "…and {count} more rows will be imported",
+  "dataImport.sampledNotice": "This is a large file, so the settings are estimated from the first {lines} lines and only the beginning is shown in the preview",
+  "dataImport.sampledPreviewNotice": "This is a large file, so only the beginning is shown in the preview",
   "dataImport.noTable": "No table to import",
   "assetData.tabsLabel": "Data view",
   "assetData.tabTable": "Table",
