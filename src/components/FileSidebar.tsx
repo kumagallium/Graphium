@@ -42,10 +42,12 @@ export type FileSidebarProps = {
   /**
    * ヘッダーの入口の並べ方（タブ表示のときだけ効く）。
    * - "stacked"（既定・現状）: 検索、ノート、取り込み、ホームを縦に 1 行ずつ
-   * - "paired"（提案）: 意味で 2 段にまとめる。1 段目は行き先（ホーム｜検索）、2 段目は入れる（ノート｜取り込み）
+   * - "paired"（提案 A）: 意味で 2 段にまとめる。1 段目は行き先（ホーム｜検索）、2 段目は入れる（ノート｜取り込み）
+   * - "pairedWideNote"（提案 B）: 1 段目だけまとめる。ノートはいちばん大事なので幅いっぱいのまま、
+   *   取り込みとモバイル受信箱はその下の軽い 1 行（現状と同じ）
    * 比較は FileSidebar.ia.stories.tsx の HeaderComparison
    */
-  headerLayout?: "stacked" | "paired";
+  headerLayout?: "stacked" | "paired" | "pairedWideNote";
   /** ヘッダーの「戻る」操作（履歴を 1 段戻す）。canGoBack が false のときは非表示。 */
   onBack?: () => void;
   /** 戻れる履歴があるか。 */
@@ -472,7 +474,9 @@ export function FileSidebar({
   }, [noteIndex]);
   const isTabs = layout === "tabs";
   // ヘッダーの入口を 2 段にまとめるか（提案の並び）。タブ表示のときだけ
-  const pairedHeader = isTabs && headerLayout === "paired";
+  const pairedHeader = isTabs && headerLayout !== "stacked";
+  // ノートを幅いっぱいに保つ並び（提案 B）
+  const wideNote = headerLayout === "pairedWideNote";
 
   // ナレッジの節（タブ）を出す条件。従来ナレッジの節を出していた 3 つの場合の OR:
   // 起動待ち（デスクトップのみ）/ 到達不可が確定 / AI が使える（モデル登録済み or 既存データあり）。
@@ -1195,7 +1199,7 @@ export function FileSidebar({
             <BrandLockup className="h-7" />
           )}
           <div className="flex items-center gap-2">
-            {pairedHeader && mobileButton}
+            {pairedHeader && !wideNote && mobileButton}
             {onBack && (
               <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
             )}
@@ -1252,6 +1256,26 @@ export function FileSidebar({
                 </button>
               )}
             </div>
+            {wideNote ? (
+              <>
+                {/* 提案 B: ノートは幅いっぱい（いちばん大事な操作なので小さくしない）。
+                    取り込みとモバイル受信箱は、その下の軽い 1 行 */}
+                <NewNoteSplitButton
+                  onNewNote={onNewNote}
+                  onNewVoiceNote={voiceNoteHandler}
+                  onNewNoteFromTemplate={onNewNoteFromTemplate}
+                  recording={recording}
+                  className="mb-1 w-full"
+                />
+                {(onOpenIntake || onShowMobile) && (
+                  <div className="flex items-center gap-1">
+                    {intakeButton}
+                    {mobileButton}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
             {/* 2 段目: 入れる。書く（ノート）と持ち込む（取り込み）を並べる。
                 モバイル受信箱はここに置かない — ノートの分割ボタンと取り込みで幅を使い切り、
                 3 つ並べると ▾ が取り込みに重なる。受信箱は「届いているものの知らせ」なので、
@@ -1276,6 +1300,8 @@ export function FileSidebar({
                 </button>
               )}
             </div>
+              </>
+            )}
             {chatRow}
           </>
         )}

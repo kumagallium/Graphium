@@ -1435,7 +1435,8 @@ export const TabsEachTab: Story = {
 //
 // 現状（stacked）は、検索・ノート・取り込み・ホームがタブの手前に 4 段積まれている。
 // 提案（paired）は、意味で 2 段にまとめる:
-//   1 段目 = 行き先（ホーム｜検索）  2 段目 = 入れる（ノート｜取り込み｜モバイル）
+//   1 段目 = 行き先（ホーム｜検索）  2 段目 = 入れる（ノート｜取り込み）
+// 提案 B（pairedWideNote）は、1 段目だけまとめ、ノートは幅いっぱいのまま残す（ノートがいちばん大事な操作のため）。
 // 検索は入力欄ではなく ⌘K を開くボタンなので、幅いっぱいにする理由が無い。
 // ホームは、残したものを残した順に振り返る画面（中の見出しは「記録」）。
 
@@ -1473,9 +1474,14 @@ function HeaderCompare({ locale, active }: { locale: Locale; active?: boolean })
         <FileSidebar {...shared} headerLayout="stacked" />,
       )}
       {column(
-        ja ? "提案" : "Proposed",
+        ja ? "提案 A" : "Proposal A",
         ja ? "意味で 2 段に。行き先（ホーム｜検索）と、入れる（ノート｜取り込み）" : "Two rows by meaning: where to go, and what to bring in",
         <FileSidebar {...shared} headerLayout="paired" />,
+      )}
+      {column(
+        ja ? "提案 B" : "Proposal B",
+        ja ? "ホームと検索だけ並べる。ノートは幅いっぱいのまま" : "Pair only Home and Search; the note button keeps its full width",
+        <FileSidebar {...shared} headerLayout="pairedWideNote" />,
       )}
     </div>
   );
