@@ -31,6 +31,7 @@ export type RecordCopy = {
   allOrigins: string;
   more: (n: number) => string;
   fewer: string;
+  moreHits: (n: number) => string;
 };
 
 export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
@@ -75,6 +76,7 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     allOrigins: "すべて",
     more: (n) => `ほか ${n}`,
     fewer: "たたむ",
+    moreHits: (n) => `ほか ${n} 件を見る`,
   },
   en: {
     title: "Records",
@@ -117,5 +119,6 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     allOrigins: "All",
     more: (n) => `${n} more`,
     fewer: "Show fewer",
+    moreHits: (n) => `Show ${n} more`,
   },
 };

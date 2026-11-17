@@ -1294,3 +1294,47 @@
     display: none;
   }
 }
+
+/* 重ねる構図の狭い幅: 見つかった記録は初めの 3 件だけ出し、残りはボタンで開く。
+   全部を積むと、下の日ごとの記録が画面の外へ押し出されるため */
+.rd-hits-more {
+  display: none;
+  width: 100%;
+  height: 36px;
+  margin-top: 8px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-2);
+  background: transparent;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rd-hits-more:hover {
+  background: var(--paper-2);
+}
+
+@container rd (max-width: 720px) {
+  .rd-hits-more {
+    display: block;
+  }
+
+  .rd-hits:not([data-open="true"]) li:nth-child(n + 4) {
+    display: none;
+  }
+
+  .rd-hits:not([data-open="true"]) li:nth-child(3) {
+    border-bottom: 0;
+  }
+}
+
+/* 狭い幅では、日付の見出しの右は合計だけにする（残した人ごとの件数まで出すと日付が折り返す） */
+@container rd (max-width: 560px) {
+  .rd-day-tally > span:not(.rd-day-count) {
+    display: none;
+  }
+
+  .rd-day-count {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
