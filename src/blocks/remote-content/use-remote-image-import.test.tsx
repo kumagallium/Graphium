@@ -614,9 +614,10 @@ describe("取り込み中のエディタ作り直し（SandboxEditor 実物）",
   type Api = { scan: () => void; toast: RemoteImportToastState };
 
   /**
-   * note-app.tsx と同じ配線の最小ハーネス。
-   * SandboxEditor の key は fileId（未採番のうちは "new"）で、取り込みの hook は
-   * その外側にいる —— つまりエディタだけが作り直され、hook は生き残る。
+   * 取り込みの hook の外側でエディタだけが作り直される場合の最小ハーネス。
+   * 本番の配線（note-app.tsx）は SandboxEditor に鍵を持たない。ここでは作り直しが
+   * 起きる場合（言語の切り替えなど）の備えを確かめるため、fileId（未採番のうちは
+   * "new"）の鍵を付けてエディタだけを作り直し、hook は生き残らせる。
    *
    * commits には「作り直しのコミットが済んだ直後」の両 ref を控える。親の layout
    * effect は子（SandboxEditor）の layout effect の後・passive effect の前に走るので、
@@ -703,7 +704,7 @@ describe("取り込み中のエディタ作り直し（SandboxEditor 実物）",
     expect(atRemount.passive.getBlock(first.document[0].id)).toBeTruthy();
   });
 
-  it("取り込み中に自動保存でエディタが作り直されても、画面にある本文へ書き戻す", async () => {
+  it("取り込み中にエディタが作り直されても、画面にある本文へ書き戻す", async () => {
     // 貼り付け〜作り直し〜解決までを通しで見る。act は中で起きた更新を最後に
     // まとめて流すので、作り直しと解決は別の act に分ける（passive ref がまだ
     // 古い一瞬そのものは 1 つ上の test が見る）。
@@ -739,8 +740,8 @@ describe("取り込み中のエディタ作り直し（SandboxEditor 実物）",
     const blockId = first.document.find((b: any) => b.type === "image").id;
     expect(saveRemoteImageAsMedia).toHaveBeenCalledTimes(1);
 
-    // 自動保存でノート id が付く = key が変わって SandboxEditor だけが作り直される。
-    // 新しいインスタンスは保存済みの本文から組み直されるので、同じ block id が
+    // ハーネスの key を変えて SandboxEditor だけを作り直す（本番では言語の切り替えで起きる）。
+    // 新しいインスタンスは同じ本文から組み直されるので、同じ block id が
     // 同じ外部 URL のまま入っている（＝この取り込みの正しい行き先）。
     const saved = JSON.parse(JSON.stringify(first.document));
 
