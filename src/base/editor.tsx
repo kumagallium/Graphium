@@ -1150,8 +1150,7 @@ export function SandboxEditor({
 
   // いま画面にあるインスタンスを、作り直しのコミット中に公開する。
   //
-  // このエディタは呼び出し側の key で丸ごと作り直されることがある（note-app.tsx の
-  // key={fileId || "new"} は、未採番のノートに自動保存で id が付いた瞬間に変わる）。
+  // このエディタは言語の切り替えで作り直される（useCreateBlockNote の依存が locale）。
   // 下の onEditorReady は passive effect なので、そのコミットの直後・effect が走る前の
   // 一瞬だけ、受け手の ref は捨てられた前のインスタンスを指したままになる。その隙に
   // 解決した非同期処理（外部画像のローカル取り込み）が書き戻すと、getBlock も
