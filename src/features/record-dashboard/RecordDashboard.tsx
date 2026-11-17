@@ -3,7 +3,7 @@
 //   stream … 1 本の流れ。上で絞って、下を読む
 //   find   … 左に日ごとの記録、右に言葉で見つかった記録を横に並べる（採用。LP の絵の組み合わせ案が元）
 //   ledger … いつ・どこで・誰が・何を の 4 列の台帳。左で絞る
-import { LocateFixed, Search, X } from "lucide-react";
+import { CalendarDays, LocateFixed, Search, X } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import "./record-dashboard.css";
 import { type Locale, useLocale } from "../../i18n";
@@ -11,6 +11,7 @@ import { type RecordCopy, useRecordCopy } from "./copy";
 import {
   BUNDLE_MIN,
   bundleRuns,
+  countByDay,
   countOrigins,
   dayKeyOf,
   daysAgo,
@@ -26,9 +27,11 @@ import {
   type BodyHit,
   type BodyHits,
   matchesWho,
+  monthKeyOf,
   type RecordDayGroup,
   timeOf,
 } from "./model";
+import { RecordCalendar } from "./RecordCalendar";
 import { RecordDay } from "./RecordDay";
 import { Marked, ORIGIN_STYLE, WhoLabel, WhoMark } from "./RecordRow";
 import type { RecordItem, RecordKind, RecordOrigin, RecordWho, WhoFilter } from "./types";
@@ -305,6 +308,18 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
   // 見つかった記録の側で指している記録（左の同じ行に色を付ける）
   const [activeId, setActiveId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // カレンダーで選んだ日。選ぶと、その日から前の記録を出す（null は最新から）
+  const [anchorDay, setAnchorDay] = useState<string | null>(null);
+  // カレンダーで開いている月。初めは、いちばん新しい記録のある月（無ければ今月）
+  const [calMonth, setCalMonth] = useState(() => {
+    const newest = items.reduce((max, it) => {
+      const k = dayKeyOf(it.at);
+      return k > max ? k : max;
+    }, "");
+    return monthKeyOf(newest || dayKeyOf(now));
+  });
+  // 狭い幅でカレンダーを開いているか（広い幅では常に出す）
+  const [calOpen, setCalOpen] = useState(false);
   // 見つかった記録を押したら、左の同じ行まで動かす
   const jumpTo = (id: string) => {
     setActiveId(id);
@@ -336,7 +351,18 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     // 左は絞っただけの記録をすべて残し、探す言葉に当たらない行は薄くする。
     // 右に、当たった記録だけを新しい順に並べる
     // 探しているあいだは、当たった記録のある日だけを出す（何千件もあると、当たらない日ばかりが並ぶため）
-    const days = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => isHit(it, query, bodyHits)));
+    const allDays = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => isHit(it, query, bodyHits)));
+    // カレンダーで日を選んでいれば、その日から前だけを出す
+    const days = anchorDay ? allDays.filter((d) => d.key <= anchorDay) : allDays;
+    // カレンダーの件数は、いま一覧に出しうる記録で数える（探しているあいだは、当たった記録だけ）
+    const dayCounts = countByDay(hasQuery ? hits : faceted);
+    const maxDayCount = Math.max(0, ...dayCounts.values());
+    const oldest = items.reduce((min, it) => { const k = dayKeyOf(it.at); return k && k < min ? k : min; }, dayKeyOf(now));
+    const selectDay = (dayKey: string) => {
+      setAnchorDay((prev) => (prev === dayKey ? null : dayKey));
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      rootRef.current?.querySelector(".rd-log")?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+    };
     const found = [...hits].sort((a, b) => timeOf(b.at) - timeOf(a.at));
     return (
       <div className="rd-root" data-layout="find" lang={locale} ref={rootRef}>
@@ -349,10 +375,51 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
             <div className="rd-controls">
               <WhoSwitch value={who} onChange={setWho} copy={copy} />
             </div>
+            {anchorDay && (
+              <p className="rd-anchor">
+                <CalendarDays size={14} aria-hidden="true" />
+                <span>{copy.showingFrom(formatDate(anchorDay, locale))}</span>
+                <button type="button" onClick={() => setAnchorDay(null)}>
+                  {copy.backToLatest}
+                </button>
+              </p>
+            )}
             <Legend copy={copy} variant="rail" />
             {days.length === 0 && <Empty copy={copy} />}
-            <DayList days={days} now={now} locale={locale} query={query} bodyHits={bodyHits} copy={copy} dimMisses activeId={activeId} onOpen={onOpen} />
+            {/* 日を選び直したら、描く行の数の区切りも初めに戻す */}
+            <DayList
+              key={anchorDay ?? "latest"}
+              days={days}
+              now={now}
+              locale={locale}
+              query={query}
+              bodyHits={bodyHits}
+              copy={copy}
+              dimMisses
+              activeId={activeId}
+              onOpen={onOpen}
+            />
           </section>
+          <div className="rd-side">
+          <div className="rd-cal-wrap" data-open={calOpen ? "true" : undefined}>
+            <button type="button" className="rd-cal-toggle" aria-expanded={calOpen} onClick={() => setCalOpen((v) => !v)}>
+              <CalendarDays size={14} aria-hidden="true" />
+              {copy.calendar}
+            </button>
+            <RecordCalendar
+              counts={dayCounts}
+              maxCount={maxDayCount}
+              month={calMonth}
+              onMonthChange={setCalMonth}
+              selectedDay={anchorDay}
+              onSelectDay={selectDay}
+              today={dayKeyOf(now)}
+              minMonth={monthKeyOf(oldest)}
+              maxMonth={monthKeyOf(dayKeyOf(now))}
+              locale={locale}
+              copy={copy}
+            />
+          </div>
           <aside className="rd-find" aria-label={copy.findTitle}>
             <SearchField value={query} onChange={setQuery} copy={copy} count={found.length} strong />
             {!hasQuery && <p className="rd-find-hint">{copy.findEmpty}</p>}
@@ -429,6 +496,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
               </>
             )}
           </aside>
+          </div>
         </div>
       </div>
     );
