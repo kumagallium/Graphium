@@ -2,7 +2,7 @@
 //
 // 素材のピークは右端に ⋯ があるのに、ノートのピークには無かった。全画面のノートの ⋯ と
 // 同じ見た目・同じ文言で、ピークでも全画面と同じ結果になる項目だけを載せる:
-// Markdown で書き出し / リンクをコピー / アーカイブ / ゴミ箱へ（ナレッジは前の 2 つだけ）。
+// Markdown・Word で書き出し / リンクをコピー / アーカイブ / ゴミ箱へ（ナレッジは前の 2 つだけ）。
 // ヘッダーの並びは本物と同じ: 閉じる / 全画面 / 題 / 保存の状態 / ⋯。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -79,6 +79,7 @@ export const NoteOpen: Story = {
   args: {
     link: "https://example.com/Graphium/app/#note/n-1",
     onExportMarkdown: fn(),
+    onExportDocx: fn(),
     onArchive: fn(),
     onTrash: fn(),
   },
@@ -91,13 +92,14 @@ export const NoteOpen: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: /メニュー|Menu/ }));
     const body = within(document.body);
     await expect(body.getByRole("button", { name: /Markdown/ })).toBeInTheDocument();
+    await expect(body.getByRole("button", { name: /Word/ })).toBeInTheDocument();
     await expect(body.getByRole("button", { name: /アーカイブ|Archive/ })).toBeInTheDocument();
   },
 };
 
 /** ナレッジのピーク。⋯ を開いた状態（アーカイブ・ゴミ箱は全画面と同じく出さない） */
 export const KnowledgeOpen: Story = {
-  args: { link: "https://example.com/Graphium/app/#knowledge/topic/w-1", onExportMarkdown: fn() },
+  args: { link: "https://example.com/Graphium/app/#knowledge/topic/w-1", onExportMarkdown: fn(), onExportDocx: fn() },
   render: (args) => (
     <PeekHeaderFrame title="加水率とクラムの気泡">
       <PeekNoteMenu {...args} />
@@ -138,6 +140,7 @@ export const ManualEnglish: Story = {
   args: {
     link: "https://example.com/Graphium/app/#note/n-1",
     onExportMarkdown: fn(),
+    onExportDocx: fn(),
     onArchive: fn(),
     onTrash: fn(),
   },

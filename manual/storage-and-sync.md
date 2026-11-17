@@ -283,8 +283,11 @@ Per note, the **Export** section of the `⋯` menu offers:
 |---|---|
 | **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
 | **Markdown (.md)** | A portable `.md` file |
+| **Word (.docx)** | A Word file with the text, tables, images and charts |
 | **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials and tables (no AI chats) |
 | **Export plan provenance** | Plan notes only. The whole plan — steps, planned lines, and the operation notes' provenance — as one `.plan.jsonld` (see [Exporting a plan](/labels-and-provenance#plan-prov-export)) |
+
+The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Some things arrive as text: a formula as LaTeX, a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name and link. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.
 
 Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
 
