@@ -110,7 +110,6 @@ const ORIGINS: RecordOrigin[] = [
   "file",
   "memo",
   "shared",
-  "meeting",
   "webClip",
   "quote",
   "aiChat",
@@ -118,7 +117,7 @@ const ORIGINS: RecordOrigin[] = [
   "phone",
 ];
 
-// 出どころの札の一覧。色は 4 系統＋無彩色に抑えている
+// 出どころの札の一覧。色は 3 系統＋無彩色に抑えている
 export const Origins: Story = {
   render: (args) => {
     const copy = RECORD_COPY[args.locale];
@@ -126,8 +125,8 @@ export const Origins: Story = {
       <StoryFrame width={args.width}>
         <StoryCaption>
           {args.locale === "ja"
-            ? "出どころの札。人の手（無彩色）／会議（rose）／Web（amber）／AI（sky）／スマホ（forest）で色を分けます。"
-            : "Origin badges. Hand (neutral), meeting (rose), web (amber), AI (sky), phone (forest)."}
+            ? "出どころの札。人の手とファイル（無彩色）／Web（amber）／AI（sky）／スマホ（forest）で色を分けます。"
+            : "Origin badges. Hand and files (neutral), web (amber), AI (sky), phone (forest)."}
         </StoryCaption>
         <StorySheet>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "4px 12px" }}>

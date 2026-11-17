@@ -15,16 +15,15 @@ export type RecordKind =
 
 /**
  * 出どころ（どこで残したか）。専用の欄は無く、どれも既存の項目から導く。
- * 導けないもの（スマホで書いた文字のメモ、など）は種類を作らない。
+ * 導けないもの（スマホで書いた文字のメモ、会議の録音）は種類を作らない。
+ * 会議の録音は、素材の usedIn がブロックの種類を持たないので、索引だけでは見分けられない。
  */
 export type RecordOrigin =
   /** 手で書いたノート — 下のどれにも当たらないノート */
   | "written"
-  /** 会議の録音 — 文字起こしブロックを持つノート（media-index の音声素材の usedIn から引く） */
-  | "meeting"
   /** Web クリップ — 素材の webClip、または type が "url" の素材 */
   | "webClip"
-  /** AI との対話 — ノートの generatedBy（note-index の model あり・source は human） */
+  /** AI から — AI が書いたノート（note-index の model あり・source は human）。MCP 経由の保存も、論文からの抽出もここ */
   | "aiChat"
   /** ナレッジ化 — AI のページ（wikiMeta.derivedFromNotes を持つ） */
   | "knowledge"
@@ -52,8 +51,8 @@ export type RecordWho =
   /** 共有の作者 — SharedEntry.author.name */
   | { type: "other"; name: string };
 
-/** 素材の種類（media-index の type のうち、絵で見分けたいもの） */
-export type RecordMediaType = "image" | "audio" | "pdf" | "url";
+/** 素材の種類（media-index の type。メモを素材として見せる一時エントリの "memo" は除く） */
+export type RecordMediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "other";
 
 /** この記録から辿れる先（来歴の入口） */
 export type RecordTrace =
@@ -73,8 +72,10 @@ export type RecordItem = {
   title?: string;
   /** 何を（本文）— メモの text。ノートの本文は索引に無いので入れない */
   text?: string;
-  /** 題の下の 1 行 — ノートは headings、URL は urlMeta.excerpt、PDF は pageCount */
+  /** 題の下の 1 行 — ノートは headings、URL は urlMeta.excerpt（無ければ description） */
   detail?: string;
+  /** ページ数 — 素材の pageCount（PDF・Word・PowerPoint） */
+  pageCount?: number;
   /** URL の素材のドメイン — urlMeta.domain */
   domain?: string;
   mediaType?: RecordMediaType;

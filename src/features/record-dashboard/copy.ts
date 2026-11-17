@@ -16,6 +16,7 @@ export type RecordCopy = {
   hits: (n: number) => string;
   usedIn: (n: number) => string;
   sources: (n: number) => string;
+  pages: (n: number) => string;
   searchPlaceholder: string;
   searchLabel: string;
   clear: string;
@@ -42,9 +43,8 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     kind: { note: "ノート", wiki: "AI のページ", media: "素材", memo: "メモ" },
     origin: {
       written: "手で書いた",
-      meeting: "会議の録音",
       webClip: "Web クリップ",
-      aiChat: "AI との対話",
+      aiChat: "AI から",
       knowledge: "ナレッジ化",
       phone: "スマホから",
       file: "取り込んだファイル",
@@ -61,6 +61,7 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     hits: (n) => `${n} 件`,
     usedIn: (n) => `${n} つのノートで使っています`,
     sources: (n) => `元の記録 ${n} 件`,
+    pages: (n) => `${n} ページ`,
     searchPlaceholder: "言葉で探す",
     searchLabel: "記録を言葉で探す",
     clear: "消す",
@@ -85,9 +86,8 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     kind: { note: "Note", wiki: "AI page", media: "Material", memo: "Memo" },
     origin: {
       written: "Written by hand",
-      meeting: "Meeting recording",
       webClip: "Web clip",
-      aiChat: "AI conversation",
+      aiChat: "From AI",
       knowledge: "Made into knowledge",
       phone: "From phone",
       file: "Imported file",
@@ -104,6 +104,7 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     hits: (n) => (n === 1 ? "1 result" : `${n} results`),
     usedIn: (n) => (n === 1 ? "Used in 1 note" : `Used in ${n} notes`),
     sources: (n) => (n === 1 ? "From 1 record" : `From ${n} records`),
+    pages: (n) => (n === 1 ? "1 page" : `${n} pages`),
     searchPlaceholder: "Find by words",
     searchLabel: "Find records by words",
     clear: "Clear",
