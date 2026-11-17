@@ -4322,7 +4322,13 @@ function NoteEditorInner({
       });
       notifySharedLibraryChanged();
       setMoveFolderDialogOpen(false);
-      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+      const moveMessage = removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error });
+      // 移した先に読める写しだけ置けなかったときは、共有のときと同じ 1 行を足して知らせる
+      window.alert(
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? moveMessage + "\n" + t("share.readableCopyFailed")
+          : moveMessage,
+      );
     } finally {
       setShareBusy(false);
     }

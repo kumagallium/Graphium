@@ -89,12 +89,15 @@ export async function syncReadableCopy(
       buildFrontMatter(input, context.noteId) +
       "\n" +
       buildMarkdownFileContent(input.title, await graphiumDocToMarkdown(input.entryDoc));
-    // メモの索引（captureIndex）は渡さない。メールアドレスも渡さない（名前だけ）
+    // メモの索引（captureIndex）は渡さない。メールアドレスも渡さない（名前だけ）。
+    // includeMemos も切る: 索引を渡さなくても、メモから引用したブロック（page.memoQuotes）が
+    // あると、引用した時点のメモ本文（quotedText）とメモの id が来歴に出てしまう。引用ブロックの
+    // 本文そのものはノートの本文なので、Markdown の側に入る
     const prov = buildNoteProvJsonLdText(input.provDoc, context.noteId, {
       noteIndex: context.noteIndex ?? null,
       mediaIndex: context.mediaIndex ?? null,
       identity: { name: input.author.name },
-      options: { includeChats: false },
+      options: { includeChats: false, includeMemos: false },
     });
     await invoke("shared_readable_sync", {
       root: input.root,

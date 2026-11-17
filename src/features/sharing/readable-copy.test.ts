@@ -141,6 +141,24 @@ describe("syncReadableCopy", () => {
     expect(args.markdown).not.toContain(author.email);
     expect(args.prov).not.toContain(author.email);
   });
+
+  it("メモから引用したブロックがあっても、引用した時点のメモ本文とメモの id は prov に入らない", async () => {
+    enable(true);
+    // 引用ブロックの本文は、引用のあとで短く書き直してある。memoQuotes.quotedText には
+    // 引用した時点のメモ本文がそのまま残っている（本文には無い文が入っている）
+    const doc = makeDoc();
+    doc.pages[0].blocks = [
+      { id: "q1", type: "quote", content: [{ type: "text", text: "残した一文" }] },
+    ] as unknown as GraphiumDocument["pages"][number]["blocks"];
+    doc.pages[0].memoQuotes = {
+      q1: { captureId: "cap_secret_1", quotedAt: "2026-11-01T00:00:00Z", quotedText: "残した一文。本文には書かなかった続き" },
+    };
+    await syncReadableCopy(makeInput({ entryDoc: doc, provDoc: doc }));
+    const args = invokeMock.mock.calls[0][1];
+    expect(args.markdown).toContain("残した一文");
+    expect(args.prov).not.toContain("本文には書かなかった続き");
+    expect(args.prov).not.toContain("cap_secret_1");
+  });
 });
 
 // ── TS の前付け ↔ Rust の持ち主の確認（src-tauri/src/lib.rs の readable_md_is_owned）──
