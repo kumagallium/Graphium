@@ -45,7 +45,9 @@ export function desiredNoteSources(entries: NoteIndexEntry[]): DesiredSource[] {
 export type AssetTextPlan =
   | { mode: "inline"; text: string }
   | { mode: "pdf" }
-  | { mode: "docx" };
+  | { mode: "docx" }
+  /** 録音・動画の文字起こし（素材のそばの transcript.json）。loader が読む */
+  | { mode: "transcript" };
 
 /**
  * 素材の望ましいソース一覧と、各素材のテキストの取り方。
@@ -57,7 +59,16 @@ export type AssetTextPlan =
  */
 export function desiredAssetSources(
   media: MediaIndexEntry[],
-  options: { includePdf?: boolean; includeDocx?: boolean } = {},
+  options: {
+    includePdf?: boolean;
+    includeDocx?: boolean;
+    /**
+     * 録音・動画の文字起こしを載せる。渡したときだけ対象にする（文字起こしを読めるのはデスクトップ版だけ）。
+     * 返す値は印に混ぜる（文字起こしが終わるたびに値を変えると、その素材だけ読み直される）。
+     * null を返した素材は載せない（この起動で読んで、文字起こしがまだ無いと分かっている素材）
+     */
+    transcriptEpoch?: (fileId: string) => number | null;
+  } = {},
 ): { desired: DesiredSource[]; plans: Map<string, AssetTextPlan>; names: Map<string, string> } {
   const desired: DesiredSource[] = [];
   const plans = new Map<string, AssetTextPlan>();
@@ -93,6 +104,13 @@ export function desiredAssetSources(
     } else if (m.type === "pdf" && includePdf) {
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `pdf:${m.uploadedAt ?? ""}` });
       plans.set(m.fileId, { mode: "pdf" });
+      names.set(m.fileId, m.name);
+    } else if ((m.type === "audio" || m.type === "video") && options.transcriptEpoch) {
+      // 文字起こしがあるかどうかは素材の索引に無いので、loader が読んでみて決める
+      const epoch = options.transcriptEpoch(m.fileId);
+      if (epoch === null) continue;
+      desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `transcript:${m.uploadedAt ?? ""}:${epoch}` });
+      plans.set(m.fileId, { mode: "transcript" });
       names.set(m.fileId, m.name);
     }
   }

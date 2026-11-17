@@ -2304,7 +2304,9 @@ Notes:
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
   pages, minus trash / archive) and `mediaIndex` (image OCR, PowerPoint slide
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
-  the background) through one
+  the background; in the desktop app only, the transcript of a recording or
+  video, read from its `transcript.json` and re-read when its transcription
+  job turns done) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
@@ -5391,6 +5393,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
+| Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 
 ## 8. Source map
@@ -5429,7 +5432,7 @@ people most often need to find.
 | Slash-template commands (Plan / Run) | `src/features/template/` |
 | Skill (prompt template) documents | `src/features/skill/` |
 | Reference table (related notes) | `src/features/index-table/` |
-| Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
+| Export (PROV-JSON-LD, PDF, Word, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-export/`, `src/features/docx-import/` |
 | PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |

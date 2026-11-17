@@ -2940,6 +2940,13 @@ export const ko: Record<string, string> = {
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown(.md)",
   "markdown.exportHint": "다른 편집기에서도 열 수 있는 .md 파일로 노트를 저장합니다.",
+  "docx.export": "Word(.docx)",
+  "docx.exportHint": "본문, 표, 이미지, 차트를 Word 파일로 저장합니다. 수식은 LaTeX 텍스트로 들어갑니다.",
+  "docx.exportFailed": "Word 파일을 만들지 못했습니다.",
+  "docx.placeholder.image": "[이미지: {name}]",
+  "docx.placeholder.video": "[동영상: {name}]",
+  "docx.placeholder.audio": "[오디오: {name}]",
+  "docx.placeholder.file": "[파일: {name}]",
 
   // ── 来歴ラベル機能のオン/オフ ──
 
@@ -4533,6 +4540,7 @@ export const ko: Record<string, string> = {
   "records.kind.media": "자료",
   "records.kind.memo": "메모",
   "records.origin.written": "직접 작성",
+  "records.origin.recording": "녹음에서",
   "records.origin.webClip": "웹 클립",
   "records.origin.aiChat": "AI에서",
   "records.origin.knowledge": "지식화",

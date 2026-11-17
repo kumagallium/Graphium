@@ -15,12 +15,13 @@ export type RecordKind =
 
 /**
  * 出どころ（どこで残したか）。専用の欄は無く、どれも既存の項目から導く。
- * 導けないもの（スマホで書いた文字のメモ、会議の録音）は種類を作らない。
- * 会議の録音は、素材の usedIn がブロックの種類を持たないので、索引だけでは見分けられない。
+ * 導けないもの（スマホで書いた文字のメモ）は種類を作らない。
  */
 export type RecordOrigin =
   /** 手で書いたノート — 下のどれにも当たらないノート */
   | "written"
+  /** 録音から — 録音済みの文字起こしブロックを持つノート（note-index の hasRecording） */
+  | "recording"
   /** Web クリップ — 素材の webClip、または type が "url" の素材 */
   | "webClip"
   /** AI から — AI が書いたノート（note-index の model あり・source は human）。MCP 経由の保存も、論文からの抽出もここ */

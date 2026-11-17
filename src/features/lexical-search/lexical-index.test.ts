@@ -105,6 +105,24 @@ describe("LexicalIndex", () => {
     expect(n2.length).toBe(1);
   });
 
+  it("accept で断片の文章を絞れる。落とした断片は件数とソースごとの上限に数えない", () => {
+    const idx = sampleIndex();
+    idx.upsertSource({
+      kind: "note",
+      sourceId: "n3",
+      title: "多段",
+      fingerprint: "v1",
+      chunks: [
+        { chunkId: "y1", text: "熱伝導率の測定" },
+        { chunkId: "y2", text: "熱伝導率の解析" },
+      ],
+    });
+    // 句がそのまま入っている断片だけ。点数が上の断片（測定）が落ちても、同じソースの次の断片が残る
+    const hits = idx.search("熱伝導率", { perSourceLimit: 1, limit: 1, accept: (text) => text.includes("解析") });
+    expect(hits.map((h) => h.chunkId)).toEqual(["y2"]);
+    expect(idx.search("熱伝導率", { accept: () => false })).toEqual([]);
+  });
+
   it("同じ fingerprint なら再索引しない。変わればチャンクが差し替わる", () => {
     const idx = sampleIndex();
     expect(

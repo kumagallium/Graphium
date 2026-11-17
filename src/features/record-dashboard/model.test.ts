@@ -10,10 +10,12 @@ import {
   formatTime,
   groupByDay,
   isBundle,
+  isHit,
   lastSevenDays,
   matchesOrigin,
   matchesQuery,
   matchesWho,
+  tidyBodyHit,
   monthGrid,
   monthKeyOf,
   shiftMonth,
@@ -155,6 +157,39 @@ describe("daysWithinBudget", () => {
 
   it("日が無ければ 0", () => {
     expect(daysWithinBudget([], 100, rows)).toBe(0);
+  });
+});
+
+describe("isHit（題・本文に加えて、全文の索引で本文に当たった記録）", () => {
+  const hits = new Map([["r", { text: "こね上げ温度は 24 度", ranges: [{ start: 0, end: 3 }] }]]);
+
+  it("題で当たる", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "食パン")).toBe(true);
+  });
+
+  it("題に無くても、本文で当たった記録は当たりになる", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "こね上げ", hits)).toBe(true);
+  });
+
+  it("探す言葉が空なら、bodyHits があっても matchesQuery と同じ（全部当たる）", () => {
+    expect(isHit(rec(), "", hits)).toBe(matchesQuery(rec(), ""));
+    expect(isHit(rec(), "  ", hits)).toBe(matchesQuery(rec(), "  "));
+  });
+
+  it("どちらにも無ければ当たらない", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "こね上げ")).toBe(false);
+    expect(isHit(rec({ id: "other", title: "食パン 試作" }), "こね上げ", hits)).toBe(false);
+  });
+});
+
+describe("tidyBodyHit", () => {
+  it("先頭の見出し記号を外し、強調の範囲をずらす", () => {
+    const hit = { text: "## 試す順番 温度はそのまま", ranges: [{ start: 8, end: 10 }] };
+    expect(tidyBodyHit(hit)).toEqual({ text: "試す順番 温度はそのまま", ranges: [{ start: 5, end: 7 }] });
+  });
+  it("見出し記号で始まらない抜粋はそのまま返す", () => {
+    const hit = { text: "…発酵の温度を先に", ranges: [{ start: 4, end: 6 }] };
+    expect(tidyBodyHit(hit)).toBe(hit);
   });
 });
 

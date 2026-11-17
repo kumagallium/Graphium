@@ -540,6 +540,9 @@ function SidePeekInner({
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Word 書き出しの失敗を知らせる一言（数秒で消す）と、書き出し中の二重実行を止める印
+  const [docxNotice, setDocxNotice] = useState<string | null>(null);
+  const docxExportingRef = useRef(false);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
   // 別ウィンドウの右のパネル。開いているタブは次に開いたときも同じにする（このウィンドウだけの好み）。
   // 覚えた値と旧版のキーは起動時に 1 度だけ読み、どれを開くかは一覧と合わせて毎回決める
@@ -2110,6 +2113,34 @@ function SidePeekInner({
       tableMeta: tableMetaStoreRef.current.getSnapshot(),
     }).catch((e) => console.error("[markdown-export] export failed:", e));
   }, [sidePeekEditor]);
+  // ⋯ の「Word で書き出し」。Markdown と同じ入力で、チャートはピークのエディタの DOM から画像にする
+  const handleExportDocx = useCallback(async () => {
+    if (!sidePeekEditor) return;
+    if (docxExportingRef.current) return;
+    docxExportingRef.current = true;
+    try {
+      const { exportNoteToDocx, captureChartImage } = await import("../docx-export");
+      await exportNoteToDocx({
+        title: docRef.current?.title ?? "",
+        blocks: sidePeekEditor.document,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+        captureBlockImage: async (blockId) => {
+          const root = wrapperEl?.querySelector(".bn-editor");
+          return root ? captureChartImage(root, blockId) : null;
+        },
+      });
+    } catch (e) {
+      console.error("[docx-export] export failed:", e);
+      setDocxNotice(tStatic("docx.exportFailed"));
+    } finally {
+      docxExportingRef.current = false;
+    }
+  }, [sidePeekEditor, wrapperEl]);
+  useEffect(() => {
+    if (!docxNotice) return;
+    const timer = window.setTimeout(() => setDocxNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [docxNotice]);
 
   // 全画面で開く。保存し終えた doc を渡してメインのキャッシュを即時更新する（API 再取得の遅延を回避）
   const handleNavigate = useCallback(() => {
@@ -2352,6 +2383,7 @@ function SidePeekInner({
         <PeekNoteMenu
           link={peekNoteLink(noteId, effectiveDoc?.wikiMeta?.kind)}
           onExportMarkdown={sidePeekEditor && effectiveDoc ? handleExportMarkdown : undefined}
+          onExportDocx={sidePeekEditor && effectiveDoc ? handleExportDocx : undefined}
           onArchive={handleArchiveNote}
           onTrash={handleTrashNote}
         />
@@ -2373,6 +2405,11 @@ function SidePeekInner({
             }}
           >
             {t("common.loading")}
+          </div>
+        )}
+        {docxNotice && (
+          <div role="status" style={{ padding: "6px 12px", fontSize: 12, color: "var(--color-destructive)" }}>
+            {docxNotice}
           </div>
         )}
         {error && (

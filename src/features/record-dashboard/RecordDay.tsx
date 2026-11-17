@@ -12,7 +12,8 @@ import {
   formatTime,
   formatWeekday,
   isBundle,
-  matchesQuery,
+  isHit,
+  type BodyHits,
   type RecordBundle,
 } from "./model";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
@@ -94,6 +95,8 @@ export type RecordDayProps = {
   now: string;
   query?: string;
   variant?: "rail" | "ledger";
+  /** 全文の索引で本文に当たった記録（題や見出しに言葉が無くても、当たりとして扱う） */
+  bodyHits?: BodyHits;
   /** true のとき、探す言葉に当たらない行を消さずに薄くする */
   dimMisses?: boolean;
   /** 同じ種類・出どころ・残した人がこの件数以上続いたら 1 行にまとめる（0 でまとめない）。台帳ではまとめない */
@@ -109,6 +112,7 @@ export function RecordDay({
   items,
   now,
   query,
+  bodyHits,
   variant = "rail",
   dimMisses,
   bundleMin = BUNDLE_MIN,
@@ -123,10 +127,10 @@ export function RecordDay({
   const relative = ago === 0 ? copy.today : ago === 1 ? copy.yesterday : null;
   const headingId = `rd-day-${dayKey}`;
   const searching = !!query?.trim();
-  const isMiss = (item: RecordItem) => !!dimMisses && searching && !matchesQuery(item, query ?? "");
+  const isMiss = (item: RecordItem) => !!dimMisses && searching && !isHit(item, query ?? "", bodyHits);
   // 探す言葉に当たった記録はまとめに入れない（薄くして残す構図のときだけ区別が要る）
   const entries =
-    variant === "ledger" ? [...items] : bundleRuns(items, bundleMin, (it) => !!dimMisses && searching && matchesQuery(it, query ?? ""));
+    variant === "ledger" ? [...items] : bundleRuns(items, bundleMin, (it) => !!dimMisses && searching && isHit(it, query ?? "", bodyHits));
 
   const row = (item: RecordItem) => (
     <RecordRow key={item.id} item={item} query={query} variant={variant} dim={isMiss(item)} active={activeId === item.id} onOpen={onOpen} />
