@@ -336,9 +336,6 @@ talks to LLM and embedding backends.
   editor; the import dialog therefore defaults to a data table for every
   delimited import (instrument data is read and plotted, not edited by hand)
   and lets the writer pick the note-table form instead, warning above
-  editor; the import dialog therefore defaults to a data table for every
-  delimited import (instrument data is read and plotted, not edited by hand)
-  and lets the writer pick the note-table form instead, warning above
   `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and refusing above
   `DOC_TABLE_HARD_MAX_ROWS` (1,000), because a 2,000-row note table stalls
   the editor until it is force-quit. Re-importing from the source badge
@@ -352,7 +349,18 @@ talks to LLM and embedding backends.
   column. The reverse moves exist too: a note table can be turned into a
   data table (its rows leave the note as a CSV asset) and back again while it
   stays under the note-table row cap, and a data table can be written out with
-  its computed columns as a new, derived asset.
+  its computed columns as a new, derived asset. Large bodies (over 2 million
+  characters) are parsed asynchronously in small slices that yield through a
+  `MessageChannel` (`parseDelimitedLinesAsync`), and the column reading is
+  also done in slices before the block is told the rows are ready
+  (`registerLargeTablePreparer` / `warmDataTableColumns`). Columns are cached
+  by the identity of the row array, so the per-edit broadcast
+  (`publishTableColumns`) does not re-read them. The import dialog infers its
+  settings from a leading sample for files over 5,000 lines and, over 20,000
+  data rows, parses only the first 2,000 for the preview (constants in
+  `src/features/data-import/large-file.ts`). A new note's editor is rebuilt by
+  its first save, so an asynchronous insert first waits for that save and
+  rebuild with `settleFirstSave` (`src/lib/settle-first-save.ts`).
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the
