@@ -142,6 +142,21 @@ export async function defaultLoadInlineImage(fileId: string): Promise<DocxImage 
 // 組み立て・保存
 // ─────────────────────────────────────────────
 
+/**
+ * 本文の書体。英数字と日本語に同じ書体を当てる（別々にすると、英数字だけ太く・濃く見える）。
+ * Windows と macOS の Office の両方に入っている名前を使う
+ */
+const FONT_BODY = { ascii: "Yu Gothic", hAnsi: "Yu Gothic", eastAsia: "Yu Gothic", cs: "Arial" };
+const COLOR_BODY = "1F1F1F";
+
+/** 見出しの体裁（大きさは半ポイント、間隔は twips）。色は本文と同じ、太字、次の段落と離れない */
+function headingStyle(size: number, spacing: { before: number; after: number }) {
+  return {
+    run: { font: FONT_BODY, size, bold: true, color: COLOR_BODY },
+    paragraph: { spacing, keepNext: true },
+  };
+}
+
 /** ノートを .docx の Blob にする */
 export async function buildNoteDocxBlob(options: DocxExportOptions): Promise<Blob> {
   const { title, blocks, tableMeta } = options;
@@ -169,8 +184,19 @@ export async function buildNoteDocxBlob(options: DocxExportOptions): Promise<Blo
     styles: {
       default: {
         document: {
-          run: { font: { ascii: "Arial", hAnsi: "Arial", eastAsia: "Yu Gothic" }, size: 21 },
+          run: { font: FONT_BODY, size: 21, color: COLOR_BODY },
+          // 段落の後ろを少し空ける（間隔ゼロだと、段落・見出し・表が詰まって見える）
+          paragraph: { spacing: { after: 120 } },
         },
+        // 見出しの体裁をここで決める。決めないと Word の既定（細い水色の書体）になり、
+        // 段の差も本文との差も分かりにくい
+        title: headingStyle(40, { before: 0, after: 280 }),
+        heading1: headingStyle(30, { before: 400, after: 140 }),
+        heading2: headingStyle(26, { before: 320, after: 120 }),
+        heading3: headingStyle(23, { before: 260, after: 100 }),
+        heading4: headingStyle(21, { before: 220, after: 80 }),
+        heading5: headingStyle(21, { before: 200, after: 80 }),
+        heading6: headingStyle(21, { before: 200, after: 80 }),
       },
     },
     numbering: { config: numbering },

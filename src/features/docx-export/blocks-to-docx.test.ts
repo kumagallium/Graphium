@@ -44,7 +44,6 @@ describe("構造（fflate）", () => {
     expect(core).toContain("ノートの題");
     expect(core).toContain("Graphium");
     const styles = strFromU8(files["word/styles.xml"]);
-    expect(styles).toContain("Arial");
     expect(styles).toContain("Yu Gothic");
   });
 
@@ -189,7 +188,58 @@ describe("Word として読める（mammoth）", () => {
       { type: "toggleListItem", props: {}, content: [text("畳")], children: [para("子")] },
     ]);
     const h = await html(buf);
-    for (const t of ["引用", "a", "b", "☑ 済", "▸ 畳", "子"]) expect(h).toContain(t);
+    // 印と文字の間はタブ（印をぶら下げて、折り返した行を文字の頭に揃えるため）
+    for (const t of ["引用", "a", "b", "☑\t済", "▸\t畳", "子"]) expect(h).toContain(t);
+  });
+});
+
+// Word で開いた見え方を決めている指定。Word 本体で見て決めたもの（2026-11-17）なので、
+// 外れたら Word で見直す
+describe("体裁", () => {
+  const styleBlock = (styles: string, id: string) =>
+    styles.match(new RegExp(`<w:style [^>]*w:styleId="${id}"[\\s\\S]*?</w:style>`))?.[0] ?? "";
+
+  it("英数字と日本語に同じ書体を当てる（別々だと英数字だけ濃く見える）", async () => {
+    const { files } = await build([para("本文 abc 123")]);
+    const styles = strFromU8(files["word/styles.xml"]);
+    expect(styles).toMatch(/w:ascii="Yu Gothic"/);
+    expect(styles).toMatch(/w:hAnsi="Yu Gothic"/);
+    expect(styles).toMatch(/w:eastAsia="Yu Gothic"/);
+  });
+
+  it("題と見出しは太字で本文と同じ色（Word の既定の細い水色にしない）", async () => {
+    const { files } = await build([{ type: "heading", props: { level: 1 }, content: [text("見出し")], children: [] }]);
+    const styles = strFromU8(files["word/styles.xml"]);
+    for (const id of ["Title", "Heading1", "Heading2", "Heading3"]) {
+      const block = styleBlock(styles, id);
+      expect(block, `${id} の体裁が無い`).not.toBe("");
+      expect(block).toContain("<w:b/>");
+      expect(block).toContain('w:val="1F1F1F"');
+      expect(block).toContain("<w:keepNext/>");
+    }
+  });
+
+  it("段落の後ろに間を入れる（ゼロだと詰まって見える）", async () => {
+    const { files } = await build([para("本文")]);
+    const styles = strFromU8(files["word/styles.xml"]);
+    expect(styles).toMatch(/<w:pPrDefault>[\s\S]*w:after="120"[\s\S]*<\/w:pPrDefault>/);
+  });
+
+  it("チェックの印は書体を名指しする（任せると ☑ だけ絵文字の形になる）", async () => {
+    const { xml } = await build([
+      { type: "checkListItem", props: { checked: true }, content: [text("済")], children: [] },
+      { type: "checkListItem", props: { checked: false }, content: [text("未")], children: [] },
+    ]);
+    expect(xml.match(/w:ascii="MS Gothic"/g)?.length).toBe(2);
+  });
+
+  it("表は灰色の罫線とセルの内側の余白を持つ", async () => {
+    const { xml } = await build([
+      { type: "table", props: {}, content: { type: "tableContent", rows: [{ cells: [[text("a")], [text("b")]] }] }, children: [] },
+    ]);
+    expect(xml).toContain("<w:tblCellMar>");
+    expect(xml).toMatch(/<w:insideH [^>]*w:color="BFBFBF"/);
+    expect(xml).not.toMatch(/<w:tblBorders>[\s\S]*w:color="auto"[\s\S]*<\/w:tblBorders>/);
   });
 });
 

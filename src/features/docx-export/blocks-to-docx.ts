@@ -11,8 +11,11 @@ import {
   HeadingLevel,
   ImageRun,
   LevelFormat,
+  LineRuleType,
   Paragraph,
   ShadingType,
+  Tab,
+  TabStopType,
   Table,
   TableCell,
   TableRow,
@@ -52,8 +55,21 @@ const MAX_INDENT_LEVEL = 10;
 const MAX_NUMBERING_LEVEL = 8;
 
 export const FONT_MONO = { ascii: "Courier New", hAnsi: "Courier New", eastAsia: "Courier New", cs: "Courier New" };
+/**
+ * チェックの印（☑ ☐）の書体。決めておかないと、Word が印ごとに別の書体へ置き換え、
+ * ☑ だけ絵文字の形になる（macOS の Word で確認）。Office に入っている書体を名指しする
+ */
+const FONT_MARK = { ascii: "MS Gothic", hAnsi: "MS Gothic", eastAsia: "MS Gothic", cs: "MS Gothic" };
 const CODE_FILL = "F2F2F2";
 const HEADER_FILL = "F2F2F2";
+/** 説明・引用など、本文より一段ひかえめに見せる文字の色 */
+const COLOR_MUTED = "666666";
+/** 表・区切り線・引用の線の色（黒い線は本文より強く見えるので、灰色にする） */
+const COLOR_RULE = "BFBFBF";
+/** 箇条書き・番号・チェックの項目どうしの間（本文の段落より詰める） */
+const SPACING_LIST_ITEM = { before: 0, after: 40 };
+/** 表のセルの内側の余白（twips） */
+const CELL_MARGINS = { top: 60, bottom: 60, left: 110, right: 110 };
 
 /** この描画側が明示的に扱う標準ブロックの type（BlockNote が型を足したらテストが落ちる） */
 export const RENDERED_BLOCK_TYPES: ReadonlySet<string> = new Set([
@@ -166,12 +182,12 @@ function numberedDefinition(reference: string, level: number, start: number): Nu
 // inline → Run
 // ─────────────────────────────────────────────
 
-type RunBase = { bold?: boolean; size?: number; style?: string };
+type RunBase = { bold?: boolean; size?: number; style?: string; color?: string };
 
 function textRuns(raw: string, styles: Record<string, any>, base: RunBase): TextRun[] {
   const cleaned = cleanXmlText(raw).replace(/\r\n?/g, "\n");
   const code = Boolean(styles.code);
-  const color = resolveColor(COLOR_TEXT, styles.textColor);
+  const color = resolveColor(COLOR_TEXT, styles.textColor) ?? base.color;
   const fill = resolveColor(COLOR_BACKGROUND, styles.backgroundColor) ?? (code ? CODE_FILL : undefined);
   const lines = cleaned.split("\n");
   return lines.map(
@@ -275,6 +291,8 @@ function imageParagraph(img: DocxImage, desiredWidth: number, name: string, leve
   return new Paragraph({
     alignment,
     indent: level > 0 ? { left: indentLevel(level) * INDENT_STEP } : undefined,
+    // 図の上は少し空け、下は説明が離れないよう詰める
+    spacing: { before: 120, after: 60 },
     children: [imageRun(img, fitSize(img.width, img.height, desiredWidth), name)],
   });
 }
@@ -284,7 +302,8 @@ function captionParagraph(caption: string, level: number, alignment: Align = Ali
   return new Paragraph({
     alignment,
     indent: level > 0 ? { left: indentLevel(level) * INDENT_STEP } : undefined,
-    children: textRuns(caption, {}, { size: 18 }),
+    spacing: { before: 0, after: 200 },
+    children: textRuns(caption, {}, { size: 18, color: COLOR_MUTED }),
   });
 }
 
@@ -420,6 +439,7 @@ async function renderBlock(
             level: Math.min(level, MAX_NUMBERING_LEVEL),
           },
           alignment,
+          spacing: SPACING_LIST_ITEM,
           children: await inlinesToChildren(block.content, state),
         }),
       );
@@ -429,12 +449,20 @@ async function renderBlock(
     }
     case "checkListItem":
     case "toggleListItem": {
-      const mark = block.type === "toggleListItem" ? "▸ " : props.checked ? "☑ " : "☐ ";
+      const toggle = block.type === "toggleListItem";
+      const mark = toggle ? "▸" : props.checked ? "☑" : "☐";
       out.push(
         new Paragraph({
           alignment,
-          indent: { left: left + 360 },
-          children: [new TextRun({ text: mark }), ...(await inlinesToChildren(block.content, state))],
+          // 印をぶら下げて、折り返した行が本文の頭に揃うようにする
+          indent: { left: left + 720, hanging: 360 },
+          tabStops: [{ type: TabStopType.LEFT, position: left + 720 }],
+          spacing: SPACING_LIST_ITEM,
+          children: [
+            new TextRun({ text: mark, ...(toggle ? {} : { font: FONT_MARK }) }),
+            new TextRun({ children: [new Tab()] }),
+            ...(await inlinesToChildren(block.content, state)),
+          ],
         }),
       );
       break;
@@ -444,18 +472,23 @@ async function renderBlock(
         new Paragraph({
           alignment,
           indent: { left: left + 360 },
-          border: { left: { style: BorderStyle.SINGLE, size: 18, color: "AAAAAA", space: 8 } },
-          children: await inlinesToChildren(block.content, state),
+          spacing: { before: 80, after: 160 },
+          border: { left: { style: BorderStyle.SINGLE, size: 18, color: COLOR_RULE, space: 8 } },
+          children: await inlinesToChildren(block.content, state, { color: COLOR_MUTED }),
         }),
       );
       break;
     }
     case "codeBlock": {
+      // 地の色と同じ色の枠で囲み、文字が地の端に貼り付かないようにする（枠の space が内側の余白になる）
+      const pad = { style: BorderStyle.SINGLE, size: 4, color: CODE_FILL, space: 4 };
       out.push(
         new Paragraph({
-          indent: left > 0 ? { left } : undefined,
+          indent: { left: left + 120, right: 120 },
+          spacing: { before: 120, after: 200 },
           shading: { type: ShadingType.CLEAR, fill: CODE_FILL, color: "auto" },
-          children: textRuns(plainText(block.content), { code: true }, { size: 20 }),
+          border: { top: pad, bottom: pad, left: pad, right: pad },
+          children: textRuns(plainText(block.content), { code: true }, { size: 19 }),
         }),
       );
       break;
@@ -463,7 +496,8 @@ async function renderBlock(
     case "divider": {
       out.push(
         new Paragraph({
-          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "999999", space: 1 } },
+          spacing: { before: 120, after: 200 },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: COLOR_RULE, space: 1 } },
           children: [],
         }),
       );
@@ -602,14 +636,18 @@ async function renderTable(block: NormalizedBlock, state: RenderState): Promise<
     tableRows.push(new TableRow({ children: cells }));
   }
 
+  const rule = { style: BorderStyle.SINGLE, size: 4, color: COLOR_RULE };
   return [
     new Table({
       rows: tableRows,
       width: { size: tableWidth, type: WidthType.DXA },
       columnWidths: widths,
+      margins: CELL_MARGINS,
+      borders: { top: rule, bottom: rule, left: rule, right: rule, insideHorizontal: rule, insideVertical: rule },
     }),
-    // 表の直後に空段落を置く（Word は文書末尾の表の後ろに段落が無いと開けず、表が続くと 1 つに結合するため）
-    new Paragraph({ children: [], spacing: { after: 0, before: 0 } }),
+    // 表の直後に空段落を置く（Word は文書末尾の表の後ろに段落が無いと開けず、表が続くと 1 つに結合するため）。
+    // 1 行ぶん空くと間延びするので、行の高さを決め打ちして小さな間にする
+    new Paragraph({ children: [], spacing: { after: 0, before: 0, line: 200, lineRule: LineRuleType.EXACT } }),
   ];
 }
 
@@ -636,6 +674,8 @@ async function renderCell(
     children: [
       new Paragraph({
         alignment: alignmentOf(cp),
+        // セルの中は余白で間を取るので、段落の後ろは空けない
+        spacing: { before: 0, after: 0 },
         children,
       }),
     ],
