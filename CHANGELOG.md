@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.138.1](https://github.com/kumagallium/Graphium/compare/v0.138.0...v0.138.1) - 2026-11-17
+
+- feat: call the Records entry Home, pair it with Search, and add a month calendar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1720
+
 ## [v0.138.0](https://github.com/kumagallium/Graphium/compare/v0.137.5...v0.138.0) - 2026-11-17
 
 - docs(manual): make the Security page easier to find and correct it after an audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1713
