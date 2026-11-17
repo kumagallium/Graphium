@@ -118,6 +118,7 @@ export const ja: Record<string, string> = {
   "sidebar.newNote": "+ ノート",
   "sidebar.newNoteTooltip": "新規ノートを開く",
   "sidebar.intake": "ファイル取り込み",
+  "sidebar.intakeShort": "取り込み",
   "sidebar.intakeTooltip": "手元の Markdown・PDF・Office・画像・CSV をまとめて取り込む",
   "sidebar.newMemoTooltip": "メモをすばやく書き留める（{shortcut}）",
   "sidebar.provTemplate": "+ PROV テンプレート",
@@ -4554,6 +4555,7 @@ export const ja: Record<string, string> = {
 
   // 記録の画面（features/record-dashboard）— ノート・素材・メモ・AI のページを残した順に並べる
   "records.title": "記録",
+  "records.nav": "ホーム",
   "records.navHint": "残したものを、残した順に見ます",
   "records.lead": "ノートも、素材も、メモも、AI のページも、残した順に並びます",
   "records.loading": "記録を読んでいます…",
@@ -4623,5 +4625,5 @@ export const ja: Record<string, string> = {
   "records.calMore": "多い",
   "records.showingFrom": "{date} から表示しています",
   "records.backToLatest": "最新に戻る",
-  "records.seeInRecords": "「{query}」を記録で見る",
+  "records.seeInRecords": "「{query}」をホームで見る",
 };

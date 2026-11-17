@@ -123,6 +123,7 @@ export const ko: Record<string, string> = {
   "sidebar.newNote": "+ 노트",
   "sidebar.newNoteTooltip": "새 노트 열기",
   "sidebar.intake": "파일 가져오기",
+  "sidebar.intakeShort": "가져오기",
   "sidebar.intakeTooltip": "가지고 있는 Markdown, PDF, Office 파일, 이미지, CSV 가져오기",
   "sidebar.newMemoTooltip": "빠르게 메모하기({shortcut})",
   "sidebar.provTemplate": "+ PROV 템플릿",
@@ -4513,6 +4514,7 @@ export const ko: Record<string, string> = {
 
   // 記録の画面（features/record-dashboard）— ノート・素材・メモ・AI のページを残した順に並べる
   "records.title": "기록",
+  "records.nav": "홈",
   "records.navHint": "남긴 것을 남긴 순서대로 봅니다",
   "records.lead": "노트, 자료, 메모, AI 페이지가 남긴 순서대로 나열됩니다",
   "records.loading": "기록을 읽는 중…",
@@ -4582,5 +4584,5 @@ export const ko: Record<string, string> = {
   "records.calMore": "많음",
   "records.showingFrom": "{date}부터 표시 중",
   "records.backToLatest": "최신으로 돌아가기",
-  "records.seeInRecords": "\"{query}\"을(를) 기록에서 보기",
+  "records.seeInRecords": "\"{query}\"을(를) 홈에서 보기",
 };
