@@ -1856,6 +1856,20 @@ type WikiMeta = {
   // 3.1b. Answer pages always use this new format.
   topicMarkdown?: string;
 
+  // For each passage the body copied from a note: the sentence right before
+  // and right after it in the note text the page was written from (added
+  // 2026-11-17; optional — absent on pages written earlier). Used when the
+  // page is opened to tell that the text around a passage changed even
+  // though the passage itself is still there (`passage-context.ts`). Only
+  // note passages; each sentence is capped at 240 characters, keeping the
+  // side nearest the passage.
+  passageContexts?: Array<{
+    sourceId: string;
+    passage: string; // same text as in [[source:<id>|<passage>]]
+    before?: string; // absent when the passage starts the note
+    after?: string;  // absent when the passage ends the note
+  }>;
+
   // Topic type (Topics only; added 2026-10-20). The LLM-Wiki "entity page vs
   // concept page" distinction carried as a tag instead of a separate kind:
   // "concept" | "material" | "method" | "agent" | "place". Assigned by the

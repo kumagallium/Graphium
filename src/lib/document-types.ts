@@ -40,6 +40,18 @@ export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic" | "a
 // agent: 人・組織・プロジェクト / place: 場所・施設。固定の 5 つ（自由なタグにはしない —
 // 絞り込みの選択肢が増え続けないため）。
 export type TopicType = "concept" | "material" | "method" | "agent" | "place";
+
+/** 本文が引いたノートの一節と、書いたときのノートでの前後の文（WikiMeta.passageContexts） */
+export type PassageContext = {
+  /** 資料（ノート）の id */
+  sourceId: string;
+  /** 本文が控えた一節（[[source:<id>|<一節>]] と同じ文字） */
+  passage: string;
+  /** 一節の直前の文（ノートの先頭なら無し） */
+  before?: string;
+  /** 一節の直後の文（ノートの末尾なら無し） */
+  after?: string;
+};
 export const TOPIC_TYPES: readonly TopicType[] = ["concept", "material", "method", "agent", "place"];
 /** 文字列が TopicType か（LLM の出力・保存データの検証用） */
 export function isTopicType(v: unknown): v is TopicType {
@@ -463,6 +475,13 @@ export type WikiMeta = {
    * （引用先は `derivedFromClaims` のメンバー知見、本文は claim 群からの純関数）。
    */
   topicMarkdown?: string;
+  /**
+   * 本文が引いたノートの一節ごとの「前後の文」（書いたときのノートの文字から取る）。
+   * ページを開いたとき、一節は残っていても前後の文が書き換わったノートを知らせるのに使う
+   * （source-drift.ts）。ノートの一節だけを対象にする（PDF・Word・URL は中身が差し替わらない）。
+   * 無いページ（この欄より前に書いたページ）は、前後の文を照らさない。
+   */
+  passageContexts?: PassageContext[];
   /**
    * トピックの種類（topic のみ）。カーパシー LLM Wiki の entity page / concept page の区別を、
    * 別種別を増やさずタグで持つ（一覧・全体グラフの絞り込み用。本文の作り方は変えない）。

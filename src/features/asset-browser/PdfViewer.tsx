@@ -17,7 +17,7 @@ import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 import { useT } from "../../i18n";
 import { apiBase, isTauri } from "../../lib/platform";
-import { getTauriApiToken } from "../../lib/api-auth-fetch";
+import { getVerifiedTauriApiToken } from "../../lib/api-auth-fetch";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
@@ -123,8 +123,14 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo, focus }: PdfViewerProp
           // デスクトップ版: pdf.js は fetch の包みを通らないことがあるので、合言葉を自分で付けさせる。
           // 合言葉なしの pdf-proxy は公開の宛先しか取らない（LAN・ループバック上の PDF が開けない）。
           // 合言葉を受け取ってから読み込みを始める（途中で options が変わると読み直しになる）
-          void getTauriApiToken().then((token) => {
+          void getVerifiedTauriApiToken().then((token) => {
             if (cancelled) return;
+            // 相手が自分の sidecar だと確かめられなければ、読みに行かない
+            // （見ている PDF の URL を、3001 を握った別のプログラムに渡さない）
+            if (!token) {
+              setError(t("asset.pdfFetchFailed"));
+              return;
+            }
             setProxyToken(token);
             setBlobUrl(proxied);
           });

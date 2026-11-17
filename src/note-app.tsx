@@ -331,6 +331,7 @@ import {
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
+import { RecordsView } from "./features/record-dashboard/RecordsView";
 import { selectInboxOcrTargets } from "./features/mobile-capture/inbox/ocr-targets";
 import { selectInboxTranscribeTargets } from "./features/mobile-capture/inbox/transcribe-targets";
 import { enqueueInboxTranscribe } from "./features/meeting-recorder/inbox-auto-transcribe";
@@ -8605,6 +8606,10 @@ export function NoteApp() {
   // モバイル受信箱ビュー（同期フォルダ <root>/Inbox/ の「まだ取り込んでいない」ファイル一覧）。
   // 取り込むと素材ライブラリへ振り分けられ、この一覧からは消える（_imported/ 退避）。
   const [showMobile, setShowMobile] = useState(false);
+  // 記録の画面（ノート・素材・メモ・AI のページを残した順に並べる）。recordsQuery は
+  // Cmd+K の「記録で見る」から来たときに入れておく探す言葉
+  const [showRecords, setShowRecords] = useState(false);
+  const [recordsQuery, setRecordsQuery] = useState("");
   // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
   // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
   //
@@ -9909,7 +9914,7 @@ export function NoteApp() {
   }, [fmGetCachedDocStable, fmReindexNoteFromDocStable, listSidePeekNoteId, assetSidePeekNoteId]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
-  // activeLabel → showNoteList → showMemos → showMobile → activeWikiView → activeWikiKind →
+  // activeLabel → showNoteList → showMemos → showRecords → showMobile → activeWikiView → activeWikiKind →
   // sharedEntryViewId → showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
   // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
   // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
@@ -9927,6 +9932,7 @@ export function NoteApp() {
     fm.setShowProcessGallery(false);
     fm.setActiveWikiKind(null);
     setShowMemos(false);
+    setShowRecords(false);
     setShowMobile(false);
     setShowTrash(false);
     setShowSharedLibrary(false);
@@ -10476,6 +10482,7 @@ export function NoteApp() {
     openMaterialFull: (fileId: string) => setFocusedMaterial({ fileId, fullMode: true }),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
+    setShowRecords: (show: boolean) => setShowRecords(show),
     // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない
     //（サイドバーにも出さない）。
     setShowMobile: (show: boolean) => setShowMobile(show && isTauri()),
@@ -16129,6 +16136,8 @@ export function NoteApp() {
     memoCount: capture.captureIndex?.captures.length ?? 0,
     onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
+    onShowRecords: () => { closeAllViews(); setRecordsQuery(""); setShowRecords(true); setSidebarOpen(false); router.navigate({ view: "records" }); },
+    recordsActive: showRecords,
     // モバイル（受信箱）: **未処理**件数。取り込み済み素材の数ではない。
     // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）— web では
     // onShowMobile を渡さない＝サイドバーの「モバイル」見出し自体が出ない。
@@ -17014,6 +17023,22 @@ export function NoteApp() {
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
+          />
+        ) : showRecords ? (
+          // 記録: ノートの索引・素材の索引・メモの一覧を読むだけ（どれも書き換えない）。
+          // 開く先は Cmd+K の各行と同じ（ノートは全画面、素材は素材の一覧のピーク、メモはメモのピーク）
+          <RecordsView
+            noteIndex={fm.noteIndex}
+            mediaIndex={fm.mediaIndex}
+            captureIndex={capture.captureIndex}
+            loading={fm.filesLoading}
+            initialQuery={recordsQuery}
+            onOpenNote={(noteId, wiki) => navigateToNote(wiki ? `wiki:${noteId}` : noteId)}
+            onOpenMedia={(fileId) => {
+              const entry = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+              if (entry) handleComposerMediaSelect(entry);
+            }}
+            onOpenMemo={handleOpenMemoSource}
           />
         ) : showMobile ? (
           // モバイル受信箱: 同期フォルダ <root>/Inbox/ の **まだ取り込んでいない** ファイル一覧。
@@ -18324,6 +18349,15 @@ export function NoteApp() {
         canOpenNoteInPeek={canOpenComposerNoteInPeek}
         citationCount={composerCitationCount}
         canAskAi={composerCanAskAi}
+        onSeeInRecords={(query) => {
+          setComposerPrompt("");
+          composer.closeComposer();
+          closeAllViews();
+          setRecordsQuery(query);
+          setShowRecords(true);
+          setSidebarOpen(false);
+          router.navigate({ view: "records" });
+        }}
       />
       {showNewSkillDialog && (
         <SkillDialog

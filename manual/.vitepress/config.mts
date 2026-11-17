@@ -23,6 +23,7 @@ const enSidebar = [
     items: [
       { text: 'What is Graphium?', link: '/' },
       { text: 'Getting started', link: '/getting-started' },
+      { text: 'Security', link: '/security' },
     ],
   },
   {
@@ -105,6 +106,7 @@ const jaSidebar = [
     items: [
       { text: 'Graphium とは', link: '/ja/' },
       { text: 'はじめる', link: '/ja/getting-started' },
+      { text: 'セキュリティのしくみ', link: '/ja/security' },
     ],
   },
   {

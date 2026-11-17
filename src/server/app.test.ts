@@ -6,7 +6,7 @@
 // このテストが唯一の自動検知点になる。
 
 import { describe, it, expect, afterEach } from "vitest";
-import { authCookieValue } from "./auth-token.js";
+import { authCookieValue, desktopSidecarProof } from "./auth-token.js";
 import { createApp, isAllowedWriteOrigin } from "./app.js";
 
 // apiHeaders（と認証系）が付けうるカスタムヘッダーの一覧。
@@ -318,6 +318,34 @@ describe("デスクトップ版（GRAPHIUM_DESKTOP=1）の合言葉", () => {
     delete process.env.GRAPHIUM_DESKTOP;
     const s = await get(createApp({ mode: "node" }), "/api/models", { "X-Graphium-Token": TOKEN });
     expect(s.headers.get("set-cookie")).toContain("graphium_auth=");
+  });
+
+  it("health は、合言葉なしの challenge に証明を返す（合言葉・dataDir は出さない）", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    const challenge = "0f".repeat(32);
+    const res = await get(app, `/api/health?challenge=${challenge}`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const body = JSON.parse(text) as Record<string, unknown>;
+    expect(body.proof).toBe(desktopSidecarProof(challenge));
+    expect(body.proof).toMatch(/^[0-9a-f]{64}$/);
+    expect(text).not.toContain(TOKEN);
+    expect(body).not.toHaveProperty("dataDir");
+    // challenge なし・形の違う challenge には証明を付けない
+    expect((await (await get(app, "/api/health")).json()) as object).not.toHaveProperty("proof");
+    expect((await (await get(app, "/api/health?challenge=abc")).json()) as object).not.toHaveProperty("proof");
+  });
+
+  it("セルフホストの health は challenge に証明を返さない", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    delete process.env.GRAPHIUM_DESKTOP;
+    const app = createApp({ mode: "node" });
+    const res = await get(app, `/api/health?challenge=${"0f".repeat(32)}`);
+    expect((await res.json()) as object).not.toHaveProperty("proof");
+    const authed = await get(app, `/api/health?challenge=${"0f".repeat(32)}`, { "X-Graphium-Token": TOKEN });
+    expect((await authed.json()) as object).not.toHaveProperty("proof");
   });
 
   it("(d) GRAPHIUM_DESKTOP なしでは中継も 401", async () => {

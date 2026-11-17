@@ -73,6 +73,7 @@ Not needed to get started — these are for the curious and for contributors:
 - 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the thinking behind Graphium: why provenance matters, the two brains, the hourglass.
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md) — layers, distribution targets, the Wiki pipeline, known seams.
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md) — the on-disk JSON shapes, schemas, and compatibility rules.
+- 🔒 [**How Graphium keeps your notes safe**](https://kumagallium.github.io/Graphium/manual/security) ([日本語](https://kumagallium.github.io/Graphium/manual/ja/security)) — what protects your notes, what it cannot protect, and what you can do, with diagrams. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Label as much, or as little, as you want
 

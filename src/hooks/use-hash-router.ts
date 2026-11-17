@@ -19,6 +19,8 @@ export type ViewRoute =
   | { view: "assets"; mediaType: MediaType; fileId?: string }
   | { view: "labels"; label: string }
   | { view: "memos" }
+  // 記録の画面（ノート・素材・メモ・AI のページを残した順に並べる）
+  | { view: "records" }
   | { view: "mobile" }
   | { view: "shared-library" }
   // 共有エントリの全画面表示。引用カードの `#shared/<id>`（router に登録しない
@@ -50,6 +52,7 @@ function viewToHash(route: ViewRoute): string {
         : `#assets/${route.mediaType}`;
     case "labels": return `#labels/${encodeURIComponent(route.label)}`;
     case "memos": return "#memos";
+    case "records": return "#records";
     case "mobile": return "#mobile";
     case "shared-library": return "#shared-library";
     case "shared-entry": return `#shared-entry/${route.id}`;
@@ -121,6 +124,8 @@ function parseHash(hash: string): AppRoute {
       break;
     case "memos":
       return withPeek({ view: "memos" });
+    case "records":
+      return withPeek({ view: "records" });
     case "mobile":
       return withPeek({ view: "mobile" });
     case "shared-library":
@@ -170,6 +175,8 @@ export type RouteActions = {
   openMaterialFull?: (fileId: string) => void;
   setActiveLabel: (label: string | null) => void;
   setShowMemos: (show: boolean) => void;
+  /** 記録の画面を開閉する（未指定なら #records は何も開かない） */
+  setShowRecords?: (show: boolean) => void;
   setShowMobile: (show: boolean) => void;
   setShowSharedLibrary?: (show: boolean) => void;
   /** 共有エントリの全画面表示を開く（未指定なら Library にフォールバックする） */
@@ -251,6 +258,10 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
       case "memos":
         actions.clearViews();
         actions.setShowMemos(true);
+        break;
+      case "records":
+        actions.clearViews();
+        actions.setShowRecords?.(true);
         break;
       case "mobile":
         actions.clearViews();
