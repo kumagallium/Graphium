@@ -95,6 +95,7 @@ Click **Add to Knowledge** in a note's header and Graphium distills it into shor
 - **Start from a scaffold** — type `/` and choose **Template** for a ready-made **Plan Template** or **Run Template**; the Run Template doubles as a worked example of labeled steps.
 - **The editor in depth** — [Notes & editor](/notes-and-editor): blocks, formulas, callouts, templates, search.
 - **Capture from your phone** — [Mobile capture](/mobile).
+- **How your notes are protected** — [Security](/security).
 - **The thinking behind it** — [CONCEPT.md](https://github.com/kumagallium/Graphium/blob/main/docs/CONCEPT.md) on GitHub.
 
 Write as much, or as little, as you need. The deeper layers are there when you want them, and out of the way when you don't.
