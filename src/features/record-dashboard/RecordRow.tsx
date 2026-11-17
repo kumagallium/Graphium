@@ -23,9 +23,9 @@ import {
   Waypoints,
 } from "lucide-react";
 import "./record-dashboard.css";
-import { RECORD_COPY, type RecordCopy } from "./copy";
+import { type RecordCopy, useRecordCopy } from "./copy";
 import { formatTime } from "./model";
-import type { RecordItem, RecordLocale, RecordMediaType, RecordOrigin, RecordWho } from "./types";
+import type { RecordItem, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
 /** 出どころごとのアイコンと色の系統。色は 3 系統＋無彩色に抑える */
 export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain" | "amber" | "sky" | "forest" }> = {
@@ -154,7 +154,6 @@ function Trace({ item, copy }: { item: RecordItem; copy: RecordCopy }) {
 
 export type RecordRowProps = {
   item: RecordItem;
-  locale?: RecordLocale;
   /** 探す言葉。当たった部分に印が付く */
   query?: string;
   /** rail = 時刻の右に線を通す並び / ledger = いつ・どこで・誰が・何を の 4 列 */
@@ -165,10 +164,20 @@ export type RecordRowProps = {
   dateLabel?: string;
   /** 見つかった記録の側で指している行（色を付けて、同じ記録だと示す） */
   active?: boolean;
+  /** 行を押したとき（Enter でも）。渡さなければ、行は押せるものとして振る舞わない */
+  onOpen?: (item: RecordItem) => void;
 };
 
-export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, dateLabel, active }: RecordRowProps) {
-  const copy = RECORD_COPY[locale];
+export function RecordRow({ item, query, variant = "rail", dim, dateLabel, active, onOpen }: RecordRowProps) {
+  const copy = useRecordCopy();
+  const openProps = onOpen
+    ? {
+        onClick: () => onOpen(item),
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === "Enter" && e.target === e.currentTarget) onOpen(item);
+        },
+      }
+    : {};
   const time = (
     <time className="rd-time" dateTime={item.at}>
       {dateLabel && <span className="rd-time-date">{dateLabel}</span>}
@@ -185,6 +194,7 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
         data-dim={dim ? "true" : undefined}
         data-active={active ? "true" : undefined}
         tabIndex={0}
+        {...openProps}
       >
         {time}
         <span className="rd-lcell rd-lcell-where">
@@ -211,6 +221,7 @@ export function RecordRow({ item, locale = "ja", query, variant = "rail", dim, d
       data-dim={dim ? "true" : undefined}
       data-active={active ? "true" : undefined}
       tabIndex={0}
+      {...openProps}
     >
       {time}
       <span className="rd-node">

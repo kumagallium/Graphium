@@ -1586,3 +1586,41 @@
     overflow: visible;
   }
 }
+
+/* 見つかった記録の右上: 一覧の中でその行を見るボタン（押すと左の行まで動く） */
+.rd-hits li {
+  position: relative;
+}
+
+.rd-hit-locate {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: var(--color-card);
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.rd-hits li:is(:hover, :focus-within, [data-active="true"]) .rd-hit-locate,
+.rd-hit-locate:focus-visible {
+  opacity: 1;
+}
+
+.rd-hit-locate:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+@media (hover: none) {
+  .rd-hit-locate {
+    opacity: 1;
+  }
+}

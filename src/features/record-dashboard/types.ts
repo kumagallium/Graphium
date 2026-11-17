@@ -82,7 +82,8 @@ export type RecordItem = {
   trace?: RecordTrace;
 };
 
-export type RecordLocale = "ja" | "en";
+/** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */
+export type SampleLocale = "ja" | "en";
 
 /** 誰での絞り込み。selfWithAi は「自分」「AI」のどちらにも当たる */
 export type WhoFilter = "all" | "self" | "ai" | "other";

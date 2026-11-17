@@ -1,7 +1,8 @@
 // 記録の並べ方・絞り込み・探し方（表示のための純粋な関数）。
 // 日付と時刻は、端末の時刻で読む。実データの日時は UTC の ISO 文字列（末尾 Z）なので、
 // 文字列を切り取ると日付の変わり目がずれる。
-import type { RecordItem, RecordLocale, RecordOrigin, WhoFilter } from "./types";
+import type { Locale } from "../../i18n";
+import type { RecordItem, RecordOrigin, WhoFilter } from "./types";
 
 export type RecordDayGroup = {
   /** "2026-11-17"（端末の時刻での日付） */
@@ -76,19 +77,21 @@ export function formatTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function localeTag(locale: RecordLocale): string {
-  return locale === "ja" ? "ja-JP" : "en-US";
+const LOCALE_TAG: Record<Locale, string> = { en: "en-US", ja: "ja-JP", ko: "ko-KR" };
+
+function localeTag(locale: Locale): string {
+  return LOCALE_TAG[locale] ?? "en-US";
 }
 
 /** "11月17日" / "Nov 17"。日付として読めないときは空文字 */
-export function formatDate(dayKey: string, locale: RecordLocale): string {
+export function formatDate(dayKey: string, locale: Locale): string {
   const d = new Date(`${dayKey}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat(localeTag(locale), { month: locale === "ja" ? "long" : "short", day: "numeric" }).format(d);
+  return new Intl.DateTimeFormat(localeTag(locale), { month: locale === "en" ? "short" : "long", day: "numeric" }).format(d);
 }
 
 /** "火曜日" / "Tuesday"。日付として読めないときは空文字 */
-export function formatWeekday(dayKey: string, locale: RecordLocale, width: "long" | "short" = "long"): string {
+export function formatWeekday(dayKey: string, locale: Locale, width: "long" | "short" = "long"): string {
   const d = new Date(`${dayKey}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat(localeTag(locale), { weekday: width }).format(d);

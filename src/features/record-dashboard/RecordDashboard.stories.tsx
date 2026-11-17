@@ -10,11 +10,11 @@ import { RecordDashboard, type RecordDashboardLayout } from "./RecordDashboard";
 import { SAMPLE_SOURCES } from "./sample-indexes";
 import { busyDayRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
 import { StoryFrame } from "./story-frame";
-import type { RecordLocale, WhoFilter } from "./types";
+import type { SampleLocale, WhoFilter } from "./types";
 
 type Args = {
   layout: RecordDashboardLayout;
-  locale: RecordLocale;
+  locale: SampleLocale;
   width?: number;
   searching: boolean;
   who: WhoFilter;
@@ -26,14 +26,13 @@ type Args = {
 
 function Screen({ layout, locale, width, searching, who, fromIndexes, busy }: Args) {
   return (
-    <StoryFrame width={width}>
+    <StoryFrame width={width} locale={locale}>
       <RecordDashboard
         // 言語や初めの条件を切り替えたら、中の状態ごと作り直す
         key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}`}
         items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : SAMPLE_RECORDS[locale]}
         now={SAMPLE_NOW}
         layout={layout}
-        locale={locale}
         initialQuery={searching ? SAMPLE_QUERY[fromIndexes ? "ja" : locale] : ""}
         initialWho={who}
       />

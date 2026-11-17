@@ -2,22 +2,22 @@
 // 並びは「いつ ｜ どこで・誰が ｜ 何を」。使っているのは、いまのデータに入っている項目だけ。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { RECORD_COPY } from "./copy";
+import { useRecordCopy } from "./copy";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
 import { SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
 import { StoryCaption, StoryFrame, StorySheet } from "./story-frame";
-import type { RecordItem, RecordLocale, RecordOrigin, RecordWho } from "./types";
+import type { RecordItem, SampleLocale, RecordOrigin, RecordWho } from "./types";
 
-type Args = { locale: RecordLocale; variant: "rail" | "ledger"; width?: number; query?: string };
+type Args = { locale: SampleLocale; variant: "rail" | "ledger"; width?: number; query?: string };
 
-const pick = (locale: RecordLocale, ids: string[]): RecordItem[] =>
+const pick = (locale: SampleLocale, ids: string[]): RecordItem[] =>
   ids.map((id) => SAMPLE_RECORDS[locale].find((r) => r.id === id)!).filter(Boolean);
 
-function Rows({ items, locale, variant, query }: { items: RecordItem[] } & Args) {
+function Rows({ items, variant, query }: { items: RecordItem[] } & Args) {
   return (
     <ol className={variant === "ledger" ? "rd-lrows" : "rd-rows"}>
       {items.map((item) => (
-        <RecordRow key={item.id} item={item} locale={locale} variant={variant} query={query} />
+        <RecordRow key={item.id} item={item} variant={variant} query={query} />
       ))}
     </ol>
   );
@@ -41,7 +41,7 @@ const KIND_IDS = ["r02", "r07", "r04", "r01"];
 // 種類ごとの見え方: ノート / AI のページ / 素材 / メモ
 export const Kinds: Story = {
   render: (args) => (
-    <StoryFrame width={args.width}>
+    <StoryFrame width={args.width} locale={args.locale}>
       <StoryCaption>
         {args.locale === "ja"
           ? "種類ごとの 1 行。ノートと AI のページは題を太く、メモは本文をそのまま、素材は左に小さな面を置きます。"
@@ -63,7 +63,7 @@ const WHO_IDS = ["r12", "r06", "r07", "r11"];
 // 誰の違い: 自分 / 自分と AI / AI / 共有の作者。線の上の印の形が変わる
 export const Who: Story = {
   render: (args) => {
-    const copy = RECORD_COPY[args.locale];
+    const copy = useRecordCopy();
     const marks: { who: RecordWho; note: string }[] =
       args.locale === "ja"
         ? [
@@ -79,7 +79,7 @@ export const Who: Story = {
             { who: { type: "other", name: "Minato" }, note: "Author in the shared library" },
           ];
     return (
-      <StoryFrame width={args.width}>
+      <StoryFrame width={args.width} locale={args.locale}>
         <StoryCaption>
           {args.locale === "ja"
             ? "残した人は、文字と、線の上の印の形の両方で示します（色だけに頼らない）。"
@@ -120,9 +120,9 @@ const ORIGINS: RecordOrigin[] = [
 // 出どころの札の一覧。色は 3 系統＋無彩色に抑えている
 export const Origins: Story = {
   render: (args) => {
-    const copy = RECORD_COPY[args.locale];
+    const copy = useRecordCopy();
     return (
-      <StoryFrame width={args.width}>
+      <StoryFrame width={args.width} locale={args.locale}>
         <StoryCaption>
           {args.locale === "ja"
             ? "出どころの札。人の手とファイル（無彩色）／Web（amber）／AI（sky）／スマホ（forest）で色を分けます。"
@@ -145,7 +145,7 @@ export const OriginsEnglish: Story = { ...Origins, args: { locale: "en" } };
 // 言葉で探したときの印。題・本文・題の下の 1 行のどれに当たっても付く
 export const SearchHit: Story = {
   render: (args) => (
-    <StoryFrame width={args.width}>
+    <StoryFrame width={args.width} locale={args.locale}>
       <StorySheet maxWidth={args.variant === "ledger" ? 960 : 720}>
         <Rows items={pick(args.locale, ["r01", "r04", "r05", "r06"])} {...args} query={SAMPLE_QUERY[args.locale]} />
       </StorySheet>

@@ -3,10 +3,11 @@
 //   stream … 1 本の流れ。上で絞って、下を読む
 //   find   … 左に日ごとの記録、右に言葉で見つかった記録を横に並べる（採用。LP の絵の組み合わせ案が元）
 //   ledger … いつ・どこで・誰が・何を の 4 列の台帳。左で絞る
-import { Search, X } from "lucide-react";
+import { LocateFixed, Search, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import "./record-dashboard.css";
-import { RECORD_COPY, type RecordCopy } from "./copy";
+import { type Locale, useLocale } from "../../i18n";
+import { type RecordCopy, useRecordCopy } from "./copy";
 import {
   BUNDLE_MIN,
   bundleRuns,
@@ -27,7 +28,7 @@ import {
 } from "./model";
 import { RecordDay } from "./RecordDay";
 import { Marked, ORIGIN_STYLE, WhoLabel, WhoMark } from "./RecordRow";
-import type { RecordItem, RecordKind, RecordLocale, RecordOrigin, RecordWho, WhoFilter } from "./types";
+import type { RecordItem, RecordKind, RecordOrigin, RecordWho, WhoFilter } from "./types";
 
 export type RecordDashboardLayout = "stream" | "find" | "ledger";
 
@@ -36,9 +37,10 @@ export type RecordDashboardProps = {
   /** 今日・昨日の判定に使う「いま」（ISO 8601） */
   now: string;
   layout: RecordDashboardLayout;
-  locale?: RecordLocale;
   initialQuery?: string;
   initialWho?: WhoFilter;
+  /** 記録を開く。渡すと、行と見つかった記録を押したときに呼ばれる */
+  onOpen?: (item: RecordItem) => void;
 };
 
 const WHO_FILTERS: { value: WhoFilter; mark?: RecordWho["type"] }[] = [
@@ -160,7 +162,7 @@ function OriginChips({
 }
 
 /** この 7 日の件数を棒で見せる（どの日に多く残したか） */
-function WeekStrip({ items, now, locale, copy }: { items: readonly RecordItem[]; now: string; locale: RecordLocale; copy: RecordCopy }) {
+function WeekStrip({ items, now, locale, copy }: { items: readonly RecordItem[]; now: string; locale: Locale; copy: RecordCopy }) {
   const days = lastSevenDays(items, now);
   const max = Math.max(1, ...days.map((d) => d.count));
   return (
@@ -192,15 +194,17 @@ function DayList({
   variant = "rail",
   dimMisses,
   activeId,
+  onOpen,
 }: {
   days: RecordDayGroup[];
   now: string;
-  locale: RecordLocale;
+  locale: Locale;
   query: string;
   copy: RecordCopy;
   variant?: "rail" | "ledger";
   dimMisses?: boolean;
   activeId?: string | null;
+  onOpen?: (item: RecordItem) => void;
 }) {
   const [budget, setBudget] = useState(ROW_BUDGET);
   const searching = query.trim().length > 0;
@@ -214,7 +218,17 @@ function DayList({
   return (
     <>
       {days.slice(0, visible).map((d) => (
-        <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} variant={variant} dimMisses={dimMisses} activeId={activeId} />
+        <RecordDay
+          key={d.key}
+          dayKey={d.key}
+          items={d.items}
+          now={now}
+          query={query}
+          variant={variant}
+          dimMisses={dimMisses}
+          activeId={activeId}
+          onOpen={onOpen}
+        />
       ))}
       {rest > 0 && (
         <button type="button" className="rd-more-days" onClick={() => setBudget((b) => b + ROW_BUDGET)}>
@@ -253,8 +267,9 @@ function Legend({ copy, variant }: { copy: RecordCopy; variant: "rail" | "ledger
   );
 }
 
-export function RecordDashboard({ items, now, layout, locale = "ja", initialQuery = "", initialWho = "all" }: RecordDashboardProps) {
-  const copy = RECORD_COPY[locale];
+export function RecordDashboard({ items, now, layout, initialQuery = "", initialWho = "all", onOpen }: RecordDashboardProps) {
+  const { locale } = useLocale();
+  const copy = useRecordCopy();
   const [query, setQuery] = useState(initialQuery);
   const [who, setWho] = useState<WhoFilter>(initialWho);
   const [origins, setOrigins] = useState<ReadonlySet<RecordOrigin>>(new Set());
@@ -308,7 +323,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
             </div>
             <Legend copy={copy} variant="rail" />
             {days.length === 0 && <Empty copy={copy} />}
-            <DayList days={days} now={now} locale={locale} query={query} copy={copy} dimMisses activeId={activeId} />
+            <DayList days={days} now={now} locale={locale} query={query} copy={copy} dimMisses activeId={activeId} onOpen={onOpen} />
           </section>
           <aside className="rd-find" aria-label={copy.findTitle}>
             <SearchField value={query} onChange={setQuery} copy={copy} count={found.length} strong />
@@ -326,11 +341,25 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
                         data-active={activeId === it.id ? "true" : undefined}
                         onMouseEnter={() => setActiveId(it.id)}
                         onFocus={() => setActiveId(it.id)}
-                        onClick={() => jumpTo(it.id)}
+                        onClick={() => (onOpen ? onOpen(it) : jumpTo(it.id))}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") jumpTo(it.id);
+                          if (e.key === "Enter" && e.target === e.currentTarget) (onOpen ? onOpen(it) : jumpTo(it.id));
                         }}
                       >
+                        {onOpen && (
+                          <button
+                            type="button"
+                            className="rd-hit-locate"
+                            aria-label={copy.showInLog}
+                            data-tooltip={copy.showInLog}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              jumpTo(it.id);
+                            }}
+                          >
+                            <LocateFixed size={14} aria-hidden="true" />
+                          </button>
+                        )}
                         <p className="rd-hit">
                           <Marked text={it.title ?? it.text ?? ""} query={query} />
                         </p>
@@ -450,7 +479,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
           <div className="rd-sheet">
             <Legend copy={copy} variant="ledger" />
             {days.length === 0 && <Empty copy={copy} />}
-            <DayList days={days} now={now} locale={locale} query={query} copy={copy} variant="ledger" />
+            <DayList days={days} now={now} locale={locale} query={query} copy={copy} variant="ledger" onOpen={onOpen} />
           </div>
         </div>
        </div>
@@ -478,7 +507,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
       <div className="rd-sheet">
         <Legend copy={copy} variant="rail" />
         {days.length === 0 && <Empty copy={copy} />}
-        <DayList days={days} now={now} locale={locale} query={query} copy={copy} />
+        <DayList days={days} now={now} locale={locale} query={query} copy={copy} onOpen={onOpen} />
       </div>
     </div>
   );

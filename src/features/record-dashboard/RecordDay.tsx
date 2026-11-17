@@ -2,7 +2,8 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import "./record-dashboard.css";
-import { RECORD_COPY, type RecordCopy } from "./copy";
+import { useLocale } from "../../i18n";
+import { type RecordCopy, useRecordCopy } from "./copy";
 import {
   BUNDLE_MIN,
   bundleRuns,
@@ -15,7 +16,7 @@ import {
   type RecordBundle,
 } from "./model";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
-import type { RecordItem, RecordLocale, RecordWho } from "./types";
+import type { RecordItem, RecordWho } from "./types";
 
 /** まとめ行を開いたときに、一度に出す件数 */
 const BUNDLE_PAGE = 30;
@@ -91,7 +92,6 @@ export type RecordDayProps = {
   items: readonly RecordItem[];
   /** 今日・昨日の判定に使う「いま」 */
   now: string;
-  locale?: RecordLocale;
   query?: string;
   variant?: "rail" | "ledger";
   /** true のとき、探す言葉に当たらない行を消さずに薄くする */
@@ -100,20 +100,23 @@ export type RecordDayProps = {
   bundleMin?: number;
   /** 色を付けて示す記録の id（見つかった記録の側で指している行） */
   activeId?: string | null;
+  /** 行を押したとき */
+  onOpen?: (item: RecordItem) => void;
 };
 
 export function RecordDay({
   dayKey,
   items,
   now,
-  locale = "ja",
   query,
   variant = "rail",
   dimMisses,
   bundleMin = BUNDLE_MIN,
   activeId,
+  onOpen,
 }: RecordDayProps) {
-  const copy = RECORD_COPY[locale];
+  const { locale } = useLocale();
+  const copy = useRecordCopy();
   // まとめ行ごとの、開いて出している件数（無ければ閉じている）
   const [shown, setShown] = useState<Record<string, number>>({});
   const ago = daysAgo(dayKey, now);
@@ -126,7 +129,7 @@ export function RecordDay({
     variant === "ledger" ? [...items] : bundleRuns(items, bundleMin, (it) => !!dimMisses && searching && matchesQuery(it, query ?? ""));
 
   const row = (item: RecordItem) => (
-    <RecordRow key={item.id} item={item} locale={locale} query={query} variant={variant} dim={isMiss(item)} active={activeId === item.id} />
+    <RecordRow key={item.id} item={item} query={query} variant={variant} dim={isMiss(item)} active={activeId === item.id} onOpen={onOpen} />
   );
 
   return (

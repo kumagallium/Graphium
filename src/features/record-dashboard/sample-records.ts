@@ -1,12 +1,12 @@
 // Storybook 用の仮の記録。パン作りと料理の、架空の内容。実在の人・組織は出てこない。
 // 並びは新しい順ではなく、ここでは読みやすさのために日付ごとに書いている（表示側で並べ直す）。
-import type { RecordItem, RecordLocale } from "./types";
+import type { RecordItem, SampleLocale } from "./types";
 
 /** ストーリーで「いま」とする時刻（今日・昨日の判定に使う） */
 export const SAMPLE_NOW = "2026-11-17T22:00:00";
 
 /** ストーリーで初めから入れておく探す言葉 */
-export const SAMPLE_QUERY: Record<RecordLocale, string> = { ja: "温度", en: "temperature" };
+export const SAMPLE_QUERY: Record<SampleLocale, string> = { ja: "温度", en: "temperature" };
 
 const JA: RecordItem[] = [
   // ── 11/17（今日）
@@ -275,13 +275,13 @@ const EN: RecordItem[] = [
   },
 ];
 
-export const SAMPLE_RECORDS: Record<RecordLocale, RecordItem[]> = { ja: JA, en: EN };
+export const SAMPLE_RECORDS: Record<SampleLocale, RecordItem[]> = { ja: JA, en: EN };
 
 /**
  * 記録の多い日の仮データ。ナレッジ化で AI のページが 40 件、取り込みでファイルが 12 件続く。
  * 実データでは 1 日に数百件が並ぶ日があるので、まとめ行の見え方を確かめるのに使う。
  */
-export function busyDayRecords(locale: RecordLocale): RecordItem[] {
+export function busyDayRecords(locale: SampleLocale): RecordItem[] {
   const ja = locale === "ja";
   const pad = (n: number) => String(n).padStart(2, "0");
   const wiki: RecordItem[] = Array.from({ length: 40 }, (_, i) => ({

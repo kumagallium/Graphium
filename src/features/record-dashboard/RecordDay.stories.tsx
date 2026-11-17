@@ -5,17 +5,17 @@ import { groupByDay } from "./model";
 import { RecordDay } from "./RecordDay";
 import { SAMPLE_NOW, SAMPLE_RECORDS } from "./sample-records";
 import { StoryFrame, StorySheet } from "./story-frame";
-import type { RecordLocale } from "./types";
+import type { SampleLocale } from "./types";
 
-type Args = { locale: RecordLocale; variant: "rail" | "ledger"; width?: number; days: number };
+type Args = { locale: SampleLocale; variant: "rail" | "ledger"; width?: number; days: number };
 
 function Days({ locale, variant, width, days }: Args) {
   const groups = groupByDay(SAMPLE_RECORDS[locale]).slice(0, days);
   return (
-    <StoryFrame width={width}>
+    <StoryFrame width={width} locale={locale}>
       <StorySheet maxWidth={variant === "ledger" ? 960 : 720}>
         {groups.map((g) => (
-          <RecordDay key={g.key} dayKey={g.key} items={g.items} now={SAMPLE_NOW} locale={locale} variant={variant} />
+          <RecordDay key={g.key} dayKey={g.key} items={g.items} now={SAMPLE_NOW} variant={variant} />
         ))}
       </StorySheet>
     </StoryFrame>

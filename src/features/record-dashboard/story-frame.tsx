@@ -2,9 +2,14 @@
 // width を渡すと、その幅の画面（スマホなら 375）に置いたときの形を確かめられる。
 // app.css が html / body のスクロールを止めているので、この台がスクロールする。
 // 余白は内側の箱に付ける（スクロールする箱に付けると、上に張り付く見出しが余白の分だけ下がる）。
-import type { ReactNode } from "react";
+import { type ReactNode, useLayoutEffect } from "react";
+import { type Locale, syncLocale } from "../../i18n";
 
-export function StoryFrame({ width, children }: { width?: number; children: ReactNode }) {
+export function StoryFrame({ width, locale, children }: { width?: number; locale?: Locale; children: ReactNode }) {
+  // 表示言語をストーリーの引数に合わせる（アプリと同じ辞書・同じ切り替えの経路を通す）
+  useLayoutEffect(() => {
+    if (locale) syncLocale(locale);
+  }, [locale]);
   return (
     <div data-story-frame style={{ height: "100vh", overflowY: "auto", background: "var(--paper)" }}>
       <div
