@@ -1,4 +1,4 @@
-// 1 日分のまとまり（日付の見出し＋記録の行）。デザイン提案・Storybook のみ。
+// 1 日分のまとまり（日付の見出し＋記録の行）。
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import "./record-dashboard.css";
@@ -62,7 +62,7 @@ function BundleRow({
     .filter(Boolean)
     .join(" · ");
   return (
-    <li className="rd-row rd-bundle" data-open={open ? "true" : undefined} data-dim={dim ? "true" : undefined}>
+    <li className="rd-row rd-bundle" data-kind={first.kind} data-open={open ? "true" : undefined} data-dim={dim ? "true" : undefined}>
       <time className="rd-time" dateTime={first.at}>
         {formatTime(first.at)}
         {formatTime(last.at) !== formatTime(first.at) && <span className="rd-time-to">{formatTime(last.at)}</span>}
