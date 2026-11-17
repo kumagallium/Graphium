@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { buildRecords } from "./from-indexes";
 import { RecordDashboard, type RecordDashboardLayout } from "./RecordDashboard";
 import { SAMPLE_SOURCES } from "./sample-indexes";
-import { busyDayRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { busyDayRecords, longHistoryRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
 import { StoryFrame } from "./story-frame";
 import type { SampleLocale, WhoFilter } from "./types";
 
@@ -22,15 +22,17 @@ type Args = {
   fromIndexes?: boolean;
   /** true のとき、同じ種類の記録が何十件も続く日の仮データを出す */
   busy?: boolean;
+  /** true のとき、3 か月にわたる仮データを出す（カレンダーで月をまたぐ） */
+  long?: boolean;
 };
 
-function Screen({ layout, locale, width, searching, who, fromIndexes, busy }: Args) {
+function Screen({ layout, locale, width, searching, who, fromIndexes, busy, long }: Args) {
   return (
     <StoryFrame width={width} locale={locale}>
       <RecordDashboard
         // 言語や初めの条件を切り替えたら、中の状態ごと作り直す
-        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}`}
-        items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : SAMPLE_RECORDS[locale]}
+        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}-${long}`}
+        items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : long ? longHistoryRecords(locale) : SAMPLE_RECORDS[locale]}
         now={SAMPLE_NOW}
         layout={layout}
         initialQuery={searching ? SAMPLE_QUERY[fromIndexes ? "ja" : locale] : ""}
@@ -68,6 +70,9 @@ export const BFindFromIndexes: Story = { args: { layout: "find", searching: true
 export const BFindBusyDay: Story = { args: { layout: "find", busy: true } };
 export const BFindBusyDaySearching: Story = { args: { layout: "find", busy: true, searching: true } };
 export const BFindBusyDayNarrow: Story = { args: { layout: "find", busy: true, width: 375 } };
+// 3 か月分の記録: 右上のカレンダーで日を押すと、その日からの記録に移る
+export const BFindLongHistory: Story = { args: { layout: "find", long: true } };
+export const BFindLongHistoryNarrow: Story = { args: { layout: "find", long: true, width: 375 } };
 
 // A（比較用）: 1 本の流れ。上で絞って、下を読む
 export const AStream: Story = { args: { layout: "stream" } };

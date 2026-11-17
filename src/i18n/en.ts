@@ -4614,5 +4614,12 @@ export const en: Record<string, string> = {
   "records.moreInBundle": "Show the next {next} ({rest} left)",
   "records.moreDays": "Show earlier days ({n} more days)",
   "records.moreDays.one": "Show earlier days ({n} more day)",
+  "records.calendar": "Calendar",
+  "records.prevMonth": "Previous month",
+  "records.nextMonth": "Next month",
+  "records.calLess": "Fewer",
+  "records.calMore": "More",
+  "records.showingFrom": "Showing from {date}",
+  "records.backToLatest": "Back to the latest",
   "records.seeInRecords": "See \"{query}\" in Records",
 };

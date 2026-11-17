@@ -4616,5 +4616,12 @@ export const ja: Record<string, string> = {
   "records.moreInBundle": "次の {next} 件を出す（残り {rest} 件）",
   "records.moreDays": "前の日を見る（あと {n} 日）",
   "records.moreDays.one": "前の日を見る（あと {n} 日）",
+  "records.calendar": "カレンダー",
+  "records.prevMonth": "前の月",
+  "records.nextMonth": "次の月",
+  "records.calLess": "少ない",
+  "records.calMore": "多い",
+  "records.showingFrom": "{date} から表示しています",
+  "records.backToLatest": "最新に戻る",
   "records.seeInRecords": "「{query}」を記録で見る",
 };

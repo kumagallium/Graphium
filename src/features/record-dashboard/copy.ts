@@ -41,6 +41,13 @@ export type RecordCopy = {
   bundle: (n: number) => string;
   moreInBundle: (next: number, rest: number) => string;
   moreDays: (n: number) => string;
+  calendar: string;
+  prevMonth: string;
+  nextMonth: string;
+  calLess: string;
+  calMore: string;
+  showingFrom: (date: string) => string;
+  backToLatest: string;
 };
 
 export function buildRecordCopy(t: Translate): RecordCopy {
@@ -113,6 +120,13 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     bundle: (n) => t("records.bundle", { n: String(n) }),
     moreInBundle: (next, rest) => t("records.moreInBundle", { next: String(next), rest: String(rest) }),
     moreDays: counted("records.moreDays"),
+    calendar: t("records.calendar"),
+    prevMonth: t("records.prevMonth"),
+    nextMonth: t("records.nextMonth"),
+    calLess: t("records.calLess"),
+    calMore: t("records.calMore"),
+    showingFrom: (date) => t("records.showingFrom", { date }),
+    backToLatest: t("records.backToLatest"),
   };
 }
 

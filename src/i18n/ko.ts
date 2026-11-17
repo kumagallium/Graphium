@@ -4575,5 +4575,12 @@ export const ko: Record<string, string> = {
   "records.moreInBundle": "다음 {next}건 보기 (남은 {rest}건)",
   "records.moreDays": "이전 날짜 보기 (남은 {n}일)",
   "records.moreDays.one": "이전 날짜 보기 (남은 {n}일)",
+  "records.calendar": "달력",
+  "records.prevMonth": "이전 달",
+  "records.nextMonth": "다음 달",
+  "records.calLess": "적음",
+  "records.calMore": "많음",
+  "records.showingFrom": "{date}부터 표시 중",
+  "records.backToLatest": "최신으로 돌아가기",
   "records.seeInRecords": "\"{query}\"을(를) 기록에서 보기",
 };
