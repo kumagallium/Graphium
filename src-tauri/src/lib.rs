@@ -3458,7 +3458,300 @@ fn shared_delete(
     reject_symlink(&tomb_path)?;
     fs::write(&tomb_path, tombstone_content)
         .map_err(|e| format!("tombstone 書き込み失敗: {e}"))?;
+    // 共有をやめたら「読める写し」も消す。写しの掃除に失敗しても共有の削除は成功のまま
+    if READABLE_ENTRY_TYPES.contains(&entry_type.as_str()) {
+        let _ = readable_remove_all(&root, &entry_type, &id);
+    }
     Ok(())
+}
+
+// ── 読める写し（<root>/readable/<entry_type>/）────────────────────────────
+//
+// 共有フォルダの中身（`<root>/notes/<id>.json`）は Graphium が無いと読めない。共有フォルダごとの
+// スイッチが入っているとき、共有のたびに `<題>_<id12>.md` と `<題>_<id12>.prov.jsonld` を
+// 同じ共有フォルダの中に置く。その id の写しは常に 1 組（題が変われば古い名前は消す）。
+// ファイル名は Rust が決める（TS からは題と id だけを渡し、パスは渡さない）。
+
+/// 写しを置く entry type（ノートだけ）。
+const READABLE_ENTRY_TYPES: &[&str] = &["notes"];
+/// 共有フォルダの中の写しの置き場の名前。
+const READABLE_DIR_NAME: &str = "readable";
+/// 写しのファイル名の題の部分の上限（UTF-8 バイト数）。
+const READABLE_TITLE_MAX_BYTES: usize = 150;
+
+/// 題をファイル名に使える形にする。
+/// - パス区切り・Windows で使えない文字・制御文字は "_" に
+/// - 双方向制御文字・ゼロ幅文字・見えない文字・異体字選択子・タグ文字・BOM は取り除く（見た目で名前を偽装されないように）
+/// - 空白の連続は 1 つに、前後の空白・先頭のドット・末尾のドットと空白は取り除く
+/// - UTF-8 で 150 バイト以内に、文字の境目で切る。空になったら "untitled"
+fn sanitize_readable_title(title: &str) -> String {
+    let mut out = String::new();
+    let mut prev_space = false;
+    for c in title.chars() {
+        let c = match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{061C}'
+            | '\u{00AD}'
+            | '\u{180E}'
+            | '\u{115F}'
+            | '\u{1160}'
+            | '\u{3164}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{E0000}'..='\u{E007F}'
+            | '\u{E0100}'..='\u{E01EF}' => continue,
+            c => c,
+        };
+        if c.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+            }
+            prev_space = true;
+        } else {
+            out.push(c);
+            prev_space = false;
+        }
+    }
+    let trimmed = out
+        .trim_start_matches(|c: char| c == '.' || c.is_whitespace())
+        .trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    let mut end = trimmed.len().min(READABLE_TITLE_MAX_BYTES);
+    while !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    let cut = trimmed[..end].trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    if cut.is_empty() {
+        "untitled".to_string()
+    } else {
+        cut.to_string()
+    }
+}
+
+/// 共有 id（uuidv7）の末尾 12 桁。validate_id を通った id が前提（ASCII 36 文字）。
+fn readable_id12(id: &str) -> &str {
+    &id[id.len().saturating_sub(12)..]
+}
+
+/// 写しの置き場の中で、この id の写しを指す名前の末尾（`_<id12>.md` / `_<id12>.prov.jsonld`）。
+fn readable_suffixes(id12: &str) -> [String; 2] {
+    [format!("_{id12}.md"), format!("_{id12}.prov.jsonld")]
+}
+
+/// 写しの置き場 `<root>/readable/<entry_type>/` を返す（作らない）。
+fn readable_dir_ro(root: &str, entry_type: &str) -> Result<PathBuf, String> {
+    if !READABLE_ENTRY_TYPES.contains(&entry_type) {
+        return Err(format!("読める写しに対応しない entry type: {entry_type}"));
+    }
+    let root_path = require_root_reachable(root)?;
+    Ok(root_path.join(READABLE_DIR_NAME).join(entry_type))
+}
+
+/// md の前付けにこの共有 id が書かれているか（この id の写しかどうかの確認）。
+/// 前付けは TS が `graphium_shared_id: "<id>"` と JSON 引用で書く。通常ファイルだけ読む。
+fn readable_md_is_owned(path: &Path, id: &str) -> bool {
+    use std::io::{BufRead, BufReader, Read};
+    let Ok(f) = fs::File::open(path) else { return false };
+    let want = format!("graphium_shared_id: \"{id}\"");
+    // 前付けは先頭の数行。1 行が極端に長くても読み込みは 1 MiB までに抑える
+    BufReader::new(f.take(1 << 20))
+        .lines()
+        .take(12)
+        .map_while(Result::ok)
+        .any(|l| l == want)
+}
+
+/// 同じファイルを指しているか。大文字小文字・Unicode 正規化を区別しない FS（APFS・NTFS・SMB）で、
+/// 名前の文字列は違っても実体が同じ、というときに使う。
+fn readable_same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let n = |p: &Path| p.file_name().map(|s| s.to_string_lossy().to_lowercase());
+        n(a).is_some() && n(a) == n(b)
+    }
+}
+
+/// 写しを書く。一時ファイルに書いてから rename で置く。
+/// - 置き場に置かれたハードリンクを通して外のファイルを書き換えない（rename はリンク自体を置き換える）
+/// - FIFO などの特殊ファイルを開いて固まらない
+/// - 読み手に書きかけの状態を見せない
+fn write_readable_file(path: &Path, content: &str) -> Result<(), String> {
+    reject_symlink(path)?;
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.tmp"));
+    let fail = |e: &dyn std::fmt::Display| format!("写しの書き込み失敗: {} ({e})", path.display());
+    // 前回の取り残しがあれば消す（無ければ何もしない）
+    let _ = fs::remove_file(&tmp);
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| fail(&e))?;
+    if let Err(e) = f.write_all(content.as_bytes()) {
+        drop(f);
+        let _ = fs::remove_file(&tmp);
+        return Err(fail(&e));
+    }
+    drop(f);
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(fail(&e));
+    }
+    Ok(())
+}
+
+/// 置き場を 1 回だけ read_dir して、この id の写しのうち `keep` に無い名前を消す。
+/// - NAS では 1 件ごとの stat が遅いので、read_dir の名前と file_type で判断する。フォルダは辿らない
+/// - `keep` と実体が同じ名前（大文字小文字だけ違う題など）は消さない
+/// - 名前の末尾 12 桁が同じだけの別の共有の写しを消さないよう、md は前付けの共有 id を確かめる。
+///   prov は同じ名前の md がこの id のものであるときだけ消す
+fn readable_cleanup(dir: &Path, id: &str, keep: &[String]) -> Result<(), String> {
+    let suffixes = readable_suffixes(readable_id12(id));
+    let entries = fs::read_dir(dir).map_err(|e| format!("写しの置き場を読めません: {e}"))?;
+    // (名前, 通常ファイルか)
+    let mut stale: Vec<(String, PathBuf, bool)> = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !suffixes.iter().any(|s| name.ends_with(s.as_str())) {
+            continue;
+        }
+        let path = entry.path();
+        if keep.iter().any(|k| k == name || readable_same_file(&dir.join(k), &path)) {
+            continue;
+        }
+        stale.push((name.to_string(), path, ft.is_file()));
+    }
+    // この id のものと確かめられた md の名前の土台（小文字）。置いたばかりの md も含める
+    let mut owned_bases: Vec<String> = keep
+        .iter()
+        .filter_map(|k| k.strip_suffix(".md"))
+        .map(|b| b.to_lowercase())
+        .collect();
+    for (name, path, regular) in &stale {
+        if let Some(base) = name.strip_suffix(".md") {
+            // リンク・特殊ファイルは誰かの写しではない。読まずに片付け対象にする
+            if !*regular || readable_md_is_owned(path, id) {
+                owned_bases.push(base.to_lowercase());
+            }
+        }
+    }
+    let mut first_err: Option<String> = None;
+    for (name, path, _) in &stale {
+        let base = name
+            .strip_suffix(".md")
+            .or_else(|| name.strip_suffix(".prov.jsonld"))
+            .unwrap_or(name)
+            .to_lowercase();
+        if !owned_bases.contains(&base) {
+            continue;
+        }
+        if let Err(e) = fs::remove_file(path) {
+            first_err.get_or_insert(format!("古い写しの削除失敗: {name} ({e})"));
+        }
+    }
+    match first_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// この id の写しを全部消す。置き場が無ければ何も作らず Ok。
+fn readable_remove_all(root: &str, entry_type: &str, id: &str) -> Result<(), String> {
+    let dir = readable_dir_ro(root, entry_type)?;
+    let parent = dir.parent().map(Path::to_path_buf).unwrap_or_default();
+    reject_symlink(&parent)?;
+    reject_symlink(&dir)?;
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    ensure_dir_within_root(root, &dir)?;
+    readable_cleanup(&dir, id, &[])
+}
+
+/// 共有したノートの「読める写し」を置く・置き直す・消す。
+/// - markdown が Some: 写しを置く（prov が Some なら来歴も）。共有エントリが無ければ断る
+/// - markdown が None: この id の写しを全部消す（取り残しの掃除。エントリが無くても進む）
+#[tauri::command]
+fn shared_readable_sync(
+    root: String,
+    entry_type: String,
+    id: String,
+    title: String,
+    markdown: Option<String>,
+    prov: Option<String>,
+    author_email: Option<String>,
+) -> Result<(), String> {
+    validate_id(&id)?;
+    if !READABLE_ENTRY_TYPES.contains(&entry_type.as_str()) {
+        return Err(format!("読める写しに対応しない entry type: {entry_type}"));
+    }
+    let id12 = readable_id12(&id);
+    // 元になる共有エントリ（共有されていないものの写しは作らない）
+    let entry_path = shared_type_dir_ro(&root, &entry_type)?.join(format!("{id}.json"));
+    let Some(markdown) = markdown else {
+        // 消すだけ: 置き場が無ければ（写しを一度も作っていない大半の共有）エントリを読まずに終える。
+        // あるときは、エントリが実在するなら作者が一致すること。無ければそのまま掃除へ
+        let dir = readable_dir_ro(&root, &entry_type)?;
+        if fs::symlink_metadata(&dir).is_err() {
+            return Ok(());
+        }
+        assert_existing_author(&entry_path, &author_email)?;
+        return readable_remove_all(&root, &entry_type, &id);
+    };
+    if !entry_path.exists() {
+        return Err("共有されていないノートの写しは置けません".to_string());
+    }
+    assert_existing_author(&entry_path, &author_email)?;
+
+    let dir = readable_dir_ro(&root, &entry_type)?;
+    let parent = dir.parent().map(Path::to_path_buf).unwrap_or_default();
+    reject_symlink(&parent)?;
+    create_dir_for_write(&parent)?;
+    reject_symlink(&dir)?;
+    create_dir_for_write(&dir)?;
+    ensure_dir_within_root(&root, &dir)?;
+
+    let base = format!("{}_{id12}", sanitize_readable_title(&title));
+    let md_name = format!("{base}.md");
+    let md_path = dir.join(&md_name);
+    // 末尾 12 桁が同じだけの別の共有の写しを上書きしない
+    if fs::symlink_metadata(&md_path).map(|m| m.is_file()).unwrap_or(false)
+        && !readable_md_is_owned(&md_path, &id)
+    {
+        return Err(format!("別の共有の写しと名前が重なるため置けません: {md_name}"));
+    }
+    let mut keep = vec![md_name.clone()];
+    write_readable_file(&md_path, &markdown)?;
+    if let Some(prov) = prov {
+        let prov_name = format!("{base}.prov.jsonld");
+        if let Err(e) = write_readable_file(&dir.join(&prov_name), &prov) {
+            // 途中で失敗しても古い写しを取り残さない（掃除は最善努力。元の失敗を返す）
+            let _ = readable_cleanup(&dir, &id, &keep);
+            return Err(e);
+        }
+        keep.push(prov_name);
+    }
+    readable_cleanup(&dir, &id, &keep)
 }
 
 /// Blob を hash で読み出す（base64 で返す）。
@@ -4077,6 +4370,7 @@ pub fn run() {
             shared_read,
             shared_write,
             shared_delete,
+            shared_readable_sync,
             shared_blob_read,
             shared_blob_write,
             shared_blob_exists,
@@ -5611,6 +5905,270 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let root3 = tmp.path().join("shared3");
         fs::create_dir_all(&root3).unwrap();
         shared_write(root3.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None).unwrap();
+    }
+
+    // ── 読める写し ──
+
+    const RC_ID: &str = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+    const RC_ID_OTHER: &str = "0190f3a2-7b1c-7e4d-9a55-aaaaaaaaaaaa";
+
+    /// 共有エントリ（作者 a@x）を置いた共有フォルダを作る
+    fn rc_setup(tmp: &Path, ids: &[&str]) -> String {
+        let root = tmp.join("shared");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        for id in ids {
+            fs::write(
+                root.join("notes").join(format!("{id}.json")),
+                r#"{"entry":{"author":{"email":"a@x"}}}"#,
+            )
+            .unwrap();
+        }
+        root.to_str().unwrap().to_string()
+    }
+
+    fn rc_sync(root: &str, id: &str, title: &str, md: Option<&str>, prov: Option<&str>, email: &str) -> Result<(), String> {
+        shared_readable_sync(
+            root.into(),
+            "notes".into(),
+            id.into(),
+            title.into(),
+            md.map(String::from),
+            prov.map(String::from),
+            Some(email.into()),
+        )
+    }
+
+    /// TS が書く前付け（共有 id 入り）の md
+    fn rc_md(id: &str) -> String {
+        format!("---\ntitle: \"t\"\ngraphium_shared_id: \"{id}\"\n---\n\nbody")
+    }
+
+    fn rc_names(root: &str) -> Vec<String> {
+        let dir = Path::new(root).join("readable").join("notes");
+        let mut v: Vec<String> = match fs::read_dir(dir) {
+            Ok(r) => r.map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect(),
+            Err(_) => vec![],
+        };
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn shared_readable_sync_writes_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "実験メモ", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        assert_eq!(
+            rc_names(&root),
+            vec!["実験メモ_3c2f1b8d6e70.md".to_string(), "実験メモ_3c2f1b8d6e70.prov.jsonld".to_string()]
+        );
+        let md = fs::read_to_string(Path::new(&root).join("readable/notes/実験メモ_3c2f1b8d6e70.md")).unwrap();
+        assert_eq!(md, rc_md(RC_ID));
+    }
+
+    #[test]
+    fn shared_readable_sync_rename_keeps_one_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "旧題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "新題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        assert_eq!(
+            rc_names(&root),
+            vec!["新題_3c2f1b8d6e70.md".to_string(), "新題_3c2f1b8d6e70.prov.jsonld".to_string()]
+        );
+    }
+
+    #[test]
+    fn shared_readable_sync_without_prov_removes_prov() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), None, "a@x").unwrap();
+        assert_eq!(rc_names(&root), vec!["題_3c2f1b8d6e70.md".to_string()]);
+    }
+
+    #[test]
+    fn shared_readable_sync_remove_only_creates_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "", None, None, "a@x").unwrap();
+        assert!(!Path::new(&root).join("readable").exists());
+        // エントリが無くても掃除は進む（取り残し）
+        let root2 = rc_setup(&tmp.path().join("two"), &[]);
+        rc_sync(&root2, RC_ID, "", None, None, "a@x").unwrap();
+        assert!(!Path::new(&root2).join("readable").exists());
+        // 置いたあとに消すと空になる
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "", None, None, "a@x").unwrap();
+        assert!(rc_names(&root).is_empty());
+    }
+
+    #[test]
+    fn shared_readable_sync_refuses_missing_entry_and_other_author() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        // エントリが無いのに置こうとする
+        assert!(rc_sync(&root, RC_ID_OTHER, "題", Some(&rc_md(RC_ID_OTHER)), None, "a@x").is_err());
+        assert!(!Path::new(&root).join("readable").exists());
+        // 作者が違う（置く・消す）
+        assert!(rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), None, "b@x").is_err());
+        assert!(!Path::new(&root).join("readable").exists());
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), None, "a@x").unwrap();
+        assert!(rc_sync(&root, RC_ID, "", None, None, "b@x").is_err());
+        assert_eq!(rc_names(&root).len(), 1);
+    }
+
+    #[test]
+    fn shared_readable_sync_does_not_touch_other_id12() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID, RC_ID_OTHER]);
+        rc_sync(&root, RC_ID_OTHER, "別", Some(&rc_md(RC_ID_OTHER)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "", None, None, "a@x").unwrap();
+        assert_eq!(
+            rc_names(&root),
+            vec!["別_aaaaaaaaaaaa.md".to_string(), "別_aaaaaaaaaaaa.prov.jsonld".to_string()]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_readable_sync_refuses_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        // readable が外へのリンク
+        let root = rc_setup(&tmp.path().join("a"), &[RC_ID]);
+        std::os::unix::fs::symlink(&outside, Path::new(&root).join("readable")).unwrap();
+        assert!(rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").is_err());
+        assert!(fs::read_dir(&outside).unwrap().next().is_none());
+        // readable/notes が外へのリンク
+        let root2 = rc_setup(&tmp.path().join("b"), &[RC_ID]);
+        fs::create_dir_all(Path::new(&root2).join("readable")).unwrap();
+        std::os::unix::fs::symlink(&outside, Path::new(&root2).join("readable/notes")).unwrap();
+        assert!(rc_sync(&root2, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").is_err());
+        assert!(fs::read_dir(&outside).unwrap().next().is_none());
+        // 対象ファイル自体がリンク（まだ無い先を指す）
+        let root3 = rc_setup(&tmp.path().join("c"), &[RC_ID]);
+        fs::create_dir_all(Path::new(&root3).join("readable/notes")).unwrap();
+        let target = tmp.path().join("victim.md");
+        std::os::unix::fs::symlink(&target, Path::new(&root3).join("readable/notes/題_3c2f1b8d6e70.md")).unwrap();
+        assert!(rc_sync(&root3, RC_ID, "題", Some(&rc_md(RC_ID)), None, "a@x").is_err());
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn shared_delete_removes_readable_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID, RC_ID_OTHER]);
+        rc_sync(&root, RC_ID, "題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID_OTHER, "別", Some(&rc_md(RC_ID_OTHER)), None, "a@x").unwrap();
+        shared_delete(root.clone(), "notes".into(), RC_ID.into(), "{}".into(), Some("a@x".into())).unwrap();
+        assert_eq!(rc_names(&root), vec!["別_aaaaaaaaaaaa.md".to_string()]);
+    }
+
+    // 末尾 12 桁だけ同じ別 id（共有 id 全体は別）
+    const RC_ID_COLLIDE: &str = "0190ffff-0000-7000-8000-3c2f1b8d6e70";
+
+    #[test]
+    fn shared_readable_sync_case_only_rename_keeps_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "Memo", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root, RC_ID, "memo", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        // 大文字小文字を区別しない FS でも、区別する FS でも、ちょうど 1 組が残る
+        let names = rc_names(&root);
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(names.iter().any(|n| n.to_lowercase() == "memo_3c2f1b8d6e70.md"));
+        assert!(names.iter().any(|n| n.to_lowercase() == "memo_3c2f1b8d6e70.prov.jsonld"));
+    }
+
+    #[test]
+    fn shared_readable_sync_does_not_touch_colliding_id12() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID, RC_ID_COLLIDE]);
+        rc_sync(&root, RC_ID, "victim", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        // 別 id の再共有（別の題）は、他人の写しを消さない
+        rc_sync(&root, RC_ID_COLLIDE, "mine", Some(&rc_md(RC_ID_COLLIDE)), Some("{}"), "a@x").unwrap();
+        assert_eq!(rc_names(&root).len(), 4);
+        // 同じ題でも上書きしない
+        let r = rc_sync(&root, RC_ID_COLLIDE, "victim", Some(&rc_md(RC_ID_COLLIDE)), None, "a@x");
+        assert!(r.is_err());
+        let md = fs::read_to_string(Path::new(&root).join("readable/notes/victim_3c2f1b8d6e70.md")).unwrap();
+        assert_eq!(md, rc_md(RC_ID));
+        // 消すだけ（エントリが無い id でも）も他人の写しを消さない
+        let tmp2 = tempfile::tempdir().unwrap();
+        let root2 = rc_setup(tmp2.path(), &[RC_ID]);
+        rc_sync(&root2, RC_ID, "victim", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        rc_sync(&root2, RC_ID_COLLIDE, "", None, None, "z@x").unwrap();
+        assert_eq!(rc_names(&root2).len(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_readable_sync_does_not_write_through_hardlink_or_hang_on_fifo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        let dir = Path::new(&root).join("readable/notes");
+        fs::create_dir_all(&dir).unwrap();
+        // ハードリンク: 外のファイルは書き換わらない
+        let canon = tmp.path().join("canon.json");
+        fs::write(&canon, format!("{}ORIG", rc_md(RC_ID))).unwrap();
+        fs::hard_link(&canon, dir.join("T_3c2f1b8d6e70.md")).unwrap();
+        rc_sync(&root, RC_ID, "T", Some(&rc_md(RC_ID)), None, "a@x").unwrap();
+        assert_eq!(fs::read_to_string(&canon).unwrap(), format!("{}ORIG", rc_md(RC_ID)));
+        assert_eq!(
+            fs::read_to_string(dir.join("T_3c2f1b8d6e70.md")).unwrap(),
+            rc_md(RC_ID)
+        );
+        // FIFO: 開いて待たされず、置き換わる
+        let fifo = dir.join("U_3c2f1b8d6e70.md");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        rc_sync(&root, RC_ID, "U", Some(&rc_md(RC_ID)), None, "a@x").unwrap();
+        assert!(fs::symlink_metadata(&fifo).unwrap().is_file());
+    }
+
+    #[test]
+    fn shared_readable_sync_prov_failure_still_cleans_old_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = rc_setup(tmp.path(), &[RC_ID]);
+        rc_sync(&root, RC_ID, "旧題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").unwrap();
+        // 新しい prov の名前をフォルダで塞いで失敗させる
+        fs::create_dir(Path::new(&root).join("readable/notes/新題_3c2f1b8d6e70.prov.jsonld")).unwrap();
+        assert!(rc_sync(&root, RC_ID, "新題", Some(&rc_md(RC_ID)), Some("{}"), "a@x").is_err());
+        let names = rc_names(&root);
+        assert!(names.contains(&"新題_3c2f1b8d6e70.md".to_string()));
+        assert!(!names.iter().any(|n| n.starts_with("旧題")), "{names:?}");
+    }
+
+    #[test]
+    fn sanitize_readable_title_drops_invisible_chars() {
+        for c in ['\u{061C}', '\u{2060}', '\u{00AD}', '\u{180E}', '\u{3164}', '\u{206A}', '\u{E0041}', '\u{FE0F}'] {
+            assert_eq!(sanitize_readable_title(&format!("a{c}b")), "ab", "{c:?}");
+        }
+    }
+
+    #[test]
+    fn sanitize_readable_title_cases() {
+        assert_eq!(sanitize_readable_title("a/b\\c:d*e?f\"g<h>i|j"), "a_b_c_d_e_f_g_h_i_j");
+        assert_eq!(sanitize_readable_title("a\nb\tc\u{0}d"), "a_b_c_d");
+        assert_eq!(sanitize_readable_title("../../x"), "_.._x");
+        assert_eq!(sanitize_readable_title("."), "untitled");
+        assert_eq!(sanitize_readable_title(".."), "untitled");
+        assert_eq!(sanitize_readable_title(""), "untitled");
+        assert_eq!(sanitize_readable_title("   "), "untitled");
+        assert_eq!(sanitize_readable_title("  a   b  "), "a b");
+        assert_eq!(sanitize_readable_title(".hidden"), "hidden");
+        assert_eq!(sanitize_readable_title("name. . "), "name");
+        assert_eq!(sanitize_readable_title("a\u{202E}b\u{200B}c\u{FEFF}"), "abc");
+        let long = "あ".repeat(100);
+        let s = sanitize_readable_title(&long);
+        assert!(s.len() <= 150);
+        assert_eq!(s, "あ".repeat(50));
+        // 切れ目の直前がドットなら取り除く
+        let tricky = format!("{}.{}", "a".repeat(149), "bbb");
+        assert_eq!(sanitize_readable_title(&tricky), "a".repeat(149));
     }
 
     #[test]

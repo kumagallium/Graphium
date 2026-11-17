@@ -7,11 +7,10 @@
 
 import type { GraphiumDocument } from "../lib/document-types";
 import type { GraphiumIndex } from "../features/navigation/index-file";
-import type { BlockLink } from "../features/block-link/link-types";
 import { syncLocale } from "../i18n";
 import { generateProvDocument } from "../features/prov-generator/generator";
 import { pageToGeneratorInput } from "../features/prov-generator/page-input";
-import { buildNoteProvJsonLd } from "../features/prov-export/note-export";
+import { buildNoteProvJsonLdText } from "../features/prov-export/note-jsonld-text";
 import { collectNoteProvExtras } from "../features/prov-export/note-extras";
 import { buildPlanProvJsonLd, type PlanProvExportInput } from "../features/prov-export/plan-export";
 import { collectOperationRows, findPlanNotesOf } from "../features/network-graph/plan-flow";
@@ -168,26 +167,11 @@ export function buildProvJsonLdText(
       if (pd) planDocs.set(p.noteId, pd);
     }
   }
-  const built = noteProvDoc(doc)!;
-  const crossNoteLinks = (Array.isArray(page.provLinks) ? page.provLinks : []).filter(
-    (l): l is BlockLink => l.type === "informed_by" && typeof l.targetNoteId === "string" && l.targetNoteId.length > 0,
-  );
-  const extras = collectNoteProvExtras({
-    doc,
-    noteId,
+  return buildNoteProvJsonLdText(doc, noteId, {
     captureIndex,
     mediaIndex,
     noteIndex: index,
     planContext: { index, planDocs },
-  });
-  const out = buildNoteProvJsonLd({
-    provDoc: built.provDoc,
-    title: exportDisplayTitle(doc.title, noteId),
-    noteId,
-    page: built.page,
-    crossNoteLinks,
-    extras,
     options,
   });
-  return JSON.stringify(out, null, 2);
 }

@@ -4200,6 +4200,18 @@ function NoteEditorInner({
     : t("share.privateHistoryExcludedHint");
   // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
   const [shareFolderDialogOpen, setShareFolderDialogOpen] = useState(false);
+  // 共有のたびに置く「読める写し」の材料（Wiki ページには置かない）。noteId は PROV 書き出しと同じ規則
+  const readableCopyContext = useMemo(
+    () =>
+      !isWikiDoc && fileId
+        ? {
+            noteId: fileId.replace(/^(wiki|skill):/, ""),
+            noteIndex: rawNoteIndex ?? noteIndex ?? null,
+            mediaIndex: mediaIndex?.media ?? null,
+          }
+        : undefined,
+    [isWikiDoc, fileId, rawNoteIndex, noteIndex, mediaIndex],
+  );
   const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
     if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
@@ -4234,6 +4246,7 @@ function NoteEditorInner({
         blobRoot: shareTarget.blobRoot ?? undefined,
         // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4252,15 +4265,17 @@ function NoteEditorInner({
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
       setShareFolderDialogOpen(false);
+      const successMessage = result.isUpdate ? t("share.successReshare") : t("share.successFirst");
+      // 読める写しだけ置けなかったときは、共有の成功に 1 行足して知らせる（共有は成功している）
       window.alert(
-        result.isUpdate
-          ? t("share.successReshare")
-          : t("share.successFirst"),
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? successMessage + "\n" + t("share.readableCopyFailed")
+          : successMessage,
       );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4291,6 +4306,7 @@ function NoteEditorInner({
         author: sharedAuthor,
         blobRoot: getBlobRoot(toRoot) ?? undefined,
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4306,11 +4322,17 @@ function NoteEditorInner({
       });
       notifySharedLibraryChanged();
       setMoveFolderDialogOpen(false);
-      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+      const moveMessage = removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error });
+      // 移した先に読める写しだけ置けなかったときは、共有のときと同じ 1 行を足して知らせる
+      window.alert(
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? moveMessage + "\n" + t("share.readableCopyFailed")
+          : moveMessage,
+      );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -18123,6 +18145,9 @@ export function NoteApp() {
               // 単体共有（MaterialActionsMenu）と同じ書き戻し関数・同じフォルダ導出表を使う
               saveMediaSharedRef: fm.handleUpdateMediaSharedRef,
               noteFolderLookup,
+              // 読める写しの来歴に使う索引（単発の共有と同じもの）
+              noteIndex: fm.rawNoteIndex ?? fm.noteIndex ?? null,
+              mediaIndex: fm.mediaIndex?.media ?? null,
             }}
             onClose={(didShareAny) => {
               if (didShareAny) notifySharedLibraryChanged();

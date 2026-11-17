@@ -3478,6 +3478,30 @@ The same `src/` tree is built four different ways.
   old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
   once done and is skipped afterwards; it copies files as before except that
   it never overwrites an existing `models.json` in the new data folder
+- Readable copies (`shared_readable_sync`, and the cleanup `shared_delete`
+  runs) are written by Rust, not chosen by the frontend: the command takes
+  only the entry type, the shared id, the title and the contents, and
+  builds the file names itself from the sanitized title and the last 12
+  characters of the id. Order of checks: `validate_id`; entry type must be
+  `notes`; the shared root must be reachable; when writing, the source
+  entry `notes/<id>.json` must exist; if it exists, its author email must
+  equal the caller's; the
+  `readable` and `readable/notes` folders must not be symbolic links and
+  must sit under the root once canonicalized; each target file must not be
+  a link. Files are written to a temporary name and renamed into place, so
+  a hard link or FIFO planted at the target name is replaced, never written
+  through or opened. Because names carry only the last 12 characters of the
+  id, a file is treated as this note's copy only when the `.md` front matter
+  holds the full shared id (a `.prov.jsonld` only when its same-named `.md`
+  does); another note's copy with the same 12 characters is neither
+  overwritten nor removed (the write is refused). A removal with no copy
+  folder returns before reading the entry. The removal paths apply the same
+  link checks to the folders. Cleanup reads the folder once, skips
+  sub-folders, and keeps any name that is the same file as one just written
+  (case-insensitive file systems); the files it removes are only those
+  whose name ends with `_<id12>.md` or `_<id12>.prov.jsonld` and that pass
+  the id check above (links and special files with such names are just
+  unlinked, never read)
 - **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
   During an online meeting the desktop records two tracks side by side:
   what the machine is playing (the other participants, taken from the OS
@@ -4657,6 +4681,20 @@ Key pieces:
   the remembered address is kept per shared folder (the `remote` field
   of the folder list, mirrored to `graphium-shared-root-remote` for the
   default folder) and is cleared whenever that folder's path changes
+- **Readable copies** — a per-folder, per-device switch
+  (`SharedFolder.readableCopies`). When it is on, `shareNote` calls
+  `syncReadableCopy` (`src/features/sharing/readable-copy.ts`) after the
+  shared entry is written; it builds a Markdown file (front matter plus
+  the Markdown-export body) and a PROV-JSON-LD file
+  (`buildNoteProvJsonLdText`, the same builder as the MCP and menu export)
+  from the shared-range document, and hands them to the Tauri command
+  `shared_readable_sync`, which names and writes them under
+  `<root>/readable/notes/`. When the switch is off, the same call asks Rust
+  to remove any older copy of that id. Unsharing removes the copy inside
+  `shared_delete`. A failure never fails the share: it is returned as
+  `ShareNoteResult.readableCopy` and surfaced in the UI. The app never
+  reads `readable/`; the source of truth stays `notes/<id>.json`
+  (DATA_MODEL.md §7.8; the path guards are listed in §4.2)
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)
