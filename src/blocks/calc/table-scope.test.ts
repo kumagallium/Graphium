@@ -14,6 +14,7 @@ import {
 } from "./table-scope";
 import { primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
 import { clearDataTableCache, peekDataTableFromBlock } from "../data-table/data";
+import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import { serializeDataTableSource } from "../data-table/source";
 import type { TableColumnData } from "../../features/table-meta/types";
 import type { TableSource } from "../../lib/document-types";
@@ -389,5 +390,76 @@ describe("大きなデータ表の列の先読み", () => {
     expect(second).toBe(first);
     expect([...first.entries()]).toEqual([...columnsFromText(data.headers, data.rows).entries()]);
     expect(collectTableRowNames(blocks as any, names)["oven-log"]).toEqual(rowNamesFromText(data.rows));
+  });
+});
+
+describe("計算列つきのデータ表（素材の列を読み直さない）", () => {
+  const names = new Map([["dt", "oven-log"]]);
+  const wb = (...cols: [string, string[]][]) => ({
+    calc1: cols.map(([column, texts]) => ({ tableBlockId: "dt", column, texts })),
+  });
+  // 変更前の経路（足した表を作って columnsFromText で全部読む）
+  const viaMerge = (blocks: any[], writebacks: Record<string, unknown[]>) => {
+    const raw = peekDataTableFromBlock(blocks[0])!;
+    const merged = mergeLinkedColumns(raw, linkedColumnsFor("dt", writebacks))!;
+    return {
+      columns: columnsFromText(merged.data.headers, merged.data.rows),
+      names: rowNamesFromText(merged.data.rows),
+    };
+  };
+  const setup = (csv: string, endRow = 6) => {
+    clearAssetTextCache();
+    clearDataTableCache();
+    primeAssetText("asset-1", csv);
+    // 共有の dtSource は書き換えず、この describe 用の source を別に作る
+    const source: TableSource = { ...dtSource, options: { ...dtSource.options, endRow } };
+    return [{ id: "dt", type: "dataTable", props: { caption: "oven-log", source: serializeDataTableSource(source) }, children: [] }];
+  };
+  const entries = (m: Map<string, TableColumnData>) => [...m.entries()];
+
+  const cases: [string, string, Record<string, unknown[]>][] = [
+    ["数値と単位つき", CSV, wb(["質量", ["1 g", "2 g", "3 g"]], ["v", ["1", "x", "3"]])],
+    ["空の計算列", CSV, wb(["空", ["", "", ""]])],
+    ["行数より短い texts", CSV, wb(["短", ["1 g"]])],
+    ["行数より長い texts", CSV, wb(["長", ["1", "2", "3", "4", "5"]])],
+    ["素材と同名", CSV, wb(["temp_c", ["9", "9", "9"]], ["new", ["1", "2", "3"]])],
+    ["計算列どうしの同名", CSV, { a: [{ tableBlockId: "dt", column: "d", texts: ["1", "2", "3"] }], b: [{ tableBlockId: "dt", column: "d", texts: ["7", "8", "9"] }] }],
+    ["素材の末尾が全部空で計算列に値がある", "time,temp_c\n00:00,180.0\n,\n,", wb(["d", ["1", "2", "3"]])],
+    ["素材の末尾が全部空で計算列も空", "time,temp_c\n00:00,180.0\n,\n,", wb(["d", ["1", "", ""]])],
+  ];
+  for (const [label, csv, writebacks] of cases) {
+    it(`中身が変更前の経路と一致する: ${label}`, () => {
+      const blocks = setup(csv);
+      const expected = viaMerge(blocks, writebacks);
+      expect(entries(collectTableColumns(blocks as any, names, writebacks).get("oven-log")!)).toEqual(
+        entries(expected.columns),
+      );
+      expect(collectTableRowNames(blocks as any, names, writebacks)["oven-log"]).toEqual(expected.names);
+    });
+  }
+
+  it("同じ宣言で 2 回集めると、素材の列も計算列も同じ参照", () => {
+    const blocks = setup(CSV);
+    const w1 = wb(["質量", ["1 g", "2 g", "3 g"]]);
+    const w2 = wb(["質量", ["1 g", "2 g", "3 g"]]); // 中身は同じで配列は別
+    const a = collectTableColumns(blocks as any, names, w1).get("oven-log")!;
+    const b = collectTableColumns(blocks as any, names, w2).get("oven-log")!;
+    expect(b.get("temp_c")).toBe(a.get("temp_c"));
+    expect(b.get("質量")).toBe(a.get("質量"));
+    const r1 = collectTableRowNames(blocks as any, names, w1)["oven-log"];
+    expect(collectTableRowNames(blocks as any, names, w2)["oven-log"]).toBe(r1);
+  });
+
+  it("texts が 1 つ変わると、その計算列だけ新しくなる", () => {
+    const blocks = setup(CSV);
+    const a = collectTableColumns(blocks as any, names, wb(["x", ["1", "2", "3"]], ["y", ["4", "5", "6"]])).get("oven-log")!;
+    const b = collectTableColumns(blocks as any, names, wb(["x", ["1", "2", "3"]], ["y", ["4", "5", "7"]])).get("oven-log")!;
+    expect(b.get("temp_c")).toBe(a.get("temp_c"));
+    expect(b.get("x")).toBe(a.get("x"));
+    expect(b.get("y")).not.toBe(a.get("y"));
+    expect(b.get("y")).toEqual({ values: [4, 5, 7] });
+    expect(collectTableRowNames(blocks as any, names, wb(["x", ["9", "9", "9"]]))["oven-log"]).toBe(
+      collectTableRowNames(blocks as any, names)["oven-log"],
+    );
   });
 });
