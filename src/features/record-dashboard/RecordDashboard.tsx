@@ -8,9 +8,12 @@ import { useMemo, useState } from "react";
 import "./record-dashboard.css";
 import { RECORD_COPY, type RecordCopy } from "./copy";
 import {
+  BUNDLE_MIN,
+  bundleRuns,
   countOrigins,
   dayKeyOf,
   daysAgo,
+  daysWithinBudget,
   formatDate,
   formatTime,
   formatWeekday,
@@ -19,6 +22,7 @@ import {
   matchesOrigin,
   matchesQuery,
   matchesWho,
+  type RecordDayGroup,
   timeOf,
 } from "./model";
 import { RecordDay } from "./RecordDay";
@@ -51,6 +55,12 @@ const ORIGIN_CHIPS_FOLDED = 5;
 
 /** 狭い幅で、畳んでいるときに出す見つかった記録の数（CSS の nth-child と揃える） */
 const HITS_FOLDED = 3;
+
+/** 広い幅で、畳んでいるときに出す見つかった記録の数 */
+const HITS_MAX = 20;
+
+/** 一度に描く行の数の目安。超える分は「前の日を見る」で足す（まとめ行は 1 行に数える） */
+const ROW_BUDGET = 120;
 
 function SearchField({
   value,
@@ -172,6 +182,46 @@ function WeekStrip({ items, now, locale, copy }: { items: readonly RecordItem[];
   );
 }
 
+/** 日ごとのまとまりを、行の数が目安に収まる日まで出す。残りはボタンで足す */
+function DayList({
+  days,
+  now,
+  locale,
+  query,
+  copy,
+  variant = "rail",
+  dimMisses,
+}: {
+  days: RecordDayGroup[];
+  now: string;
+  locale: RecordLocale;
+  query: string;
+  copy: RecordCopy;
+  variant?: "rail" | "ledger";
+  dimMisses?: boolean;
+}) {
+  const [budget, setBudget] = useState(ROW_BUDGET);
+  const searching = query.trim().length > 0;
+  const countRows = (day: RecordDayGroup) =>
+    variant === "ledger"
+      ? day.items.length
+      : bundleRuns(day.items, BUNDLE_MIN, (it) => !!dimMisses && searching && matchesQuery(it, query)).length;
+  const visible = daysWithinBudget(days, budget, countRows);
+  const rest = days.length - visible;
+  return (
+    <>
+      {days.slice(0, visible).map((d) => (
+        <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} variant={variant} dimMisses={dimMisses} />
+      ))}
+      {rest > 0 && (
+        <button type="button" className="rd-more-days" onClick={() => setBudget((b) => b + ROW_BUDGET)}>
+          {copy.moreDays(rest)}
+        </button>
+      )}
+    </>
+  );
+}
+
 function Empty({ copy }: { copy: RecordCopy }) {
   return <p className="rd-empty">{copy.empty}</p>;
 }
@@ -229,7 +279,8 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
   if (layout === "find") {
     // 左は絞っただけの記録をすべて残し、探す言葉に当たらない行は薄くする。
     // 右に、当たった記録だけを新しい順に並べる
-    const days = groupByDay(faceted);
+    // 探しているあいだは、当たった記録のある日だけを出す（何千件もあると、当たらない日ばかりが並ぶため）
+    const days = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => matchesQuery(it, query)));
     const found = [...hits].sort((a, b) => timeOf(b.at) - timeOf(a.at));
     return (
       <div className="rd-root" data-layout="find" lang={locale}>
@@ -244,9 +295,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
             </div>
             <Legend copy={copy} variant="rail" />
             {days.length === 0 && <Empty copy={copy} />}
-            {days.map((d) => (
-              <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} dimMisses />
-            ))}
+            <DayList days={days} now={now} locale={locale} query={query} copy={copy} dimMisses />
           </section>
           <aside className="rd-find" aria-label={copy.findTitle}>
             <SearchField value={query} onChange={setQuery} copy={copy} count={found.length} strong />
@@ -255,7 +304,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
             {hasQuery && found.length > 0 && (
               <>
                 <ul className="rd-hits" data-open={hitsOpen ? "true" : undefined}>
-                  {found.map((it) => {
+                  {(hitsOpen ? found : found.slice(0, HITS_MAX)).map((it) => {
                     const { icon: Icon, tone } = ORIGIN_STYLE[it.origin];
                     return (
                       <li key={it.id} tabIndex={0}>
@@ -282,8 +331,12 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
                   })}
                 </ul>
                 {found.length > HITS_FOLDED && (
-                  <button type="button" className="rd-hits-more" aria-expanded={hitsOpen} onClick={() => setHitsOpen((v) => !v)}>
-                    {hitsOpen ? copy.fewer : copy.moreHits(found.length - HITS_FOLDED)}
+                  <button
+                    type="button"
+                    className="rd-hits-more"
+                    data-wide={found.length > HITS_MAX ? "true" : undefined}
+                    aria-expanded={hitsOpen} onClick={() => setHitsOpen((v) => !v)}>
+                    {hitsOpen ? copy.fewer : copy.moreHits}
                   </button>
                 )}
                 <p className="rd-find-foot">{copy.findFoot}</p>
@@ -374,9 +427,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
           <div className="rd-sheet">
             <Legend copy={copy} variant="ledger" />
             {days.length === 0 && <Empty copy={copy} />}
-            {days.map((d) => (
-              <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} variant="ledger" />
-            ))}
+            <DayList days={days} now={now} locale={locale} query={query} copy={copy} variant="ledger" />
           </div>
         </div>
        </div>
@@ -404,9 +455,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
       <div className="rd-sheet">
         <Legend copy={copy} variant="rail" />
         {days.length === 0 && <Empty copy={copy} />}
-        {days.map((d) => (
-          <RecordDay key={d.key} dayKey={d.key} items={d.items} now={now} locale={locale} query={query} />
-        ))}
+        <DayList days={days} now={now} locale={locale} query={query} copy={copy} />
       </div>
     </div>
   );

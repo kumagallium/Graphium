@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { countOrigins, dayKeyOf, daysAgo, formatTime, groupByDay, lastSevenDays, matchesOrigin, matchesQuery, matchesWho } from "./model";
+import {
+  bundleRuns,
+  countOrigins,
+  dayKeyOf,
+  daysAgo,
+  daysWithinBudget,
+  formatTime,
+  groupByDay,
+  isBundle,
+  lastSevenDays,
+  matchesOrigin,
+  matchesQuery,
+  matchesWho,
+} from "./model";
 import type { RecordItem } from "./types";
 
 function rec(over: Partial<RecordItem> = {}): RecordItem {
@@ -86,5 +99,56 @@ describe("lastSevenDays", () => {
       "2026-11-17",
     ]);
     expect(days.map((d) => d.count)).toEqual([0, 0, 0, 1, 0, 0, 1]);
+  });
+});
+
+describe("bundleRuns", () => {
+  const run = (n: number, over: Partial<RecordItem> = {}) =>
+    Array.from({ length: n }, (_, i) => rec({ id: `${over.kind ?? "note"}-${over.origin ?? "written"}-${i}`, ...over }));
+
+  it("同じ種類・出どころ・残した人が 6 件以上続いたら 1 行にまとめる", () => {
+    const wiki = run(7, { kind: "wiki", origin: "knowledge", who: { type: "ai" } });
+    const out = bundleRuns([rec({ id: "first" }), ...wiki, rec({ id: "last" })]);
+    expect(out).toHaveLength(3);
+    expect(isBundle(out[1]) && out[1].items).toHaveLength(7);
+    expect(isBundle(out[1]) && out[1].id).toBe("bundle:wiki-knowledge-0");
+  });
+
+  it("5 件までの並びはそのまま出す", () => {
+    expect(bundleRuns(run(5)).some(isBundle)).toBe(false);
+  });
+
+  it("あいだに別の種類が入ったら、列を切る", () => {
+    const a = run(4, { kind: "media", origin: "file" });
+    const b = run(4, { kind: "media", origin: "file" }).map((r) => ({ ...r, id: `b-${r.id}` }));
+    expect(bundleRuns([...a, rec({ id: "memo", kind: "memo", origin: "memo" }), ...b]).some(isBundle)).toBe(false);
+  });
+
+  it("探す言葉に当たった記録はまとめず、その前後で列を切る", () => {
+    const items = run(13, { kind: "media", origin: "file" });
+    const out = bundleRuns(items, 6, (r) => r.id === items[6].id);
+    expect(out.map((e) => (isBundle(e) ? e.items.length : e.id))).toEqual([6, items[6].id, 6]);
+  });
+
+  it("渡した配列を書き換えない", () => {
+    const items = Object.freeze(run(8));
+    expect(() => bundleRuns(items)).not.toThrow();
+  });
+});
+
+describe("daysWithinBudget", () => {
+  const day = (key: string, n: number) => ({ key, items: Array.from({ length: n }, (_, i) => rec({ id: `${key}-${i}` })) });
+  const rows = (d: { items: RecordItem[] }) => d.items.length;
+
+  it("行の数が収まるところまでの日数を返す", () => {
+    expect(daysWithinBudget([day("a", 40), day("b", 40), day("c", 40)], 100, rows)).toBe(2);
+  });
+
+  it("初めの日だけで超えても、1 日は出す", () => {
+    expect(daysWithinBudget([day("a", 500), day("b", 1)], 100, rows)).toBe(1);
+  });
+
+  it("日が無ければ 0", () => {
+    expect(daysWithinBudget([], 100, rows)).toBe(0);
   });
 });

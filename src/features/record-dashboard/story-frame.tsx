@@ -1,18 +1,17 @@
 // ストーリーで部品を置く台。アプリの地の色の上に、決めた幅で置く。
 // width を渡すと、その幅の画面（スマホなら 375）に置いたときの形を確かめられる。
+// app.css が html / body のスクロールを止めているので、この台がスクロールする。
+// 余白は内側の箱に付ける（スクロールする箱に付けると、上に張り付く見出しが余白の分だけ下がる）。
 import type { ReactNode } from "react";
 
 export function StoryFrame({ width, children }: { width?: number; children: ReactNode }) {
   return (
-    <div
-      data-story-frame
-      style={{ height: "100vh", overflowY: "auto", background: "var(--paper)", padding: width ? 0 : "32px 24px 64px" }}
-    >
+    <div data-story-frame style={{ height: "100vh", overflowY: "auto", background: "var(--paper)" }}>
       <div
         style={
           width
             ? { width, margin: "0 auto", padding: "16px 12px 40px", borderInline: "1px dashed var(--rule)", minHeight: "100%" }
-            : undefined
+            : { padding: "32px 24px 64px" }
         }
       >
         {children}

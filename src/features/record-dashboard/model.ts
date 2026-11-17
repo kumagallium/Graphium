@@ -118,3 +118,73 @@ export function lastSevenDays(items: readonly RecordItem[], now: string): { key:
   }
   return out;
 }
+
+/** 同じ種類・出どころ・残した人の記録が続いたところを 1 行にまとめたもの */
+export type RecordBundle = {
+  type: "bundle";
+  /** まとめの先頭の記録の id から作る（開閉の状態の鍵） */
+  id: string;
+  items: RecordItem[];
+};
+
+export type RecordDayEntry = RecordItem | RecordBundle;
+
+export function isBundle(entry: RecordDayEntry): entry is RecordBundle {
+  return (entry as RecordBundle).type === "bundle";
+}
+
+/** これ以上続いたら 1 行にまとめる件数 */
+export const BUNDLE_MIN = 6;
+
+/**
+ * 1 日の中で、同じ種類・出どころ・残した人の記録が min 件以上続いたところをまとめる。
+ * 一括の取り込みやナレッジ化で 1 日に数百件が並ぶと、ほかの記録が埋もれるため。
+ * 探す言葉に当たった記録はまとめない（keep が true を返した記録で列を切る）。
+ */
+export function bundleRuns(
+  items: readonly RecordItem[],
+  min: number = BUNDLE_MIN,
+  keep: (item: RecordItem) => boolean = () => false,
+): RecordDayEntry[] {
+  if (min <= 1) return [...items];
+  const out: RecordDayEntry[] = [];
+  let run: RecordItem[] = [];
+  let runKey = "";
+  const flush = () => {
+    if (run.length >= min) out.push({ type: "bundle", id: `bundle:${run[0].id}`, items: run });
+    else out.push(...run);
+    run = [];
+  };
+  for (const item of items) {
+    if (keep(item)) {
+      flush();
+      runKey = "";
+      out.push(item);
+      continue;
+    }
+    const key = `${item.kind}|${item.origin}|${item.who.type}`;
+    if (key !== runKey) {
+      flush();
+      runKey = key;
+    }
+    run.push(item);
+  }
+  flush();
+  return out;
+}
+
+/**
+ * 新しい日から順に、行の数が budget に収まるところまでの日数を返す（少なくとも 1 日）。
+ * 何千件もの記録を一度に描かないための区切り。行の数は countRows で数える（まとめ行は 1 行）。
+ */
+export function daysWithinBudget(days: readonly RecordDayGroup[], budget: number, countRows: (day: RecordDayGroup) => number): number {
+  let rows = 0;
+  let n = 0;
+  for (const day of days) {
+    const next = rows + countRows(day);
+    if (n > 0 && next > budget) break;
+    rows = next;
+    n++;
+  }
+  return n;
+}

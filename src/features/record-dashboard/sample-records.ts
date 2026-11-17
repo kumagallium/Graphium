@@ -276,3 +276,40 @@ const EN: RecordItem[] = [
 ];
 
 export const SAMPLE_RECORDS: Record<RecordLocale, RecordItem[]> = { ja: JA, en: EN };
+
+/**
+ * 記録の多い日の仮データ。ナレッジ化で AI のページが 40 件、取り込みでファイルが 12 件続く。
+ * 実データでは 1 日に数百件が並ぶ日があるので、まとめ行の見え方を確かめるのに使う。
+ */
+export function busyDayRecords(locale: RecordLocale): RecordItem[] {
+  const ja = locale === "ja";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const wiki: RecordItem[] = Array.from({ length: 40 }, (_, i) => ({
+    id: `busy-w${i}`,
+    kind: "wiki",
+    at: `2026-11-17T06:${pad(10 + Math.floor(i / 2))}:00`,
+    origin: "knowledge",
+    who: { type: "ai", model: "claude-opus-4-7" },
+    // 探す言葉（温度 / temperature）に当たるのは 20 件に 1 件だけにして、当たらない記録がまとまる様子も見られるようにする
+    title:
+      i % 20 === 7
+        ? ja
+          ? `発酵の温度についての知見 ${i + 1}`
+          : `Finding ${i + 1} on proofing temperature`
+        : ja
+          ? `生地のこね方についての知見 ${i + 1}`
+          : `Finding ${i + 1} on kneading the dough`,
+    trace: { type: "sources", count: 1 + (i % 3) },
+  }));
+  const files: RecordItem[] = Array.from({ length: 12 }, (_, i) => ({
+    id: `busy-f${i}`,
+    kind: "media",
+    at: `2026-11-17T08:${pad(i)}:00`,
+    origin: "file",
+    who: { type: "self" },
+    title: ja ? `製パンの資料_${pad(i + 1)}.pdf` : `bread-reference-${pad(i + 1)}.pdf`,
+    mediaType: "pdf",
+    pageCount: 8 + i,
+  }));
+  return [...wiki, ...files, ...SAMPLE_RECORDS[locale]];
+}

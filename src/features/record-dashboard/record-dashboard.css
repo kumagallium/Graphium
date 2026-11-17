@@ -1338,3 +1338,165 @@
     border-left: 0;
   }
 }
+
+/* ── 実データに合わせた調整 ─────────────────────────────
+   題は 2 行、メモは 4 行までにする（実データには 200 字を超える題や 280 字のメモがある） */
+.rd-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.rd-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.rd-lrow .rd-title,
+.rd-lrow .rd-text {
+  -webkit-line-clamp: 2;
+}
+
+/* ── 続いた記録のまとめ行 ─────────────────────────────
+   一括の取り込みやナレッジ化で同じ種類が何百件も続くところを 1 行にする */
+.rd-bundle {
+  cursor: default;
+}
+
+.rd-time-to {
+  display: block;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.rd-time-to::before {
+  content: "–";
+  margin-right: 2px;
+  color: var(--ink-4);
+}
+
+/* 印を 3 つ重ねて「束」に見せる */
+.rd-bundle .rd-node .rd-who-mark {
+  box-shadow:
+    0 5px 0 -1px var(--rd-bg),
+    0 5px 0 0 var(--rule),
+    0 10px 0 -1px var(--rd-bg),
+    0 10px 0 0 var(--rule);
+}
+
+.rd-bundle .rd-node .rd-who-mark[data-who="ai"] {
+  box-shadow:
+    4px 4px 0 -1px var(--rd-bg),
+    4px 4px 0 0 var(--rule),
+    8px 8px 0 -1px var(--rd-bg),
+    8px 8px 0 0 var(--rule);
+}
+
+.rd-bundle-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 6px;
+  padding: 6px 10px 6px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-3);
+  background: var(--paper-2);
+  text-align: left;
+  transition:
+    background-color 200ms,
+    border-color 200ms;
+}
+
+.rd-bundle-toggle:hover {
+  border-color: var(--forest);
+  background: var(--paper-3);
+}
+
+.rd-bundle-toggle:focus-visible,
+.rd-bundle-more button:focus-visible,
+.rd-more-days:focus-visible,
+.rd-hits-more:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+.rd-bundle-count {
+  flex: none;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.rd-bundle-peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--ink-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rd-bundle-toggle svg {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-3);
+  transition: transform 200ms;
+}
+
+.rd-bundle[data-open="true"] .rd-bundle-toggle svg {
+  transform: rotate(180deg);
+}
+
+.rd-bundle-more {
+  padding: 4px 12px 8px 80px;
+}
+
+.rd-bundle-more button,
+.rd-more-days {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-2);
+  background: transparent;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rd-bundle-more button:hover,
+.rd-more-days:hover {
+  background: var(--paper-2);
+}
+
+.rd-more-days {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 24px 8px 0;
+}
+
+/* 見つかった記録が多いときは、広い幅でも「ほかも見る」を出す */
+.rd-hits-more[data-wide="true"] {
+  display: block;
+}
+
+@container rd (max-width: 560px) {
+  .rd-bundle-toggle {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+
+  .rd-bundle-peek {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .rd-bundle-more {
+    padding-left: 66px;
+  }
+}

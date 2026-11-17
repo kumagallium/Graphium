@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { buildRecords } from "./from-indexes";
 import { RecordDashboard, type RecordDashboardLayout } from "./RecordDashboard";
 import { SAMPLE_SOURCES } from "./sample-indexes";
-import { SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { busyDayRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
 import { StoryFrame } from "./story-frame";
 import type { RecordLocale, WhoFilter } from "./types";
 
@@ -20,15 +20,17 @@ type Args = {
   who: WhoFilter;
   /** true のとき、索引の形の仮データを from-indexes.ts で写したものを出す */
   fromIndexes?: boolean;
+  /** true のとき、同じ種類の記録が何十件も続く日の仮データを出す */
+  busy?: boolean;
 };
 
-function Screen({ layout, locale, width, searching, who, fromIndexes }: Args) {
+function Screen({ layout, locale, width, searching, who, fromIndexes, busy }: Args) {
   return (
     <StoryFrame width={width}>
       <RecordDashboard
         // 言語や初めの条件を切り替えたら、中の状態ごと作り直す
-        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}`}
-        items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : SAMPLE_RECORDS[locale]}
+        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}`}
+        items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : SAMPLE_RECORDS[locale]}
         now={SAMPLE_NOW}
         layout={layout}
         locale={locale}
@@ -63,6 +65,10 @@ export const BFindNarrow: Story = { args: { layout: "find", searching: true, wid
 export const BFindNarrowIdle: Story = { args: { layout: "find", width: 375 } };
 // 索引の形の仮データを、読み取りの層（from-indexes.ts）で写して出したもの
 export const BFindFromIndexes: Story = { args: { layout: "find", searching: true, fromIndexes: true } };
+// 記録の多い日: 同じ種類・出どころ・残した人が 6 件以上続いたところを 1 行にまとめる
+export const BFindBusyDay: Story = { args: { layout: "find", busy: true } };
+export const BFindBusyDaySearching: Story = { args: { layout: "find", busy: true, searching: true } };
+export const BFindBusyDayNarrow: Story = { args: { layout: "find", busy: true, width: 375 } };
 
 // A（比較用）: 1 本の流れ。上で絞って、下を読む
 export const AStream: Story = { args: { layout: "stream" } };
