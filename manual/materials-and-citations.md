@@ -32,7 +32,7 @@ In **Data**, each file shows what it holds without being opened. The thumbnail d
 
 ![The Data list with line thumbnails and column names](/screenshots/material-data-list.png)
 
-Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. A very large table shows its first 1,000 rows and 200 columns and says how much is left out. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
+Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. A very large table shows its first 1,000 rows and 200 columns, and says how many rows and columns the whole table has. Sorting works on every row, and the first 1,000 rows of the result are shown. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
 
 ![The Raw text tab of a data file's side peek](/screenshots/material-data-raw-text.png)
 

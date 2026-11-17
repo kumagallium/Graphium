@@ -380,7 +380,22 @@ talks to LLM and embedding backends.
   and the series refers to it as `asset:<fileId>`; the file body is
   fetched through the storage provider and cached per asset. Those
   references count as the asset being *used* by the note (media index
-  v6), the same way an imported table's source file does. Series can
+  v6), the same way an imported table's source file does. An asset's
+  table is parsed through the data table's reader
+  (`loadDelimitedAsset` in `blocks/data-table/data.ts`): bodies over
+  `SYNC_PARSE_MAX_CHARS` are parsed in slices, and a chart and a data
+  table that read the same asset with the same import settings share one
+  parsed `rows` array. Only the drawn data is thinned: a series with more
+  than `CHART_MAX_DRAWN_POINTS` (4,000) points inside the visible x range
+  keeps the first / min / max / last of each run for lines and an even
+  stride for scatter and bars (`blocks/chart/decimate.ts`); histograms
+  are binned over all points. Normalisation, stacking and axis ranges
+  are computed on all points first; the thinning happens last, on the
+  data handed to ECharts (a series at or under the limit is passed
+  through unchanged), and a note under the figure says the chart draws a
+  thinned set. The numeric conversion and the thinning are memoized
+  on the table's `rows` identity and the config, so editing the note body
+  does not redraw the chart. Series can
   also be **offset into rows** — each normalised to its own maximum and lifted by
   a fixed gap — which is how spectra get compared (an XRD measurement
   against reference patterns). Stacked that way, the comparison keeps one
