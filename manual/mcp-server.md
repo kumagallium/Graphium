@@ -198,6 +198,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `show_lineage` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Show where this came from, as a diagram" |
 | `show_knowledge_graph` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Show me the knowledge graph while we talk" |
 | `mark_asterism_sent` <Badge type="tip" text="Added in v0.95.0" /> | "Record the claims Asterism accepted" (then `export_asterism_claims` with `onlyUnsent: true` leaves out what was already sent) |
+| `export_asterism_knowledge` | Not something you ask for — Asterism calls it to take all your claims and topics in one go (no filtering by type or review state, no body text), for re-uploading everything. Unlike `export_asterism_claims`, it also splits topic titles into material and property and lists the sources |
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
 | `add_material` <Badge type="tip" text="Added in v0.95.0" /> | Another app puts a file into your materials. The same content is never added twice; it gets the existing material's id back |
@@ -541,6 +542,8 @@ Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge g
 | 3. Regular sync | AI | `export_asterism_claims` (`includeTopics: true`, everything) → Asterism's `resync_rows` → `mark_asterism_sent`. Claims you edited or deleted arrive this way too |
 | 4. Increments only | AI | `export_asterism_claims` (`onlyUnsent: true`) → Asterism's `append_rows` → `mark_asterism_sent` |
 | 5. Search and send back | AI | Asterism's `find_datasets` → `sparql_query` (the source is `source_url`, a Graphium page) → Graphium's `save_answer` (claim ids in `citations`) |
+
+`export_asterism_knowledge` is the "everything" counterpart of `export_asterism_claims`. It returns every claim and topic (trashed and archived ones excluded) as one JSON bundle in the `asterism-knowledge/1` format, whatever their type or review state, with titles and labels only — no body text. It does not read or write the sent ledger, so use it when you want to re-upload the whole set.
 
 - `source_url` is the URL of a page in this app (`#knowledge/claim/<id>`, `#knowledge/topic/<id>`). It becomes the source of Asterism's answer
 - In Asterism, topics are concepts (`skos:Concept`) linked to claims. If material names and the like overlap with values in other datasets, Asterism suggests "links"
