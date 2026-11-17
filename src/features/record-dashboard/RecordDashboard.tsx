@@ -47,6 +47,9 @@ const KINDS: RecordKind[] = ["note", "media", "memo", "wiki"];
 /** 畳んでいるときに出す出どころの数 */
 const ORIGIN_CHIPS_FOLDED = 5;
 
+/** 狭い幅で、畳んでいるときに出す見つかった記録の数（CSS の nth-child と揃える） */
+const HITS_FOLDED = 3;
+
 function SearchField({
   value,
   onChange,
@@ -201,6 +204,8 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
   const [who, setWho] = useState<WhoFilter>(initialWho);
   const [origins, setOrigins] = useState<ReadonlySet<RecordOrigin>>(new Set());
   const [kind, setKind] = useState<RecordKind | null>(null);
+  // 狭い幅では見つかった記録を初めの数件だけ出す（下の記録が押し下げられないように）
+  const [hitsOpen, setHitsOpen] = useState(false);
 
   const toggleOrigin = (o: RecordOrigin) =>
     setOrigins((prev) => {
@@ -247,7 +252,7 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
             {hasQuery && found.length === 0 && <p className="rd-find-hint">{copy.findNone}</p>}
             {hasQuery && found.length > 0 && (
               <>
-                <ul className="rd-hits">
+                <ul className="rd-hits" data-open={hitsOpen ? "true" : undefined}>
                   {found.map((it) => {
                     const { icon: Icon, tone } = ORIGIN_STYLE[it.origin];
                     return (
@@ -274,6 +279,11 @@ export function RecordDashboard({ items, now, layout, locale = "ja", initialQuer
                     );
                   })}
                 </ul>
+                {found.length > HITS_FOLDED && (
+                  <button type="button" className="rd-hits-more" aria-expanded={hitsOpen} onClick={() => setHitsOpen((v) => !v)}>
+                    {hitsOpen ? copy.fewer : copy.moreHits(found.length - HITS_FOLDED)}
+                  </button>
+                )}
                 <p className="rd-find-foot">{copy.findFoot}</p>
               </>
             )}
