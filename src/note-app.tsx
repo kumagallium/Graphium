@@ -4619,6 +4619,8 @@ function NoteEditorInner({
       mediaIndex: mediaIndex?.media ?? null,
       wikiEntities: provWikiEntities,
       identity: loadAuthorIdentity() ?? undefined,
+      // ノート間のつながり（dcterms:references）の相手の種類・題を引く（アーカイブ込み）
+      noteIndex: rawNoteIndex ?? noteIndex ?? null,
     });
     const jsonLd = buildNoteProvJsonLd({
       provDoc: exportProvDoc,
@@ -4634,7 +4636,7 @@ function NoteEditorInner({
     const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
     // タイトルが空なら noteId をファイル名・label に使う（'.jsonld' の隠しファイル化を避ける）
     void downloadBlob(blob, `${(title || noteId).replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`);
-  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links]);
+  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links, rawNoteIndex, noteIndex]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -11617,6 +11619,7 @@ export function NoteApp() {
           captureIndex: capture.captureIndex ?? null,
           mediaIndex: fm.mediaIndex?.media ?? null,
           identity,
+          noteIndex: fm.rawNoteIndex ?? index,
           planContext: { index, planDocs: docs },
         });
         notes.set(noteId, { provDoc, title: doc.title || noteId, page, extras });
@@ -11630,7 +11633,7 @@ export function NoteApp() {
     } finally {
       planExportingRef.current = false;
     }
-  }, [fm.activeFileId, fm.noteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
+  }, [fm.activeFileId, fm.noteIndex, fm.rawNoteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
 
   const handleAdoptProposalInNote = useCallback(
     (input: { proposalId: string; targetId: string }) => {
