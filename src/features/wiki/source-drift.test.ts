@@ -39,11 +39,29 @@ describe("source-drift", () => {
   it("関係ない編集では知らせず、一節が消えたときだけ知らせる", async () => {
     expect(passagesGoneFrom(md, "n1", "追記した段落。一次発酵の湿度は 65% だった。")).toEqual([]);
     const drift = await findSourceDrift(doc(), () => "2026-11-20T00:00:00.000Z", async () => "一次発酵の湿度は 72% だった。");
-    expect(drift).toEqual([{ sourceId: "n1", editedAt: "2026-11-20T00:00:00.000Z", gone: [{ statement: "一次発酵の湿度は 65%。", passage: "一次発酵の湿度は 65% だった" }] }]);
+    expect(drift).toEqual([{ sourceId: "n1", editedAt: "2026-11-20T00:00:00.000Z", gone: [{ statement: "一次発酵の湿度は 65%。", passage: "一次発酵の湿度は 65% だった" }], contextChanged: [] }]);
   });
 
   it("読めないノート・一節の無いページは何も出さない", async () => {
     expect(await findSourceDrift(doc(), () => "2026-11-20T00:00:00.000Z", async () => undefined)).toEqual([]);
     expect(await findSourceDrift({ ...doc(), wikiMeta: { kind: "topic" } }, () => "2026-11-20T00:00:00.000Z", async () => "x")).toEqual([]);
+  });
+
+  it("一節は残っていて前後の文が変わったときは、前後の文の変化として知らせる", async () => {
+    const d = doc();
+    d.wikiMeta.passageContexts = [{ sourceId: "n1", passage: "一次発酵の湿度は 65% だった", before: "室温は 24 度。", after: "生地はよく膨らんだ。" }];
+    const drift = await findSourceDrift(d, () => "2026-11-20T00:00:00.000Z", async () => "室温は 24 度。一次発酵の湿度は 65% だった。ただし湿度計は校正前だった。");
+    expect(drift).toEqual([{
+      sourceId: "n1",
+      editedAt: "2026-11-20T00:00:00.000Z",
+      gone: [],
+      contextChanged: [{
+        statement: "一次発酵の湿度は 65%。",
+        passage: "一次発酵の湿度は 65% だった",
+        after: { was: "生地はよく膨らんだ。", now: "ただし湿度計は校正前だった。" },
+      }],
+    }]);
+    // 控えと同じなら何も出さない
+    expect(await findSourceDrift(d, () => "2026-11-20T00:00:00.000Z", async () => "室温は 24 度。一次発酵の湿度は 65% だった。生地はよく膨らんだ。")).toEqual([]);
   });
 });
