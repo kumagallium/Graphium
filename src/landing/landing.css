@@ -495,3 +495,531 @@ body {
   color: var(--color-text-muted, #5b6b5e);
   border-top: 1px solid var(--color-border, #d5e0d7);
 }
+
+/* コンセプトの絵（検討中の案。MomentsPicture.tsx）。
+   場面のそばで残して眠らせない、を 1 枚で伝える。色はトークンだけを使う。 */
+.lp-moments {
+  margin: 2.4rem 0 0;
+}
+
+.lp-moments p {
+  margin: 0;
+}
+
+.lp-moments ul,
+.lp-moments ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-moments-note {
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+/* 飛び出たひとこと。絵の中でここだけに色を置く */
+.lp-moments-spark {
+  font-size: 0.98rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #2d4a32;
+  background: var(--color-accent, #e8f0e8);
+  border-left: 3px solid var(--forest, #4b7a52);
+  padding: 0.35rem 0.6rem;
+}
+
+/* 文章の代わりの線（会議の発言やページの本文を表す） */
+.lp-moments-line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-muted, #f0f5ef);
+}
+
+.lp-moments-brand {
+  font-weight: 600;
+  color: var(--forest, #4b7a52);
+  margin-right: 0.6rem;
+}
+
+.lp-moments-shelf-title {
+  font-size: 0.95rem;
+  color: #2d4a32;
+}
+
+.lp-moments-shelf-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  font-size: 0.88rem;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+/* 案 1: 場面のカード → 棚 */
+.lp-moments-scenes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 24px);
+}
+
+.lp-moments-scene {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: var(--color-card, #ffffff);
+  border: 1px solid var(--color-border, #d5e0d7);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.lp-moments-scene-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground, #4a6350);
+  margin-bottom: 0.2rem;
+}
+
+.lp-moments-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 24px);
+  height: 28px;
+}
+
+.lp-moments-flow span {
+  justify-self: center;
+  width: 0;
+  border-left: 1.5px dashed color-mix(in srgb, var(--forest, #4b7a52) 55%, transparent);
+}
+
+.lp-moments-shelf,
+.lp-moments-day,
+.lp-moments-after {
+  background: var(--color-card, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--forest, #4b7a52) 45%, transparent);
+  border-radius: 14px;
+  padding: 1.1rem 1.3rem 1.2rem;
+}
+
+.lp-moments-shelf ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 24px);
+  margin-top: 0.8rem;
+}
+
+.lp-moments-shelf li,
+.lp-moments-contrast li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: #2d4a32;
+}
+
+.lp-moments-shelf li svg,
+.lp-moments-contrast li svg {
+  flex: none;
+  margin-top: 0.28rem;
+  color: var(--forest, #4b7a52);
+}
+
+/* 案 2: 1 日の記録 */
+.lp-moments-day {
+  max-width: 720px;
+}
+
+.lp-moments-day ol {
+  margin-top: 0.9rem;
+}
+
+.lp-moments-day li {
+  display: grid;
+  grid-template-columns: 3.2rem 28px minmax(0, 1fr);
+  gap: 0.7rem;
+  padding-bottom: 1.1rem;
+  position: relative;
+}
+
+.lp-moments-day li:last-child {
+  padding-bottom: 0;
+}
+
+/* 時刻の点をつなぐ縦の線 */
+.lp-moments-day li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: calc(3.2rem + 0.7rem + 13px);
+  top: 28px;
+  bottom: 0;
+  border-left: 1.5px solid var(--color-border, #d5e0d7);
+}
+
+.lp-moments-time {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground, #4a6350);
+  padding-top: 0.3rem;
+}
+
+.lp-moments-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--color-accent, #e8f0e8);
+  color: var(--forest, #4b7a52);
+}
+
+.lp-moments-day-scene {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2d4a32;
+  padding-top: 0.2rem;
+  margin-bottom: 0.4rem !important;
+}
+
+.lp-moments-day-scene span {
+  font-weight: 400;
+  color: var(--color-muted-foreground, #4a6350);
+  margin-left: 0.6rem;
+}
+
+/* 案 3: そのままだと／入れると */
+.lp-moments-contrast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(16px, 3vw, 32px);
+  align-items: stretch;
+}
+
+.lp-moments-side-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground, #4a6350);
+  margin-bottom: 0.8rem !important;
+}
+
+.lp-moments-before {
+  padding: 1.1rem 0.2rem 1.2rem;
+}
+
+.lp-moments-before ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+/* 散らばって薄れていく側。点線の枠と淡い文字で表す */
+.lp-moments-before li {
+  border: 1px dashed var(--color-border, #d5e0d7);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-moments-before li svg {
+  color: var(--color-text-tertiary, #8fa394);
+}
+
+.lp-moments-after ul {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.lp-moments-after mark {
+  background: var(--color-accent, #e8f0e8);
+  color: inherit;
+  font-weight: 600;
+  border-bottom: 2px solid var(--forest, #4b7a52);
+  padding: 0 0.1em;
+}
+
+.lp-moments-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+  color: #2d4a32;
+  border: 1px solid var(--color-border, #d5e0d7);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  margin-bottom: 0.9rem !important;
+}
+
+.lp-moments-search svg {
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+@media (max-width: 720px) {
+  .lp-moments-scenes,
+  .lp-moments-shelf ul,
+  .lp-moments-contrast {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 縦に並ぶと 3 本の線は意味を失うので、中央の 1 本だけ残す */
+  .lp-moments-flow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lp-moments-flow span:not(:first-child) {
+    display: none;
+  }
+
+  .lp-moments-before ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 組み合わせ案（Found）: 今日の記録と、言葉で見つかる様子を重ねて見せる */
+.lp-mp {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: start;
+  padding: clamp(18px, 3vw, 40px);
+  padding-bottom: clamp(28px, 4vw, 56px);
+  background: var(--color-surface, #f5f8f5);
+  border: 1px solid var(--color-border-subtle, #dce5dd);
+  border-radius: 20px;
+}
+
+.lp-mp-log,
+.lp-mp-find {
+  background: var(--color-card, #ffffff);
+  border-radius: 14px;
+}
+
+.lp-mp-log {
+  border: 1px solid var(--color-border, #d5e0d7);
+  box-shadow: var(--shadow-1, 0 1px 2px rgba(30, 20, 10, 0.06));
+  padding: 1.2rem 1.4rem 1.4rem;
+  /* 右のカードが重なる分だけ、右側に余白を取る */
+  padding-right: calc(1.4rem + 28px);
+}
+
+.lp-mp-log-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2d4a32;
+}
+
+.lp-mp-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+/* 記録の行と見出しの行で同じ列を使う（いつ ｜ どこで・誰が・何を） */
+.lp-mp-legend,
+.lp-mp-log li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  column-gap: 1.1rem;
+}
+
+.lp-mp-legend {
+  margin-top: 0.9rem !important;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border-subtle, #dce5dd);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary, #8fa394);
+}
+
+.lp-mp-legend span:last-child {
+  padding-left: 1.1rem;
+}
+
+.lp-mp-log li {
+  padding-top: 0.95rem;
+}
+
+.lp-mp-log time {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground, #4a6350);
+  text-align: right;
+  line-height: 1.6;
+}
+
+/* 時刻の右に通す縦の線と、その上の点 */
+.lp-mp-entry {
+  position: relative;
+  padding-left: 1.1rem;
+  border-left: 1.5px solid var(--color-border, #d5e0d7);
+  padding-bottom: 0.15rem;
+}
+
+.lp-mp-entry::before {
+  content: "";
+  position: absolute;
+  left: -5.5px;
+  top: 0.42rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-card, #ffffff);
+  border: 1.5px solid var(--forest, #4b7a52);
+}
+
+.lp-mp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.lp-mp-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: var(--color-muted, #f0f5ef);
+  color: #2d4a32;
+  font-weight: 500;
+}
+
+.lp-mp-where svg {
+  color: var(--forest, #4b7a52);
+}
+
+.lp-mp-who {
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp-what {
+  margin-top: 0.3rem !important;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--ink, #1a2e1d);
+}
+
+/* 左の一覧では、探す言葉を控えめに示すだけにする */
+.lp-mp-what mark {
+  background: none;
+  color: inherit;
+  border-bottom: 1.5px dotted var(--forest, #4b7a52);
+}
+
+.lp-mp-find {
+  position: relative;
+  z-index: 1;
+  margin-left: -28px;
+  margin-top: clamp(56px, 8vw, 96px);
+  border: 1px solid color-mix(in srgb, var(--forest, #4b7a52) 40%, transparent);
+  box-shadow: var(--shadow-3, 0 16px 40px -16px rgba(30, 20, 10, 0.22));
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.lp-mp-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid var(--forest, #4b7a52);
+  border-radius: 10px;
+  color: var(--forest, #4b7a52);
+}
+
+.lp-mp-query {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink, #1a2e1d);
+}
+
+/* 入力中のカーソル */
+.lp-mp-query::after {
+  content: "";
+  display: inline-block;
+  width: 1.5px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  background: var(--forest, #4b7a52);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-mp-query::after {
+    animation: lp-mp-caret 1.1s steps(1) infinite;
+  }
+}
+
+@keyframes lp-mp-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.lp-mp-find ul {
+  margin-top: 0.4rem;
+}
+
+.lp-mp-find li {
+  padding: 0.7rem 0.2rem;
+  border-bottom: 1px solid var(--color-border-subtle, #dce5dd);
+}
+
+.lp-mp-hit {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink, #1a2e1d);
+}
+
+.lp-mp-hit mark {
+  background: var(--color-accent, #e8f0e8);
+  color: #2d4a32;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0.05em 0.2em;
+}
+
+.lp-mp-hit-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem !important;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp-foot {
+  margin-top: 0.8rem !important;
+  font-size: 0.82rem;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+@media (max-width: 760px) {
+  .lp-mp {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+    padding-bottom: 16px;
+  }
+
+  .lp-mp-log {
+    padding: 1rem 1rem 1.6rem;
+  }
+
+  /* 縦に並べるときは、上のカードの下端に少しだけ重ねる */
+  .lp-mp-find {
+    margin: -12px 10px 0;
+  }
+}
