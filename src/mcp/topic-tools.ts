@@ -66,6 +66,7 @@ import { appRunningMessage, detectRunningApp } from "./upkeep/guard";
 import { createMcpMaintenanceHost } from "./upkeep/host";
 import { getFlags, readIndexStrict } from "./upkeep/index-store";
 import { discardNewWikiFile } from "./upkeep/save";
+import { withPassageContexts } from "../features/wiki/passage-context";
 import {
   errMsg,
   failureMessage,
@@ -628,9 +629,15 @@ export async function submitTopicPage(input: SubmitTopicPageInput, ctx: ToolCont
         // 改訂: 前の資料＋今回の資料で References を作り直す（アプリの runSourceTopicStage と同じ）
         const priorIds = (existing.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
         const refs = [...resolveLenient(priorIds, root), { id: source.id, title: source.title }];
-        doc = applyTopicType(
-          rebuildSourceBackedWikiDocument(existing, checked.body, refs, model, noteIndex, existing.wikiMeta!.kind, language),
-          item.type,
+        // 前後の文の控え: 今回読んだ資料の分は捨て、ほかの資料の分だけ持ち越す（MCP はノートの文字の
+        // 取り出し方がアプリと違うので控えを作らない — 開いたときの照合で誤って「変わった」と出さない）
+        doc = withPassageContexts(
+          applyTopicType(
+            rebuildSourceBackedWikiDocument(existing, checked.body, refs, model, noteIndex, existing.wikiMeta!.kind, language),
+            item.type,
+          ),
+          [],
+          (existing.wikiMeta?.passageContexts ?? []).filter((c) => c.sourceId !== source.id),
         );
         doc = stampGeneratedBy(doc, stampInfo);
         savedId = item.topicId!;

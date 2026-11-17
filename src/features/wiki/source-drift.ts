@@ -13,6 +13,7 @@ import type { GraphiumDocument } from "../../lib/document-types";
 import { SOURCE_CITATION_RE, passageAppearsIn, splitPassage } from "../../lib/source-citations";
 import { parseExternalSource } from "../network-graph/external-source";
 import { lastIngestedAtForSource } from "./ingest-skip";
+import { passageContextChange, type PassageContextChange } from "./passage-context";
 
 /** 書いたあとで編集され、引用した一節が消えたノート */
 export type SourceDrift = {
@@ -21,6 +22,8 @@ export type SourceDrift = {
   editedAt: string;
   /** 消えた一節と、それを引いている文 */
   gone: Array<{ statement: string; passage: string }>;
+  /** 一節は残っているが、前後の文が書き換わったもの（書いたときの前後の文を控えたページだけ） */
+  contextChanged: Array<{ statement: string; passage: string } & PassageContextChange>;
 };
 
 /** 本文の中で、資料 id ごとに照合済みの一節と文を集める（印の付いた一節は対象外 — もう知らせ済み） */
@@ -78,8 +81,36 @@ export function passagesGoneFrom(
 }
 
 /**
- * ページの「書いたあとで資料から消えた一節」を求める。readNoteText はノートの今の文字
- * （出典照合と同じ取り出し方）。読めないノートは飛ばす（ゴミ箱・削除は別の表示がある）。
+ * 本文が引いたあるノートの一節のうち、一節は今のノートにあるが前後の文が書き換わったもの。
+ * 前後の文は書いたときに wikiMeta.passageContexts に控えたもの。控えの無い一節は見ない。
+ */
+export function passagesWithChangedContext(
+  doc: GraphiumDocument,
+  sourceId: string,
+  noteText: string,
+): Array<{ statement: string; passage: string } & PassageContextChange> {
+  const markdown = doc.wikiMeta?.topicMarkdown;
+  const contexts = doc.wikiMeta?.passageContexts;
+  if (typeof markdown !== "string" || !contexts?.length) return [];
+  const stored = new Map(contexts.filter((c) => c.sourceId === sourceId).map((c) => [c.passage, c]));
+  if (stored.size === 0) return [];
+  const out: Array<{ statement: string; passage: string } & PassageContextChange> = [];
+  const seen = new Set<string>();
+  for (const p of passagesBySource(markdown).get(sourceId) ?? []) {
+    const ctx = stored.get(p.passage);
+    if (!ctx || seen.has(p.passage) || !passageAppearsIn(p.passage, noteText)) continue;
+    const change = passageContextChange(ctx, noteText);
+    if (!change) continue;
+    seen.add(p.passage);
+    out.push({ ...p, ...change });
+  }
+  return out;
+}
+
+/**
+ * ページの「書いたあとで資料から消えた一節」と「前後の文が書き換わった一節」を求める。
+ * readNoteText はノートの今の文字（出典照合と同じ取り出し方）。読めないノートは飛ばす
+ * （ゴミ箱・削除は別の表示がある）。
  */
 export async function findSourceDrift(
   doc: GraphiumDocument,
@@ -93,7 +124,8 @@ export async function findSourceDrift(
     const text = await readNoteText(sourceId);
     if (text === undefined) continue;
     const gone = passagesGoneFrom(markdown, sourceId, text);
-    if (gone.length > 0) out.push({ sourceId, editedAt, gone });
+    const contextChanged = passagesWithChangedContext(doc, sourceId, text);
+    if (gone.length > 0 || contextChanged.length > 0) out.push({ sourceId, editedAt, gone, contextChanged });
   }
   return out;
 }

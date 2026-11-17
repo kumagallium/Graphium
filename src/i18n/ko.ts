@@ -4333,6 +4333,12 @@ export const ko: Record<string, string> = {
   "sourceDrift.reread": "이 노트 다시 읽기",
   "sourceDrift.passage": "기록한 구절:",
   "sourceDrift.hint": "다시 읽으면 이 노트를 인용하는 페이지가 지금 노트 내용으로 다시 작성됩니다. AI를 사용합니다.",
+  "sourceDrift.contextSummary": "이 페이지가 인용한 구절 중 {count}건은 노트에 남아 있지만, 앞이나 뒤의 문장이 바뀌었습니다. 페이지의 문장이 여전히 맞는지 확인해 주세요.",
+  "sourceDrift.contextBefore": "구절 앞의 문장이 바뀌었습니다:",
+  "sourceDrift.contextAfter": "구절 뒤의 문장이 바뀌었습니다:",
+  "sourceDrift.was": "작성 당시:",
+  "sourceDrift.now": "지금:",
+  "sourceDrift.removed": "(삭제됨)",
   "sourceCheck.sourceKind.note": "노트",
   "sourceCheck.sourceKind.pdf": "PDF",  // 영어 유지
   "sourceCheck.sourceKind.document": "문서",

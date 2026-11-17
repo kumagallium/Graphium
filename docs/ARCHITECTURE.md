@@ -1731,6 +1731,26 @@ Notes:
   match. Only a passage that is gone is reported — an unrelated edit to
   the note is not — in `SourceDriftNotice` above the page (full view and
   side peek), with **Re-read this note**, which ingests the note again.
+  A passage can also stay while the text around it changes what it
+  means. So when a page is written from a note, `withPassageContexts`
+  (`src/features/wiki/passage-context.ts`) stores the sentence right
+  before and right after each copied passage in
+  `wikiMeta.passageContexts`, taken from the text the page was written
+  from; passages of notes not read this time keep their stored
+  sentences. On open, a note that changed is also checked for these
+  sentences: the sentence now right next to the passage is compared
+  with the stored one, so a sentence inserted directly after a figure
+  counts as a change, as do a removed neighbour, different numbers, or
+  a difference of more than two characters otherwise (a fixed typo
+  doesn't count). A side with no stored sentence (the passage started
+  or ended the note) is not checked, so text appended to the end of a
+  note doesn't count. Such passages are reported separately and more
+  softly, with the old and the current sentence. Stored sentences are
+  written by the app's ingest, regenerate and merge paths. Pages
+  written before this field, answer pages, and pages rewritten from
+  sources over MCP (which extracts note text differently, so the
+  sentences for the sources it read are dropped; an MCP merge keeps
+  them) get only the passage check for those passages.
   No model call; PDFs, Word files and URLs are not checked this way. Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
