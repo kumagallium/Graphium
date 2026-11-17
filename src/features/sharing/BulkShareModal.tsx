@@ -145,6 +145,11 @@ export function BulkShareModal({ targets, deps, onClose }: BulkShareModalProps) 
                       failed: String(summary.failed),
                     })}
               </div>
+              {(summary.readableCopyFailed ?? 0) > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {t("share.bulk.readableCopyFailed", { count: String(summary.readableCopyFailed) })}
+                </div>
+              )}
               {summary.failed > 0 && (
                 <div className="flex flex-col gap-1.5">
                   <div className="text-xs font-medium text-foreground flex items-center gap-1">
