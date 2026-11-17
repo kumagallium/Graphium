@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import { findModelsWithMissingApiKey } from "../config/models.js";
-import { isRequestAuthorized } from "../auth-token.js";
+import { desktopSidecarProof, isRequestAuthorized } from "../auth-token.js";
 
 const app = new Hono();
 
@@ -33,6 +33,9 @@ export function setSidecarIdentity(info: {
 }
 
 app.get("/", async (c) => {
+  // デスクトップ版: 画面が「相手は自分の sidecar か」を、合言葉を送らずに確かめるための証明。
+  // challenge が付いているときだけ返す（auth-token.ts の desktopSidecarProof）
+  const proof = desktopSidecarProof(c.req.query("challenge"));
   // 合言葉が要る設定で未認証なら、生きていることだけ返す（dataDir・pid・モデル情報は出さない）
   if (!isRequestAuthorized(c)) {
     // デスクトップ版だけ pid と desktop を足す。合言葉の違う別の Graphium の sidecar が 3001 を
@@ -43,6 +46,7 @@ app.get("/", async (c) => {
         components: { backend: "ok" },
         pid: sidecarIdentity.pid,
         desktop: true,
+        ...(proof ? { proof } : {}),
       });
     }
     return c.json({ status: "healthy", components: { backend: "ok" } });
@@ -71,6 +75,7 @@ app.get("/", async (c) => {
     version: sidecarIdentity.version,
     pid: sidecarIdentity.pid,
     dataDir: sidecarIdentity.dataDir,
+    ...(proof ? { proof } : {}),
   });
 });
 

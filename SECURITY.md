@@ -60,8 +60,10 @@ Graphium handles research notes and, when AI features are used, third-party LLM 
   generates a secret at each launch, keeps it only in memory, and the sidecar
   refuses API requests without it (v0.137.1+; the Web Clip endpoints, the
   image / PDF relay and a liveness check are the exceptions). Writes from
-  another site's `Origin` are refused (v0.136.0+). See `docs/ARCHITECTURE.md`
-  §6.1.
+  another site's `Origin` are refused (v0.136.0+). Before the UI sends the
+  secret, it checks with a challenge that the process on the local port is
+  its own sidecar, so a program that took the port first cannot collect it.
+  See `docs/ARCHITECTURE.md` §6.1.
 - **No central account service** — the hosted PWA is a static site with no
   backend of ours; your data stays in your chosen storage location and your
   keys stay on your device.
