@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.138.0](https://github.com/kumagallium/Graphium/compare/v0.137.5...v0.138.0) - 2026-11-17
+
+- docs(manual): make the Security page easier to find and correct it after an audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1713
+- feat: add the Records view (everything you kept, in order, with who and where) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1716
+- fix(security): check that the local server is ours before sending the per-launch secret by @kumagallium in https://github.com/kumagallium/Graphium/pull/1715
+
+## [v0.137.5](https://github.com/kumagallium/Graphium/compare/v0.137.4...v0.137.5) - 2026-11-17
+
+- [infra] One-off workflow to back up release secrets, encrypted by @kumagallium in https://github.com/kumagallium/Graphium/pull/1710
+- [infra] Remove the one-off secret backup workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1712
+- [infra] Run release signing jobs in the release environment by @kumagallium in https://github.com/kumagallium/Graphium/pull/1701
+
+## [v0.137.4](https://github.com/kumagallium/Graphium/compare/v0.137.3...v0.137.4) - 2026-11-17
+
+- [docs] Add a Security page to the manual and link it from the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1706
+- docs(manual): list the other protections on the Security page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1708
+- feat(topics): report when the sentence next to a cited passage has changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1709
+
 ## [v0.137.3](https://github.com/kumagallium/Graphium/compare/v0.137.2...v0.137.3) - 2026-11-16
 
 - feat(topics): when a page opens, report passages that have since disappeared from their note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1704

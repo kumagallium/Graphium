@@ -195,6 +195,36 @@ describe("runSourceTopicStage", () => {
     expect(result.touchedTopicIds).toEqual(["topic-1"]);
   });
 
+  it("改訂で、読んだノートの一節の前後の文を控え、読んでいないノートの控えは持ち越す", async () => {
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      resolveSource: vi.fn(async (id: string) => (id === "note-0" ? { title: "旧資料", text: "旧資料の本文" } : undefined)),
+    });
+    const prior = makeSourceTopicDoc("既存トピック", "## 要点\n- 塩は 2%。[[source:note-0|塩は粉に対して 2% にした]]", ["note-0"]);
+    prior.wikiMeta!.passageContexts = [{ sourceId: "note-0", passage: "塩は粉に対して 2% にした", before: "粉は 500 g。" }];
+    docs.set("wiki:topic-1", prior);
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).includes("/route-topics")) return { ok: true, json: async () => ({ update: ["topic-1"], create: [] }) };
+      if (String(url).includes("/revise-topic")) {
+        return {
+          ok: true,
+          json: async () => ({
+            body: "## 要点\n- 塩は 2%。[[source:note-0|塩は粉に対して 2% にした]]\n- 湿度は 65%。[[source:note-1|一次発酵の湿度は 65% だった]]",
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const text = "室温は 24 度だった。一次発酵の湿度は 65% だった。生地はよく膨らんだ。";
+    await runSourceTopicStage([{ id: "note-1", title: "資料1", text }], deps);
+
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.passageContexts).toEqual([
+      { sourceId: "note-0", passage: "塩は粉に対して 2% にした", before: "粉は 500 g。" },
+      { sourceId: "note-1", passage: "一次発酵の湿度は 65% だった", before: "室温は 24 度だった。", after: "生地はよく膨らんだ。" },
+    ]);
+  });
+
   describe("題の名寄せ（新規作成を既存の改訂に回す）", () => {
     const mockRoute = (route: Record<string, unknown>) => {
       (global.fetch as any).mockImplementation(async (url: string) => {

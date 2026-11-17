@@ -1731,6 +1731,26 @@ Notes:
   match. Only a passage that is gone is reported — an unrelated edit to
   the note is not — in `SourceDriftNotice` above the page (full view and
   side peek), with **Re-read this note**, which ingests the note again.
+  A passage can also stay while the text around it changes what it
+  means. So when a page is written from a note, `withPassageContexts`
+  (`src/features/wiki/passage-context.ts`) stores the sentence right
+  before and right after each copied passage in
+  `wikiMeta.passageContexts`, taken from the text the page was written
+  from; passages of notes not read this time keep their stored
+  sentences. On open, a note that changed is also checked for these
+  sentences: the sentence now right next to the passage is compared
+  with the stored one, so a sentence inserted directly after a figure
+  counts as a change, as do a removed neighbour, different numbers, or
+  a difference of more than two characters otherwise (a fixed typo
+  doesn't count). A side with no stored sentence (the passage started
+  or ended the note) is not checked, so text appended to the end of a
+  note doesn't count. Such passages are reported separately and more
+  softly, with the old and the current sentence. Stored sentences are
+  written by the app's ingest, regenerate and merge paths. Pages
+  written before this field, answer pages, and pages rewritten from
+  sources over MCP (which extracts note text differently, so the
+  sentences for the sources it read are dropped; an MCP merge keeps
+  them) get only the passage check for those passages.
   No model call; PDFs, Word files and URLs are not checked this way. Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
@@ -3846,10 +3866,12 @@ The same `src/` tree is built four different ways.
   app injects `GRAPHIUM_APP_VERSION` (its own build version) and
   `GRAPHIUM_PARENT_PID` (the app process id) when it spawns the sidecar, and
   `/api/health` echoes `version`, `pid` and `dataDir`. On startup
-  `src/lib/sidecar.ts` reuses an already-running sidecar only when both
-  `dataDir` and `version` match; a foreign `dataDir` (a stale worktree) or a
-  mismatched `version` (a sidecar left over from before an auto-update) is
-  sent `SIGTERM` and replaced. The sidecar additionally runs a watchdog that
+  `src/lib/sidecar.ts` reuses an already-running sidecar only when it proves
+  it knows this launch's secret (see the per-launch secret below); the secret
+  changes at every launch, so a sidecar left over from another launch (before
+  an auto-update, or an orphan) or any other program on port 3001 fails the
+  check and is sent `SIGTERM` and replaced. `dataDir` and `version` in the
+  reply are not trusted for this decision. The sidecar additionally runs a watchdog that
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
   old code and return 404 for routes added after that build. On Windows —
@@ -3900,8 +3922,18 @@ The same `src/` tree is built four different ways.
   the guard is against other programs and browser extensions that only reach
   the HTTP port, not against code running as the same user. `/api/storage/capabilities`
   reports `requiresAuth: false` on the desktop so the UI never asks for a
-  token. `src/lib/sidecar.ts` treats a health reply as its own sidecar only
-  when it carries `dataDir`.
+  token. Before the UI attaches the secret to anything, it checks that the
+  process on port 3001 is its own sidecar, without sending the secret: it
+  sends a random 32-byte challenge (`GET /api/health?challenge=<hex>`) and the
+  sidecar answers with `proof = HMAC-SHA256(secret, "graphium-sidecar-proof-v1:" + challenge)`
+  (desktop only; `desktopSidecarProof` in `src/server/auth-token.ts`,
+  `probeTauriSidecar` in `src/lib/api-auth-fetch.ts`). Until the proof
+  matches, the UI sends neither the secret nor any request that would carry
+  it, so a program that took port 3001 first (for example another user on a
+  shared computer) cannot collect the secret. The result is reused for five
+  seconds and dropped when the sidecar exits, a request fails to connect, or
+  one comes back `401`. Requests that never carry the secret (the image relay
+  loaded by `<img>`) are not gated by this check.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
   Syncthing — the desktop side of Graphium never talks to those services).
@@ -4970,7 +5002,9 @@ header-authenticated request, for same-origin loads such as `<img>` that cannot
 carry a header). Both sides are hashed with SHA-256 and compared with
 `timingSafeEqual`. Not checked: `OPTIONS`, `GET /api/storage/capabilities`,
 `GET /api/health` (when a token is set, an unauthenticated caller gets only
-liveness — no `dataDir`, pid or model info), and the extension's endpoints
+liveness — no `dataDir`, pid or model info; on the desktop it also gets the
+pid and, for a `?challenge=`, the proof described under the per-launch
+secret), and the extension's endpoints
 (`POST /api/clip`, `GET /api/clip/ping`, `POST /api/clip/pair`,
 `POST /api/clip/pair/:id`), which are guarded by `X-Graphium-Clip-Token` and the
 `Origin` rule below. With no token set (desktop sidecar, dev) nothing is

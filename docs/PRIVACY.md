@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-16
 
 Graphium is an open-source, local-first note editor with provenance tracking. This privacy policy explains how the application handles your data.
 
@@ -26,7 +26,7 @@ Graphium is a block-based note editor. Notes are stored on your filesystem (desk
 | Which pages AI used (cited in an AI chat answer, or opened by an AI through Graphium's MCP server) | Small files in your own save folder (`appdata/ai-usage-*.json`) — page ids and times only, no questions or answers; never sent anywhere |
 | Personal information | Nowhere — not collected |
 
-The desktop app also runs a small local server on your own computer (`127.0.0.1`, never reachable from other machines). The app generates a secret at each launch, keeps it only in memory, and attaches it to its own requests; requests without it are refused. This keeps browser extensions, web pages and other user accounts on the same computer from using the server. It is not a barrier against programs running under your own account, which can already read your files. Two things work without the secret: the Web Clip endpoint used by the Graphium browser extension (protected by its own pairing token), and the image / PDF relay, which then downloads public URLs only (never loopback or local-network addresses) and returns none of your data.
+The desktop app also runs a small local server on your own computer (`127.0.0.1`, never reachable from other machines). The app generates a secret at each launch, keeps it only in memory, and attaches it to its own requests; requests without it are refused. This keeps browser extensions, web pages and other user accounts on the same computer from using the server. It is not a barrier against programs running under your own account, which can already read your files. Two things work without the secret: the Web Clip endpoint used by the Graphium browser extension (protected by its own pairing token), and the image / PDF relay, which then downloads public URLs only (never loopback or local-network addresses) and returns none of your data. Besides these, a liveness check answers without the secret; it returns no notes or settings.
 
 If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not send your notes to any cloud storage. The one exception is the phone capture screen: only if you connect your own Google Drive there, the files you send from the phone queue go into a `Graphium/Inbox` folder of your Drive (see "What goes over the network" in the [manual](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network)).
 

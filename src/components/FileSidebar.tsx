@@ -104,6 +104,10 @@ export type FileSidebarProps = {
   onShowMemos?: () => void;
   /** メモセクションがアクティブか */
   memosActive?: boolean;
+  /** 記録の画面（残したものを残した順に見る）を開く。渡らなければ行を出さない */
+  onShowRecords?: () => void;
+  /** 記録の画面がアクティブか */
+  recordsActive?: boolean;
   /** モバイル受信箱の未処理件数（<root>/Inbox/ にある未取り込みファイルの数） */
   mobileCount?: number;
   /** モバイル受信箱クリック時。未指定なら見出しごと非表示（web モード） */
@@ -320,6 +324,8 @@ export function FileSidebar({
   memoCount = 0,
   onShowMemos,
   memosActive = false,
+  onShowRecords,
+  recordsActive = false,
   mobileCount = 0,
   onShowMobile,
   mobileActive = false,
@@ -587,6 +593,23 @@ export function FileSidebar({
     >
       <Smartphone size={14} />
       {mobileCount > 0 && <span className="text-xs tabular-nums">{mobileCount}</span>}
+    </button>
+  ) : null;
+
+  // 記録（ヘッダー）。ノート・素材・メモ・AI のページを、種類をまたいで残した順に見る入口。
+  // 取り込みと同じ軽い 1 行にする
+  const recordsRow = onShowRecords ? (
+    <button
+      onClick={onShowRecords}
+      data-tooltip={t("records.navHint")}
+      className={`w-full flex items-center gap-2 rounded-lg px-3 py-1 text-sm transition-colors ${
+        recordsActive
+          ? "bg-primary/10 text-primary font-semibold"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      }`}
+    >
+      <History size={14} />
+      <span className="flex-1 text-left">{t("records.title")}</span>
     </button>
   ) : null;
 
@@ -1239,10 +1262,14 @@ export function FileSidebar({
                 {mobileButton}
               </div>
             )}
+            {recordsRow}
             {chatRow}
           </>
         ) : (
-          intakeButton
+          <>
+            {intakeButton}
+            {recordsRow}
+          </>
         )}
       </div>
 

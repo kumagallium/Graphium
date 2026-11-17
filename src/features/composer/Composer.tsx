@@ -38,7 +38,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Image as ImageIcon, LayoutGrid, Maximize2, Quote, Search, StickyNote } from "lucide-react";
+import { Bot, History, Image as ImageIcon, LayoutGrid, Maximize2, Quote, Search, StickyNote } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
@@ -132,6 +132,12 @@ type ComposerProps = {
    * 送信先（composerSubmitRef）が開いているノートに紐づくため。
    */
   canAskAi?: boolean;
+  /**
+   * いまの言葉で「記録」の画面を開く（残した順に並ぶ一覧の中で見る）。
+   * ここは行き先へ飛ぶための場所、記録の画面は振り返るための場所で、役割を分けている。
+   * 渡らなければ行を出さない。
+   */
+  onSeeInRecords?: (query: string) => void;
 };
 
 type ResultRow =
@@ -141,6 +147,7 @@ type ResultRow =
   | { kind: "memo"; hit: MemoHit }
   | { kind: "shared"; hit: SharedHit }
   | { kind: "media"; hit: MediaHit }
+  | { kind: "records" }
   | { kind: "ask-ai" }
   | { kind: "card"; card: DiscoveryCard };
 
@@ -171,6 +178,7 @@ export function Composer(props: ComposerProps) {
     canOpenNoteInPeek,
     citationCount,
     canAskAi = true,
+    onSeeInRecords,
   } = props;
 
   const t = useT();
@@ -347,6 +355,11 @@ export function Composer(props: ComposerProps) {
     if (!isEmptyQuery && canAskAi) {
       list.push({ kind: "ask-ai" });
     }
+    // 同じ言葉で記録の画面を開く行。AI の行より後に置く（結果が無いときの Enter を、
+    // これまでどおり AI への質問のままにするため。描画の順もこれに合わせる）
+    if (!isEmptyQuery && onSeeInRecords) {
+      list.push({ kind: "records" });
+    }
     if (showCards) {
       for (const card of cards) {
         list.push({ kind: "card", card });
@@ -356,7 +369,7 @@ export function Composer(props: ComposerProps) {
   }, [
     hits, knowledgeHits, memoHits, sharedHits, mediaHits,
     noteSlice.more, knowledgeSlice.more, memoSlice.more, sharedSlice.more, mediaSlice.more,
-    isEmptyQuery, showCards, cards, canAskAi,
+    isEmptyQuery, showCards, cards, canAskAi, onSeeInRecords,
   ]);
 
   // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
@@ -434,6 +447,10 @@ export function Composer(props: ComposerProps) {
   };
 
   const activateRow = (row: ResultRow) => {
+    if (row.kind === "records") {
+      onSeeInRecords?.(trimmed);
+      return;
+    }
     if (row.kind === "ask-ai") {
       submitAi();
       return;
@@ -813,7 +830,7 @@ export function Composer(props: ComposerProps) {
             )}
 
             {/* 「アクション」セクション (AI に質問) */}
-            {!isEmptyQuery && canAskAi && (
+            {!isEmptyQuery && (canAskAi || onSeeInRecords) && (
               <>
                 <SectionHeading>{t("composer.search.actionsHeading")}</SectionHeading>
                 {(() => {
@@ -826,6 +843,18 @@ export function Composer(props: ComposerProps) {
                       active={askIndex === activeIndex}
                       onMouseEnter={() => setActiveIndex(askIndex)}
                       onClick={submitAi}
+                    />
+                  );
+                })()}
+                {(() => {
+                  const recordsIndex = rows.findIndex((r) => r.kind === "records");
+                  if (recordsIndex < 0 || !onSeeInRecords) return null;
+                  return (
+                    <RecordsRow
+                      label={t("records.seeInRecords", { query: trimmed })}
+                      active={recordsIndex === activeIndex}
+                      onMouseEnter={() => setActiveIndex(recordsIndex)}
+                      onClick={() => onSeeInRecords(trimmed)}
                     />
                   );
                 })()}
@@ -1575,6 +1604,58 @@ type AskAiRowProps = {
   onMouseEnter: () => void;
   onClick: () => void;
 };
+
+/** いまの言葉で記録の画面を開く行（「AI に質問」と同じ並びのアクション） */
+function RecordsRow({
+  label,
+  active,
+  onMouseEnter,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      data-composer-active={active ? "true" : undefined}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        color: "var(--ink)",
+      }}
+    >
+      <History size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} aria-hidden />
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          lineHeight: 1.4,
+          color: "var(--ink-2)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
 
 function AskAiRow({ label, active, onMouseEnter, onClick }: AskAiRowProps) {
   return (

@@ -73,6 +73,7 @@ AI を使い始めたら、同じ記録がそのまま AI の読むものにな�
 - 📘 [**CONCEPT**](docs/CONCEPT.ja.md)（[English](docs/CONCEPT.md)）: Graphium の背後にある考え方（なぜ来歴か、二つの脳、砂時計）
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md): レイヤー、配布形態、Wiki パイプライン、既知の継ぎ目（英語）
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md): JSON 形式、スキーマ、互換性ルール（英語）
+- 🔒 [**セキュリティのしくみ**](https://kumagallium.github.io/Graphium/manual/ja/security)（[English](https://kumagallium.github.io/Graphium/manual/security)）: ノートを守るためにしていること、守れないもの、あなたにできることを図つきでまとめています。弱点の報告は [SECURITY.md](SECURITY.md) へ
 
 ## 必要な分だけラベルを付ける
 

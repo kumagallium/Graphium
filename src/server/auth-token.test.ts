@@ -1,8 +1,15 @@
 // 合言葉の取り込み（デスクトップ版）のテスト
 // 環境変数に残すと、sidecar が起動する子プロセス（CLI・ログインシェル）に継がれてしまう
 
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { __resetCapturedAuthTokenForTest, captureDesktopAuthToken, getAuthToken } from "./auth-token.js";
+import {
+  __resetCapturedAuthTokenForTest,
+  captureDesktopAuthToken,
+  desktopSidecarProof,
+  getAuthToken,
+  SIDECAR_PROOF_PREFIX,
+} from "./auth-token.js";
 
 const saved = {
   token: process.env.GRAPHIUM_AUTH_TOKEN,
@@ -53,5 +60,46 @@ describe("captureDesktopAuthToken", () => {
   it("空文字の環境変数は未設定として扱う", () => {
     process.env.GRAPHIUM_AUTH_TOKEN = "";
     expect(getAuthToken()).toBeUndefined();
+  });
+});
+
+describe("desktopSidecarProof", () => {
+  const CHALLENGE = "ab".repeat(32);
+
+  it("前置きは画面側（src/lib/api-auth-fetch.ts）と同じ値", () => {
+    expect(SIDECAR_PROOF_PREFIX).toBe("graphium-sidecar-proof-v1:");
+  });
+
+  it("デスクトップ版では HMAC-SHA256(合言葉, 前置き + challenge) を返す", () => {
+    process.env.GRAPHIUM_DESKTOP = "1";
+    process.env.GRAPHIUM_AUTH_TOKEN = "tok-1";
+    captureDesktopAuthToken();
+    const expected = createHmac("sha256", "tok-1").update(SIDECAR_PROOF_PREFIX + CHALLENGE, "utf8").digest("hex");
+    expect(desktopSidecarProof(CHALLENGE)).toBe(expected);
+    // 合言葉そのものは含まれない
+    expect(desktopSidecarProof(CHALLENGE)).not.toContain("tok-1");
+  });
+
+  it("合言葉が違えば証明も違う", () => {
+    process.env.GRAPHIUM_DESKTOP = "1";
+    process.env.GRAPHIUM_AUTH_TOKEN = "tok-2";
+    captureDesktopAuthToken();
+    const other = createHmac("sha256", "tok-1").update(SIDECAR_PROOF_PREFIX + CHALLENGE, "utf8").digest("hex");
+    expect(desktopSidecarProof(CHALLENGE)).not.toBe(other);
+  });
+
+  it("セルフホスト（GRAPHIUM_DESKTOP なし）では返さない（弱い合言葉を総当たりする材料にしない）", () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = "weak";
+    expect(desktopSidecarProof(CHALLENGE)).toBeNull();
+  });
+
+  it("合言葉が無い・challenge の形が違うときは返さない", () => {
+    process.env.GRAPHIUM_DESKTOP = "1";
+    expect(desktopSidecarProof(CHALLENGE)).toBeNull();
+    process.env.GRAPHIUM_AUTH_TOKEN = "tok-1";
+    captureDesktopAuthToken();
+    for (const bad of [undefined, null, "", "abc", "AB".repeat(32), "ab".repeat(33), "zz".repeat(32)]) {
+      expect(desktopSidecarProof(bad)).toBeNull();
+    }
   });
 });

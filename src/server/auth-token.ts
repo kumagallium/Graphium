@@ -7,7 +7,7 @@
 //     （<img> など、ヘッダーを付けられない同一オリジンの読み込み用。ヘッダーで通った応答で配る）
 // 比較は両辺を sha256 してから timingSafeEqual（長さも漏らさない）。
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 
@@ -51,6 +51,27 @@ export function captureDesktopAuthToken(): void {
   if (!token) return;
   capturedToken = token;
   delete process.env.GRAPHIUM_AUTH_TOKEN;
+}
+
+/** 証明に混ぜる前置き。画面側（src/lib/api-auth-fetch.ts）と同じ値にすること */
+export const SIDECAR_PROOF_PREFIX = "graphium-sidecar-proof-v1:";
+
+/**
+ * デスクトップ版の sidecar が「起動ごとの合言葉を知っている」ことの証明。
+ *
+ * 画面は、合言葉を送る前に、相手が自分の sidecar かを確かめたい（3001 を別のプログラムが
+ * 握っていると、合言葉つきの要求がそのままそちらへ届く）。そこで画面は乱数（challenge）だけを
+ * 送り、sidecar は HMAC-SHA256(合言葉, 前置き + challenge) を返す。合言葉そのものは流れない。
+ *
+ * デスクトップ版に限る。セルフホストの合言葉は利用者が決めた値で、未認証の口から HMAC を
+ * 返すと、弱い合言葉を手元で総当たりする材料になる。デスクトップ版の合言葉は 256 ビットの乱数。
+ */
+export function desktopSidecarProof(challenge: string | undefined | null): string | null {
+  if (process.env.GRAPHIUM_DESKTOP !== "1") return null;
+  const token = getAuthToken();
+  if (!token) return null;
+  if (typeof challenge !== "string" || !/^[0-9a-f]{64}$/.test(challenge)) return null;
+  return createHmac("sha256", token).update(SIDECAR_PROOF_PREFIX + challenge, "utf8").digest("hex");
 }
 
 /** テスト用: 取り込んだ合言葉を捨てる */

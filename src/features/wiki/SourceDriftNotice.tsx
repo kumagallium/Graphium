@@ -1,5 +1,6 @@
 // 「書いたあとで資料から消えた一節」の知らせ（トピック・問答・要約のページを開いたとき）。
 // 判定は source-drift.ts（AI を使わない文字列の照合）。見つかったときだけ出す。
+// 一節が消えたもの（強め）と、一節は残っているが前後の文が書き換わったもの（弱め・確かめてほしい）を分けて書く。
 // 「読み直す」は、そのノートを取り込み直す（そのノートを引くページがすべて、一節の照合ごと見直される）。
 
 import { useEffect, useState } from "react";
@@ -38,6 +39,7 @@ export function SourceDriftNotice({
 
   if (drift.length === 0) return null;
   const count = drift.reduce((n, d) => n + d.gone.length, 0);
+  const contextCount = drift.reduce((n, d) => n + (d.contextChanged?.length ?? 0), 0);
 
   return (
     <div
@@ -71,7 +73,12 @@ export function SourceDriftNotice({
         }}
       >
         <AlertTriangle size={13} style={{ marginTop: 3, flexShrink: 0 }} />
-        <span>{t("sourceDrift.summary", { count: String(count) })}</span>
+        <span>
+          {count > 0 && <span style={{ display: "block" }}>{t("sourceDrift.summary", { count: String(count) })}</span>}
+          {contextCount > 0 && (
+            <span style={{ display: "block" }}>{t("sourceDrift.contextSummary", { count: String(contextCount) })}</span>
+          )}
+        </span>
       </button>
       {open && (
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -110,6 +117,27 @@ export function SourceDriftNotice({
                     <div style={{ color: "var(--ink-3)", fontSize: 12 }}>
                       {t("sourceDrift.passage")} “{g.passage}”
                     </div>
+                  </li>
+                ))}
+                {(d.contextChanged ?? []).map((c, i) => (
+                  <li key={`c${i}`} style={{ marginBottom: 4 }}>
+                    <div>{c.statement}</div>
+                    <div style={{ color: "var(--ink-3)", fontSize: 12 }}>
+                      {t("sourceDrift.passage")} “{c.passage}”
+                    </div>
+                    {([["before", c.before], ["after", c.after]] as const).map(([side, ch]) =>
+                      ch ? (
+                        <div key={side} style={{ color: "var(--ink-3)", fontSize: 12, marginTop: 2 }}>
+                          <div>{t(side === "before" ? "sourceDrift.contextBefore" : "sourceDrift.contextAfter")}</div>
+                          <div style={{ paddingLeft: 10 }}>
+                            {t("sourceDrift.was")} “{ch.was}”
+                          </div>
+                          <div style={{ paddingLeft: 10 }}>
+                            {t("sourceDrift.now")} {ch.now !== undefined ? `“${ch.now}”` : t("sourceDrift.removed")}
+                          </div>
+                        </div>
+                      ) : null,
+                    )}
                   </li>
                 ))}
               </ul>

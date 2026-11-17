@@ -5,6 +5,7 @@
 // ハンドラ本体は「文字列を返す関数」として export し、単体テストは McpServer なしで呼ぶ。
 
 import { existsSync, readFileSync } from "node:fs";
+import { withPassageContexts } from "../../features/wiki/passage-context";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -246,13 +247,19 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
         note = "起動を検知して中止";
         return stopped;
       }
+      // 前後の文の控えは捨てる（資料を読み直して書いたので古い控えは使えない。MCP はノートの文字の
+      // 取り出し方がアプリと違うので、ここでは取り直さない）
       const rebuilt = stampGeneratedBy(
-        rebuildSourceBackedWikiDocument(
-          existing,
-          body,
-          refs,
-          input.model ?? null,
-          buildNoteIndex(readNoteIndex(root)),
+        withPassageContexts(
+          rebuildSourceBackedWikiDocument(
+            existing,
+            body,
+            refs,
+            input.model ?? null,
+            buildNoteIndex(readNoteIndex(root)),
+          ),
+          [],
+          [],
         ),
         { client, sessionId: input.sessionId, model: input.model },
       );
@@ -363,8 +370,13 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
         note = "起動を検知して中止";
         return stopped;
       }
+      // 統合は資料を読まないので、統合したページすべての前後の文の控えを持ち越す
       const rebuilt = stampGeneratedBy(
-        rebuildSourceBackedWikiDocument(keep, body, refs, input.model ?? null, buildNoteIndex(readNoteIndex(root))),
+        withPassageContexts(
+          rebuildSourceBackedWikiDocument(keep, body, refs, input.model ?? null, buildNoteIndex(readNoteIndex(root))),
+          [],
+          [keep, ...absorbIds.map((id) => docs.get(id)!)].flatMap((d) => d.wikiMeta?.passageContexts ?? []),
+        ),
         { client, sessionId: input.sessionId, model: input.model },
       );
       await lock.refresh();
