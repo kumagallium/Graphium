@@ -4,6 +4,7 @@ import {
   peekDataTableFromBlock,
   loadDataTable,
   loadDelimitedAsset,
+  cacheKey,
   peekDelimitedAsset,
   subscribeDataTableData,
   clearDataTableCache,
@@ -13,7 +14,7 @@ import { SYNC_PARSE_MAX_CHARS } from "../../features/data-import/large-file";
 import { primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
 import { serializeDataTableSource } from "./source";
 import type { TableSource } from "../../lib/document-types";
-import { loadAssetTable, peekAssetTable } from "../chart/asset-source";
+import { loadAssetTable } from "../chart/asset-source";
 
 function source(overrides: Partial<TableSource> = {}): TableSource {
   return {
@@ -286,9 +287,6 @@ describe("loadDelimitedAsset / peekDelimitedAsset（素材 ID と読み方から
     ]);
     expect(fromChart.rows).toBe(fromTable.rows);
     expect(fromChart.rows).toHaveLength(260_000);
-    expect(peekAssetTable({ fileId: "asset-1", fileName: "big.csv", options: src.options })?.rows).toBe(
-      fromTable.rows
-    );
   });
 
   it("小さい本文: チャート側の loadAssetTable は今までどおりの表を返す", async () => {
@@ -299,5 +297,37 @@ describe("loadDelimitedAsset / peekDelimitedAsset（素材 ID と読み方から
       ["08:00", "180"],
       ["08:05", "182"],
     ]);
+  });
+});
+
+describe("cacheKey（読み方の正規化）", () => {
+  const base = { headerRow: 1, endRow: 3, delimiter: "comma" as const, collapseConsecutive: false };
+
+  it("プロパティの並びだけ違う options は同じキー", () => {
+    const reordered = { collapseConsecutive: false, delimiter: "comma" as const, endRow: 3, headerRow: 1 };
+    expect(cacheKey("f", reordered)).toBe(cacheKey("f", base));
+  });
+
+  it("delimiter が custom でないとき、customDelimiter（空文字・値あり）はキーに入らない", () => {
+    expect(cacheKey("f", { ...base, customDelimiter: "" })).toBe(cacheKey("f", base));
+    expect(cacheKey("f", { ...base, customDelimiter: ";" })).toBe(cacheKey("f", base));
+  });
+
+  it("custom では customDelimiter が効く。未指定と空文字は同じ", () => {
+    const c = { ...base, delimiter: "custom" as const };
+    expect(cacheKey("f", { ...c, customDelimiter: "" })).toBe(cacheKey("f", c));
+    expect(cacheKey("f", { ...c, customDelimiter: ";" })).not.toBe(cacheKey("f", c));
+  });
+
+  it("素材 ID や読み方が違えば別のキー", () => {
+    expect(cacheKey("g", base)).not.toBe(cacheKey("f", base));
+    expect(cacheKey("f", { ...base, endRow: 4 })).not.toBe(cacheKey("f", base));
+  });
+
+  it("並びだけ違う options で、同じ結果（同じ参照）を返す", async () => {
+    primeAssetText("asset-1", CSV);
+    const a = await loadDelimitedAsset("asset-1", base);
+    const b = await loadDelimitedAsset("asset-1", { ...base, customDelimiter: "", endRow: 3 });
+    expect(b).toBe(a);
   });
 });

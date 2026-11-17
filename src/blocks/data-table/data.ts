@@ -41,8 +41,19 @@ export function subscribeDataTableData(listener: () => void): () => void {
   };
 }
 
-function cacheKey(fileId: string, options: DelimitedImportOptions): string {
-  return `${fileId}\n${JSON.stringify(options)}`;
+// キーは項目を決まった順に並べて作る。JSON.stringify(options) だと、プロパティの並びや
+// 空の customDelimiter の有無で、同じ読み方なのに別のキーになる（取り込みダイアログの
+// options と、保存後に設定から作り直した options で食い違い、同じ素材を 2 回変換する）。
+// customDelimiter は delimiter === "custom" のときだけ読み方に効く
+export function cacheKey(fileId: string, options: DelimitedImportOptions): string {
+  return JSON.stringify([
+    fileId,
+    options.headerRow,
+    options.endRow,
+    options.delimiter,
+    options.delimiter === "custom" ? (options.customDelimiter ?? "") : "",
+    options.collapseConsecutive ? 1 : 0,
+  ]);
 }
 
 function store(fileId: string, options: DelimitedImportOptions, data: DataTableData): DataTableData {

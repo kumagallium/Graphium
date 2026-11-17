@@ -30,6 +30,11 @@ export function isNumericColumn(rows: string[][], col: number): boolean {
   return filled > 0 && numeric * 2 > filled;
 }
 
+// 文字列の比較器。a.localeCompare(b, undefined, { numeric: true }) と同じ規則で、
+// 呼ぶたびにロケール解決をしない（数十万行の文字列の列で、比較は数百万回走るので、
+// localeCompare のままだと数秒〜十数秒固まる）。ロケールとオプションは変えないこと
+const textCollator = new Intl.Collator(undefined, { numeric: true });
+
 /**
  * 並べ替え後の行順（元 index の並び）を返す。
  * 数値列: 読めない値・空セルは常に末尾。文字列列: locale 比較、空セルは末尾。
@@ -55,7 +60,7 @@ export function sortRowOrder(rows: string[][], sort: NonNullable<SortState>): nu
         if (nb === null) return -1;
         return na === nb ? a.i - b.i : (na - nb) * sign;
       }
-      const c = va.localeCompare(vb, undefined, { numeric: true });
+      const c = textCollator.compare(va, vb);
       return c === 0 ? a.i - b.i : c * sign;
     })
     .map((x) => x.i);

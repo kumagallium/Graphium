@@ -18,6 +18,7 @@ import { extractHeaderMeta } from "../data-import/header-meta";
 import { splitLines } from "../data-import/parse";
 import { readDataFileText } from "../data-import/read-file";
 import { SortableTable } from "../table-meta/expand-modal";
+import { sortRows, type SortState } from "../table-meta/sort-table";
 import { useT } from "../../i18n";
 import { limitPreviewTable, parsePreviewText } from "./data-preview-parse";
 import type { MediaIndexEntry } from "./media-index";
@@ -186,9 +187,22 @@ function TablePanel({
   table: { headers: string[]; rows: string[][]; meta: { key: string; value: string }[] };
 }) {
   const t = useT();
-  // 描画する行・列は Excel のプレビューと同じ上限で切る（巨大な表で描画を止めない）。
-  // 総行数の表示は全行の数のまま。並べ替えは切ったあとの行に対して行う（Excel と同じ）
-  const shown = useMemo(() => limitPreviewTable(table.headers, table.rows), [table.headers, table.rows]);
+  // 並べ替えは全行に対して行い、その結果の先頭から Excel のプレビューと同じ上限（行・列）
+  // だけを描画する（巨大な表で描画を止めない）。総行数の表示は全行の数のまま
+  // 並べ替えの状態は表にひも付ける。表が切り替わったら「並べ替えなし」として扱う
+  // （effect で戻すと、切り替わった直後の 1 回、古い並べ替えで新しい表を並べ替えてしまう）
+  const [sortState, setSortState] = useState<{ table: object; sort: SortState }>({ table, sort: null });
+  const sort = sortState.table === table ? sortState.sort : null;
+  const setSort = (update: (cur: SortState) => SortState) =>
+    setSortState((cur) => ({ table, sort: update(cur.table === table ? cur.sort : null) }));
+  const sortedRows = useMemo(() => sortRows(table.rows, sort), [table.rows, sort]);
+  const shown = useMemo(() => limitPreviewTable(table.headers, sortedRows), [table.headers, sortedRows]);
+  // SortableTable は制御モードで使う（並べ替えをここで行うため）。ローカルモードと同じく
+  // 昇順 → 降順 → 元の並び を巡回させる: 降順の列をもう一度押すと、SortableTable は
+  // 昇順を渡してくるので、それを「元の並びに戻す」として読む
+  const onSort = (col: number, dir: "asc" | "desc") => {
+    setSort((cur) => (cur && cur.col === col && cur.dir === "desc" && dir === "asc" ? null : { col, dir }));
+  };
   return (
     <>
       {/* 前置きの測定条件（あれば）。表の出所を添える情報なので控えめに */}
@@ -210,7 +224,7 @@ function TablePanel({
       </div>
       {shown.cut && (
         <div className="text-[11px] text-muted-foreground">
-          {t("asset.officePreview.truncated", {
+          {t("asset.dataPreview.truncated", {
             rows: String(shown.rows.length),
             totalRows: String(table.rows.length),
             cols: String(shown.header.length),
@@ -221,7 +235,7 @@ function TablePanel({
       {/* max-h でこの div を実際のスクロールコンテナにする。無いと親（ピーク全体）が
           スクロールしてしまい、列見出しの sticky が効かない */}
       <div className="overflow-auto min-h-0 max-h-[70dvh] border border-border rounded">
-        <SortableTable header={shown.header} rows={shown.rows} />
+        <SortableTable header={shown.header} rows={shown.rows} onSort={onSort} activeSort={sort} />
       </div>
     </>
   );
