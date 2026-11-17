@@ -22,25 +22,36 @@ The line I want the product to live up to:
 Everything in this document — the labels, the Knowledge layer, the file formats — is in
 service of that one line.
 
-### One memory, any AI
+### First in one place, AI later
 
-More and more often, talking to an AI ends in the thought "I already told you this."
-Each AI company is starting to give its own product a *memory*. That memory, though,
-stays inside the product: switch to another AI and it does not come with you.
+Photos of paper notes, meeting recordings, pages read on the web, old files. Records tend
+to stay scattered, and they sleep without ever being read again.
 
-I chose to keep the memory with you, not with the AI. Graphium is meant to be that
-memory on your side.
+I started by making this work without AI: bring them into one place, turn them into text,
+and make them searchable. Old records and the ones you keep from now on go to the same
+place. Full-text search by words, linking notes with `@`, and seeing the connections in a
+graph all work without AI. Web clips, receiving items from your phone, and
+transcribing recordings run in the desktop app.
+
+When you start using an AI, it can read those same records as they are. Because the memory
+sits with you rather than with the AI, it stays when you switch AIs. If you have ever
+thought "I already told you this" while talking to an AI, I expect those moments to
+become fewer.
 
 | Side | What it does |
 |---|---|
-| Ways in | Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, conversations with AI. Whatever you take in goes to one place |
+| Ways in | Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, bulk import of old files, conversations with AI. Whatever you take in goes to one place |
 | The memory | Plain JSON files on your machine, gathered into topics and traceable to their sources |
 | Ways out | Graphium's built-in AI, and outside AIs that connect over MCP (the Claude and ChatGPT desktop apps, Codex, and others). They can read, and they can also write back what a conversation worked out |
 
+Bringing records in, keeping them as files on your machine, and searching them by words
+all work without AI. Gathering notes into topics, building procedure notes from PDFs or
+URLs, and conversations with AI come in once you start using one.
+
 This is another way of saying the line above. The "anytime" in "reusable anytime"
-includes *after you switch AIs*. Provenance matters here too: when several AIs write
-into the same memory, being able to tell where each piece was written from is what
-lets you trust it.
+includes both *before you start using an AI* and *after you switch AIs*. Provenance matters
+here too: when several AIs write into the same memory, being able to tell where each piece
+was written from is what lets you trust it.
 
 ## 2. Why I built it
 

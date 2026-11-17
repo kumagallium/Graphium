@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.137.4](https://github.com/kumagallium/Graphium/compare/v0.137.3...v0.137.4) - 2026-11-17
+
+- [docs] Add a Security page to the manual and link it from the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1706
+- docs(manual): list the other protections on the Security page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1708
+- feat(topics): report when the sentence next to a cited passage has changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1709
+
+## [v0.137.3](https://github.com/kumagallium/Graphium/compare/v0.137.2...v0.137.3) - 2026-11-16
+
+- feat(topics): when a page opens, report passages that have since disappeared from their note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1704
+
+## [v0.137.2](https://github.com/kumagallium/Graphium/compare/v0.137.1...v0.137.2) - 2026-11-16
+
+- docs: lead with records in one place, AI later (landing page, README, CONCEPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1702
+
 ## [v0.137.1](https://github.com/kumagallium/Graphium/compare/v0.137.0...v0.137.1) - 2026-11-15
 
 - fix: keep the phone screen on while recording a voice memo by @kumagallium in https://github.com/kumagallium/Graphium/pull/1699
