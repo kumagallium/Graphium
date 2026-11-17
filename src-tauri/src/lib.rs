@@ -304,9 +304,9 @@ fn start_native_sidecar(
         // 追加した API ルートが 404 になる（v0.15.0 で /api/translate が踏んだ
         // 事故）。その根本対策。
         .env("GRAPHIUM_PARENT_PID", std::process::id().to_string())
-        // アプリのバージョン。sidecar は /api/health でこれを返し、起動時に
-        // フロントが自分（getVersion）と照合する。バージョンが食い違えば
-        // 「自動更新前の古い自分」とみなして kill→再起動する。
+        // アプリのバージョン。sidecar は /api/health でこれを返す（設定の表示・診断用）。
+        // 「自動更新前の古い自分」かどうかは、フロントが起動ごとの合言葉を知っているかで
+        // 見分ける（合言葉は起動ごとに変わるので、別の起動の sidecar は必ず入れ替える）。
         .env("GRAPHIUM_APP_VERSION", app.package_info().version.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
