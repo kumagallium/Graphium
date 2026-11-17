@@ -4538,6 +4538,7 @@ export const ko: Record<string, string> = {
   "records.kind.media": "자료",
   "records.kind.memo": "메모",
   "records.origin.written": "직접 작성",
+  "records.origin.recording": "녹음에서",
   "records.origin.webClip": "웹 클립",
   "records.origin.aiChat": "AI에서",
   "records.origin.knowledge": "지식화",

@@ -18,6 +18,15 @@ export function useMeetingRecorder() {
   };
 }
 
+/**
+ * 素材ごとの、直近の文字起こしジョブの終わり方だけを読む。
+ * 録音中の音量や発言では値が変わらないので、アプリ本体から呼んでも描き直しが増えない
+ */
+export function useTranscribeJobs(): Readonly<Record<string, "done" | "failed" | "cancelled">> {
+  const read = () => store.getState().lastJobByFile;
+  return useSyncExternalStore(store.subscribe, read, read);
+}
+
 /** Mount 側で 1 度だけ呼ぶ: イベント購読と、録音中の復元 */
 export function useMeetingRecorderBoot(enabled: boolean): void {
   useEffect(() => {

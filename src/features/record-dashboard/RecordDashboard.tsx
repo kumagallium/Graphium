@@ -4,7 +4,7 @@
 //   find   … 左に日ごとの記録、右に言葉で見つかった記録を横に並べる（採用。LP の絵の組み合わせ案が元）
 //   ledger … いつ・どこで・誰が・何を の 4 列の台帳。左で絞る
 import { CalendarDays, LocateFixed, Search, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import "./record-dashboard.css";
 import { type Locale, useLocale } from "../../i18n";
 import { type RecordCopy, useRecordCopy } from "./copy";
@@ -22,7 +22,10 @@ import {
   groupByDay,
   lastSevenDays,
   matchesOrigin,
+  isHit,
   matchesQuery,
+  type BodyHit,
+  type BodyHits,
   matchesWho,
   monthKeyOf,
   type RecordDayGroup,
@@ -44,7 +47,27 @@ export type RecordDashboardProps = {
   initialWho?: WhoFilter;
   /** 記録を開く。渡すと、行と見つかった記録を押したときに呼ばれる */
   onOpen?: (item: RecordItem) => void;
+  /**
+   * 本文でも探す。探す言葉を渡すと、本文で当たった記録の id と抜粋を返す（全文の索引を引く）。
+   * 渡さないとき・索引がまだ無いときは、題・見出し・メモの本文・URL の抜粋だけで探す
+   */
+  findInBody?: (query: string) => BodyHits;
 };
+
+const NO_BODY_HITS: BodyHits = new Map();
+
+/** 本文で当たった箇所の抜粋。強調する範囲を <mark> で囲む */
+function BodySnippet({ hit }: { hit: BodyHit }) {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  hit.ranges.forEach((r, i) => {
+    if (r.start > at) parts.push(hit.text.slice(at, r.start));
+    parts.push(<mark key={i}>{hit.text.slice(r.start, r.end)}</mark>);
+    at = r.end;
+  });
+  if (at < hit.text.length) parts.push(hit.text.slice(at));
+  return <>{parts}</>;
+}
 
 const WHO_FILTERS: { value: WhoFilter; mark?: RecordWho["type"] }[] = [
   { value: "all" },
@@ -193,6 +216,7 @@ function DayList({
   now,
   locale,
   query,
+  bodyHits,
   copy,
   variant = "rail",
   dimMisses,
@@ -203,6 +227,7 @@ function DayList({
   now: string;
   locale: Locale;
   query: string;
+  bodyHits?: BodyHits;
   copy: RecordCopy;
   variant?: "rail" | "ledger";
   dimMisses?: boolean;
@@ -214,7 +239,7 @@ function DayList({
   const countRows = (day: RecordDayGroup) =>
     variant === "ledger"
       ? day.items.length
-      : bundleRuns(day.items, BUNDLE_MIN, (it) => !!dimMisses && searching && matchesQuery(it, query)).length;
+      : bundleRuns(day.items, BUNDLE_MIN, (it) => !!dimMisses && searching && isHit(it, query, bodyHits)).length;
   // 探しているあいだ（当たった日だけが並ぶ）は区切らない。見つかった記録から、その行へ飛べるようにするため
   const visible = dimMisses && searching ? days.length : daysWithinBudget(days, budget, countRows);
   const rest = days.length - visible;
@@ -227,6 +252,7 @@ function DayList({
           items={d.items}
           now={now}
           query={query}
+          bodyHits={bodyHits}
           variant={variant}
           dimMisses={dimMisses}
           activeId={activeId}
@@ -270,7 +296,7 @@ function Legend({ copy, variant }: { copy: RecordCopy; variant: "rail" | "ledger
   );
 }
 
-export function RecordDashboard({ items, now, layout, initialQuery = "", initialWho = "all", onOpen }: RecordDashboardProps) {
+export function RecordDashboard({ items, now, layout, initialQuery = "", initialWho = "all", onOpen, findInBody }: RecordDashboardProps) {
   const { locale } = useLocale();
   const copy = useRecordCopy();
   const [query, setQuery] = useState(initialQuery);
@@ -315,7 +341,9 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     () => items.filter((it) => matchesWho(it, who) && matchesOrigin(it, origins) && (!kind || it.kind === kind)),
     [items, who, origins, kind],
   );
-  const hits = useMemo(() => faceted.filter((it) => matchesQuery(it, query)), [faceted, query]);
+  // 本文で当たった記録（全文の索引）。索引ができあがると findInBody が替わり、引き直される
+  const bodyHits = useMemo(() => (query.trim() && findInBody ? findInBody(query) : NO_BODY_HITS), [findInBody, query]);
+  const hits = useMemo(() => faceted.filter((it) => isHit(it, query, bodyHits)), [faceted, query, bodyHits]);
   const originCounts = useMemo(() => countOrigins(items.filter((it) => matchesWho(it, who))), [items, who]);
   const hasQuery = query.trim().length > 0;
 
@@ -323,7 +351,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     // 左は絞っただけの記録をすべて残し、探す言葉に当たらない行は薄くする。
     // 右に、当たった記録だけを新しい順に並べる
     // 探しているあいだは、当たった記録のある日だけを出す（何千件もあると、当たらない日ばかりが並ぶため）
-    const allDays = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => matchesQuery(it, query)));
+    const allDays = groupByDay(faceted).filter((d) => !hasQuery || d.items.some((it) => isHit(it, query, bodyHits)));
     // カレンダーで日を選んでいれば、その日から前だけを出す
     const days = anchorDay ? allDays.filter((d) => d.key <= anchorDay) : allDays;
     // カレンダーの件数は、いま一覧に出しうる記録で数える（探しているあいだは、当たった記録だけ）
@@ -365,6 +393,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
               now={now}
               locale={locale}
               query={query}
+              bodyHits={bodyHits}
               copy={copy}
               dimMisses
               activeId={activeId}
@@ -432,6 +461,12 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
                         {it.title && it.detail && matchesQuery({ ...it, title: undefined, domain: undefined }, query) && (
                           <p className="rd-hit-detail">
                             <Marked text={it.detail} query={query} />
+                          </p>
+                        )}
+                        {/* 題にも見出しにも言葉が無く、本文で当たった記録は、当たった箇所を出す */}
+                        {!matchesQuery(it, query) && bodyHits.get(it.id) && (
+                          <p className="rd-hit-detail" data-body="true">
+                            <BodySnippet hit={bodyHits.get(it.id)!} />
                           </p>
                         )}
                         <p className="rd-hit-meta">
@@ -546,7 +581,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
           <div className="rd-sheet">
             <Legend copy={copy} variant="ledger" />
             {days.length === 0 && <Empty copy={copy} />}
-            <DayList days={days} now={now} locale={locale} query={query} copy={copy} variant="ledger" onOpen={onOpen} />
+            <DayList days={days} now={now} locale={locale} query={query} bodyHits={bodyHits} copy={copy} variant="ledger" onOpen={onOpen} />
           </div>
         </div>
        </div>
@@ -574,7 +609,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
       <div className="rd-sheet">
         <Legend copy={copy} variant="rail" />
         {days.length === 0 && <Empty copy={copy} />}
-        <DayList days={days} now={now} locale={locale} query={query} copy={copy} onOpen={onOpen} />
+        <DayList days={days} now={now} locale={locale} query={query} bodyHits={bodyHits} copy={copy} onOpen={onOpen} />
       </div>
     </div>
   );

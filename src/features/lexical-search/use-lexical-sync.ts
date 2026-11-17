@@ -44,6 +44,15 @@ export type LexicalSyncParams = {
   loadDoc: (noteId: string) => Promise<GraphiumDocument | null>;
   /** 無効化したいとき（Storybook 等） */
   disabled?: boolean;
+  /**
+   * 録音・動画の文字起こしを索引に載せるときに渡す（デスクトップ版だけ）。
+   * - load: 素材の文字起こしを 1 本の文章にして返す。無ければ null
+   * - jobs: 素材ごとの直近の文字起こしジョブの終わり方。"done" に変わった素材を読み直す
+   */
+  transcripts?: {
+    load: (fileId: string) => Promise<string | null>;
+    jobs: Readonly<Record<string, string>>;
+  };
 };
 
 /** どのストレージの索引か（provider + アカウント）。見本モードは本人の local と分ける（同じ provider id なので） */
@@ -142,7 +151,30 @@ export function useLexicalGeneration(): number {
 }
 
 export function useLexicalIndexSync(params: LexicalSyncParams): void {
-  const { authenticated, noteIndex, mediaIndex, getCachedDoc, loadDoc, disabled } = params;
+  const { authenticated, noteIndex, mediaIndex, getCachedDoc, loadDoc, disabled, transcripts } = params;
+  // 文字起こしが終わるたびに、その素材の番号を進める（印が変わり、その素材だけ読み直される）
+  const transcriptLoadRef = useRef(transcripts?.load);
+  transcriptLoadRef.current = transcripts?.load;
+  const transcriptEpochs = useRef(new Map<string, number>());
+  // この起動で読んで、文字起こしがまだ無かった素材（素材 → 読んだときの番号）。
+  // 索引には何も残さないので、次の起動でもう一度読む（読み直しの前に終了した・同期で後から届いた、を拾う）
+  const transcriptMissing = useRef(new Map<string, number>());
+  const lastTranscriptJobs = useRef<Readonly<Record<string, string>>>({});
+  const [transcriptRevision, setTranscriptRevision] = useState(0);
+  const transcriptJobs = transcripts?.jobs;
+  useEffect(() => {
+    if (!transcriptJobs) return;
+    let changed = false;
+    for (const [fileId, status] of Object.entries(transcriptJobs)) {
+      if (status === "done" && lastTranscriptJobs.current[fileId] !== "done") {
+        transcriptEpochs.current.set(fileId, (transcriptEpochs.current.get(fileId) ?? 0) + 1);
+        changed = true;
+      }
+    }
+    lastTranscriptJobs.current = transcriptJobs;
+    if (changed) setTranscriptRevision((n) => n + 1);
+  }, [transcriptJobs]);
+  const transcriptsEnabled = !!transcripts;
   // reset（再構築）で世代が進んだら reconcile をやり直す
   const generation = useLexicalGeneration();
   const getCachedDocRef = useRef(getCachedDoc);
@@ -205,13 +237,32 @@ export function useLexicalIndexSync(params: LexicalSyncParams): void {
         return;
       }
       if (cancelled) return;
-      const { desired, plans, names } = desiredAssetSources(mediaIndexRef.current?.media ?? []);
+      const loadTranscript = transcriptLoadRef.current;
+      const epochOf = (fileId: string) => transcriptEpochs.current.get(fileId) ?? 0;
+      const { desired, plans, names } = desiredAssetSources(mediaIndexRef.current?.media ?? [], {
+        transcriptEpoch: loadTranscript
+          ? (fileId) => (transcriptMissing.current.get(fileId) === epochOf(fileId) ? null : epochOf(fileId))
+          : undefined,
+      });
+      // いま文字起こしが終わった素材を先に読む（索引を作っている最中でも、PDF の列の後ろで待たせない）
+      const justTranscribed = (d: DesiredSource) => plans.get(d.sourceId)?.mode === "transcript" && epochOf(d.sourceId) > 0;
+      desired.sort((a, b) => Number(justTranscribed(b)) - Number(justTranscribed(a)));
       const loader: SourceLoader = async (d: DesiredSource) => {
         const plan = plans.get(d.sourceId);
         const name = names.get(d.sourceId) ?? "";
         if (!plan) return null;
         if (plan.mode === "inline") {
           return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: chunkPlainText(plan.text) };
+        }
+        if (plan.mode === "transcript") {
+          const epoch = epochOf(d.sourceId);
+          const transcript = loadTranscript ? await loadTranscript(d.sourceId).catch(() => null) : null;
+          if (!transcript) {
+            // まだ無い素材は索引に残さず、この起動のあいだは読み直さない（文字起こしが終わると番号が進んで読み直される）
+            transcriptMissing.current.set(d.sourceId, epoch);
+            return null;
+          }
+          return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: chunkPlainText(transcript) };
         }
         const text = plan.mode === "docx" ? await extractDocxTextForIndex(d.sourceId) : await extractPdfTextForIndex(d.sourceId);
         // 抽出できなかった PDF / Word は「空で索引済み」にして毎回の再抽出を避ける（uploadedAt が変われば再試行）
@@ -223,7 +274,7 @@ export function useLexicalIndexSync(params: LexicalSyncParams): void {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [scopeKey, mediaIndex, disabled, generation]);
+  }, [scopeKey, mediaIndex, disabled, generation, transcriptsEnabled, transcriptRevision]);
 
   // 4. 終了前に未保存分を書く
   useEffect(() => {

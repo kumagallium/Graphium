@@ -5,7 +5,7 @@
 
 import { lexicalSearch } from "./service";
 import { buildSnippet, type Snippet } from "./snippet";
-import { queryTerms } from "./tokenizer";
+import { normalizeText, queryTerms } from "./tokenizer";
 import type { LexicalSourceKind } from "./lexical-index";
 
 /** ソースごとに畳んだヒット */
@@ -48,6 +48,44 @@ export function bestHitsBySource(
     if (out.has(h.sourceId)) continue;
     // 生の入力語（句のまま）を先に、ヒットした語を後に渡す。長い語が優先して強調される
     out.set(h.sourceId, { kind: h.kind, sourceId: h.sourceId, title: h.title, score: h.score, snippet: buildSnippet(h.text, [...words, ...h.terms]) });
+  }
+  return out;
+}
+
+/** 句で探すときに見る断片数の上限（文章で絞ったあと、ソースごと 1 件に畳んだ数） */
+const PHRASE_LIMIT = 500;
+
+/**
+ * 入れた言葉がそのまま入っている断片だけを、ソースごとに 1 件返す。
+ *
+ * bestHitsBySource は語のどれか 1 つで当たった断片も返す（日本語は 2 文字ずつの語に切るので、
+ * 「聞こえ」で「聞こ」「こえ」のどちらかを含む断片がすべて当たる）。一覧の中から「この言葉が
+ * 入っている記録」を選ぶ用途では多すぎ、点数順の上限で肝心の断片が漏れるので、こちらを使う。
+ * 空白で区切った言葉は、すべてが同じ断片に入っているものだけにする。
+ */
+export function phraseHitsBySource(
+  text: string,
+  kinds: LexicalSourceKind[],
+  options: { limit?: number } = {},
+): Map<string, BestHit> {
+  const q = (text ?? "").trim();
+  const out = new Map<string, BestHit>();
+  if (!q || !lexicalSearch.isReady()) return out;
+  const words = q.split(/\s+/).filter(Boolean);
+  const needles = words.map((w) => normalizeText(w)).filter(Boolean);
+  if (needles.length === 0) return out;
+  const hits = lexicalSearch.search(q, {
+    kinds,
+    limit: options.limit ?? PHRASE_LIMIT,
+    perSourceLimit: 1,
+    accept: (chunk) => {
+      const hay = normalizeText(chunk);
+      return needles.every((n) => hay.includes(n));
+    },
+  });
+  for (const h of hits) {
+    if (out.has(h.sourceId)) continue;
+    out.set(h.sourceId, { kind: h.kind, sourceId: h.sourceId, title: h.title, score: h.score, snippet: buildSnippet(h.text, words) });
   }
   return out;
 }
