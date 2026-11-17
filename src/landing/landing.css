@@ -871,6 +871,25 @@ body {
   padding: 0.05em 0.22em;
 }
 
+.lp-mp-hit-detail {
+  margin-top: 0.1rem !important;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp-hit-detail mark {
+  background: var(--forest-soft, #e3f0e4);
+  color: var(--forest-ink, #2d4a32);
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0.05em 0.22em;
+}
+
+.lp-mp-find li:has(.lp-mp-hit-detail) .lp-mp-hit {
+  font-weight: 600;
+}
+
 .lp-mp-hit-meta {
   display: flex;
   flex-wrap: wrap;

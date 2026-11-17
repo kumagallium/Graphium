@@ -1,14 +1,16 @@
 // LP のコンセプトの絵。
 // 「場面が違っても同じ場所に残り、あとから同じ言葉で見つかる」を 1 枚で伝える。
-// 左はアプリの「記録」の画面を小さく写したもの（札の色・残した人の印はアプリと同じ決まり）、
+// 左はアプリの「記録」の画面を小さく写したもの（札の言葉と色・残した人の印はアプリと同じ）、
 // 右は同じ記録が言葉で見つかる様子。画面に入ると、言葉が打たれて結果が順に現れる。
+// 絵に出すのは、いまの記録の画面で実際に起きることだけにする（札は records.origin.* の言葉、
+// 見つかるのは題・見出し・メモの本文・URL の抜粋）。実装が変わったら、ここも合わせる。
 // まだ LandingPage には組み込んでいない。文言はここに仮置きしている（決まったら i18n.ts へ移す）。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Globe,
   Image as ImageIcon,
   MessagesSquare,
-  Mic,
+  PenLine,
   Search,
   Smartphone,
   StickyNote,
@@ -32,7 +34,8 @@ type Moment = {
   who: Who;
   // 何を（題）。メモは題を持たない
   title?: string;
-  // 何を（本文や抜粋）。写真は持たない
+  // 何を（題の下の 1 行）。メモは本文、ノートは見出し、Web クリップは抜粋。写真は持たない。
+  // 記録の画面で探したときに当たるのは、題とこの 1 行だけ（ノートの本文は当たらない）
   text?: string;
   // 写真などのファイル名
   file?: string;
@@ -56,14 +59,23 @@ const COPY: Record<MomentsLocale, Copy> = {
   ja: {
     moments: [
       {
+        id: "memo",
+        time: "09:05",
+        icon: StickyNote,
+        tone: "plain",
+        where: "メモ",
+        who: "self",
+        text: "こね上げの温度を 26°C に抑えたら、きめが揃った気がする",
+      },
+      {
         id: "meeting",
         time: "10:12",
-        icon: Mic,
-        tone: "rose",
-        where: "会議の録音",
+        icon: PenLine,
+        tone: "plain",
+        where: "手で書いた",
         who: "self",
         title: "パン教室の打ち合わせ",
-        text: "次は、発酵の温度を先に下げてみよう",
+        text: "決まったこと · 発酵の温度をどうするか",
       },
       {
         id: "photo",
@@ -89,19 +101,10 @@ const COPY: Record<MomentsLocale, Copy> = {
         time: "16:05",
         icon: MessagesSquare,
         tone: "sky",
-        where: "AI との対話",
+        where: "AI から",
         who: "selfWithAi",
         title: "発酵時間の見直し案",
-        text: "温度はそのままで、時間を倍にする手があります",
-      },
-      {
-        id: "memo",
-        time: "21:30",
-        icon: StickyNote,
-        tone: "plain",
-        where: "メモ",
-        who: "self",
-        text: "型を変えれば、焼く温度はそのままでいいかも",
+        text: "温度はそのままで時間を倍にする案 · 試す順番",
       },
     ],
     heading: "今日の記録",
@@ -113,19 +116,28 @@ const COPY: Record<MomentsLocale, Copy> = {
     placeholder: "言葉で探す",
     hits: "4 件",
     foot: "残した場面が違っても、同じ言葉で見つかります",
-    note: "Web のクリップ、録音の文字起こし、スマホからの受け取りは、デスクトップ版で動きます。",
+    note: "Web のクリップとスマホからの受け取りは、デスクトップ版で動きます。",
   },
   en: {
     moments: [
       {
+        id: "memo",
+        time: "09:05",
+        icon: StickyNote,
+        tone: "plain",
+        where: "Memo",
+        who: "self",
+        text: "Kept the dough temperature at 26°C and the crumb came out even",
+      },
+      {
         id: "meeting",
         time: "10:12",
-        icon: Mic,
-        tone: "rose",
-        where: "Meeting recording",
+        icon: PenLine,
+        tone: "plain",
+        where: "Written by hand",
         who: "self",
         title: "Bread class planning",
-        text: "Next time, let's lower the proofing temperature first",
+        text: "Decisions · What to do about the proofing temperature",
       },
       {
         id: "photo",
@@ -151,19 +163,10 @@ const COPY: Record<MomentsLocale, Copy> = {
         time: "16:05",
         icon: MessagesSquare,
         tone: "sky",
-        where: "AI conversation",
+        where: "From AI",
         who: "selfWithAi",
         title: "A new proofing schedule",
-        text: "Keep the temperature and double the time",
-      },
-      {
-        id: "memo",
-        time: "21:30",
-        icon: StickyNote,
-        tone: "plain",
-        where: "Memo",
-        who: "self",
-        text: "A different tin might work at the same temperature",
+        text: "Same temperature, twice the time · What to try first",
       },
     ],
     heading: "Today's records",
@@ -175,7 +178,7 @@ const COPY: Record<MomentsLocale, Copy> = {
     placeholder: "Find by words",
     hits: "4 found",
     foot: "Different moments, found by the same word",
-    note: "Web clips, transcription, and receiving from your phone run in the desktop app.",
+    note: "Web clips and receiving from your phone run in the desktop app.",
   },
 };
 
@@ -292,7 +295,11 @@ export function MomentsPicture({ locale = "ja" }: { locale?: MomentsLocale }) {
                     </span>
                     <span className="lp-mp-who">{copy.who[m.who]}</span>
                   </p>
-                  {m.title && <p className="lp-mp-title">{m.title}</p>}
+                  {m.title && (
+                    <p className="lp-mp-title">
+                      <Marked text={m.title} query={copy.query} />
+                    </p>
+                  )}
                   {m.text && (
                     <p className={m.title ? "lp-mp-text" : "lp-mp-title lp-mp-title-plain"}>
                       <Marked text={m.text} query={copy.query} />
@@ -331,9 +338,16 @@ export function MomentsPicture({ locale = "ja" }: { locale?: MomentsLocale }) {
                   <m.icon size={14} />
                 </span>
                 <div>
-                  <p className="lp-mp-hit">
-                    <Marked text={m.text ?? ""} query={copy.query} />
-                  </p>
+                  {m.title && (
+                    <p className="lp-mp-hit">
+                      <Marked text={m.title} query={copy.query} />
+                    </p>
+                  )}
+                  {m.text && (
+                    <p className={m.title ? "lp-mp-hit-detail" : "lp-mp-hit"}>
+                      <Marked text={m.text} query={copy.query} />
+                    </p>
+                  )}
                   <p className="lp-mp-hit-meta">
                     <span>{m.time}</span>
                     <span>{m.where}</span>
