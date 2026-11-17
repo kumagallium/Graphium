@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -888,6 +888,7 @@ function NoteHeaderMenu({
   onExportPdf,
   pdfExporting,
   onExportMarkdown,
+  onExportDocx,
   onExportProvJsonLd,
   provExportDisabled,
   onExportPlanProv,
@@ -937,6 +938,8 @@ function NoteHeaderMenu({
   pdfExporting: boolean;
   /** ノートを Markdown ファイルとしてエクスポートする */
   onExportMarkdown: () => void;
+  /** ノートを Word（.docx）ファイルとして書き出す */
+  onExportDocx: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
   /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
@@ -1135,6 +1138,14 @@ function NoteHeaderMenu({
           >
             <FileText size={14} />
             {t("markdown.export")}
+          </button>
+          <button
+            className={itemClass}
+            data-tooltip={t("docx.exportHint")}
+            onClick={() => { onExportDocx(); setOpen(false); }}
+          >
+            <FileType size={14} />
+            {t("docx.export")}
           </button>
           <button
             className={itemClass}
@@ -6411,6 +6422,33 @@ function NoteEditorInner({
       }
     }
   }, [markDirty, showAiTitleToast]);
+  // ── Word（.docx）エクスポートハンドラー ──
+  // Markdown と同じく今のエディタ内容（未保存の編集含む）が対象。docx は書き出すときに読み込む
+  // （最初の読み込みに入れない）。失敗は題のトーストと同じ見え方で知らせる
+  const docxExportingRef = useRef(false);
+  const handleExportDocx = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (docxExportingRef.current) return;
+    docxExportingRef.current = true;
+    try {
+      const { exportNoteToDocx, captureChartImage } = await import("./features/docx-export");
+      await exportNoteToDocx({
+        title,
+        blocks: editor.document,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+        captureBlockImage: async (blockId) => {
+          const root = document.querySelector("[data-label-wrapper] .bn-editor");
+          return root ? captureChartImage(root, blockId) : null;
+        },
+      });
+    } catch (e) {
+      console.error("[docx-export] export failed:", e);
+      showAiTitleToast({ kind: "error", message: t("docx.exportFailed") });
+    } finally {
+      docxExportingRef.current = false;
+    }
+  }, [title, showAiTitleToast, t]);
   const undoAiTitle = useCallback(() => {
     if (aiTitleToast?.kind !== "done") return;
     // 付けたあとに手で直していたら、その直しを消さない
@@ -7289,6 +7327,7 @@ function NoteEditorInner({
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
+          onExportDocx={handleExportDocx}
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!fileId}
           onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}

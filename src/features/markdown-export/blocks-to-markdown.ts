@@ -38,7 +38,7 @@ export type MarkdownCapableEditor = {
  * チャートが参照先を名前で書けるようにするためで、名前の付き方（キャプション、
  * 日時列を持つテーブルの「表 N」自動名）は画面の参照表示と同じ規則に揃える。
  */
-function buildTableNames(
+export function buildTableNames(
   blocks: unknown,
   tableMeta: Record<string, TableMeta> | undefined,
 ): ReadonlyMap<string, string> | undefined {

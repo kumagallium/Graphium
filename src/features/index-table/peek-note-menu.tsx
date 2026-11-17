@@ -2,7 +2,8 @@
 //
 // 全画面のノートの ⋯（note-app の NoteHeaderMenu）と同じ見た目・同じ文言・同じ作り
 // （メニュー本体は body へ出して画面に収める）。ピークで全画面と同じ結果になる項目だけを置く:
-//   リンクをコピー / Markdown で書き出し / アーカイブ / ゴミ箱へ
+//   リンクをコピー / Markdown・Word で書き出し / アーカイブ / ゴミ箱へ
+// Word を置く理由: 文字と表の書き出しなので Markdown と同じ扱い（ピークでも全画面と同じ結果になる）。
 // 置かないもの: PDF・PROV の書き出し（ピークは PROV を作らないので欠けた出力になる）、
 // 幅いっぱい・A4（ピークは用紙にしない）、共有・提案・テンプレート・派生・版・AI の題
 // （全画面側の状態とつながっている）、ナレッジに追加（ヘッダーのチップにある）。
@@ -10,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, Check, FileText, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import { Archive, Check, FileText, FileType, Link2, MoreHorizontal, Trash2 } from "lucide-react";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { useT } from "../../i18n";
 import { buildKnowledgeLink, buildNoteLink } from "../block-link/graphium-link";
@@ -19,13 +20,14 @@ export type PeekNoteMenuProps = {
   /** コピーするリンク（graphium-link.ts で作ったもの）。null なら「リンクをコピー」を出さない */
   link: string | null;
   onExportMarkdown?: () => void;
+  onExportDocx?: () => void;
   /** アーカイブ（通常のノートで、まだアーカイブ・ゴミ箱に入っていないときだけ渡す） */
   onArchive?: () => void;
   /** ゴミ箱へ（同上） */
   onTrash?: () => void;
 };
 
-export function PeekNoteMenu({ link, onExportMarkdown, onArchive, onTrash }: PeekNoteMenuProps) {
+export function PeekNoteMenu({ link, onExportMarkdown, onExportDocx, onArchive, onTrash }: PeekNoteMenuProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,7 +47,7 @@ export function PeekNoteMenu({ link, onExportMarkdown, onArchive, onTrash }: Pee
     return () => document.removeEventListener("mousedown", handler);
   }, [open, panelEl]);
 
-  if (!link && !onExportMarkdown && !onArchive && !onTrash) return null;
+  if (!link && !onExportMarkdown && !onExportDocx && !onArchive && !onTrash) return null;
 
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors";
@@ -83,9 +85,15 @@ export function PeekNoteMenu({ link, onExportMarkdown, onArchive, onTrash }: Pee
                 {t("markdown.export")}
               </button>
             )}
+            {onExportDocx && (
+              <button className={itemClass} onClick={run(onExportDocx)}>
+                <FileType size={14} />
+                {t("docx.export")}
+              </button>
+            )}
             {link && (
               <>
-                {onExportMarkdown && divider}
+                {(onExportMarkdown || onExportDocx) && divider}
                 <button
                   className={itemClass}
                   onClick={() => {
@@ -104,7 +112,7 @@ export function PeekNoteMenu({ link, onExportMarkdown, onArchive, onTrash }: Pee
                 </button>
               </>
             )}
-            {(onArchive || onTrash) && (onExportMarkdown || link) && divider}
+            {(onArchive || onTrash) && (onExportMarkdown || onExportDocx || link) && divider}
             {onArchive && (
               <button className={itemClass} onClick={run(onArchive)} data-tooltip={t("editor.archiveNoteHint")}>
                 <Archive size={14} />
