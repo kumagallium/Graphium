@@ -98,6 +98,8 @@ export type RecordDayProps = {
   dimMisses?: boolean;
   /** 同じ種類・出どころ・残した人がこの件数以上続いたら 1 行にまとめる（0 でまとめない）。台帳ではまとめない */
   bundleMin?: number;
+  /** 色を付けて示す記録の id（見つかった記録の側で指している行） */
+  activeId?: string | null;
 };
 
 export function RecordDay({
@@ -109,6 +111,7 @@ export function RecordDay({
   variant = "rail",
   dimMisses,
   bundleMin = BUNDLE_MIN,
+  activeId,
 }: RecordDayProps) {
   const copy = RECORD_COPY[locale];
   // まとめ行ごとの、開いて出している件数（無ければ閉じている）
@@ -123,7 +126,7 @@ export function RecordDay({
     variant === "ledger" ? [...items] : bundleRuns(items, bundleMin, (it) => !!dimMisses && searching && matchesQuery(it, query ?? ""));
 
   const row = (item: RecordItem) => (
-    <RecordRow key={item.id} item={item} locale={locale} query={query} variant={variant} dim={isMiss(item)} />
+    <RecordRow key={item.id} item={item} locale={locale} query={query} variant={variant} dim={isMiss(item)} active={activeId === item.id} />
   );
 
   return (
