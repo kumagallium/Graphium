@@ -32,7 +32,10 @@ export type RecordCopy = {
   allOrigins: string;
   more: (n: number) => string;
   fewer: string;
-  moreHits: (n: number) => string;
+  moreHits: string;
+  bundle: (n: number) => string;
+  moreInBundle: (next: number, rest: number) => string;
+  moreDays: (n: number) => string;
 };
 
 export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
@@ -77,7 +80,10 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     allOrigins: "すべて",
     more: (n) => `ほか ${n}`,
     fewer: "たたむ",
-    moreHits: (n) => `ほか ${n} 件を見る`,
+    moreHits: "ほかも見る",
+    bundle: (n) => `${n} 件が続けて残されています`,
+    moreInBundle: (next, rest) => `次の ${next} 件を出す（残り ${rest} 件）`,
+    moreDays: (n) => `前の日を見る（あと ${n} 日）`,
   },
   en: {
     title: "Records",
@@ -120,6 +126,9 @@ export const RECORD_COPY: Record<RecordLocale, RecordCopy> = {
     allOrigins: "All",
     more: (n) => `${n} more`,
     fewer: "Show fewer",
-    moreHits: (n) => `Show ${n} more`,
+    moreHits: "Show more",
+    bundle: (n) => `${n} records in a row`,
+    moreInBundle: (next, rest) => `Show the next ${next} (${rest} left)`,
+    moreDays: (n) => (n === 1 ? "Show earlier days (1 more day)" : `Show earlier days (${n} more days)`),
   },
 };
