@@ -103,7 +103,7 @@ Organizations rarely have one folder everybody can read. More often there is a f
 
 If you only ever set up one shared folder, nothing changes: it simply becomes the default.
 
-### Readable copies for people and tools without Graphium {#readable-copies}
+### Readable copies for people and tools without Graphium <Badge type="tip" text="Added in v0.139.0 (2026-11-17)" /> {#readable-copies}
 
 What Graphium puts in a shared folder is in its own format, so it cannot be read as it is. When you want the notes to be readable by other people, or by an AI that can read that folder, you can have Graphium also place copies in a form anyone can open.
 
@@ -300,9 +300,13 @@ Per note, the **Export** section of the `⋯` menu offers:
 | **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials, tables and the other notes it points at (no AI chats) |
 | **Export plan provenance** | Plan notes only. The whole plan — steps, planned lines, and the operation notes' provenance — as one `.plan.jsonld` (see [Exporting a plan](/labels-and-provenance#plan-prov-export)) |
 
-The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Some things arrive as text: a formula as LaTeX, a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name (with its link when it points at a web address). Check and toggle items keep their mark as a character, and links to other notes arrive as plain text. The page is A4 portrait, with the note's title at the top. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.
-
 Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
+
+### Export to Word <Badge type="tip" text="Added in v0.140.0 (2026-11-17)" /> {#export-to-word}
+
+**Word (.docx)** in the note menu, and in the menu of a note opened in the side peek, saves the note as a Word file. Headings, spacing and tables are styled in the file itself.
+
+The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Some things arrive as text: a formula as LaTeX, a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name (with its link when it points at a web address). Check and toggle items keep their mark as a character, and links to other notes arrive as plain text. The page is A4 portrait, with the note's title at the top. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.
 
 ### Export everything <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
 
