@@ -41,9 +41,9 @@ export type FileSidebarProps = {
   intakePlacement?: "twins" | "stacked";
   /**
    * ヘッダーの入口の並べ方（タブ表示のときだけ効く）。
-   * - "stacked"（既定・現状）: 検索、ノート、取り込み、ホームを縦に 1 行ずつ
-   * - "paired"（提案 A）: 意味で 2 段にまとめる。1 段目は行き先（ホーム｜検索）、2 段目は入れる（ノート｜取り込み）
-   * - "pairedWideNote"（提案 B）: 1 段目だけまとめる。ノートはいちばん大事なので幅いっぱいのまま、
+   * - "stacked"（旧配置・比較用）: 検索、ノート、取り込み、ホームを縦に 1 行ずつ
+   * - "paired"（見送った案 A・比較用）: 意味で 2 段にまとめる。1 段目は行き先（ホーム｜検索）、2 段目は入れる（ノート｜取り込み）
+   * - "pairedWideNote"（既定・採用 2026-11-17）: 1 段目だけまとめる。ノートはいちばん大事なので幅いっぱいのまま、
    *   取り込みとモバイル受信箱はその下の軽い 1 行（現状と同じ）
    * 比較は FileSidebar.ia.stories.tsx の HeaderComparison
    */
@@ -304,7 +304,7 @@ export function FileSidebar({
   onNewMemo,
   onOpenIntake,
   intakePlacement = "twins",
-  headerLayout = "stacked",
+  headerLayout = "pairedWideNote",
   onBack,
   canGoBack,
   onRefresh,
