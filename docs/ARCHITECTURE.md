@@ -2296,7 +2296,9 @@ Notes:
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
   pages, minus trash / archive) and `mediaIndex` (image OCR, PowerPoint slide
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
-  the background) through one
+  the background; in the desktop app only, the transcript of a recording or
+  video, read from its `transcript.json` and re-read when its transcription
+  job turns done) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during

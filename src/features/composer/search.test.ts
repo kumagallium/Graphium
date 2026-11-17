@@ -288,6 +288,16 @@ describe("searchMedia()", () => {
     expect(hits).toEqual([]);
   });
 
+  it("lists a recording or a video when its transcript matched (assetHits), not by name alone", () => {
+    const audio = media({ fileId: "a", name: "会議.m4a", type: "audio", mimeType: "audio/mp4" });
+    const video = media({ fileId: "v", name: "会議.mp4", type: "video", mimeType: "video/mp4" });
+    expect(searchMedia("会議", [audio, video])).toEqual([]);
+    const assetHits = new Map([["a", { score: 3, snippet: { text: "…発酵の温度を…", ranges: [{ start: 4, end: 6 }] } }]]);
+    const hits = searchMedia("温度", [audio, video], { assetHits });
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["a"]);
+    expect(hits[0].reasons).toContain("text");
+  });
+
   it("finds assets by indexed text (assetHits) and carries the snippet", () => {
     const assetHits = new Map([
       ["pdf-1", { score: 4, snippet: { text: "…焼結温度 800℃ で…", ranges: [{ start: 1, end: 5 }] } }],

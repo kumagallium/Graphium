@@ -71,6 +71,7 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     },
     origin: {
       written: t("records.origin.written"),
+      recording: t("records.origin.recording"),
       webClip: t("records.origin.webClip"),
       aiChat: t("records.origin.aiChat"),
       knowledge: t("records.origin.knowledge"),

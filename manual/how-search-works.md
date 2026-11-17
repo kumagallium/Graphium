@@ -41,7 +41,8 @@ Everything here runs on your device or through the AI model you set up. The inde
 
 | Where | What it matches | How it looks |
 |---|---|---|
-| [`⌘K` Composer](/ai-chat-and-ask#the-composer-k) | Titles, headings, labels and authors first; then the words in note bodies and in materials (text read from images, PDFs, web pages), and the text of your memos | Words |
+| [`⌘K` Composer](/ai-chat-and-ask#the-composer-k) | Titles, headings, labels and authors first; then the words in note bodies and in materials (text read from images, PDFs, web pages, and, in the desktop app, transcripts of recordings and videos), and the text of your memos | Words |
+| Records view search box | Titles and the text of your memos first; then the words in note bodies and materials, through the same full-text index. A record found only in its body shows the matching passage under its title | Words |
 | [Note list](/notes-and-editor) search box | Titles, text read from images, and note bodies | Words |
 | [AI chat](/ai-chat-and-ask#choosing-what-grounds-the-answer) — the first search (**Internal** / **External**) | Knowledge pages, plus short passages from notes and materials | Words + meaning, merged |
 | [AI chat — the AI searches again](/ai-chat-and-ask#letting-the-ai-search-again) | The same as the first search, with words the AI picks | Words + meaning |
@@ -49,7 +50,7 @@ Everything here runs on your device or through the AI model you set up. The inde
 
 ## By words: the full-text index (BM25)
 
-When you save a note, Graphium cuts it into passages of about 600 characters and adds them to a **full-text index** on your device. Text read from images (OCR), PDF text, and web-page excerpts go into the same index. A search scores each passage with **BM25**: a word counts for more when it appears often in that passage, and for less when it appears everywhere. This is the method most search engines have used for decades.
+When you save a note, Graphium cuts it into passages of about 600 characters and adds them to a **full-text index** on your device. Text read from images (OCR), PDF text, and web-page excerpts go into the same index. In the desktop app, transcripts of recordings and videos do too. A search scores each passage with **BM25**: a word counts for more when it appears often in that passage, and for less when it appears everywhere. This is the method most search engines have used for decades.
 
 Japanese has no spaces between words, so Graphium splits it with the word breaker built into the browser and operating system. Longer words are also stored as two-character pieces (熱電変換 → 熱電 · 電変 · 変換), so a search still matches when a word is split differently.
 

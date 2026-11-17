@@ -14,6 +14,35 @@ const note = (over: Partial<NoteIndexEntry>): NoteIndexEntry =>
 const media = (over: Partial<MediaIndexEntry>): MediaIndexEntry =>
   ({ fileId: "f", name: "file", type: "image", mimeType: "image/png", url: "u", uploadedAt: "2026-01-01", usedIn: [], ...over }) as MediaIndexEntry;
 
+describe("desiredAssetSources の文字起こし", () => {
+  const items = [
+    media({ fileId: "a1", type: "audio", mimeType: "audio/wav", uploadedAt: "U1" }),
+    media({ fileId: "v1", type: "video", mimeType: "video/mp4", uploadedAt: "U2" }),
+    media({ fileId: "a2", type: "audio", mimeType: "audio/wav", archivedAt: "x" }),
+  ];
+
+  it("transcriptEpoch を渡すと audio・video が transcript の印で載り、アーカイブ済みは載らない", () => {
+    const { desired, plans } = desiredAssetSources(items, { transcriptEpoch: () => 3 });
+    expect(desired.map((d) => `${d.sourceId}:${d.fingerprint}`)).toEqual(["a1:transcript:U1:3", "v1:transcript:U2:3"]);
+    expect(plans.get("a1")).toEqual({ mode: "transcript" });
+    expect(plans.get("v1")).toEqual({ mode: "transcript" });
+    expect(plans.has("a2")).toBe(false);
+  });
+
+  it("渡さないと載らない", () => {
+    expect(desiredAssetSources(items).desired).toEqual([]);
+  });
+
+  it("epoch が変わると、その素材の印だけ変わる", () => {
+    const f = (e: number) =>
+      desiredAssetSources(items, { transcriptEpoch: (id) => (id === "a1" ? e : 0) }).desired.map((d) => d.fingerprint);
+    const [a1x, v1x] = f(1);
+    const [a1y, v1y] = f(2);
+    expect(a1x).not.toBe(a1y);
+    expect(v1x).toBe(v1y);
+  });
+});
+
 describe("desiredNoteSources", () => {
   it("ゴミ箱・アーカイブ・skill を除外し、ai は wiki になる", () => {
     const out = desiredNoteSources([
@@ -127,5 +156,18 @@ describe("desiredSharedSources", () => {
 
   it("空一覧は空（スイッチ OFF / ルート未設定のときの掃除に使う）", () => {
     expect(desiredSharedSources([])).toEqual([]);
+  });
+
+  describe("文字起こしがまだ無いと分かっている素材", () => {
+    it("transcriptEpoch が null を返した録音は載せない（ほかの素材は載る）", () => {
+      const media = [
+        { fileId: "a1", name: "a.m4a", type: "audio", uploadedAt: "2026-11-17T00:00:00.000Z" },
+        { fileId: "a2", name: "b.m4a", type: "audio", uploadedAt: "2026-11-17T00:00:00.000Z" },
+      ] as unknown as Parameters<typeof desiredAssetSources>[0];
+      const { desired, plans } = desiredAssetSources(media, { transcriptEpoch: (id) => (id === "a1" ? null : 2) });
+      expect(desired.map((d) => d.sourceId)).toEqual(["a2"]);
+      expect(desired[0].fingerprint).toBe("transcript:2026-11-17T00:00:00.000Z:2");
+      expect(plans.has("a1")).toBe(false);
+    });
   });
 });
