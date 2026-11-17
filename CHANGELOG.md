@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.140.0](https://github.com/kumagallium/Graphium/compare/v0.139.0...v0.140.0) - 2026-11-17
+
+- feat: export a note as a Word (.docx) file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1718
+
 ## [v0.139.0](https://github.com/kumagallium/Graphium/compare/v0.138.1...v0.139.0) - 2026-11-17
 
 - feat(prov-export): export links between notes as dcterms:references by @kumagallium in https://github.com/kumagallium/Graphium/pull/1717
