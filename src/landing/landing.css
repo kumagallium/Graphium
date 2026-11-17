@@ -496,10 +496,11 @@ body {
   border-top: 1px solid var(--color-border, #d5e0d7);
 }
 
-/* コンセプトの絵（検討中の案。MomentsPicture.tsx）。
-   場面のそばで残して眠らせない、を 1 枚で伝える。色はトークンだけを使う。 */
+/* コンセプトの絵（MomentsPicture.tsx）。
+   左はアプリの「記録」の画面を小さく写したもの、右は同じ記録が言葉で見つかる様子。
+   札の色と残した人の印は、アプリ（record-dashboard.css）と同じ決まりに合わせている */
 .lp-moments {
-  margin: 2.4rem 0 0;
+  margin: clamp(28px, 4vw, 44px) 0 0;
 }
 
 .lp-moments p {
@@ -515,466 +516,345 @@ body {
 
 .lp-moments-note {
   margin-top: 0.9rem;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--color-muted-foreground, #4a6350);
 }
 
-/* 飛び出たひとこと。絵の中でここだけに色を置く */
-.lp-moments-spark {
-  font-size: 0.98rem;
-  font-weight: 500;
-  line-height: 1.5;
-  color: #2d4a32;
-  background: var(--color-accent, #e8f0e8);
-  border-left: 3px solid var(--forest, #4b7a52);
-  padding: 0.35rem 0.6rem;
-}
-
-/* 文章の代わりの線（会議の発言やページの本文を表す） */
-.lp-moments-line {
-  display: block;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--color-muted, #f0f5ef);
-}
-
-.lp-moments-brand {
-  font-weight: 600;
-  color: var(--forest, #4b7a52);
-  margin-right: 0.6rem;
-}
-
-.lp-moments-shelf-title {
-  font-size: 0.95rem;
-  color: #2d4a32;
-}
-
-.lp-moments-shelf-note {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.9rem;
-  font-size: 0.88rem;
-  color: var(--color-muted-foreground, #4a6350);
-}
-
-/* 案 1: 場面のカード → 棚 */
-.lp-moments-scenes {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(12px, 2vw, 24px);
-}
-
-.lp-moments-scene {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  background: var(--color-card, #ffffff);
-  border: 1px solid var(--color-border, #d5e0d7);
-  border-radius: 14px;
-  padding: 1rem 1.1rem 1.2rem;
-}
-
-.lp-moments-scene-label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--color-muted-foreground, #4a6350);
-  margin-bottom: 0.2rem;
-}
-
-.lp-moments-flow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(12px, 2vw, 24px);
-  height: 28px;
-}
-
-.lp-moments-flow span {
-  justify-self: center;
-  width: 0;
-  border-left: 1.5px dashed color-mix(in srgb, var(--forest, #4b7a52) 55%, transparent);
-}
-
-.lp-moments-shelf,
-.lp-moments-day,
-.lp-moments-after {
-  background: var(--color-card, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--forest, #4b7a52) 45%, transparent);
-  border-radius: 14px;
-  padding: 1.1rem 1.3rem 1.2rem;
-}
-
-.lp-moments-shelf ul {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(12px, 2vw, 24px);
-  margin-top: 0.8rem;
-}
-
-.lp-moments-shelf li,
-.lp-moments-contrast li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  font-size: 0.92rem;
-  line-height: 1.5;
-  color: #2d4a32;
-}
-
-.lp-moments-shelf li svg,
-.lp-moments-contrast li svg {
-  flex: none;
-  margin-top: 0.28rem;
-  color: var(--forest, #4b7a52);
-}
-
-/* 案 2: 1 日の記録 */
-.lp-moments-day {
-  max-width: 720px;
-}
-
-.lp-moments-day ol {
-  margin-top: 0.9rem;
-}
-
-.lp-moments-day li {
-  display: grid;
-  grid-template-columns: 3.2rem 28px minmax(0, 1fr);
-  gap: 0.7rem;
-  padding-bottom: 1.1rem;
-  position: relative;
-}
-
-.lp-moments-day li:last-child {
-  padding-bottom: 0;
-}
-
-/* 時刻の点をつなぐ縦の線 */
-.lp-moments-day li:not(:last-child)::before {
-  content: "";
-  position: absolute;
-  left: calc(3.2rem + 0.7rem + 13px);
-  top: 28px;
-  bottom: 0;
-  border-left: 1.5px solid var(--color-border, #d5e0d7);
-}
-
-.lp-moments-time {
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-muted-foreground, #4a6350);
-  padding-top: 0.3rem;
-}
-
-.lp-moments-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: var(--color-accent, #e8f0e8);
-  color: var(--forest, #4b7a52);
-}
-
-.lp-moments-day-scene {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #2d4a32;
-  padding-top: 0.2rem;
-  margin-bottom: 0.4rem !important;
-}
-
-.lp-moments-day-scene span {
-  font-weight: 400;
-  color: var(--color-muted-foreground, #4a6350);
-  margin-left: 0.6rem;
-}
-
-/* 案 3: そのままだと／入れると */
-.lp-moments-contrast {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(16px, 3vw, 32px);
-  align-items: stretch;
-}
-
-.lp-moments-side-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--color-muted-foreground, #4a6350);
-  margin-bottom: 0.8rem !important;
-}
-
-.lp-moments-before {
-  padding: 1.1rem 0.2rem 1.2rem;
-}
-
-.lp-moments-before ul {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
-}
-
-/* 散らばって薄れていく側。点線の枠と淡い文字で表す */
-.lp-moments-before li {
-  border: 1px dashed var(--color-border, #d5e0d7);
-  border-radius: 10px;
-  padding: 0.7rem 0.8rem;
-  color: var(--color-muted-foreground, #4a6350);
-}
-
-.lp-moments-before li svg {
-  color: var(--color-text-tertiary, #8fa394);
-}
-
-.lp-moments-after ul {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.lp-moments-after mark {
-  background: var(--color-accent, #e8f0e8);
-  color: inherit;
-  font-weight: 600;
-  border-bottom: 2px solid var(--forest, #4b7a52);
-  padding: 0 0.1em;
-}
-
-.lp-moments-search {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.92rem;
-  color: #2d4a32;
-  border: 1px solid var(--color-border, #d5e0d7);
-  border-radius: 8px;
-  padding: 0.4rem 0.7rem;
-  margin-bottom: 0.9rem !important;
-}
-
-.lp-moments-search svg {
-  color: var(--color-muted-foreground, #4a6350);
-}
-
-@media (max-width: 720px) {
-  .lp-moments-scenes,
-  .lp-moments-shelf ul,
-  .lp-moments-contrast {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* 縦に並ぶと 3 本の線は意味を失うので、中央の 1 本だけ残す */
-  .lp-moments-flow {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .lp-moments-flow span:not(:first-child) {
-    display: none;
-  }
-
-  .lp-moments-before ul {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* 組み合わせ案（Found）: 今日の記録と、言葉で見つかる様子を重ねて見せる */
 .lp-mp {
+  --mp-overlap: 36px;
+  --mp-line: var(--color-border, #d5e0d7);
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   align-items: start;
   padding: clamp(18px, 3vw, 40px);
-  padding-bottom: clamp(28px, 4vw, 56px);
-  background: var(--color-surface, #f5f8f5);
+  padding-bottom: clamp(28px, 4vw, 52px);
+  /* 上から下へわずかに濃くして、2 枚のカードが載る台に見せる */
+  background: linear-gradient(
+    180deg,
+    var(--color-surface, #f5f8f5),
+    var(--color-muted, #f0f5ef)
+  );
   border: 1px solid var(--color-border-subtle, #dce5dd);
-  border-radius: 20px;
+  border-radius: 24px;
 }
 
 .lp-mp-log,
 .lp-mp-find {
   background: var(--color-card, #ffffff);
-  border-radius: 14px;
+  border-radius: 16px;
 }
 
+/* ── 左: 今日の記録 ───────────────────────────── */
 .lp-mp-log {
   border: 1px solid var(--color-border, #d5e0d7);
   box-shadow: var(--shadow-1, 0 1px 2px rgba(30, 20, 10, 0.06));
-  padding: 1.2rem 1.4rem 1.4rem;
+  padding: 1.3rem 1.5rem 1.5rem;
   /* 右のカードが重なる分だけ、右側に余白を取る */
-  padding-right: calc(1.4rem + 28px);
+  padding-right: calc(1.5rem + var(--mp-overlap));
 }
 
 .lp-mp-log-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  font-size: 1.05rem;
+  gap: 0.7rem;
+}
+
+.lp-mp-heading {
+  font-size: 1.1rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: #2d4a32;
 }
 
+.lp-mp-date,
 .lp-mp-count {
   font-size: 0.8rem;
-  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--color-muted-foreground, #4a6350);
 }
 
-/* 記録の行と見出しの行で同じ列を使う（いつ ｜ どこで・誰が・何を） */
+.lp-mp-count {
+  margin-left: auto;
+}
+
+/* 見出しの行と記録の行で同じ列を使う（いつ ｜ どこで・誰が・何を） */
 .lp-mp-legend,
 .lp-mp-log li {
   display: grid;
-  grid-template-columns: 3rem minmax(0, 1fr);
-  column-gap: 1.1rem;
+  grid-template-columns: 2.9rem minmax(0, 1fr);
+  column-gap: 0.9rem;
 }
 
 .lp-mp-legend {
-  margin-top: 0.9rem !important;
-  padding-bottom: 0.5rem;
+  margin-top: 1rem !important;
+  padding-bottom: 0.55rem;
   border-bottom: 1px solid var(--color-border-subtle, #dce5dd);
   font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   color: var(--color-text-tertiary, #8fa394);
 }
 
+.lp-mp-legend span:first-child {
+  text-align: right;
+}
+
 .lp-mp-legend span:last-child {
-  padding-left: 1.1rem;
+  padding-left: 1.25rem;
+}
+
+.lp-mp-log ol {
+  padding-top: 0.35rem;
 }
 
 .lp-mp-log li {
-  padding-top: 0.95rem;
+  transition: opacity 0.5s ease;
 }
 
 .lp-mp-log time {
+  padding-top: 0.75rem;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-  color: var(--color-muted-foreground, #4a6350);
+  line-height: 1.5rem;
   text-align: right;
-  line-height: 1.6;
+  color: var(--color-muted-foreground, #4a6350);
 }
 
-/* 時刻の右に通す縦の線と、その上の点 */
+/* 時刻の右に通す縦の線。行をまたいで 1 本につながる */
 .lp-mp-entry {
   position: relative;
-  padding-left: 1.1rem;
-  border-left: 1.5px solid var(--color-border, #d5e0d7);
-  padding-bottom: 0.15rem;
+  padding: 0.75rem 0 0.75rem 1.25rem;
+  border-left: 1.5px solid var(--mp-line);
 }
 
-.lp-mp-entry::before {
-  content: "";
+.lp-mp-log li:first-child .lp-mp-entry {
+  border-image: linear-gradient(180deg, transparent 1.2rem, var(--mp-line) 1.2rem) 1;
+}
+
+.lp-mp-log li:last-child .lp-mp-entry {
+  padding-bottom: 0.2rem;
+  border-image: linear-gradient(180deg, var(--mp-line) 1.5rem, transparent 1.5rem) 1;
+}
+
+/* 線の上に置く、残した人の印。自分 = 塗りの丸 / 自分と AI = 丸に AI の輪 */
+.lp-mp-mark {
   position: absolute;
-  left: -5.5px;
-  top: 0.42rem;
+  left: -5.75px;
+  top: calc(0.75rem + 0.75rem - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--forest, #4b7a52);
+  outline: 3px solid var(--color-card, #ffffff);
+}
+
+.lp-mp-mark[data-who="selfWithAi"] {
+  left: -4.75px;
+  top: calc(0.75rem + 0.75rem - 4px);
   width: 8px;
   height: 8px;
-  border-radius: 999px;
-  background: var(--color-card, #ffffff);
-  border: 1.5px solid var(--forest, #4b7a52);
+  outline: none;
+  box-shadow:
+    0 0 0 1.5px var(--color-card, #ffffff),
+    0 0 0 3px var(--sky, #3b82a6),
+    0 0 0 6px var(--color-card, #ffffff);
 }
 
 .lp-mp-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.3rem 0.6rem;
-  font-size: 0.8rem;
-  line-height: 1.6;
+  gap: 0.2rem 0.55rem;
+  min-height: 1.5rem;
 }
 
+/* 出どころの札 */
 .lp-mp-where {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0 0.55rem;
+  gap: 4px;
+  padding: 2px 9px 2px 7px;
   border-radius: 999px;
-  background: var(--color-muted, #f0f5ef);
-  color: #2d4a32;
-  font-weight: 500;
+  background: var(--paper-3, var(--color-muted, #f0f5ef));
+  color: var(--ink-2, #2d4a32);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.125rem;
+  white-space: nowrap;
 }
 
 .lp-mp-where svg {
-  color: var(--forest, #4b7a52);
+  color: var(--ink-3, #4a6350);
+}
+
+.lp-mp-where[data-tone="rose"],
+.lp-mp-hit-icon[data-tone="rose"] {
+  background: var(--rose-soft, #fbe9ea);
+  color: var(--rose-ink, #8a2f3a);
+}
+
+.lp-mp-where[data-tone="amber"],
+.lp-mp-hit-icon[data-tone="amber"] {
+  background: var(--amber-soft, #fbefd9);
+  color: var(--amber-ink, #7a4a10);
+}
+
+.lp-mp-where[data-tone="sky"],
+.lp-mp-hit-icon[data-tone="sky"] {
+  background: var(--sky-soft, #e3f1f8);
+  color: var(--sky-ink, #1f5673);
+}
+
+.lp-mp-where[data-tone="forest"],
+.lp-mp-hit-icon[data-tone="forest"] {
+  background: var(--forest-soft, #e3f0e4);
+  color: var(--forest-ink, #2d4a32);
+}
+
+.lp-mp-where:not([data-tone="plain"]) svg {
+  color: currentColor;
 }
 
 .lp-mp-who {
+  font-size: 0.8rem;
   color: var(--color-muted-foreground, #4a6350);
 }
 
-.lp-mp-what {
-  margin-top: 0.3rem !important;
+.lp-mp-title {
+  margin-top: 0.35rem !important;
   font-size: 1rem;
-  line-height: 1.55;
+  font-weight: 600;
+  line-height: 1.45;
   color: var(--ink, #1a2e1d);
 }
 
-/* 左の一覧では、探す言葉を控えめに示すだけにする */
-.lp-mp-what mark {
-  background: none;
-  color: inherit;
-  border-bottom: 1.5px dotted var(--forest, #4b7a52);
+/* 題を持たないメモは、本文をそのまま 1 行目に置く */
+.lp-mp-title-plain {
+  font-weight: 400;
 }
 
+.lp-mp-text {
+  margin-top: 0.15rem !important;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp-file {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.4rem !important;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--ink, #1a2e1d);
+}
+
+.lp-mp-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--forest-soft, #e3f0e4), var(--amber-soft, #fbefd9));
+  color: var(--forest-ink, #2d4a32);
+}
+
+/* 左の一覧では、探す言葉に下線を引くだけにする。線は左から伸びる */
+.lp-mp-log mark {
+  background: linear-gradient(var(--forest, #4b7a52), var(--forest, #4b7a52)) no-repeat 0 100% / 100% 2px;
+  color: inherit;
+  padding-bottom: 1px;
+  transition: background-size 0.45s ease 0.15s;
+}
+
+/* ── 右: 言葉で見つかる ───────────────────────────── */
 .lp-mp-find {
   position: relative;
   z-index: 1;
-  margin-left: -28px;
-  margin-top: clamp(56px, 8vw, 96px);
-  border: 1px solid color-mix(in srgb, var(--forest, #4b7a52) 40%, transparent);
-  box-shadow: var(--shadow-3, 0 16px 40px -16px rgba(30, 20, 10, 0.22));
-  padding: 1rem 1.1rem 1.1rem;
+  margin-left: calc(-1 * var(--mp-overlap));
+  margin-top: clamp(64px, 9vw, 108px);
+  border: 1px solid color-mix(in srgb, var(--forest, #4b7a52) 36%, transparent);
+  box-shadow:
+    var(--shadow-3, 0 16px 40px -16px rgba(30, 20, 10, 0.22)),
+    0 2px 6px rgba(30, 20, 10, 0.05);
+  padding: 1rem 1.1rem 1.05rem;
 }
 
 .lp-mp-field {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.55rem;
+  padding: 0.55rem 0.8rem;
   border: 1.5px solid var(--forest, #4b7a52);
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--forest, #4b7a52) 14%, transparent);
   color: var(--forest, #4b7a52);
 }
 
 .lp-mp-query {
   flex: 1;
+  min-width: 0;
   font-size: 1rem;
   font-weight: 500;
+  line-height: 1.5rem;
+  white-space: nowrap;
   color: var(--ink, #1a2e1d);
 }
 
-/* 入力中のカーソル */
+.lp-mp-placeholder {
+  font-weight: 400;
+  color: var(--color-text-tertiary, #8fa394);
+}
+
+/* 入力中のカーソル。打ち終えて結果が出たら消す */
 .lp-mp-query::after {
   content: "";
   display: inline-block;
   width: 1.5px;
-  height: 1.1em;
+  height: 1.15em;
   margin-left: 2px;
-  vertical-align: -0.18em;
+  vertical-align: -0.2em;
   background: var(--forest, #4b7a52);
+  opacity: 0;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .lp-mp-query::after {
-    animation: lp-mp-caret 1.1s steps(1) infinite;
-  }
-}
-
-@keyframes lp-mp-caret {
-  50% {
-    opacity: 0;
-  }
+.lp-mp-hits {
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--forest-ink, #2d4a32);
+  transition: opacity 0.3s ease;
 }
 
 .lp-mp-find ul {
-  margin-top: 0.4rem;
+  margin-top: 0.35rem;
 }
 
 .lp-mp-find li {
-  padding: 0.7rem 0.2rem;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: 0.7rem;
+  align-items: start;
+  padding: 0.75rem 0.15rem;
   border-bottom: 1px solid var(--color-border-subtle, #dce5dd);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 110ms);
+}
+
+.lp-mp-hit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--paper-3, var(--color-muted, #f0f5ef));
+  color: var(--ink-3, #4a6350);
 }
 
 .lp-mp-hit {
@@ -984,42 +864,87 @@ body {
 }
 
 .lp-mp-hit mark {
-  background: var(--color-accent, #e8f0e8);
-  color: #2d4a32;
+  background: var(--forest-soft, #e3f0e4);
+  color: var(--forest-ink, #2d4a32);
   font-weight: 600;
-  border-radius: 3px;
-  padding: 0.05em 0.2em;
+  border-radius: 4px;
+  padding: 0.05em 0.22em;
 }
 
 .lp-mp-hit-meta {
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  flex-wrap: wrap;
   margin-top: 0.2rem !important;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
   color: var(--color-muted-foreground, #4a6350);
 }
 
+.lp-mp-hit-meta span + span::before {
+  content: "·";
+  margin: 0 0.4em;
+  color: var(--color-text-tertiary, #8fa394);
+}
+
 .lp-mp-foot {
-  margin-top: 0.8rem !important;
+  margin-top: 0.85rem !important;
   font-size: 0.82rem;
+  line-height: 1.5;
   color: var(--color-muted-foreground, #4a6350);
+  transition: opacity 0.5s ease 0.5s;
+}
+
+/* ── 進み具合ごとの見え方 ─────────────────────────────
+   found が完成形。idle・typing は、動きを使える環境でだけ MomentsPicture が付ける */
+.lp-mp[data-stage="found"] .lp-mp-log li[data-hit="false"] {
+  opacity: 0.42;
+}
+
+.lp-mp:not([data-stage="found"]) .lp-mp-log mark {
+  background-size: 0 2px;
+}
+
+.lp-mp:not([data-stage="found"]) .lp-mp-find li {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: none;
+}
+
+.lp-mp:not([data-stage="found"]) :is(.lp-mp-hits, .lp-mp-foot) {
+  opacity: 0;
+  transition: none;
+}
+
+.lp-mp:not([data-stage="found"]) .lp-mp-query::after {
+  opacity: 1;
+  animation: lp-mp-caret 1.1s steps(1) infinite;
+}
+
+@keyframes lp-mp-caret {
+  50% {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 760px) {
   .lp-mp {
     grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-    padding-bottom: 16px;
+    padding: 10px;
+    padding-bottom: 14px;
+    border-radius: 20px;
+  }
+
+  /* 縦に並べるときは、探す側を上に置く（結果を先に見せ、下に元の記録が続く） */
+  .lp-mp-find {
+    order: -1;
+    margin: 0 8px -14px;
   }
 
   .lp-mp-log {
-    padding: 1rem 1rem 1.6rem;
+    padding: 1.9rem 1rem 1.2rem;
   }
 
-  /* 縦に並べるときは、上のカードの下端に少しだけ重ねる */
-  .lp-mp-find {
-    margin: -12px 10px 0;
+  .lp-mp-date {
+    display: none;
   }
 }

@@ -1,41 +1,54 @@
-// LP のコンセプトの絵（検討中の案）。
-// 「知見やアイデアが飛び出る場面のそばで残し、眠らせない」を 1 枚で伝える。
-// まだ LandingPage には組み込んでいない。Storybook で案を見比べるための部品で、
-// 文言は i18n.ts に入れず、ここに仮置きしている（案が決まったら i18n.ts へ移す）。
-import { Globe, MessagesSquare, Mic, Search, Smartphone, type LucideIcon } from "lucide-react";
+// LP のコンセプトの絵。
+// 「場面が違っても同じ場所に残り、あとから同じ言葉で見つかる」を 1 枚で伝える。
+// 左はアプリの「記録」の画面を小さく写したもの（札の色・残した人の印はアプリと同じ決まり）、
+// 右は同じ記録が言葉で見つかる様子。画面に入ると、言葉が打たれて結果が順に現れる。
+// まだ LandingPage には組み込んでいない。文言はここに仮置きしている（決まったら i18n.ts へ移す）。
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Globe,
+  Image as ImageIcon,
+  MessagesSquare,
+  Mic,
+  Search,
+  Smartphone,
+  StickyNote,
+  type LucideIcon,
+} from "lucide-react";
 
-export type MomentsVariant = "found" | "scenes" | "day" | "contrast";
 export type MomentsLocale = "ja" | "en";
 
+// 札の色。アプリの記録の画面（record-dashboard.css の data-tone）と同じ割り当て
+type Tone = "rose" | "amber" | "sky" | "forest" | "plain";
+// 残した人。印の形もアプリと同じ（自分 = 塗りの丸 / 自分と AI = 丸に輪）
+type Who = "self" | "selfWithAi";
+
 type Moment = {
-  icon: LucideIcon;
-  // 場面（その人がいる場所）
-  scene: string;
-  // そこで飛び出たひとこと
-  spark: string;
-  // 残り方（Graphium に入るときの形）
-  kept: string;
-  // そのままだとどうなるか
-  lost: string;
+  id: string;
   time: string;
-  // どこで残したか（記録の出どころ）
+  icon: LucideIcon;
+  tone: Tone;
+  // どこで残したか
   where: string;
-  // 誰が残したか
-  who: string;
+  who: Who;
+  // 何を（題）。メモは題を持たない
+  title?: string;
+  // 何を（本文や抜粋）。写真は持たない
+  text?: string;
+  // 写真などのファイル名
+  file?: string;
 };
 
 type Copy = {
   moments: Moment[];
-  scenesShelf: string;
-  scenesShelfNote: string;
-  dayHeading: string;
-  dayFoot: string;
-  contrastBefore: string;
-  contrastAfter: string;
-  contrastQuery: string;
-  foundLegend: [string, string, string, string];
-  foundCount: string;
-  foundFoot: string;
+  heading: string;
+  date: string;
+  count: string;
+  legend: [string, string, string, string];
+  who: Record<Who, string>;
+  query: string;
+  placeholder: string;
+  hits: string;
+  foot: string;
   note: string;
 };
 
@@ -43,116 +56,130 @@ const COPY: Record<MomentsLocale, Copy> = {
   ja: {
     moments: [
       {
-        icon: Mic,
-        scene: "会議中",
-        spark: "次は先に温度を下げてみよう",
-        kept: "録音が文字になる",
-        lost: "会議のあと、誰も覚えていない",
+        id: "meeting",
         time: "10:12",
+        icon: Mic,
+        tone: "rose",
         where: "会議の録音",
-        who: "自分",
+        who: "self",
+        title: "パン教室の打ち合わせ",
+        text: "次は、発酵の温度を先に下げてみよう",
       },
       {
-        icon: Globe,
-        scene: "ブラウザで読んでいるとき",
-        spark: "温度を下げると割れにくい、という報告",
-        kept: "読んだページを残す",
-        lost: "タブを閉じて、どのページか分からない",
-        time: "13:40",
-        where: "Web のページ",
-        who: "自分",
-      },
-      {
-        icon: MessagesSquare,
-        scene: "AI と話しているとき",
-        spark: "温度はそのままで、冷ます時間を倍にする手があります",
-        kept: "話したことを残す",
-        lost: "会話が流れて、探し出せない",
-        time: "16:05",
-        where: "AI との対話",
-        who: "自分と Claude",
-      },
-      {
+        id: "photo",
+        time: "11:30",
         icon: Smartphone,
-        scene: "出先で思いついたとき",
-        spark: "型を変えれば温度はそのままでいいかも",
-        kept: "スマホの写真や声を送る",
-        lost: "カメラロールに埋もれる",
+        tone: "forest",
+        where: "スマホから",
+        who: "self",
+        file: "焼き上がりの写真.jpg",
+      },
+      {
+        id: "web",
+        time: "13:40",
+        icon: Globe,
+        tone: "amber",
+        where: "Web クリップ",
+        who: "self",
+        title: "低温で長く発酵させると、風味が変わる理由",
+        text: "温度を下げると、発酵はゆっくり進みます",
+      },
+      {
+        id: "ai",
+        time: "16:05",
+        icon: MessagesSquare,
+        tone: "sky",
+        where: "AI との対話",
+        who: "selfWithAi",
+        title: "発酵時間の見直し案",
+        text: "温度はそのままで、時間を倍にする手があります",
+      },
+      {
+        id: "memo",
         time: "21:30",
-        where: "スマホのメモ",
-        who: "自分",
+        icon: StickyNote,
+        tone: "plain",
+        where: "メモ",
+        who: "self",
+        text: "型を変えれば、焼く温度はそのままでいいかも",
       },
     ],
-    scenesShelf: "同じ場所に残る",
-    scenesShelfNote: "文字になっているので、あとで言葉で探せます",
-    dayHeading: "今日の記録",
-    dayFoot: "場面は違っても、入る場所は 1 つです",
-    contrastBefore: "そのままだと",
-    contrastAfter: "Graphium に入れると",
-    contrastQuery: "温度",
-    foundLegend: ["いつ", "どこで", "誰が", "何を"],
-    foundCount: "4 件",
-    foundFoot: "残した場面が違っても、同じ言葉で見つかります",
+    heading: "今日の記録",
+    date: "11月17日 火曜日",
+    count: "5 件",
+    legend: ["いつ", "どこで", "誰が", "何を"],
+    who: { self: "自分", selfWithAi: "自分と AI" },
+    query: "温度",
+    placeholder: "言葉で探す",
+    hits: "4 件",
+    foot: "残した場面が違っても、同じ言葉で見つかります",
     note: "Web のクリップ、録音の文字起こし、スマホからの受け取りは、デスクトップ版で動きます。",
   },
   en: {
     moments: [
       {
-        icon: Mic,
-        scene: "In a meeting",
-        spark: "Next time, let's lower the temperature first",
-        kept: "The recording becomes text",
-        lost: "After the meeting, nobody remembers",
+        id: "meeting",
         time: "10:12",
+        icon: Mic,
+        tone: "rose",
         where: "Meeting recording",
-        who: "Me",
+        who: "self",
+        title: "Bread class planning",
+        text: "Next time, let's lower the proofing temperature first",
       },
       {
-        icon: Globe,
-        scene: "Reading in the browser",
-        spark: "A report that a lower temperature prevents cracks",
-        kept: "The page is kept",
-        lost: "The tab is closed, the page is gone",
-        time: "13:40",
-        where: "Web page",
-        who: "Me",
-      },
-      {
-        icon: MessagesSquare,
-        scene: "Talking with an AI",
-        spark: "Keep the temperature and double the cooling time",
-        kept: "The conversation is kept",
-        lost: "The chat scrolls away",
-        time: "16:05",
-        where: "AI conversation",
-        who: "Me and Claude",
-      },
-      {
+        id: "photo",
+        time: "11:30",
         icon: Smartphone,
-        scene: "An idea on the go",
-        spark: "A different mold might work at the same temperature",
-        kept: "Send a photo or a voice memo",
-        lost: "Buried in the camera roll",
+        tone: "forest",
+        where: "From phone",
+        who: "self",
+        file: "fresh-from-the-oven.jpg",
+      },
+      {
+        id: "web",
+        time: "13:40",
+        icon: Globe,
+        tone: "amber",
+        where: "Web clip",
+        who: "self",
+        title: "Why a long, cool proof changes the flavor",
+        text: "At a lower temperature, the dough rises slowly",
+      },
+      {
+        id: "ai",
+        time: "16:05",
+        icon: MessagesSquare,
+        tone: "sky",
+        where: "AI conversation",
+        who: "selfWithAi",
+        title: "A new proofing schedule",
+        text: "Keep the temperature and double the time",
+      },
+      {
+        id: "memo",
         time: "21:30",
-        where: "Memo from phone",
-        who: "Me",
+        icon: StickyNote,
+        tone: "plain",
+        where: "Memo",
+        who: "self",
+        text: "A different tin might work at the same temperature",
       },
     ],
-    scenesShelf: "Kept in one place",
-    scenesShelfNote: "It is all text, so you can find it later by words",
-    dayHeading: "Today's records",
-    dayFoot: "Different moments, one place",
-    contrastBefore: "Left as it is",
-    contrastAfter: "In Graphium",
-    contrastQuery: "temperature",
-    foundLegend: ["When", "Where", "Who", "What"],
-    foundCount: "4 results",
-    foundFoot: "Different moments, found by the same word",
+    heading: "Today's records",
+    date: "Tuesday, November 17",
+    count: "5 records",
+    legend: ["When", "Where", "Who", "What"],
+    who: { self: "Me", selfWithAi: "Me and AI" },
+    query: "temperature",
+    placeholder: "Find by words",
+    hits: "4 found",
+    foot: "Different moments, found by the same word",
     note: "Web clips, transcription, and receiving from your phone run in the desktop app.",
   },
 };
 
-// 検索語にあたる部分だけを目立たせる（案 3 で使う）
+// 探す言葉にあたる部分だけを <mark> で囲む
 function Marked({ text, query }: { text: string; query: string }) {
   const at = text.toLowerCase().indexOf(query.toLowerCase());
   if (at < 0) return <>{text}</>;
@@ -165,194 +192,160 @@ function Marked({ text, query }: { text: string; query: string }) {
   );
 }
 
-// 組み合わせ案: 左に今日の記録（いつ・どこで・誰が・何を）、右に同じ記録が言葉で見つかる様子。
-// 右のカードを左に少し重ねて、「残したものが、そのまま探せる」を 1 つの流れに見せる
-function Found({ copy }: { copy: Copy }) {
-  const [when, where, who, what] = copy.foundLegend;
-  return (
-    <div className="lp-mp">
-      <div className="lp-mp-log">
-        <p className="lp-mp-log-head">
-          <span>{copy.dayHeading}</span>
-          <span className="lp-mp-count">{copy.foundCount}</span>
-        </p>
-        <p className="lp-mp-legend" aria-hidden="true">
-          <span>{when}</span>
-          <span>
-            {where} · {who} · {what}
-          </span>
-        </p>
-        <ol>
-          {copy.moments.map((m) => (
-            <li key={m.scene}>
-              <time>{m.time}</time>
-              <div className="lp-mp-entry">
-                <p className="lp-mp-meta">
-                  <span className="lp-mp-where">
-                    <m.icon size={13} aria-hidden="true" />
-                    {m.where}
-                  </span>
-                  <span className="lp-mp-who">{m.who}</span>
-                </p>
-                <p className="lp-mp-what">
-                  <Marked text={m.spark} query={copy.contrastQuery} />
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-      <div className="lp-mp-find">
-        <p className="lp-mp-field">
-          <Search size={16} aria-hidden="true" />
-          <span className="lp-mp-query">{copy.contrastQuery}</span>
-          <span className="lp-mp-count">{copy.foundCount}</span>
-        </p>
-        <ul>
-          {copy.moments.map((m) => (
-            <li key={m.scene}>
-              <p className="lp-mp-hit">
-                <Marked text={m.spark} query={copy.contrastQuery} />
-              </p>
-              <p className="lp-mp-hit-meta">
-                <m.icon size={12} aria-hidden="true" />
-                {m.time} · {m.where}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <p className="lp-mp-foot">{copy.foundFoot}</p>
-      </div>
-    </div>
-  );
+function matches(m: Moment, query: string) {
+  const q = query.toLowerCase();
+  return [m.title, m.text].some((s) => s?.toLowerCase().includes(q));
 }
 
-// 案 1: 場面のカードが並び、下の 1 つの棚に同じひとことが残る
-function Scenes({ copy }: { copy: Copy }) {
-  const moments = copy.moments.slice(0, 3);
-  return (
-    <>
-      <div className="lp-moments-scenes">
-        {moments.map((m) => (
-          <div key={m.scene} className="lp-moments-scene">
-            <p className="lp-moments-scene-label">
-              <m.icon size={16} aria-hidden="true" />
-              {m.scene}
-            </p>
-            <span className="lp-moments-line" style={{ width: "72%" }} />
-            <span className="lp-moments-line" style={{ width: "88%" }} />
-            <p className="lp-moments-spark">{m.spark}</p>
-            <span className="lp-moments-line" style={{ width: "60%" }} />
-          </div>
-        ))}
-      </div>
-      <div className="lp-moments-flow" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="lp-moments-shelf">
-        <p className="lp-moments-shelf-title">
-          <span className="lp-moments-brand">Graphium</span>
-          {copy.scenesShelf}
-        </p>
-        <ul>
-          {moments.map((m) => (
-            <li key={m.scene}>
-              <m.icon size={14} aria-hidden="true" />
-              <span>{m.spark}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="lp-moments-shelf-note">
-          <Search size={14} aria-hidden="true" />
-          {copy.scenesShelfNote}
-        </p>
-      </div>
-    </>
-  );
+// 絵の進み具合。found が完成形で、動きを使わない環境では最初からこの形を見せる
+type Stage = "idle" | "typing" | "found";
+
+const TYPE_START_MS = 500;
+const FOUND_AFTER_MS = 320;
+
+// 画面に入ったら 1 度だけ、言葉を 1 文字ずつ打ってから結果を出す。
+// 動きを減らす設定のとき・IntersectionObserver が無いときは、完成形のまま動かさない
+function usePlayOnce(query: string) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState<Stage>("found");
+  const [typed, setTyped] = useState(query.length);
+
+  // 描画の前に最初の形へ戻す（完成形が一瞬見えてから消えるのを避ける）
+  useLayoutEffect(() => {
+    const canAnimate =
+      typeof IntersectionObserver !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: no-preference)").matches;
+    if (!canAnimate) {
+      setStage("found");
+      setTyped(query.length);
+      return;
+    }
+    setStage("idle");
+    setTyped(0);
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setStage((s) => (s === "idle" ? "typing" : s));
+          observer.disconnect();
+        }
+      },
+      // 探す側のカードが 4 割見えたら始める（縦に並ぶスマホ幅では、絵の全体は画面に収まらない）
+      { threshold: 0.4 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [query]);
+
+  useEffect(() => {
+    if (stage !== "typing") return;
+    // 長い言葉でも打ち終わりまでの時間がほぼ同じになるようにする
+    const perChar = Math.max(70, Math.min(170, 900 / query.length));
+    const delay = typed === 0 ? TYPE_START_MS : typed < query.length ? perChar : FOUND_AFTER_MS;
+    const timer = window.setTimeout(() => {
+      if (typed < query.length) setTyped(typed + 1);
+      else setStage("found");
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [stage, typed, query]);
+
+  return { ref, stage, typed };
 }
 
-// 案 2: 1 日の記録が、時刻順に 1 本に並ぶ
-function Day({ copy }: { copy: Copy }) {
-  return (
-    <div className="lp-moments-day">
-      <p className="lp-moments-shelf-title">
-        <span className="lp-moments-brand">Graphium</span>
-        {copy.dayHeading}
-      </p>
-      <ol>
-        {copy.moments.map((m) => (
-          <li key={m.scene}>
-            <span className="lp-moments-time">{m.time}</span>
-            <span className="lp-moments-dot" aria-hidden="true">
-              <m.icon size={14} />
-            </span>
-            <div>
-              <p className="lp-moments-day-scene">
-                {m.scene}
-                <span>{m.kept}</span>
-              </p>
-              <p className="lp-moments-spark">{m.spark}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-      <p className="lp-moments-shelf-note">{copy.dayFoot}</p>
-    </div>
-  );
+function WhoMark({ who }: { who: Who }) {
+  return <span className="lp-mp-mark" data-who={who} aria-hidden="true" />;
 }
 
-// 案 3: そのままだと散らばって薄れる／入れると 1 か所で探せる
-function Contrast({ copy }: { copy: Copy }) {
-  return (
-    <div className="lp-moments-contrast">
-      <div className="lp-moments-before">
-        <p className="lp-moments-side-title">{copy.contrastBefore}</p>
-        <ul>
-          {copy.moments.map((m) => (
-            <li key={m.scene}>
-              <m.icon size={14} aria-hidden="true" />
-              <span>{m.lost}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="lp-moments-after">
-        <p className="lp-moments-side-title">{copy.contrastAfter}</p>
-        <p className="lp-moments-search">
-          <Search size={14} aria-hidden="true" />
-          {copy.contrastQuery}
-        </p>
-        <ul>
-          {copy.moments.map((m) => (
-            <li key={m.scene}>
-              <m.icon size={14} aria-hidden="true" />
-              <span>
-                <Marked text={m.spark} query={copy.contrastQuery} />
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-export function MomentsPicture({
-  variant,
-  locale = "ja",
-}: {
-  variant: MomentsVariant;
-  locale?: MomentsLocale;
-}) {
+export function MomentsPicture({ locale = "ja" }: { locale?: MomentsLocale }) {
   const copy = COPY[locale];
+  const { ref, stage, typed } = usePlayOnce(copy.query);
+  const [when, where, who, what] = copy.legend;
+  const hits = copy.moments.filter((m) => matches(m, copy.query));
+
   return (
     <figure className="lp-moments" lang={locale}>
-      {variant === "found" && <Found copy={copy} />}
-      {variant === "scenes" && <Scenes copy={copy} />}
-      {variant === "day" && <Day copy={copy} />}
-      {variant === "contrast" && <Contrast copy={copy} />}
+      <div className="lp-mp" data-stage={stage}>
+        <div className="lp-mp-log">
+          <p className="lp-mp-log-head">
+            <span className="lp-mp-heading">{copy.heading}</span>
+            <span className="lp-mp-date">{copy.date}</span>
+            <span className="lp-mp-count">{copy.count}</span>
+          </p>
+          <p className="lp-mp-legend" aria-hidden="true">
+            <span>{when}</span>
+            <span>
+              {where} · {who} · {what}
+            </span>
+          </p>
+          <ol>
+            {copy.moments.map((m) => (
+              <li key={m.id} data-hit={matches(m, copy.query)}>
+                <time>{m.time}</time>
+                <div className="lp-mp-entry">
+                  <WhoMark who={m.who} />
+                  <p className="lp-mp-meta">
+                    <span className="lp-mp-where" data-tone={m.tone}>
+                      <m.icon size={13} aria-hidden="true" />
+                      {m.where}
+                    </span>
+                    <span className="lp-mp-who">{copy.who[m.who]}</span>
+                  </p>
+                  {m.title && <p className="lp-mp-title">{m.title}</p>}
+                  {m.text && (
+                    <p className={m.title ? "lp-mp-text" : "lp-mp-title lp-mp-title-plain"}>
+                      <Marked text={m.text} query={copy.query} />
+                    </p>
+                  )}
+                  {m.file && (
+                    <p className="lp-mp-file">
+                      <span className="lp-mp-thumb" aria-hidden="true">
+                        <ImageIcon size={14} />
+                      </span>
+                      {m.file}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="lp-mp-find" ref={ref}>
+          <p className="lp-mp-field">
+            <Search size={16} aria-hidden="true" />
+            <span className="lp-mp-query">
+              {typed === 0 && stage !== "found" ? (
+                <span className="lp-mp-placeholder">{copy.placeholder}</span>
+              ) : (
+                copy.query.slice(0, typed)
+              )}
+            </span>
+            <span className="lp-mp-hits">{copy.hits}</span>
+          </p>
+          <ul>
+            {hits.map((m, i) => (
+              <li key={m.id} style={{ ["--i" as string]: i }}>
+                <span className="lp-mp-hit-icon" data-tone={m.tone} aria-hidden="true">
+                  <m.icon size={14} />
+                </span>
+                <div>
+                  <p className="lp-mp-hit">
+                    <Marked text={m.text ?? ""} query={copy.query} />
+                  </p>
+                  <p className="lp-mp-hit-meta">
+                    <span>{m.time}</span>
+                    <span>{m.where}</span>
+                    <span>{copy.who[m.who]}</span>
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="lp-mp-foot">{copy.foot}</p>
+        </div>
+      </div>
       <figcaption className="lp-moments-note">{copy.note}</figcaption>
     </figure>
   );
