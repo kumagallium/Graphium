@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -39,6 +39,15 @@ export type FileSidebarProps = {
    * "stacked" = 旧配置（3 本を同じ見た目で縦並び）。比較ストーリー用に残す
    */
   intakePlacement?: "twins" | "stacked";
+  /**
+   * ヘッダーの入口の並べ方（タブ表示のときだけ効く）。
+   * - "stacked"（旧配置・比較用）: 検索、ノート、取り込み、ホームを縦に 1 行ずつ
+   * - "paired"（見送った案 A・比較用）: 意味で 2 段にまとめる。1 段目は行き先（ホーム｜検索）、2 段目は入れる（ノート｜取り込み）
+   * - "pairedWideNote"（既定・採用 2026-11-17）: 1 段目だけまとめる。ノートはいちばん大事なので幅いっぱいのまま、
+   *   取り込みとモバイル受信箱はその下の軽い 1 行（現状と同じ）
+   * 比較は FileSidebar.ia.stories.tsx の HeaderComparison
+   */
+  headerLayout?: "stacked" | "paired" | "pairedWideNote";
   /** ヘッダーの「戻る」操作（履歴を 1 段戻す）。canGoBack が false のときは非表示。 */
   onBack?: () => void;
   /** 戻れる履歴があるか。 */
@@ -295,6 +304,7 @@ export function FileSidebar({
   onNewMemo,
   onOpenIntake,
   intakePlacement = "twins",
+  headerLayout = "pairedWideNote",
   onBack,
   canGoBack,
   onRefresh,
@@ -463,6 +473,10 @@ export function FileSidebar({
     return counts;
   }, [noteIndex]);
   const isTabs = layout === "tabs";
+  // ヘッダーの入口を 2 段にまとめるか（提案の並び）。タブ表示のときだけ
+  const pairedHeader = isTabs && headerLayout !== "stacked";
+  // ノートを幅いっぱいに保つ並び（提案 B）
+  const wideNote = headerLayout === "pairedWideNote";
 
   // ナレッジの節（タブ）を出す条件。従来ナレッジの節を出していた 3 つの場合の OR:
   // 起動待ち（デスクトップのみ）/ 到達不可が確定 / AI が使える（モデル登録済み or 既存データあり）。
@@ -596,7 +610,8 @@ export function FileSidebar({
     </button>
   ) : null;
 
-  // 記録（ヘッダー）。ノート・素材・メモ・AI のページを、種類をまたいで残した順に見る入口。
+  // ホーム（ヘッダー）。ノート・素材・メモ・AI のページを、種類をまたいで残した順に見る入口。
+  // 「記録」は Graphium の中身ぜんぶを指す言葉なので、ナビの名前は「ホーム」にした（画面の中の見出しは「記録」）。
   // 取り込みと同じ軽い 1 行にする
   const recordsRow = onShowRecords ? (
     <button
@@ -608,8 +623,8 @@ export function FileSidebar({
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
       }`}
     >
-      <History size={14} />
-      <span className="flex-1 text-left">{t("records.title")}</span>
+      <House size={14} />
+      <span className="flex-1 text-left">{t("records.nav")}</span>
     </button>
   ) : null;
 
@@ -1175,8 +1190,16 @@ export function FileSidebar({
       {/* ヘッダー */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
-          <BrandLockup className="h-7" />
+          {/* ロゴを押すとホームへ戻る（入口はホームのボタンが主で、こちらは作法としての近道） */}
+          {onShowRecords ? (
+            <button onClick={onShowRecords} aria-label={t("records.nav")} className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              <BrandLockup className="h-7" />
+            </button>
+          ) : (
+            <BrandLockup className="h-7" />
+          )}
           <div className="flex items-center gap-2">
+            {pairedHeader && !wideNote && mobileButton}
             {onBack && (
               <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
             )}
@@ -1202,6 +1225,88 @@ export function FileSidebar({
             )}
           </div>
         </div>
+        {pairedHeader && (
+          <>
+            {/* 1 段目: 行き先。ホーム（残したものを振り返る）と検索（行き先へ飛ぶ）を対にして並べる。
+                検索は入力欄ではなく ⌘K を開くボタンなので、幅いっぱいでなくてよい */}
+            <div className="flex gap-1 mb-1">
+              {onShowRecords && (
+                <button
+                  onClick={onShowRecords}
+                  data-tooltip={t("records.navHint")}
+                  aria-current={recordsActive ? "page" : undefined}
+                  className={`shrink-0 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors ${
+                    recordsActive
+                      ? "border-primary/30 bg-primary/10 text-primary font-semibold"
+                      : "border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  }`}
+                >
+                  <House size={14} className="shrink-0" />
+                  <span>{t("records.nav")}</span>
+                </button>
+              )}
+              {onOpenSearch && (
+                <button
+                  onClick={onOpenSearch}
+                  className="flex-1 min-w-0 flex items-center gap-2 rounded-lg border border-sidebar-border px-2.5 py-1.5 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+                >
+                  <Search size={14} className="shrink-0" />
+                  <span className="flex-1 min-w-0 truncate text-left">{t("sidebar.search")}</span>
+                  <span className="shrink-0 text-xs text-sidebar-foreground/40">{formatShortcut(["mod", "K"])}</span>
+                </button>
+              )}
+            </div>
+            {wideNote ? (
+              <>
+                {/* 提案 B: ノートは幅いっぱい（いちばん大事な操作なので小さくしない）。
+                    取り込みとモバイル受信箱は、その下の軽い 1 行 */}
+                <NewNoteSplitButton
+                  onNewNote={onNewNote}
+                  onNewVoiceNote={voiceNoteHandler}
+                  onNewNoteFromTemplate={onNewNoteFromTemplate}
+                  recording={recording}
+                  className="mb-1 w-full"
+                />
+                {(onOpenIntake || onShowMobile) && (
+                  <div className="flex items-center gap-1">
+                    {intakeButton}
+                    {mobileButton}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+            {/* 2 段目: 入れる。書く（ノート）と持ち込む（取り込み）を並べる。
+                モバイル受信箱はここに置かない — ノートの分割ボタンと取り込みで幅を使い切り、
+                3 つ並べると ▾ が取り込みに重なる。受信箱は「届いているものの知らせ」なので、
+                ロゴの行の右（戻る・更新と同じ並び）に置く */}
+            <div className="flex items-center gap-1">
+              <NewNoteSplitButton
+                onNewNote={onNewNote}
+                onNewVoiceNote={voiceNoteHandler}
+                onNewNoteFromTemplate={onNewNoteFromTemplate}
+                recording={recording}
+                className="flex-1 min-w-0"
+              />
+              {onOpenIntake && (
+                <button
+                  onClick={onOpenIntake}
+                  data-tooltip={t("sidebar.intakeTooltip")}
+                  aria-label={t("sidebar.intake")}
+                  className="shrink-0 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+                >
+                  <FolderInput size={14} className="shrink-0" />
+                  <span>{t("sidebar.intakeShort")}</span>
+                </button>
+              )}
+            </div>
+              </>
+            )}
+            {chatRow}
+          </>
+        )}
+        {!pairedHeader && (
+          <>
         {/* 検索: 「＋ ノート」の上。検索欄に見えるボタンで、押すとコマンドパレットが開く（⌘K）。
             探す入口を一番上に置くと、タブの中身（一覧）を辿らずに目的のノートへ行ける */}
         {isTabs && onOpenSearch && (
@@ -1269,6 +1374,8 @@ export function FileSidebar({
           <>
             {intakeButton}
             {recordsRow}
+          </>
+        )}
           </>
         )}
       </div>

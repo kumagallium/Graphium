@@ -4597,6 +4597,76 @@ a "negative new comments" reading). Neither function is exposed as a
 library-wide total (tab headers and the sidebar do not carry a shared
 badge count — a v1 decision to keep this per-row only).
 
+### 7.8 Shared folder layout and readable copies
+
+Layout of one shared folder (the "shared root"):
+
+```
+<root>/
+  notes/<id>.json                       # { entry, body_base64 } — the source of truth
+  <other entry types>/<id>.json
+  _meta/tombstones/<id>.json            # a deleted (unshared) entry
+  _blobs/…                              # large files (default blob root)
+  readable/notes/
+    <title>_<id12>.md                   # optional, see below
+    <title>_<id12>.prov.jsonld
+```
+
+`readable/` is an optional, **derived** copy for people and tools that do
+not run Graphium. The authoritative data is always `notes/<id>.json`; the
+app never reads `readable/` back, so deleting it loses nothing.
+
+**Switch.** `SharedFolder.readableCopies?: boolean` (Settings → Sharing →
+a shared folder's details). It is a per-device setting stored with the
+folder list in `localStorage`, default off; it is kept only when true. It
+applies to the notes the current device shares, so copies of someone
+else's notes follow that person's setting.
+
+**Scope.** Notes only (entry type `notes`). Knowledge pages, proposals,
+templates and other entry types get no copy.
+
+**File names.** Built by Rust (`shared_readable_sync`) from the title and
+the shared id; TypeScript passes no path. `<id12>` is the last 12
+characters of the shared id (a UUIDv7). In `<title>`, `/ \ : * ? " < > |`
+and control characters become `_`; bidirectional controls, zero-width
+characters, other invisible characters (e.g. U+061C, U+2060–206F, U+00AD, U+3164),
+variation selectors, tag characters and the BOM are removed; runs of whitespace collapse to one
+space; leading dots and leading/trailing whitespace and trailing dots are
+trimmed; the result is cut at 150 bytes of UTF-8 on a character boundary;
+an empty result becomes `untitled`.
+
+**Content.** AI chats, edit history and memos are never written, even when
+"include private history" is on for sharing (the history carries editors'
+email addresses, and these files are plain text anyone can open). Otherwise
+the same range as the shared copy.
+
+- `.md` starts with a front matter of five keys, all JSON-quoted:
+  `title`, `graphium_note_id`, `graphium_shared_id`, `author` (name only,
+  no email), `shared_at` (ISO 8601). The body is the same Markdown as the
+  Markdown export; images are references, not embedded bytes.
+- `.prov.jsonld` is built by the same builder as the menu export for one
+  note (PROV-JSON-LD), from the document without chats and edit history.
+  It differs from the menu export: the author is given by name only (no
+  email address) and Wiki entities are not included. Links to other notes
+  carry the other note's id and title. Asset nodes (name, URL, MIME type,
+  source info) are looked up in this device's asset index, so an asset
+  that is only cited by the note (not embedded in the shared body) also
+  appears there by name and source.
+
+**Lifecycle.** A note has at most one pair of copies at any time.
+
+| Event | Result |
+|---|---|
+| Share / re-share, switch on | The pair is written, then older files of the same `<id12>` with other names are removed |
+| Title changed, then re-shared | New names are written; the files under the old title are removed (also when only the letter case changes, on file systems that ignore case: the same file is kept, not deleted) |
+| A write fails part-way | The remaining old files are still cleaned up on a best-effort basis; the failure is returned |
+| Re-share, switch off | Any existing copy for that id is removed; none is written |
+| Unshare (`shared_delete`) | The copy for that id is removed (a failure here does not fail the unshare) |
+| Copy fails | The share still succeeds; the failure is returned to the UI and shown |
+
+Copies are written only when sharing; nothing follows later edits until
+the next share.
+
 ## 8. Compatibility rules
 
 Hard rules for changing any schema in this document.

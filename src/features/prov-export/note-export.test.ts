@@ -342,6 +342,21 @@ describe("buildNoteProvJsonLd — ノート Entity と本文 Entity", () => {
     expect(byId(g, "graphium:note/plan-1")!["@type"]).toBe("Entity");
   });
 
+  it("references は dcterms:references で出し、相手は label つきの外部スタブで宣言する（派生・影響には混ぜない）", () => {
+    const g = graphOf(
+      makeInput({
+        extras: { references: [{ id: "ref-a", label: "相手のノート" }, { id: "ref-a" }, { id: NOTE_ID }] },
+      }),
+    );
+    const n = noteEntity(g);
+    expect(n["dcterms:references"]).toEqual([{ "@id": "graphium:note/ref-a" }]);
+    expect(n["prov:wasDerivedFrom"]).toBeUndefined();
+    expect(n["prov:wasInfluencedBy"]).toBeUndefined();
+    const stub = byId(g, "graphium:note/ref-a")!;
+    expect(stub["graphium:external"]).toBe(true);
+    expect(stub.label).toEqual([{ "@value": "相手のノート" }]);
+  });
+
   it("値の無いキーは出さない（extras 無し）", () => {
     const n = noteEntity(graphOf(makeInput()));
     for (const k of [
@@ -350,6 +365,7 @@ describe("buildNoteProvJsonLd — ノート Entity と本文 Entity", () => {
       "prov:wasDerivedFrom",
       "prov:wasInfluencedBy",
       "dcterms:isPartOf",
+      "dcterms:references",
       "graphium:provenanceBundle",
     ]) {
       expect(n[k]).toBeUndefined();

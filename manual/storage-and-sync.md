@@ -103,6 +103,19 @@ Organizations rarely have one folder everybody can read. More often there is a f
 
 If you only ever set up one shared folder, nothing changes: it simply becomes the default.
 
+### Readable copies for people and tools without Graphium {#readable-copies}
+
+What Graphium puts in a shared folder is in its own format, so it cannot be read as it is. When you want the notes to be readable by other people, or by an AI that can read that folder, you can have Graphium also place copies in a form anyone can open.
+
+- **Turn it on:** Settings → Sharing → click a shared folder's row to open its details → **Also keep readable copies**. It is off by default.
+- **Where they go:** inside the same shared folder, in `readable/notes/`. Each note gets two files, named after its title, for example `Sourdough starter log_3c2f1b8d6e70.md` and `Sourdough starter log_3c2f1b8d6e70.prov.jsonld`. The last 12 characters are part of the note's shared id, so two notes with the same title do not collide.
+- **What is in them:** the `.md` file is the same Markdown as the Markdown export, with a short header (title, note id, shared id, author name, shared time). Images are not included as files; only a reference to each one is. The `.prov.jsonld` file is the provenance, in the same form as the menu export. Links to other notes carry the other note's id and title. Sources you cited in the note are listed with their name and origin. AI chats, edit history and memos are never included, even if you share with the history turned on.
+- **When they are updated:** when you share or re-share a note. They do not follow your edits on their own. If you change the title and re-share, the files are replaced under the new name. If you stop sharing the note, they are removed.
+- **It is a setting for this device:** it applies to the notes you share. Copies of someone else's notes follow that person's setting. Notes you shared before turning it on get their copies the next time you re-share them. If you turn it off and re-share a note, its old copies are removed.
+- **Notes only.** Knowledge pages and other entries do not get copies.
+
+The shared copy is still the original; these files are extra copies for reading. Graphium does not read them back.
+
 ### Publish and unpublish
 
 Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in the shared folder. When you share a note containing media, the files are copied into the large files folder automatically — you never attach them by hand.
@@ -284,7 +297,7 @@ Per note, the **Export** section of the `⋯` menu offers:
 | **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
 | **Markdown (.md)** | A portable `.md` file |
 | **Word (.docx)** | A Word file with the text, tables, images and charts |
-| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials and tables (no AI chats) |
+| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials, tables and the other notes it points at (no AI chats) |
 | **Export plan provenance** | Plan notes only. The whole plan — steps, planned lines, and the operation notes' provenance — as one `.plan.jsonld` (see [Exporting a plan](/labels-and-provenance#plan-prov-export)) |
 
 The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Some things arrive as text: a formula as LaTeX, a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name (with its link when it points at a web address). Check and toggle items keep their mark as a character, and links to other notes arrive as plain text. The page is A4 portrait, with the note's title at the top. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.

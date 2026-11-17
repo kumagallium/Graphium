@@ -41,6 +41,11 @@ import { historyForUpdate } from "./share-history";
 import { collectAdoptedProposals } from "./proposal-apply";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  syncReadableCopy,
+  type ReadableCopyContext,
+  type ReadableCopyStatus,
+} from "./readable-copy";
 
 export type ShareNoteResult =
   | {
@@ -48,6 +53,8 @@ export type ShareNoteResult =
       doc: GraphiumDocument;
       entry: SharedEntry;
       isUpdate: boolean;
+      /** 読める写しの結果（ノートの共有だけ付く） */
+      readableCopy?: ReadableCopyStatus;
     }
   | { ok: false; error: string };
 
@@ -67,6 +74,11 @@ export type ShareNoteOptions = {
    * 設定（Settings → 共有ストレージ）の値を呼び出し側が渡す。
    */
   includePrivateHistory?: boolean;
+  /**
+   * 読める写し（共有フォルダの readable/）を組むための材料（ノートの共有だけが使う）。
+   * 渡さない（Wiki ページなど）と、写しは置かず、その id の古い写しだけ消す。
+   */
+  readable?: ReadableCopyContext;
   /**
    * テスト用フック（本番では未指定）。
    * - extractFileId: 既定で active StorageProvider のものを使う
@@ -226,6 +238,29 @@ export async function shareGraphiumDocument(
     const hash = await computeSharedEntryHash(baseEntry, body);
     await provider.write(baseEntry, body);
 
+    // ── 読める写し（ノートだけ）──
+    // 来歴は素材の名前を索引から引くので、URL を shared-blob: に置き換える前の doc を使う。
+    // チャットと編集の履歴は常に落とす（includePrivateHistory が真でも写しには載せない。
+    // 履歴には編集者のメールアドレスが入り、誰でも開ける平文の写しには置かない）。
+    // 写しの失敗で共有は失敗にしない（結果として返す）
+    let readableCopy: ReadableCopyStatus | undefined;
+    if (entryType === "note") {
+      const provDoc = stripPrivateHistory(doc);
+      readableCopy = (
+        await syncReadableCopy({
+          root: options.root,
+          authorEmail: options.author.email,
+          sharedId: id,
+          title: doc.title,
+          entryDoc,
+          provDoc,
+          author: options.author,
+          context: options.readable,
+          sharedAt: now,
+        })
+      ).status;
+    }
+
     // 手元に保存し直す doc は「剥がしていない元の doc」がベース。
     // ここで entryDoc を使うと、共有した瞬間に手元のチャットと編集来歴が消える
     const updatedDoc: GraphiumDocument = {
@@ -243,6 +278,7 @@ export async function shareGraphiumDocument(
       doc: updatedDoc,
       entry: { ...baseEntry, hash },
       isUpdate,
+      ...(readableCopy ? { readableCopy } : {}),
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

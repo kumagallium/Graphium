@@ -95,6 +95,12 @@ export type NoteProvExtras = {
     label?: string;
   }[];
   influences?: { kind: "asset" | "wiki"; id: string; type?: string; label?: string }[];
+  /**
+   * 本文が指している他のノート（＠・貼り付けたリンク・表の行に紐付けた既存ノート）。
+   * 向きの無いつながりで、派生（wasDerivedFrom）でも影響（wasInfluencedBy）でもない。
+   * 「このノートの本文が相手を指している」という事実だけを dcterms:references で出す。
+   */
+  references?: { id: string; label?: string }[];
   partOfPlanNoteId?: string;
   memos?: MemoExportEntry[];
   assets?: AssetExportEntry[];
@@ -693,6 +699,13 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
     }
   }
 
+  // 向きの無いノート間のつながり（派生・影響とは別の関係として集める）
+  const referenced: { "@id": string }[] = [];
+  for (const r of extras.references ?? []) {
+    if (!r.id || r.id === noteId) continue;
+    pushUnique(referenced, noteStub(r.id, r.label));
+  }
+
   if (extras.partOfPlanNoteId && extras.partOfPlanNoteId !== noteId) {
     // Plan 型を付けないスタブ（計画の書き出しでは本体が並び、dedupeStubs が落とす）
     noteNode["dcterms:isPartOf"] = ref(noteStub(extras.partOfPlanNoteId));
@@ -1029,6 +1042,7 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
   if (primary.length > 0) noteNode["prov:hadPrimarySource"] = primary;
   if (derived.length > 0) noteNode["prov:wasDerivedFrom"] = derived;
   if (influenced.length > 0) noteNode["prov:wasInfluencedBy"] = influenced;
+  if (referenced.length > 0) noteNode["dcterms:references"] = referenced;
 
   // ── 9. 組み立て（ノート Entity・本文 Entity を先頭に）──
   return [

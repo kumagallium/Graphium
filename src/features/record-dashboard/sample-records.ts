@@ -313,3 +313,33 @@ export function busyDayRecords(locale: SampleLocale): RecordItem[] {
   }));
   return [...wiki, ...files, ...SAMPLE_RECORDS[locale]];
 }
+
+/**
+ * 3 か月にわたる仮データ。カレンダーで月をまたいで移る様子を確かめるのに使う。
+ * 9 月と 10 月に、日によって件数の違うメモを足す。10 月 12 日だけ 60 件（一括の取り込みを模した偏り）。
+ */
+export function longHistoryRecords(locale: SampleLocale): RecordItem[] {
+  const ja = locale === "ja";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const plan: [month: number, day: number, count: number][] = [
+    [9, 3, 1], [9, 8, 2], [9, 9, 1], [9, 15, 4], [9, 22, 2], [9, 28, 7],
+    [10, 2, 3], [10, 5, 1], [10, 6, 9], [10, 12, 60], [10, 13, 2], [10, 19, 5], [10, 20, 1], [10, 27, 14], [10, 30, 2],
+    [11, 2, 2], [11, 5, 6], [11, 9, 1], [11, 11, 3],
+  ];
+  const extra: RecordItem[] = plan.flatMap(([month, day, count]) =>
+    Array.from({ length: count }, (_, i): RecordItem => {
+      const file = count >= 20;
+      return {
+        id: `long-${month}-${day}-${i}`,
+        kind: file ? "media" : "memo",
+        at: `2026-${pad(month)}-${pad(day)}T${pad(9 + (i % 12))}:${pad((i * 7) % 60)}:00`,
+        origin: file ? "file" : "memo",
+        who: { type: "self" },
+        ...(file
+          ? { title: ja ? `レシピの写し_${pad(i + 1)}.pdf` : `recipe-copy-${pad(i + 1)}.pdf`, mediaType: "pdf" as const }
+          : { text: ja ? `${month} 月 ${day} 日の試作の覚え書き ${i + 1}` : `Trial note ${i + 1} for ${month}/${day}` }),
+      };
+    }),
+  );
+  return [...SAMPLE_RECORDS[locale], ...extra];
+}

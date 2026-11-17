@@ -1652,3 +1652,274 @@
     padding: 12px 12px 40px;
   }
 }
+
+/* ── 右の列: カレンダーと、言葉で探すパネル ─────────────────────────────
+   右の列ごと上に張り付け、画面の高さに収める。あふれる分は、探すパネルの中の一覧がスクロールする */
+.rd-side {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  max-height: calc(var(--rd-viewport, 100dvh) - 96px);
+}
+
+.rd-side > .rd-cal-wrap {
+  flex: none;
+}
+
+.rd-side > .rd-find {
+  position: static;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+/* ── カレンダー ───────────────────────────── */
+.rd-cal {
+  padding: 14px 14px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-1);
+}
+
+.rd-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-inline: 6px 0;
+}
+
+.rd-cal-head h3 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--ink);
+}
+
+.rd-cal-nav {
+  display: flex;
+  gap: 2px;
+}
+
+.rd-cal-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  color: var(--ink-2);
+  transition: background-color 200ms;
+}
+
+.rd-cal-nav button:hover:not(:disabled) {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+.rd-cal-nav button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rd-cal-grid {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: separate;
+  border-spacing: 3px;
+  table-layout: fixed;
+}
+
+.rd-cal-grid th {
+  padding: 2px 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.rd-cal-grid td {
+  padding: 0;
+}
+
+/* 日の升。件数が多い日ほど濃くする（4 段）。記録の無い日は押せない */
+.rd-cal-day {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+  transition: box-shadow 200ms;
+}
+
+.rd-cal-day:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+
+.rd-cal-day[data-level="1"],
+.rd-cal-swatch[data-level="1"] {
+  background: color-mix(in oklch, var(--forest) 10%, var(--forest-soft));
+}
+
+.rd-cal-day[data-level="2"],
+.rd-cal-swatch[data-level="2"] {
+  background: color-mix(in oklch, var(--forest) 24%, var(--forest-soft));
+}
+
+.rd-cal-day[data-level="3"],
+.rd-cal-swatch[data-level="3"] {
+  background: color-mix(in oklch, var(--forest) 44%, var(--forest-soft));
+}
+
+.rd-cal-day[data-level="4"],
+.rd-cal-swatch[data-level="4"] {
+  background: var(--forest);
+}
+
+.rd-cal-day[data-level="4"] {
+  color: var(--color-primary-foreground);
+  font-weight: 600;
+}
+
+.rd-cal-day:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 2px var(--forest-ink);
+}
+
+/* 今日は下に短い線、選んでいる日は外側に輪（濃淡の色とは別の手がかりにする） */
+.rd-cal-day[data-today="true"] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  font-weight: 600;
+}
+
+.rd-cal-day[aria-pressed="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.rd-cal-day:focus-visible,
+.rd-cal-nav button:focus-visible,
+.rd-cal-toggle:focus-visible,
+.rd-anchor button:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+.rd-cal-scale {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+  padding-right: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.rd-cal-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.rd-cal-swatch:first-of-type {
+  margin-left: 4px;
+}
+
+.rd-cal-swatch:last-of-type {
+  margin-right: 4px;
+}
+
+/* 狭い幅でだけ出す、カレンダーの開閉ボタン */
+.rd-cal-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-3);
+  background: var(--color-card);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.rd-cal-toggle svg {
+  color: var(--ink-3);
+}
+
+/* カレンダーで日を選んでいるあいだ、一覧の上に出す知らせ */
+.rd-anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 16px;
+  padding: 6px 12px;
+  border-radius: var(--r-2);
+  background: var(--forest-soft);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--forest-ink);
+}
+
+.rd-anchor button {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--forest-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.rd-log {
+  scroll-margin-top: 16px;
+}
+
+@container rd (max-width: 720px) {
+  /* 右の列を上に回す。カレンダーは畳んでおき、ボタンで開く */
+  .rd-side {
+    position: static;
+    order: -1;
+    gap: 8px;
+    max-height: none;
+  }
+
+  .rd-cal-toggle {
+    display: flex;
+  }
+
+  .rd-cal-wrap:not([data-open="true"]) .rd-cal {
+    display: none;
+  }
+
+  .rd-cal-wrap[data-open="true"] .rd-cal {
+    margin-top: 8px;
+  }
+
+  .rd-anchor {
+    margin-inline: 4px;
+  }
+}

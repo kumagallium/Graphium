@@ -1264,6 +1264,17 @@ describe("buildPlanProvJsonLd — 全体の整合", () => {
     expect(stubAndBodyIds(g)).toEqual([]);
   });
 
+  it("束の中の別ノートへの参照は、スタブでなく本物のノート Entity を指す", () => {
+    const input = baseInput();
+    const dough = input.notes.get("dough")!;
+    input.notes.set("dough", { ...dough, extras: { references: [{ id: "bake", label: "焼成" }] } });
+    const g = graphOf(input);
+    expect(byId(g, "graphium:note/dough")!["dcterms:references"]).toEqual([{ "@id": "graphium:note/bake" }]);
+    expect(g.filter((n) => n["@id"] === "graphium:note/bake")).toHaveLength(1);
+    expect(byId(g, "graphium:note/bake")!["graphium:external"]).toBeUndefined();
+    expect(danglingRefs(g)).toEqual([]);
+  });
+
   it("計画の書き出しに含まれない計画への所属は外部スタブのまま残る", () => {
     const input = baseInput();
     const dough = input.notes.get("dough")!;
