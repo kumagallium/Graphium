@@ -4566,6 +4566,7 @@ export const ja: Record<string, string> = {
   "records.kind.media": "素材",
   "records.kind.memo": "メモ",
   "records.origin.written": "手で書いた",
+  "records.origin.recording": "録音から",
   "records.origin.webClip": "Web クリップ",
   "records.origin.aiChat": "AI から",
   "records.origin.knowledge": "ナレッジ化",

@@ -44,6 +44,36 @@ export function groupByDay(items: readonly RecordItem[]): RecordDayGroup[] {
     .map(([key, list]) => ({ key, items: [...list].sort((a, b) => timeOf(a.at) - timeOf(b.at)) }));
 }
 
+/** 本文で当たった箇所の抜粋（全文の索引から）。ranges は text の中の強調する範囲 */
+export type BodyHit = { text: string; ranges: readonly { start: number; end: number }[] };
+/** 記録の id → 本文で当たった箇所。全文の索引がまだ無いときは空 */
+export type BodyHits = ReadonlyMap<string, BodyHit>;
+
+/**
+ * 全文の索引の抜粋を、記録の画面に出す形に整える。
+ * 索引のチャンクは先頭に見出しを Markdown の形（"## 見出し"）で持つので、記号だけを外す
+ */
+export function tidyBodyHit(hit: BodyHit): BodyHit {
+  const lead = /^#{1,6}\s+/.exec(hit.text);
+  if (!lead) return hit;
+  const shift = lead[0].length;
+  return {
+    text: hit.text.slice(shift),
+    ranges: hit.ranges
+      .map((r) => ({ start: Math.max(0, r.start - shift), end: Math.max(0, r.end - shift) }))
+      .filter((r) => r.end > r.start),
+  };
+}
+
+/**
+ * 探す言葉に当たるか。題・メモの本文・題の下の 1 行・ドメイン（matchesQuery）に加えて、
+ * 全文の索引で本文に当たった記録（bodyHits）も当たりにする
+ */
+export function isHit(item: RecordItem, query: string, bodyHits?: BodyHits): boolean {
+  if (matchesQuery(item, query)) return true;
+  return query.trim().length > 0 && !!bodyHits?.has(item.id);
+}
+
 /** 探す言葉に当たるか。題・本文・題の下の 1 行・ドメインを見る */
 export function matchesQuery(item: RecordItem, query: string): boolean {
   const q = query.trim().toLowerCase();

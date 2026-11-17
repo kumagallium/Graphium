@@ -8,6 +8,7 @@ import {
   removeIndexEntry,
   ensureIndex,
   extractBlockText,
+  hasRecordedTranscript,
   INDEX_SCHEMA_VERSION,
   type GraphiumIndex,
   type NoteIndexEntry,
@@ -124,6 +125,14 @@ describe("buildIndexEntry", () => {
     // id がひとつも無い・templateFrom 自体が無いノートは空のまま
     expect(from({})).toBeUndefined();
     expect(buildIndexEntry("n", mockDoc()).templateFrom).toBeUndefined();
+  });
+
+  it("録音済みの文字起こしブロックがあれば hasRecording を true にする（v35）", () => {
+    const withBlocks = (blocks: object[]) =>
+      buildIndexEntry("n", mockDoc({ pages: [{ id: "p", title: "Main", blocks }] as GraphiumDocument["pages"] })).hasRecording;
+    expect(withBlocks([{ id: "t", type: "meetingTranscript", props: { fileId: "f1" } }])).toBe(true);
+    expect(withBlocks([{ id: "t", type: "meetingTranscript", props: { fileId: "", recordingId: "" } }])).toBeUndefined();
+    expect(buildIndexEntry("n", mockDoc()).hasRecording).toBeUndefined();
   });
 
   it("見出し（level 2, 3）を抽出する", () => {
@@ -675,7 +684,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(34);
+    expect(INDEX_SCHEMA_VERSION).toBe(35);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
@@ -933,5 +942,30 @@ describe("壊れたノートがあっても索引が止まらない（Wiki 側�
   it("updateIndexEntry は壊れたノートでは索引をそのまま返す", () => {
     const index = mockIndex([]);
     expect(updateIndexEntry(index, "bad", poisoned())).toBe(index);
+  });
+});
+
+describe("hasRecordedTranscript（v35）", () => {
+  const block = (props: object, children: object[] = []) => ({ id: "t", type: "meetingTranscript", props, children });
+
+  it("fileId があれば true", () => {
+    expect(hasRecordedTranscript([block({ fileId: "f1" })])).toBe(true);
+  });
+
+  it("recordingId だけでも true", () => {
+    expect(hasRecordedTranscript([block({ recordingId: "r1" })])).toBe(true);
+  });
+
+  it("どちらも空（録音前のブロック）なら false", () => {
+    expect(hasRecordedTranscript([block({ fileId: "", recordingId: "" })])).toBe(false);
+  });
+
+  it("子ブロックの中にあっても true", () => {
+    expect(hasRecordedTranscript([{ id: "p", type: "paragraph", children: [block({ fileId: "f1" })] }])).toBe(true);
+  });
+
+  it("文字起こしブロックが無ければ false", () => {
+    expect(hasRecordedTranscript([{ id: "p", type: "paragraph", content: [] }])).toBe(false);
+    expect(hasRecordedTranscript([])).toBe(false);
   });
 });

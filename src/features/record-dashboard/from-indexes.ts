@@ -36,6 +36,7 @@ export function collectWebClipNoteIds(media: readonly MediaIndexEntry[]): Set<st
  * ノートと AI のページの出どころ。上から順に、初めに当たったもの。
  * - AI のページ（source が "ai"）→ ナレッジ化
  * - Web クリップのまとめ先 → Web クリップ
+ * - 録音済みの文字起こしブロックを持つ（hasRecording）→ 録音から
  * - モデル名を持つ（AI が書いた）→ AI から
  * - 投入口で取り込んだ（importSourceHash）→ 取り込んだファイル
  * - テンプレートから作った（templateFrom）→ テンプレートから
@@ -44,6 +45,7 @@ export function collectWebClipNoteIds(media: readonly MediaIndexEntry[]): Set<st
 export function deriveNoteOrigin(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<string>): RecordOrigin {
   if (entry.source === "ai") return "knowledge";
   if (webClipNoteIds.has(entry.noteId)) return "webClip";
+  if (entry.hasRecording) return "recording";
   if (entry.model) return "aiChat";
   if (entry.importSourceHash) return "file";
   if (entry.templateFrom) return "template";

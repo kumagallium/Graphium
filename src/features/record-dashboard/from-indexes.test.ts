@@ -56,6 +56,22 @@ describe("deriveNoteOrigin", () => {
     expect(deriveNoteOrigin(note({ source: "ai", wikiKind: "topic", model: "m" }), NONE)).toBe("knowledge");
   });
 
+  it("録音済みの文字起こしを持つノートは、録音から", () => {
+    expect(deriveNoteOrigin(note({ hasRecording: true }), NONE)).toBe("recording");
+  });
+
+  it("Web クリップのまとめ先は、録音から より先", () => {
+    expect(deriveNoteOrigin(note({ hasRecording: true }), new Set(["n1"]))).toBe("webClip");
+  });
+
+  it("モデル名があっても、録音を持つなら録音から", () => {
+    expect(deriveNoteOrigin(note({ hasRecording: true, source: "human", model: "m" }), NONE)).toBe("recording");
+  });
+
+  it("AI のページは、録音の印があってもナレッジ化のまま", () => {
+    expect(deriveNoteOrigin(note({ source: "ai", wikiKind: "topic", hasRecording: true }), NONE)).toBe("knowledge");
+  });
+
   it("モデル名を持つノートは、AI から", () => {
     expect(deriveNoteOrigin(note({ source: "human", model: "m", author: "me" }), NONE)).toBe("aiChat");
   });

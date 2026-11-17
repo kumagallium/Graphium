@@ -3436,6 +3436,7 @@ type NoteIndexEntry = {
   }[];
   derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
   templateFrom?: { kind: "official" | "user" | "shared"; id: string };  // v34: mirror of doc.templateFrom
+  hasRecording?: true;  // v35: set when the body has a recorded transcript block (meetingTranscript with a fileId or recordingId)
                                                                           // (sharedId → shared, userTemplateId → user,
                                                                           // officialTemplateId → official); id only
 
@@ -3524,7 +3525,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **34**.
+Defined in `src/features/navigation/index-file.ts`. Currently **35**.
 Bumping rules:
 
 | Version | Change |
@@ -3559,6 +3560,7 @@ Bumping rules:
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
 | **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **35** | Added `hasRecording` — `true` when the note body contains a recorded transcript block (a `meetingTranscript` block with a `fileId` or `recordingId`, at any depth; a block not yet recorded does not count). The Records view uses it to show a "From a recording" origin tag from the index alone, because a material's `usedIn` does not carry the block type. Notes without such a block keep `hasRecording: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this

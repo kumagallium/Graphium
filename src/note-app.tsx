@@ -579,6 +579,8 @@ import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { useTranscribeJobs } from "./features/meeting-recorder/use-meeting-recorder";
+import { loadTranscriptText } from "./features/meeting-recorder/transcript-text";
 import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
 import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
@@ -9239,12 +9241,19 @@ export function NoteApp() {
   // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
   // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
   // 索引は端末ローカルの再構築可能なキャッシュで、ノートデータには何も書かない。
+  // 録音・動画の文字起こしも全文の索引に載せる（文字起こしを読めるのはデスクトップ版だけ）
+  const transcribeJobs = useTranscribeJobs();
+  const lexicalTranscripts = useMemo(
+    () => (isTauri() ? { load: loadTranscriptText, jobs: transcribeJobs } : undefined),
+    [transcribeJobs],
+  );
   useLexicalIndexSync({
     authenticated,
     noteIndex: fm.noteIndex ?? null,
     mediaIndex: fm.mediaIndex ?? null,
     getCachedDoc: fm.getCachedDoc,
     loadDoc: fm.loadDoc,
+    transcripts: lexicalTranscripts,
   });
 
   // 共有ライブラリ（共有ルートに置いたままのエントリ）を語彙索引の第 3 レーンに追従させる。

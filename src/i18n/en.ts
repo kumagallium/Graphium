@@ -4564,6 +4564,7 @@ export const en: Record<string, string> = {
   "records.kind.media": "Material",
   "records.kind.memo": "Memo",
   "records.origin.written": "Written by hand",
+  "records.origin.recording": "From a recording",
   "records.origin.webClip": "Web clip",
   "records.origin.aiChat": "From AI",
   "records.origin.knowledge": "Made into knowledge",
