@@ -1,13 +1,14 @@
 // LP のコンセプトの絵（ヒーローの中、ボタンの下）。
 // 眠っている記録（開かないと中身が分からない形）→ Graphium に入れると文字になって 1 か所に並ぶ
-// → 人が言葉で探せ、AI も同じ記録を読んで出どころつきで答える、を 1 枚で伝える。
+// → 人が言葉で探せて、つながりを辿れる。AI を使い始めたら、AI も同じ記録を読んでまとめる、を 1 枚で伝える。
 //
 // 絵に出すのは、公開済みのアプリで実際に起きることだけにする。描く前にコードで確かめたこと（v0.140.0）:
 // - 写真の文字は端末の中で読む（Tesseract.js。手書きを読める根拠は無いので、印刷された紙にする）
 // - 録音の文字起こしは端末の中の whisper（デスクトップ版）。文字起こしは全文の索引に入る
 // - PDF は文字の層を読む（スキャンしただけの PDF は読めない）。Web クリップは抜粋が残る
 // - 記録の画面は、素材の中の文字でも当たり、当たった箇所を名前の下に出す
-// - AI の答えには出どころの一覧が付き、押すと開ける
+// - 素材には「使われているノート」が自動で残る（文字起こしブロックの録音も数える。記録の画面に
+//   「1 つのノートで使っています」と出る）。AI がまとめたページには「元の記録 3 件」と出る
 // 札の言葉はアプリの文言（src/i18n の records.origin.*）と同じにする。実装が変わったら、ここも合わせる。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -17,9 +18,11 @@ import {
   FileText,
   Globe,
   Image as ImageIcon,
+  Mic,
   Search,
   Smartphone,
   Sparkles,
+  Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import { type en, useI18n } from "../i18n";
@@ -27,6 +30,7 @@ import { type en, useI18n } from "../i18n";
 type Key = Extract<keyof typeof en, `moments.${string}`>;
 // 札の色。アプリの記録の画面（record-dashboard.css の data-tone）と同じ割り当て
 type Tone = "amber" | "forest" | "plain";
+// 辿る側のカードでは、ほかに rose（録音から）と sky（ナレッジ化）を使う
 type RowId = "photo" | "audio" | "web" | "pdf";
 
 type Row = {
@@ -218,18 +222,49 @@ export function MomentsPicture() {
               ))}
             </ul>
           </div>
-          <div className="lp-mp3-card lp-mp3-ai">
+          {/* 見つかった記録から、使っているノートへ辿れる（素材の「使われているノート」は自動で残る）。
+              AI を使い始めたら、その先に AI がまとめたページが足され、元の記録へ戻れる */}
+          <div className="lp-mp3-card lp-mp3-trace">
             <p className="lp-mp3-reader">
-              <Sparkles size={13} aria-hidden="true" />
-              {k("moments.ai.label")}
+              <Waypoints size={13} aria-hidden="true" />
+              {k("moments.trace.label")}
             </p>
-            <p className="lp-mp3-q">{k("moments.ai.q")}</p>
-            <p className="lp-mp3-a">{k("moments.ai.a")}</p>
-            <p className="lp-mp3-sources">
-              <span>{k("moments.ai.sources")}</span>
-              <span className="lp-mp3-source">{k("moments.audio.name")}</span>
-              <span className="lp-mp3-source">{k("moments.pdf.name")}</span>
-            </p>
+            <ol>
+              <li>
+                <span className="lp-mp3-node" data-who="self" aria-hidden="true" />
+                <p className="lp-mp3-trace-meta">
+                  <span className="lp-mp3-where" data-tone="plain">
+                    <FileDown size={12} aria-hidden="true" />
+                    {k("moments.audio.where")}
+                  </span>
+                </p>
+                <p className="lp-mp3-trace-name">{k("moments.audio.name")}</p>
+                <p className="lp-mp3-trace-link">{k("moments.trace.usedIn")}</p>
+              </li>
+              <li>
+                <span className="lp-mp3-node" data-who="self" aria-hidden="true" />
+                <p className="lp-mp3-trace-meta">
+                  <span className="lp-mp3-where" data-tone="rose">
+                    <Mic size={12} aria-hidden="true" />
+                    {k("moments.trace.note.where")}
+                  </span>
+                </p>
+                <p className="lp-mp3-trace-name">{k("moments.trace.note.name")}</p>
+              </li>
+              <li className="lp-mp3-trace-ai">
+                <span className="lp-mp3-node" data-who="ai" aria-hidden="true" />
+                <p className="lp-mp3-trace-later">{k("moments.ai.label")}</p>
+                <p className="lp-mp3-trace-meta">
+                  <span className="lp-mp3-where" data-tone="sky">
+                    <Sparkles size={12} aria-hidden="true" />
+                    {k("moments.trace.topic.where")}
+                  </span>
+                  <span className="lp-mp3-who">{k("moments.who.ai")}</span>
+                </p>
+                <p className="lp-mp3-trace-name">{k("moments.trace.topic.name")}</p>
+                <p className="lp-mp3-trace-link">{k("moments.trace.sources")}</p>
+              </li>
+            </ol>
           </div>
         </section>
       </div>

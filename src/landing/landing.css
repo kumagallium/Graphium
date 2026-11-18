@@ -903,50 +903,96 @@ body {
   padding: 0.05em 0.2em;
 }
 
-/* AI は「あとから」。点線の枠にして、無くても成り立つことを表す */
-.lp-mp3-ai {
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--sky, #3b82a6) 45%, transparent);
-  background: color-mix(in srgb, var(--sky-soft, #e3f1f8) 35%, var(--color-card, #ffffff));
-  box-shadow: none;
+/* 辿る側のカード: 見つかった記録 → 使っているノート →（AI を使い始めたら）AI がまとめたページ */
+.lp-mp3-trace {
   transition: opacity 0.5s ease 0.55s;
 }
 
-.lp-mp3-ai .lp-mp3-reader {
-  color: var(--sky-ink, #1f5673);
+.lp-mp3-trace li {
+  position: relative;
+  padding: 0 0 0.75rem 1.1rem;
+  border-left: 1.5px solid var(--mp-line);
+  margin-left: 5px;
 }
 
-.lp-mp3-q {
-  font-size: 0.82rem;
-  line-height: 1.5;
-  color: var(--color-muted-foreground, #4a6350);
+.lp-mp3-trace li:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
 }
 
-.lp-mp3-a {
-  margin-top: 0.3rem !important;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--ink, #1a2e1d);
+/* 線の上の印。自分 = 塗りの丸 / AI = 菱形（記録の画面と同じ決まり） */
+.lp-mp3-node {
+  position: absolute;
+  left: -5.5px;
+  top: 0.4rem;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--forest, #4b7a52);
+  outline: 3px solid var(--color-card, #ffffff);
 }
 
-.lp-mp3-sources {
+.lp-mp3-node[data-who="ai"] {
+  width: 8px;
+  height: 8px;
+  border-radius: 1.5px;
+  background: var(--sky, #3b82a6);
+  transform: rotate(45deg);
+}
+
+.lp-mp3-trace-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.3rem 0.4rem;
-  margin-top: 0.55rem !important;
-  font-size: 0.72rem;
-  color: var(--color-muted-foreground, #4a6350);
+  gap: 0.15rem 0.5rem;
 }
 
-.lp-mp3-source {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--color-card, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--sky, #3b82a6) 35%, transparent);
+.lp-mp3-where[data-tone="rose"] {
+  background: var(--rose-soft, #fbe9ea);
+  color: var(--rose-ink, #8a2f3a);
+}
+
+.lp-mp3-where[data-tone="sky"] {
+  background: var(--sky-soft, #e3f1f8);
   color: var(--sky-ink, #1f5673);
-  font-weight: 500;
+}
+
+.lp-mp3-trace-name {
+  margin-top: 0.2rem !important;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink, #1a2e1d);
   overflow-wrap: anywhere;
+}
+
+/* 次の記録へのつながり（記録の画面の「1 つのノートで使っています」「元の記録 3 件」） */
+.lp-mp3-trace-link {
+  margin-top: 0.15rem !important;
+  font-size: 0.74rem;
+  color: var(--forest-ink, #2d4a32);
+}
+
+/* AI は「あとから」。上の線を点線にして、無くても成り立つことを表す */
+.lp-mp3-trace li:nth-last-child(2) {
+  border-left-style: dashed;
+  border-left-color: color-mix(in srgb, var(--sky, #3b82a6) 55%, transparent);
+}
+
+.lp-mp3-trace-later {
+  display: inline-block;
+  margin-bottom: 0.3rem !important;
+  padding: 0 7px;
+  border: 1px dashed color-mix(in srgb, var(--sky, #3b82a6) 55%, transparent);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.1rem;
+  color: var(--sky-ink, #1f5673);
+}
+
+.lp-mp3-trace-ai .lp-mp3-trace-link {
+  color: var(--sky-ink, #1f5673);
 }
 
 /* ── 進み具合ごとの見え方（found が完成形） ───────────────────────────── */
@@ -956,7 +1002,7 @@ body {
   transition: none;
 }
 
-.lp-mp3:not([data-stage="found"]) :is(.lp-mp3-hits, .lp-mp3-ai) {
+.lp-mp3:not([data-stage="found"]) :is(.lp-mp3-hits, .lp-mp3-trace) {
   opacity: 0;
   transition: none;
 }
