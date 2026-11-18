@@ -17096,14 +17096,20 @@ export function NoteApp() {
           />
         ) : showRecords ? (
           // 記録: ノートの索引・素材の索引・メモの一覧を読むだけ（どれも書き換えない）。
-          // 開く先は Cmd+K の各行と同じ（ノートは全画面、素材は素材の一覧のピーク、メモはメモのピーク）
+          // ノート・AI のページはまず横のピークで開く（ホームを離れない。全画面へはピークの中から）。
+          // 素材は素材の一覧のピーク、メモはメモのピーク
           <RecordsView
             noteIndex={fm.noteIndex}
             mediaIndex={fm.mediaIndex}
             captureIndex={capture.captureIndex}
             loading={fm.filesLoading}
             initialQuery={recordsQuery}
-            onOpenNote={(noteId, wiki) => navigateToNote(wiki ? `wiki:${noteId}` : noteId)}
+            onOpenNote={(noteId, wiki) => {
+              // ノートのピークと素材・メモのピークを同時に開かない
+              setListMaterialPeekEntry(null);
+              openListPeek(wiki ? `wiki:${noteId}` : noteId);
+            }}
+            openNoteId={listSidePeekNoteId}
             onOpenMedia={(fileId) => {
               const entry = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
               if (entry) handleComposerMediaSelect(entry);

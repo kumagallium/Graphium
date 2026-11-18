@@ -47,6 +47,8 @@ export type RecordDashboardProps = {
   initialWho?: WhoFilter;
   /** 記録を開く。渡すと、行と見つかった記録を押したときに呼ばれる */
   onOpen?: (item: RecordItem) => void;
+  /** いま横で開いている記録の id（"note:abc" の形）。一覧の同じ行に色を付ける */
+  openId?: string | null;
   /**
    * 本文でも探す。探す言葉を渡すと、本文で当たった記録の id と抜粋を返す（全文の索引を引く）。
    * 渡さないとき・索引がまだ無いときは、題・見出し・メモの本文・URL の抜粋だけで探す
@@ -296,7 +298,7 @@ function Legend({ copy, variant }: { copy: RecordCopy; variant: "rail" | "ledger
   );
 }
 
-export function RecordDashboard({ items, now, layout, initialQuery = "", initialWho = "all", onOpen, findInBody }: RecordDashboardProps) {
+export function RecordDashboard({ items, now, layout, initialQuery = "", initialWho = "all", onOpen, openId, findInBody }: RecordDashboardProps) {
   const { locale } = useLocale();
   const copy = useRecordCopy();
   const [query, setQuery] = useState(initialQuery);
@@ -396,7 +398,8 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
               bodyHits={bodyHits}
               copy={copy}
               dimMisses
-              activeId={activeId}
+              // 横で開いている記録があれば、そちらを指す（見つかった記録の側で指した行より優先）
+              activeId={openId ?? activeId}
               onOpen={onOpen}
             />
           </section>
