@@ -10,8 +10,10 @@
  *
  * オプション:
  *   --port <port>   Storybook のポート（既定 6006）
+ *   --only <name,…> 撮る図だけを指定（既定は全部）
  *
- * 出力先: manual/public/screenshots/intake-receptacle.png / intake-report.png / intake-report-single.png
+ * 出力先: manual/public/screenshots/ の intake-receptacle / intake-report / intake-report-single /
+ *         intake-conversations / intake-conversations-report / conversation-material（いずれも .png）
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -25,10 +27,19 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 6006;
+const onlyIdx = args.indexOf("--only");
+const only = onlyIdx !== -1 ? args[onlyIdx + 1].split(",").map((x) => x.trim()).filter(Boolean) : [];
 const SB = `http://localhost:${port}/iframe.html`;
 
 const SHOTS = [
-  { name: "intake-receptacle", id: "features-intake-intakemodal--idle", wait: "Drop a folder or files here" },
+  // タブ（Files / AI conversations）が付いたファイル側
+  { name: "intake-receptacle", id: "features-intake-intakemodal--files-with-tabs", wait: "Drop a folder or files here" },
+  // 作業フォルダを 2 つ選んだ状態
+  { name: "intake-conversations", id: "features-intake-intakemodal--conversation-ready-selected", wait: "bakery-notes" },
+  // 取り込んだあとの数（新しく 21・続き 3・変わらず 8・失敗 0）
+  { name: "intake-conversations-report", id: "features-intake-intakemodal--conversation-done", wait: "Conversations brought in" },
+  // 取り込んだ会話を開いた画面（モーダルではなくストーリーの箱を切り抜く）
+  { name: "conversation-material", id: "features-intake-conversation-preview--english", wait: "I want it mild", box: "div.rounded-xl.border.bg-background" },
   {
     name: "intake-report",
     id: "features-intake-intakemodal--done",
@@ -57,11 +68,12 @@ const SHOTS = [
 
 const browser = await chromium.launch({ headless: true });
 for (const shot of SHOTS) {
+  if (only.length && !only.includes(shot.name)) continue;
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
   await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
   const page = await ctx.newPage();
   await page.goto(`${SB}?id=${shot.id}&viewMode=story`);
-  await page.getByText("Close").or(page.getByText("Drop a folder or files here")).first().waitFor({ state: "visible", timeout: 60000 });
+  await page.getByText("Close").or(page.getByText(shot.wait)).first().waitFor({ state: "visible", timeout: 60000 });
   if (shot.state) {
     // URL の args は入れ子の数値を拾わないので、ページ内からチャンネルで state ごと差し替える
     await page.evaluate(({ id, state }) => {
@@ -70,7 +82,7 @@ for (const shot of SHOTS) {
   }
   await page.getByText(shot.wait).first().waitFor({ state: "visible", timeout: 60000 });
   await page.waitForTimeout(1000);
-  const dialog = page.locator('div.fixed div.rounded-xl.shadow-lg').first();
+  const dialog = shot.box ? page.locator(shot.box).first() : page.locator('div.fixed div.rounded-xl.shadow-lg').first();
   const out = resolve(OUTPUT_DIR, `${shot.name}.png`);
   // 出現のアニメーションが続くと locator.screenshot が安定待ちで落ちるので、箱を測って切り抜く
   await page.waitForTimeout(800);

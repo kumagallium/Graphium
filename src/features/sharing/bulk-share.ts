@@ -147,6 +147,11 @@ async function shareOneMedia(
     title = entry.name || target.id;
     deps.onProgress?.(index, total, title);
 
+    // AI との会話は共有の対象にしない（実体のファイルも無い）
+    if (entry.type === "conversation") {
+      return { ...target, title, ok: false, error: "AI conversations cannot be shared" };
+    }
+
     const dest = targetFor(deps, entry.sharedRef?.id);
     if (!dest) {
       return { ...target, title, ok: false, error: t("share.failed.folderUnreachable") };

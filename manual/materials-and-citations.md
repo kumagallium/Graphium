@@ -78,6 +78,7 @@ There are several routes, all ending in the same library:
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
 | Gallery buttons | **Upload** (Images, Data, Videos, Audio), **Add URL** (URLs), and **Add PDF** / **Add Word** under the **⋯** menu in Documents — add materials without touching any note |
 | Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
+| Bring in AI conversations | In the desktop app, your Claude Code conversations can be kept as materials — see [Bring in AI conversations](#bring-in-ai-conversations) below |
 | Link a file from a data place | Desktop app only. Keep a file where it is (an organization's synced folder, say) and add only a record of its location to the library — see [Link a file without copying it](#linked-files) |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
@@ -87,9 +88,9 @@ PowerPoint and Excel files brought in through the intake sheet (below) get their
 
 ## Bring in what you already have <Badge type="tip" text="Added in v0.63.0 (2026-09-08)" />
 
-There are four ways in: **Bring in files** in the sidebar, the **Bring in files** chip at the top of an empty note, the empty-state receptacle in the note list and material gallery, or dropping a folder or files anywhere in the window (a banner appears while you drag).
+There are four ways in: **Bring in** in the sidebar, the **Bring in files** chip at the top of an empty note, the empty-state receptacle in the note list and material gallery, or dropping a folder or files anywhere in the window (a banner appears while you drag). The intake screen has two tabs, **Files** and **AI conversations**; this section is about **Files**, and the other tab is described in [Bring in AI conversations](#bring-in-ai-conversations).
 
-![The intake receptacle, with buttons to choose a folder or files](/screenshots/intake-receptacle.png)
+![The intake screen on the Files tab, next to the AI conversations tab, with buttons to choose a folder or files](/screenshots/intake-receptacle.png)
 
 The rule is one sentence: **Markdown becomes notes. PDF, Office files, images and CSV become materials.** Audio, video, and delimited data (`.csv` / `.tsv` / `.txt` / `.dat`) are materials too. A `.pptx` or `.xlsx` is expanded on the way in — see above. Old-style `.doc` / `.xls` / `.ppt` files are not taken in yet — the report lists them by extension and count instead of dropping them silently. The same goes for anything else Graphium can't open, such as archives or files without an extension. Hidden files and folders (names starting with `.`, such as `.git` or `.obsidian`) are left out.
 
@@ -120,6 +121,43 @@ In the desktop app, choosing a folder lists the folder itself instead of handing
 In the browser, choosing a folder shows **Looking through the folder…** until every file inside has been listed, and on a network drive that alone can take a few minutes; the progress bar appears only after it. Dragging a folder in is listed by the browser either way and shows nothing at all while it works, so for a folder on a network drive, choose it rather than dragging it. A large folder takes a while to bring in either way. In the desktop app on macOS you can move on to other work in the meantime: intake, and the image reading that follows it, keep going while the Graphium window is behind other apps or on another desktop. Minimizing the window slows them down, so leave it open instead.
 
 Notes follow the same idea as materials (see below): a Markdown file whose contents match one you already brought in is not re-imported, and the report shows **N already in your notes** next to the notes count. The check reads the contents, not the name, so a renamed copy still counts as the same file. If the contents changed, it comes in as a new note. A note you have since edited in Graphium is never touched: re-importing the unchanged original is simply recognized as already brought in, and a changed original arrives as a new note beside your edited one. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
+
+## Bring in AI conversations {#bring-in-ai-conversations}
+
+This keeps what you decided, and why, in a conversation with an AI next to the rest of your records. In the desktop app, Graphium reads the records of your Claude Code conversations on this PC and keeps each conversation as one material.
+
+1. Open **Bring in** in the sidebar and choose the **AI conversations** tab.
+2. Graphium looks through `~/.claude/projects` and lists your working folders, each with the number of conversations, how many characters you wrote, and the period.
+3. Tick the folders you want and press **Bring in**. No AI is called.
+
+![The AI conversations tab with two working folders ticked and Bring in at the bottom right](/screenshots/intake-conversations.png)
+
+| What goes in | What does not |
+|---|---|
+| Your own messages, in full and word for word | Tool calls and their output |
+| An excerpt of the AI's reply just before each of your messages (long ones: the first 200 and last 300 characters — see [the measurement](/evaluations/ai-conversation-claims)) | The rest of the AI's replies |
+| A long text (over 700 characters) placed at the start of a conversation, kept as a **Brief** | |
+
+- Anything you typed, such as an email address or a name, is kept as it is, as part of your message. Know this before you bring a conversation in.
+- A conversation with no message from you at all (one that only handed over work, say) is not brought in. The list says **Not brought in: N with no message from you**.
+- A long first text is kept as a **Brief** because the record cannot tell whether another conversation wrote it or you typed it.
+
+**Bringing in again.** The same conversation never lands twice. If it has grown, its contents are replaced. The final screen counts **Conversations brought in**, **Conversations updated**, **Unchanged since last time** and **Failed**.
+
+![The report after bringing in: 21 brought in, 3 updated, 8 unchanged, 0 failed](/screenshots/intake-conversations-report.png)
+
+**Where to read them.** Brought-in conversations are listed under **Materials → AI conversations** in the left nav, in the folder `AI chats/<name of the working folder>`. Open one to read it by day: your messages, and the AI's replies in lighter text. As materials, they can be renamed, put in or taken out of folders, archived or deleted. Deleting one also deletes the text that was saved.
+
+![A brought-in conversation opened: a Brief, the AI's reply in lighter text, and two lines of your own](/screenshots/conversation-material.png)
+
+**In the browser.** The **AI conversations** tab only says that bringing in AI conversations is available in the desktop app. The records are files on this PC, and a browser cannot read them.
+
+**Not possible yet.**
+
+- Making knowledge (insights and topics) from a brought-in conversation
+- Finding a conversation by what it says; searching the material list looks at titles only
+- Sharing a conversation material, or downloading it as a file
+- Conversations from AI tools other than Claude Code
 
 ## Bringing the same file in twice <Badge type="tip" text="Added in v0.37.0 (2026-08-14)" /> {#bringing-the-same-file-in-twice}
 

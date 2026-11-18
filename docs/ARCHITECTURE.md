@@ -3230,11 +3230,14 @@ interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts
 
 **AI conversations as materials.** A conversation with an AI coding tool
 can be kept as a material of type `"conversation"` (DATA_MODEL.md §2.7).
-The pieces are in place below the UI; no screen calls them yet.
+On the desktop app the bring-in sheet has an **AI conversations** section for
+it; the web build shows one line saying it is available in the desktop app.
 
 ```
 record files ──► reader ──► ConversationMaterial ──► importConversations ──► media index entry
 (tool-specific)  (per tool)  (common shape)          (one per conversation)   + stored text
+      ▲                            │
+      └── sidecar route ◄── bring-in sheet (choose working folders)
 ```
 
 - **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
@@ -3256,7 +3259,30 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   Node only). Read-only access to `~/.claude/projects` (or
   `CLAUDE_CONFIG_DIR`): list the folders, list the session files, read one
   session, summarise per working folder. See §6.1 for how names are checked.
-  It streams each file and skips lines over 32 MB. No route exposes it yet.
+  It streams each file and skips lines over 32 MB.
+- **Route** (`src/server/routes/conversations.ts`, mounted at
+  `/api/conversations`, not on Vercel). Two `POST` endpoints, answered only
+  by the desktop sidecar (`GRAPHIUM_DESKTOP=1`; anything else gets `404`
+  `NOT_AVAILABLE`, because on a self-hosted server the records would be the
+  server's own). `claude-code/workdirs` returns the per-folder summary and,
+  for each folder, the names (`dirName`, `fileName`) of the conversations that
+  have a message from the user; the full scan behind it is shared between
+  concurrent requests and remembered for 30 seconds. `claude-code/read` takes
+  up to 50 of those name pairs and returns the common shape for each.
+- **Screen** (`src/features/intake/`, `src/features/conversation-import/`).
+  `IntakeModal` gets tabs (**Files** / **AI conversations**,
+  `IntakeSectionTabs`). `useConversationIntake` loads the folder list when
+  the section is opened (a `404` or a failed fetch means "not available"),
+  keeps the selection, then reads the chosen conversations 20 at a time and
+  hands each batch to `importConversations`. Conversations with no message
+  from the user are listed apart and not brought in. The report shows how
+  many were new, updated, unchanged and failed, and links to Materials.
+- **Reading one** (`src/features/asset-browser/ConversationPreview.tsx`,
+  `conversation-body.ts`). Materials has an **AI conversations** type; the
+  preview loads the stored text, splits it into the lead, date headings and
+  turns, and renders them as plain React text (never as HTML or Markdown),
+  with the AI's lines in a muted colour. A conversation material has no file,
+  so download and sharing are not offered for it.
 - **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
   `importConversations` saves each text with `saveMediaText` and then writes
   the media index once. The material id is derived from provider and session
@@ -5163,7 +5189,7 @@ thin. It does four jobs:
    instructions and growing tool loops are read from cache.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
    `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
-   `clip`).
+   `clip`, `conversations`).
 4. **Record AI usage** for every LLM / embedding call so users can see
    per-feature token consumption and estimated cost. The recording layer
    is `src/server/services/llm-usage.ts`. Every call goes through either
@@ -5484,9 +5510,24 @@ written so that the only things a caller can choose are two names:
   read. The route that calls this has to bound how often the full listing
   runs (it reads every record).
 
-No HTTP route calls this service yet. The route that will (for the bring-in
-screen) has to pass the cross-site write guard and return only the common
-shape, never raw record lines.
+The route that calls it (`routes/conversations.ts`) adds its own limits:
+
+- It answers only when the server runs as the desktop sidecar
+  (`GRAPHIUM_DESKTOP=1`, checked per request). A self-hosted server returns
+  `404` and reads nothing.
+- Both endpoints are `POST`, so the cross-site write guard applies as well as
+  the per-launch token; a page on another site can neither send the request
+  nor read the answer.
+- The request can carry only name pairs (at most 50 per call, de-duplicated).
+  A `baseDir` or any other key in the body is ignored. Path building stays in
+  the service.
+- The answer is the summary or the common shape, never raw record lines, and
+  an error carries no path or exception text.
+- The full listing reads every record, so concurrent requests share one scan
+  and the finished answer (summary included) is kept for 30 seconds.
+- Reads run one at a time across requests. A conversation over 5 million
+  characters is not returned, and a single answer stops at 20 million; what
+  is left out is counted as failed.
 
 A record can hold text an attacker influenced (a reply written while working
 in someone else's repository, a paste). Two things keep it from passing as
@@ -5677,7 +5718,7 @@ people most often need to find.
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Linked files (materials that point at a file in a registered data place; state check, open / show in folder) | `src/features/linked-files/`, `src/features/settings/DataPlacesSection.tsx`, the `place_*` block in `src-tauri/src/lib.rs` (§4.2; DATA_MODEL.md §6.5) |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
-| AI conversations as materials (reader, stored text, bring-in) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/features/conversation-import/` (§3.4) |
+| AI conversations as materials (reader, route, bring-in section, preview) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/server/routes/conversations.ts`, `src/features/conversation-import/`, `src/features/intake/`, `src/features/asset-browser/ConversationPreview.tsx` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |

@@ -77,6 +77,10 @@ export async function shareMedia(
     if (entry.type === "url") {
       return { ok: false, error: "URL bookmarks cannot be shared as media" };
     }
+    // AI との会話は実体のファイルを持たず、共有の対象にもしない
+    if (entry.type === "conversation") {
+      return { ok: false, error: "AI conversations cannot be shared" };
+    }
 
     // 1. メディアの実体バイト列を Tauri から取得
     const base64 = await invoke<string>("read_media_file", { fileId: entry.fileId });

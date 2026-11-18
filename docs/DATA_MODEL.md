@@ -1770,8 +1770,9 @@ annotation targeting that material like any other memo.
 
 **AI conversations: `MediaIndexEntry.conversation`.** A conversation with an AI
 coding tool (today: Claude Code) can be kept as a material of type
-`"conversation"` — one conversation, one material. There is no screen for
-bringing one in yet; this is the data layer it will write to. Like a URL
+`"conversation"` — one conversation, one material, brought in from the
+**AI conversations** section of the bring-in sheet on the desktop app
+(ARCHITECTURE.md §3.4). Like a URL
 bookmark, the entry has no media binary: the index entry is the only
 registration, and the text lives in the media-text channel
 (`saveMediaText(fileId)`, §6.3). `isFilelessMediaEntry` names the two types
@@ -1837,8 +1838,9 @@ type ConversationMeta = {
   conversation is recorded exactly like a typed one, so its author cannot be
   told from the record. Later long lines are the user's and are kept whole.
 - **Folder.** `noteContexts` is `["<root>/<name of the working folder>"]`,
-  where the root label is chosen by the caller in the UI language (folders
-  are two levels deep, so the provider is not a level of its own). The name
+  where the root label follows the UI language when the conversation is
+  brought in (`AI 会話` in Japanese, `AI chats` in English; folders are two
+  levels deep, so the provider is not a level of its own). The name
   is the last component of the recorded working folder with control,
   direction-changing and invisible characters removed and cut at 80
   characters; `.` and `..` are not names. Two working folders with the same

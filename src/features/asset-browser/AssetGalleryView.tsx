@@ -5,7 +5,7 @@ import { safeExternalHref } from "../../lib/safe-href";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked, File as FileIcon } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked, MessagesSquare, File as FileIcon } from "lucide-react";
 import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
@@ -29,7 +29,7 @@ import { formatDateTime } from "../../lib/format-datetime";
 import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry, isFilelessMediaEntry } from "./media-index";
 import { usePptxCover } from "./pptx-cover";
 import { canOpenInApp, openInApp, openInAppFailureKey } from "./open-in-app";
 import { matchesAllTokens, sourceInfoSearchText, formatSourceLine } from "./source-info-text";
@@ -1163,7 +1163,7 @@ export function AssetGalleryView({
   // 大きいファイルでブラウザがフリーズする。同一オリジン (blob:) なら直接 a.download に渡す。
   // 外部 URL (Drive CDN 等) の場合のみ fetch 経由の fallback を使う。
   const downloadEntry = useCallback(async (entry: MediaIndexEntry) => {
-    if (entry.type === "url") return;
+    if (isFilelessMediaEntry(entry)) return;
     const provider = getActiveProvider();
     const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
     const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -1595,11 +1595,11 @@ export function AssetGalleryView({
   // 一括ダウンロード: 選択中の素材を順次保存（URL ブックマークは除外）
   const downloadableSelectedCount = useMemo(
     () =>
-      filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url").length,
+      filtered.filter((e) => selectedIds.has(e.fileId) && !isFilelessMediaEntry(e)).length,
     [filtered, selectedIds],
   );
   const handleBulkDownload = useCallback(async () => {
-    const targets = filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url");
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId) && !isFilelessMediaEntry(e));
     if (targets.length === 0) return;
     setBulkDownloading(true);
     try {
@@ -1925,7 +1925,7 @@ export function AssetGalleryView({
             </div>
             </div>
           )}
-          {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
+          {mediaType !== "url" && mediaType !== "document" && mediaType !== "conversation" && onUploadMedia && (
             <>
               {linkPlaceFileButton && <div className="ml-auto shrink-0">{linkPlaceFileButton}</div>}
               <button
@@ -2100,13 +2100,16 @@ export function AssetGalleryView({
             onClear={() => setSelectedIds(new Set())}
             primary={[
               // 一括共有は「ノート一覧と同じ導線」（並び順・文言・BulkShareModal）を約束している操作
-              ...(onBulkShare ? [{
+              // 会話は共有の対象にしない（会話の画面では出さず、混ざった選択からも外す）
+              ...(onBulkShare && mediaType !== "conversation" ? [{
                 id: "share",
                 label: t("bulk.share"),
                 icon: <Share2 size={12} />,
                 tooltip: t("share.bulk.title"),
                 onClick: () => {
-                  const ids = [...selectedIds];
+                  const ids = filtered
+                    .filter((e) => selectedIds.has(e.fileId) && e.type !== "conversation")
+                    .map((e) => e.fileId);
                   // 共有はモーダルに引き継ぐので選択を解いておく（戻ってきたとき選択が残っていると
                   // 「もう一度共有される」と誤解される）
                   setSelectedIds(new Set());
@@ -2201,7 +2204,11 @@ export function AssetGalleryView({
               <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
             </div>
           ) : filtered.length === 0 ? (
-            onIntakeFiles && mediaIndex && mediaIndex.media.length === 0 ? (
+            mediaType === "conversation" ? (
+              <div className="flex items-center justify-center py-16">
+                <p className="text-sm text-muted-foreground">{t("asset.conversation.empty")}</p>
+              </div>
+            ) : onIntakeFiles && mediaIndex && mediaIndex.media.length === 0 ? (
               <div className="py-10 max-w-[560px] mx-auto">
                 <IntakeReceptacle lead={t("intake.emptyMaterialsLead")} onFilesSelected={onIntakeFiles} />
               </div>

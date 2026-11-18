@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   conversationFileId,
   conversationSourceId,
+  estimateConversationIngestTokens,
   isValidConversationSessionId,
   parseConversationFileId,
 } from "./types";
@@ -13,6 +14,11 @@ describe("conversationFileId / parseConversationFileId", () => {
     const id = conversationFileId("claude-code", SID);
     expect(id).toBe(`conv-claude-code-${SID}`);
     expect(parseConversationFileId(id as string)).toEqual({ provider: "claude-code", sessionId: SID });
+  });
+
+  it("知らない provider では id を作らない（応答が細工されていても、戻せない形の id を作らない）", () => {
+    expect(conversationFileId("evil/x" as never, "11111111-2222-4333-8444-555555555555")).toBeNull();
+    expect(conversationFileId("codex" as never, "abc")).toBeNull();
   });
 
   it("下線とハイフンと 100 字ちょうどは通る", () => {
@@ -44,5 +50,15 @@ describe("conversationFileId / parseConversationFileId", () => {
 describe("conversationSourceId", () => {
   it("conversation: を前に付ける", () => {
     expect(conversationSourceId(`conv-claude-code-${SID}`)).toBe(`conversation:conv-claude-code-${SID}`);
+  });
+});
+
+describe("estimateConversationIngestTokens", () => {
+  it("候補の本数に 1 本あたりの幅を掛ける", () => {
+    expect(estimateConversationIngestTokens(4)).toEqual({ low: 280_000, high: 360_000 });
+  });
+
+  it("0 本なら 0〜0", () => {
+    expect(estimateConversationIngestTokens(0)).toEqual({ low: 0, high: 0 });
   });
 });

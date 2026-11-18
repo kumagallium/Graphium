@@ -12,6 +12,7 @@ import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
 import { UrlPreviewCard } from "./url-preview-card";
 import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
+import { ConversationPreview } from "./ConversationPreview";
 import type { CitationSource } from "./SelectionPill";
 import type { MaterialFocus } from "./pdf-quote-anchor";
 import { useT } from "../../i18n";
@@ -193,6 +194,8 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset,
       return <MemoPreviewCard entry={entry} />;
     case "data":
       return <DataPreview entry={entry} />;
+    case "conversation":
+      return <ConversationPreview entry={entry} />;
     default:
       return (
         <div className="flex items-center justify-center">

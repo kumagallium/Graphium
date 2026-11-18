@@ -16,3 +16,4 @@ export { commonRootOf, folderOf } from "./folders";
 export { collectDroppedFiles } from "./collect-dropped-files";
 export { toIntakeFiles } from "./types";
 export type { IntakeFile, IntakeSelectionExtra, IntakeSource } from "./types";
+export type { IntakeConversationProps } from "./IntakeModal";

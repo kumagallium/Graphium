@@ -129,3 +129,69 @@ describe("IntakeModal の完了画面", () => {
     expect(onIngestAll).toHaveBeenCalledWith(["n1", "n2"], ["f1", "f2", "f-existing"]);
   });
 });
+
+describe("IntakeModal の AI との会話の区画", () => {
+  type Conv = NonNullable<React.ComponentProps<typeof IntakeModal>["conversation"]>;
+  function conv(state: Conv["state"], section: Conv["section"] = "conversations"): Conv {
+    return {
+      state,
+      section,
+      onSectionChange: vi.fn(),
+      onToggle: vi.fn(),
+      onToggleAll: vi.fn(),
+      onImport: vi.fn(),
+      onRetry: vi.fn(),
+      onViewMaterials: vi.fn(),
+    };
+  }
+  function renderIdle(conversation?: Conv) {
+    return render(
+      <LocaleProvider>
+        <IntakeModal open onClose={() => {}} onFilesSelected={() => {}} state={{ kind: "idle" }} conversation={conversation} />
+      </LocaleProvider>,
+    );
+  }
+  const ITEM = {
+    workdir: "/Users/example/bakery-notes",
+    sessions: 3,
+    unattendedSessions: 0,
+    candidateSessions: 1,
+    ownTurns: 10,
+    ownChars: 1200,
+    startedAt: "2026-03-04T09:12:00",
+    endedAt: "2026-03-05T09:12:00",
+    sessionRefs: [{ dirName: "d", fileName: "a.jsonl" }],
+  };
+
+  it("conversation を渡さないとタブが出ない", () => {
+    renderIdle();
+    expect(document.querySelector("[role='tablist']")).toBeNull();
+  });
+
+  it("渡すとタブが出る", () => {
+    renderIdle(conv({ kind: "idle" }, "files"));
+    expect(document.querySelector("[role='tablist']")).not.toBeNull();
+  });
+
+  it("ready で何も選んでいないと「取り込む」が押せない", () => {
+    renderIdle(conv({ kind: "ready", items: [ITEM], selected: new Set(), searchedPath: "~/x" }));
+    const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Bring in");
+    expect(btn).toBeDefined();
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("unavailable で 1 行が出る", () => {
+    renderIdle(conv({ kind: "unavailable" }));
+    expect(document.body.textContent).toContain("desktop app");
+  });
+
+  it("done で 4 行と「素材で見る」が出て、「まとめてナレッジ化」は出ない", () => {
+    const c = conv({ kind: "done", created: 2, updated: 1, unchanged: 0, failed: 1 });
+    renderIdle(c);
+    expect(document.querySelectorAll("dl > div")).toHaveLength(4);
+    const labels = Array.from(document.querySelectorAll("button")).map((b) => b.textContent?.trim());
+    expect(labels).toContain("See them in Materials");
+    expect(document.body.textContent).not.toContain("knowledge");
+    expect(document.body.textContent).not.toContain("まとめてナレッジ化");
+  });
+});

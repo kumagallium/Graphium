@@ -84,6 +84,9 @@ const PROVIDERS: readonly ConversationProvider[] = ["claude-code"];
  * 二重に作らない）。sessionId が受け付ける形でなければ null。
  */
 export function conversationFileId(provider: ConversationProvider, sessionId: string): string | null {
+  // provider は型の上では決まった値だが、サーバーの応答から来る。知らない値では id を作らない
+  // （作ると、会話の素材 id の形に戻せない id ができ、削除の守りを通らずに本文が残る）
+  if (!PROVIDERS.includes(provider)) return null;
   if (!isValidConversationSessionId(sessionId)) return null;
   return `${FILE_ID_PREFIX}${provider}-${sessionId}`;
 }
@@ -105,4 +108,18 @@ export function parseConversationFileId(
 /** 出典 id（知見・トピックが `[[source:conversation:…|一節]]` で引く形） */
 export function conversationSourceId(fileId: string): string {
   return `${CONVERSATION_SOURCE_PREFIX}${fileId}`;
+}
+
+/**
+ * ナレッジ化の費用の見込み: 会話 1 本の知見の作成に、測定でおよそ 7〜9 万トークンかかった
+ * （2026-11-18）。トピックの作成は含まない。
+ */
+export const CONVERSATION_INGEST_TOKENS_PER_SESSION = { low: 70_000, high: 90_000 } as const;
+
+/** 候補の本数から、知見の作成にかかるトークン数の幅を見積もる（掛けるだけ） */
+export function estimateConversationIngestTokens(candidates: number): { low: number; high: number } {
+  return {
+    low: candidates * CONVERSATION_INGEST_TOKENS_PER_SESSION.low,
+    high: candidates * CONVERSATION_INGEST_TOKENS_PER_SESSION.high,
+  };
 }

@@ -50,6 +50,7 @@ const MEDIA_ICON: Record<RecordMediaType, LucideIcon> = {
   url: Link2,
   document: FileText,
   data: Table2,
+  conversation: MessagesSquare,
   other: File,
 };
 

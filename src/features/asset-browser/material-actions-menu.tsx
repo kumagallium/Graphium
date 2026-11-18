@@ -492,7 +492,8 @@ export function MaterialActionsMenu({
             </>
           )}
           {(hasAiActions || canExtract || canDownload || canCopyLink) && <div className="my-1 border-t border-border" />}
-          {!isLinked && (
+          {/* リンクしただけのファイルと、AI との会話は共有の対象にしない（操作そのものを出さない） */}
+          {!isLinked && entry.type !== "conversation" && (
             <button
               className={itemClass}
               disabled={!!shareDisabledReason || shareBusy}

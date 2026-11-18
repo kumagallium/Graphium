@@ -37,7 +37,7 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 
 ## ノート一覧 {#the-notes-list}
 
-<Badge type="tip" text="v0.126.0 (2026-11-09) で追加" /> 左のナビは、上が操作、下が 4 つのタブという形です。上には **ホーム** と **検索** が横に並び（検索は `⌘K` と同じ Composer が開きます）、その下に **+ ノート**、**ファイル取り込み** が並びます。スクロールしても動きません。**ホーム** <Badge type="tip" text="v0.138.0 (2026-11-17) で追加" /> は、ノート・AI のページ・素材・メモを、残した順に日ごとに並べる画面です。1 行ごとに、どこから来たか、誰が残したかが見えます。行を押すと開きます。ノートと AI のページは一覧の横に開くので、ホームはそのまま残り、そこから全画面に切り替えられます。「誰が」の切り替えの隣にある **フォルダ** のボタン <Badge type="tip" text="v0.143.0 (2026-11-18) で追加" /> で、一覧・カレンダー・探す欄を 1 つのフォルダの記録だけに絞れます。フォルダは、新しく動いた順に並びます。右のパネルで言葉から探せて、当たらなかった行は消えずに薄く残ります。
+<Badge type="tip" text="v0.126.0 (2026-11-09) で追加" /> 左のナビは、上が操作、下が 4 つのタブという形です。上には **ホーム** と **検索** が横に並び（検索は `⌘K` と同じ Composer が開きます）、その下に **+ ノート**、**取り込み** が並びます。スクロールしても動きません。**ホーム** <Badge type="tip" text="v0.138.0 (2026-11-17) で追加" /> は、ノート・AI のページ・素材・メモを、残した順に日ごとに並べる画面です。1 行ごとに、どこから来たか、誰が残したかが見えます。行を押すと開きます。ノートと AI のページは一覧の横に開くので、ホームはそのまま残り、そこから全画面に切り替えられます。「誰が」の切り替えの隣にある **フォルダ** のボタン <Badge type="tip" text="v0.143.0 (2026-11-18) で追加" /> で、一覧・カレンダー・探す欄を 1 つのフォルダの記録だけに絞れます。フォルダは、新しく動いた順に並びます。右のパネルで言葉から探せて、当たらなかった行は消えずに薄く残ります。
 
 ![ホーム。今日の記録が時刻の順に並び、1 行ごとに、どこから来たかと誰が残したかが付いている（メモ、手で書いたノート、スマホからの写真、Web クリップ、素材からの引用、AI との会話から作ったノート）。一覧の上に「すべて / 自分 / AI / 共有の作者」の切り替えと「すべてのフォルダ」のボタン、右に、記録のある日に色が付いた 2026 年 11 月のカレンダーと、言葉で探す欄がある](/screenshots/home-records.png)
 
@@ -52,7 +52,7 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 - **ノート** タブでは、**テンプレート** と **プロセス** の次
 - **ナレッジ** と **素材** のタブでは、一番下
 
-![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in files。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights（どちらも Preview の印付き）・Summaries、続けて Log と Upkeep、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill・Global Graph・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
+![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights（どちらも Preview の印付き）・Summaries、続けて Log と Upkeep、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs・AI conversations と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill・Global Graph・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
 
 **すべてのノート** は、全ノートを表で見せます。表には、検索ボックス（「検索...」）と件数表示（「12 / 40 件」）が付いています。検索ボックスは、タイトル、画像から読み取った文字、ノート本文を探します <Badge type="tip" text="v0.39.0 (2026-08-17) で追加" />。本文だけが一致した行には **本文** バッジが付き、カーソルを乗せると一致した箇所が見えます。
 
