@@ -593,8 +593,8 @@ the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by
-copy-and-paste, into templates, or into a fork of a shared note (the memo lives in
-the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
+copy-and-paste, into templates, into the shared copy of a note (§7), or into a fork
+of a shared note (the memo lives in the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
 leaves the text.
 
 An entry is only as live as its block. Every save (the main editor and the side
@@ -4405,15 +4405,20 @@ Key model choices:
   not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
-  share dialog's checkbox turn it back on per share. Everything else
-  travels unchanged — `pages` (blocks, `labels`, `provLinks`),
-  `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
+  share dialog's checkbox turn it back on per share. The memo links in
+  `pages[].memoQuotes` (§2.2) are always dropped, whatever that switch
+  says (`stripMemoQuotes` in the same file, at the same point in the
+  flow), because each one holds the memo's id and its text at the time
+  it was quoted. The `quote` block itself is note text and stays. A copy
+  shared before this rule keeps its links until the note is shared
+  again. Everything else travels unchanged — the rest of `pages` (blocks,
+  `labels`, `provLinks`), `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
   because the shared projection (§7.6) and the reverse links read them. The shared
-  format version is unchanged: both fields were already optional, so an
+  format version is unchanged: these fields were already optional, so an
   older build reading a newer shared copy simply finds them absent.
-  Version snapshots (`snapshot:<snapshotId>`, §2.4) and memos are stored
-  outside the document altogether, so they have never travelled with a
-  share either.
+  Version snapshots (`snapshot:<snapshotId>`, §2.4) and the memos
+  themselves (`captures.json`, §2.7) are stored outside the document
+  altogether, so they do not travel with a share either.
 - **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
   sharing a page as a template writes the (previously dormant)
   `PageTemplate` JSON (`src/features/template/types.ts`: `name` /

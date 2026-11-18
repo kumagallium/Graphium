@@ -351,6 +351,80 @@ describe("shareNote — 共有コピーに含めない情報", () => {
     expect(original.documentProvenance).toEqual(documentProvenance);
   });
 
+  // メモから引用したブロックを持つノート。紐づけ（memoQuotes）には、引用した時点のメモ本文と
+  // メモの id が入っている。本文の引用ブロックは、あとから書き換えてある（メモ本文とは別の文）
+  const memoQuotes = {
+    q1: {
+      captureId: "cap-1",
+      quotedAt: "2026-05-04T00:00:00Z",
+      quotedText: "発酵は 28 度で 60 分（まだ誰にも見せない下書き）",
+    },
+  };
+  const docWithMemoQuote = (overrides: Partial<GraphiumDocument> = {}) =>
+    makeDoc({
+      pages: [
+        {
+          id: "p1",
+          title: "Test note",
+          blocks: [
+            { id: "b1", type: "paragraph", content: [{ type: "text", text: "hi" }] },
+            { id: "q1", type: "quote", content: [{ type: "text", text: "発酵は 28 度で 60 分" }] },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+          memoQuotes,
+        },
+      ],
+      ...overrides,
+    });
+
+  it("共有 body にメモの紐づけ（memoQuotes）が無い。引用ブロックの本文は残る", async () => {
+    const r = await shareNote(docWithMemoQuote(), { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.pages[0].memoQuotes).toBeUndefined();
+    expect("memoQuotes" in body.pages[0]).toBe(false);
+    // 封筒ごと見ても、メモの id と、引用した時点のメモ本文は出ていない
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain("cap-1");
+    expect(raw).not.toContain("まだ誰にも見せない下書き");
+    // 引用ブロックはノートの本文なので、そのまま出る
+    expect(body.pages[0].blocks).toHaveLength(2);
+    expect((body.pages[0].blocks[1] as any).content[0].text).toBe("発酵は 28 度で 60 分");
+  });
+
+  it("includePrivateHistory: true でも memoQuotes は出ない（メモは常に共有しない）", async () => {
+    const r = await shareNote(docWithMemoQuote({ chats }), {
+      root: "/tmp/shared",
+      author,
+      includePrivateHistory: true,
+    });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.chats).toHaveLength(1);
+    expect(body.pages[0].memoQuotes).toBeUndefined();
+  });
+
+  it("手元の doc と戻り値の doc には memoQuotes が残る", async () => {
+    const original = docWithMemoQuote();
+    const r = await shareNote(original, { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(original.pages[0].memoQuotes).toEqual(memoQuotes);
+    expect(r.doc.pages[0].memoQuotes).toEqual(memoQuotes);
+  });
+
+  it("knowledge と proposal の共有 body からも memoQuotes を外す", async () => {
+    for (const type of ["knowledge", "proposal"] as const) {
+      fs = new FakeFs();
+      fs.install();
+      const r = await shareGraphiumDocument(docWithMemoQuote(), type, {}, { root: "/tmp/shared", author });
+      expect(r.ok).toBe(true);
+      expect(storedBody().pages[0].memoQuotes).toBeUndefined();
+    }
+  });
+
   it("hash は剥がした後の本文から計算される", async () => {
     const input = docWithHistory();
     const r = await shareNote(input, { root: "/tmp/shared", author });
