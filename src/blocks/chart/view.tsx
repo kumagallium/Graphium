@@ -2031,7 +2031,8 @@ function ChartCanvas({
     // 最大幅 720px・中央寄せ。狭い場所（SidePeek 等）では幅なりに縮む
     <div ref={wrapperRef} style={{ position: "relative", width: "100%", maxWidth: 720, margin: "0 auto" }}>
       {!chart && <div style={styles.loading}>{t("chart.loading")}</div>}
-      <div ref={chartElRef} style={{ width: "100%", height: figure.height }} />
+      {/* data-chart-plot: Word 書き出しが図の svg を取るための目印（docx-export/capture-chart.ts） */}
+      <div ref={chartElRef} data-chart-plot style={{ width: "100%", height: figure.height }} />
     </div>
   );
 }

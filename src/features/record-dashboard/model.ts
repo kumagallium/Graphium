@@ -44,6 +44,36 @@ export function groupByDay(items: readonly RecordItem[]): RecordDayGroup[] {
     .map(([key, list]) => ({ key, items: [...list].sort((a, b) => timeOf(a.at) - timeOf(b.at)) }));
 }
 
+/** 本文で当たった箇所の抜粋（全文の索引から）。ranges は text の中の強調する範囲 */
+export type BodyHit = { text: string; ranges: readonly { start: number; end: number }[] };
+/** 記録の id → 本文で当たった箇所。全文の索引がまだ無いときは空 */
+export type BodyHits = ReadonlyMap<string, BodyHit>;
+
+/**
+ * 全文の索引の抜粋を、記録の画面に出す形に整える。
+ * 索引のチャンクは先頭に見出しを Markdown の形（"## 見出し"）で持つので、記号だけを外す
+ */
+export function tidyBodyHit(hit: BodyHit): BodyHit {
+  const lead = /^#{1,6}\s+/.exec(hit.text);
+  if (!lead) return hit;
+  const shift = lead[0].length;
+  return {
+    text: hit.text.slice(shift),
+    ranges: hit.ranges
+      .map((r) => ({ start: Math.max(0, r.start - shift), end: Math.max(0, r.end - shift) }))
+      .filter((r) => r.end > r.start),
+  };
+}
+
+/**
+ * 探す言葉に当たるか。題・メモの本文・題の下の 1 行・ドメイン（matchesQuery）に加えて、
+ * 全文の索引で本文に当たった記録（bodyHits）も当たりにする
+ */
+export function isHit(item: RecordItem, query: string, bodyHits?: BodyHits): boolean {
+  if (matchesQuery(item, query)) return true;
+  return query.trim().length > 0 && !!bodyHits?.has(item.id);
+}
+
 /** 探す言葉に当たるか。題・本文・題の下の 1 行・ドメインを見る */
 export function matchesQuery(item: RecordItem, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -190,4 +220,70 @@ export function daysWithinBudget(days: readonly RecordDayGroup[], budget: number
     n++;
   }
   return n;
+}
+
+// ── カレンダー ─────────────────────────────
+
+/** 日（"2026-11-17"）ごとの件数。日時として読めない記録は数えない */
+export function countByDay(items: readonly RecordItem[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = dayKeyOf(item.at);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** "2026-11-17" → "2026-11" */
+export function monthKeyOf(dayKey: string): string {
+  return dayKey.slice(0, 7);
+}
+
+/** 月を前後に動かす。shiftMonth("2026-01", -1) → "2025-12" */
+export function shiftMonth(monthKey: string, delta: number): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+
+export type CalendarCell = { key: string; day: number } | null;
+
+/** 月の表示の升目。週は日曜から始まり、月の外の升は null */
+export function monthGrid(monthKey: string): CalendarCell[][] {
+  const [y, m] = monthKey.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const days = new Date(y, m, 0).getDate();
+  const cells: CalendarCell[] = Array.from({ length: first.getDay() }, () => null);
+  for (let day = 1; day <= days; day++) cells.push({ key: `${monthKey}-${pad(day)}`, day });
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: CalendarCell[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+/**
+ * 件数を濃淡の段（0〜4）にする。0 件は 0。
+ * 一括の取り込みで 1 日だけ何百件もある、という偏りがあるので、平方根で差をならす
+ * （そのまま割ると、ほかの日がすべていちばん薄い段になる）。
+ */
+export function densityLevel(count: number, max: number): 0 | 1 | 2 | 3 | 4 {
+  if (count <= 0 || max <= 0) return 0;
+  const ratio = Math.sqrt(count) / Math.sqrt(max);
+  if (ratio <= 0.25) return 1;
+  if (ratio <= 0.5) return 2;
+  if (ratio <= 0.75) return 3;
+  return 4;
+}
+
+/** "2026年11月" / "November 2026" */
+export function formatMonth(monthKey: string, locale: Locale): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Intl.DateTimeFormat(localeTag(locale), { year: "numeric", month: "long" }).format(new Date(y, m - 1, 1));
+}
+
+/** 曜日の見出し（日曜から）。"日" / "Sun" */
+export function weekdayLabels(locale: Locale): string[] {
+  const format = new Intl.DateTimeFormat(localeTag(locale), { weekday: "short" });
+  // 2023-01-01 は日曜
+  return Array.from({ length: 7 }, (_, i) => format.format(new Date(2023, 0, 1 + i)));
 }

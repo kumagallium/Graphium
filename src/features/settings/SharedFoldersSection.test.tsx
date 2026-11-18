@@ -122,4 +122,16 @@ describe("SharedFoldersSection", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Check connection" })[0]);
     await screen.findByText("Read and write work");
   });
+
+  it("詳細の「読める写しも置く」を切り替えると、そのフォルダの設定に保存される（既定は切）", () => {
+    setSharedFolders([createSharedFolder("/Volumes/Org", "Org")]);
+    renderSection();
+    fireEvent.click(within(rows()[0]).getByRole("button", { name: "Show details" }));
+    const box = screen.getByRole("checkbox", { name: /Also keep readable copies/ }) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    expect(getSharedFolders()[0].readableCopies).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Also keep readable copies/ }));
+    expect(getSharedFolders()[0].readableCopies).toBeUndefined();
+  });
 });

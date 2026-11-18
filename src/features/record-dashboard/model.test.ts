@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   bundleRuns,
+  countByDay,
   countOrigins,
   dayKeyOf,
   daysAgo,
   daysWithinBudget,
+  densityLevel,
   formatTime,
   groupByDay,
   isBundle,
+  isHit,
   lastSevenDays,
   matchesOrigin,
   matchesQuery,
   matchesWho,
+  tidyBodyHit,
+  monthGrid,
+  monthKeyOf,
+  shiftMonth,
 } from "./model";
 import type { RecordItem } from "./types";
 
@@ -150,5 +157,84 @@ describe("daysWithinBudget", () => {
 
   it("日が無ければ 0", () => {
     expect(daysWithinBudget([], 100, rows)).toBe(0);
+  });
+});
+
+describe("isHit（題・本文に加えて、全文の索引で本文に当たった記録）", () => {
+  const hits = new Map([["r", { text: "こね上げ温度は 24 度", ranges: [{ start: 0, end: 3 }] }]]);
+
+  it("題で当たる", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "食パン")).toBe(true);
+  });
+
+  it("題に無くても、本文で当たった記録は当たりになる", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "こね上げ", hits)).toBe(true);
+  });
+
+  it("探す言葉が空なら、bodyHits があっても matchesQuery と同じ（全部当たる）", () => {
+    expect(isHit(rec(), "", hits)).toBe(matchesQuery(rec(), ""));
+    expect(isHit(rec(), "  ", hits)).toBe(matchesQuery(rec(), "  "));
+  });
+
+  it("どちらにも無ければ当たらない", () => {
+    expect(isHit(rec({ title: "食パン 試作" }), "こね上げ")).toBe(false);
+    expect(isHit(rec({ id: "other", title: "食パン 試作" }), "こね上げ", hits)).toBe(false);
+  });
+});
+
+describe("tidyBodyHit", () => {
+  it("先頭の見出し記号を外し、強調の範囲をずらす", () => {
+    const hit = { text: "## 試す順番 温度はそのまま", ranges: [{ start: 8, end: 10 }] };
+    expect(tidyBodyHit(hit)).toEqual({ text: "試す順番 温度はそのまま", ranges: [{ start: 5, end: 7 }] });
+  });
+  it("見出し記号で始まらない抜粋はそのまま返す", () => {
+    const hit = { text: "…発酵の温度を先に", ranges: [{ start: 4, end: 6 }] };
+    expect(tidyBodyHit(hit)).toBe(hit);
+  });
+});
+
+describe("カレンダー", () => {
+  it("日ごとの件数を数える。日時として読めない記録は数えない", () => {
+    const counts = countByDay([rec({ at: utc(2026, 11, 17, 9, 0) }), rec({ at: utc(2026, 11, 17, 23, 30) }), rec({ at: utc(2026, 11, 3, 0, 5) }), rec({ at: "" })]);
+    expect([...counts.entries()].sort()).toEqual([
+      ["2026-11-03", 1],
+      ["2026-11-17", 2],
+    ]);
+  });
+
+  it("月を前後に動かす（年をまたぐ）", () => {
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
+    expect(shiftMonth("2026-12", 1)).toBe("2027-01");
+    expect(shiftMonth("2026-11", 0)).toBe("2026-11");
+    expect(monthKeyOf("2026-11-17")).toBe("2026-11");
+  });
+
+  it("月の升目は日曜から始まり、月の外は null で埋める", () => {
+    // 2026 年 11 月 1 日は日曜、30 日まで
+    const nov = monthGrid("2026-11");
+    expect(nov).toHaveLength(5);
+    expect(nov[0][0]).toEqual({ key: "2026-11-01", day: 1 });
+    expect(nov[4][1]).toEqual({ key: "2026-11-30", day: 30 });
+    expect(nov[4].slice(2)).toEqual([null, null, null, null, null]);
+    // 2026 年 10 月 1 日は木曜
+    const oct = monthGrid("2026-10");
+    expect(oct[0].slice(0, 4)).toEqual([null, null, null, null]);
+    expect(oct[0][4]).toEqual({ key: "2026-10-01", day: 1 });
+    expect(oct.every((w) => w.length === 7)).toBe(true);
+  });
+
+  it("うるう年の 2 月は 29 日まで", () => {
+    const days = monthGrid("2028-02").flat().filter(Boolean);
+    expect(days).toHaveLength(29);
+  });
+
+  it("件数を濃淡の段にする。1 日だけ飛び抜けて多くても、ほかの日がつぶれない", () => {
+    expect(densityLevel(0, 592)).toBe(0);
+    expect(densityLevel(3, 0)).toBe(0);
+    expect(densityLevel(592, 592)).toBe(4);
+    expect(densityLevel(2, 592)).toBe(1);
+    expect(densityLevel(60, 592)).toBe(2);
+    expect(densityLevel(200, 592)).toBe(3);
+    expect(densityLevel(1, 1)).toBe(4);
   });
 });

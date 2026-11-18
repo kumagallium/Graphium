@@ -867,7 +867,7 @@ namespace `https://graphium.app/ns#` (a domain the project does not own); treat 
 | `p-plan` | `http://purl.org/net/p-plan#` | planned procedures: `Plan`, `Step`, `MultiStep`, `Variable`, `Activity`, `Entity` |
 | `oa` | `http://www.w3.org/ns/oa#` | memos as annotations |
 | `dc` | `http://purl.org/dc/elements/1.1/` | `dc:creator` / `dc:date` / `dc:publisher` / `dc:identifier` / `dc:format` |
-| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
+| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:references`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
 | `foaf`, `rdfs`, `rdf`, `xsd` | as usual | person names and mailbox hash, labels / comments / `seeAlso`, `rdf:value`, `xsd:dateTime` |
 | `graphium` | `https://kumagallium.github.io/Graphium/ns#` | notes the standard has no word for (see the tables below) |
 
@@ -904,7 +904,14 @@ table):
   → the note, template, shared note or intake path it was made from (derived
   note, `templateFrom`, `forkedFrom`, `importSource`). `prov:wasInfluencedBy`
   → materials cited with `@`, linked Knowledge entries, and memos inserted
-  into the note. `dcterms:isPartOf` → the plan note, when the note belongs to
+  into the note. `dcterms:references` → other notes the body points at (an
+  `@` mention, a pasted link, or an existing note attached to a table row).
+  It has no direction of its own: it says only that this note's text points at
+  that note, never that one was derived from or influenced by the other. A
+  child note made with "derive" is not listed here (it carries its own
+  `prov:wasDerivedFrom`), and neither are notes in the trash or notes missing
+  from the index. The target is a stub (`graphium:external: true`, label = its
+  title). `dcterms:isPartOf` → the plan note, when the note belongs to
   a paper plan (the plan side is a stub with no plan type). `graphium:provenanceBundle`
   → the edit-log Bundle. The referenced sources, templates and so on are
   declared as stubs (`graphium:external: true`, label = the raw id) unless
@@ -1225,6 +1232,7 @@ without knowing Graphium's internals.
 | A note, template or shared note it was derived from | `Entity` stub | `prov:wasDerivedFrom` from the note |
 | A material cited with `@`, a linked Knowledge entry | `Entity` | `prov:wasInfluencedBy` from the note |
 | A link to another note's output ("informed by") | `Usage` / `Derivation` relation and an external `Entity` stub | `activity`, `entity`, `label` = the line's name |
+| A note the body points at (`@`, pasted link, table-row link) | `Entity` stub (the real note `Entity` in a plan export) | `dcterms:references` from the note. It carries no derivation direction |
 | The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
 | A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
 | The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
@@ -1742,10 +1750,19 @@ Notes:
   with the stored one, so a sentence inserted directly after a figure
   counts as a change, as do a removed neighbour, different numbers, or
   a difference of more than two characters otherwise (a fixed typo
-  doesn't count). A side with no stored sentence (the passage started
-  or ended the note) is not checked, so text appended to the end of a
-  note doesn't count. Such passages are reported separately and more
-  softly, with the old and the current sentence. Stored sentences are
+  doesn't count). Where the passage started the note, text added
+  before it is not checked. Where it ended the note, a sentence
+  appended right after it counts only when it shares a number or a
+  term with the passage (`sharesNumberOrTerm`: Latin words of four or
+  more letters, two-character runs of kanji, katakana words of three
+  or more characters, the first two syllables of a Hangul word, each
+  outside a short list of common diary words; numbers after NFKC,
+  leaving out dates, times and single digits), since
+  the first thing appended after a note's last sentence is often a
+  correction of it, while an unrelated new entry is the most common
+  edit of all. Such passages are reported separately and more
+  softly, with the old and the current sentence (an appended sentence
+  has no old one, so only the current sentence is shown). Stored sentences are
   written by the app's ingest, regenerate and merge paths. Pages
   written before this field, answer pages, and pages rewritten from
   sources over MCP (which extracts note text differently, so the
@@ -2288,7 +2305,9 @@ Notes:
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
   pages, minus trash / archive) and `mediaIndex` (image OCR, PowerPoint slide
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
-  the background) through one
+  the background; in the desktop app only, the transcript of a recording or
+  video, read from its `transcript.json` and re-read when its transcription
+  job turns done) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
@@ -3470,6 +3489,30 @@ The same `src/` tree is built four different ways.
   old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
   once done and is skipped afterwards; it copies files as before except that
   it never overwrites an existing `models.json` in the new data folder
+- Readable copies (`shared_readable_sync`, and the cleanup `shared_delete`
+  runs) are written by Rust, not chosen by the frontend: the command takes
+  only the entry type, the shared id, the title and the contents, and
+  builds the file names itself from the sanitized title and the last 12
+  characters of the id. Order of checks: `validate_id`; entry type must be
+  `notes`; the shared root must be reachable; when writing, the source
+  entry `notes/<id>.json` must exist; if it exists, its author email must
+  equal the caller's; the
+  `readable` and `readable/notes` folders must not be symbolic links and
+  must sit under the root once canonicalized; each target file must not be
+  a link. Files are written to a temporary name and renamed into place, so
+  a hard link or FIFO planted at the target name is replaced, never written
+  through or opened. Because names carry only the last 12 characters of the
+  id, a file is treated as this note's copy only when the `.md` front matter
+  holds the full shared id (a `.prov.jsonld` only when its same-named `.md`
+  does); another note's copy with the same 12 characters is neither
+  overwritten nor removed (the write is refused). A removal with no copy
+  folder returns before reading the entry. The removal paths apply the same
+  link checks to the folders. Cleanup reads the folder once, skips
+  sub-folders, and keeps any name that is the same file as one just written
+  (case-insensitive file systems); the files it removes are only those
+  whose name ends with `_<id12>.md` or `_<id12>.prov.jsonld` and that pass
+  the id check above (links and special files with such names are just
+  unlinked, never read)
 - **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
   During an online meeting the desktop records two tracks side by side:
   what the machine is playing (the other participants, taken from the OS
@@ -4649,6 +4692,20 @@ Key pieces:
   the remembered address is kept per shared folder (the `remote` field
   of the folder list, mirrored to `graphium-shared-root-remote` for the
   default folder) and is cleared whenever that folder's path changes
+- **Readable copies** — a per-folder, per-device switch
+  (`SharedFolder.readableCopies`). When it is on, `shareNote` calls
+  `syncReadableCopy` (`src/features/sharing/readable-copy.ts`) after the
+  shared entry is written; it builds a Markdown file (front matter plus
+  the Markdown-export body) and a PROV-JSON-LD file
+  (`buildNoteProvJsonLdText`, the same builder as the MCP and menu export)
+  from the shared-range document, and hands them to the Tauri command
+  `shared_readable_sync`, which names and writes them under
+  `<root>/readable/notes/`. When the switch is off, the same call asks Rust
+  to remove any older copy of that id. Unsharing removes the copy inside
+  `shared_delete`. A failure never fails the share: it is returned as
+  `ShareNoteResult.readableCopy` and surfaced in the UI. The app never
+  reads `readable/`; the source of truth stays `notes/<id>.json`
+  (DATA_MODEL.md §7.8; the path guards are listed in §4.2)
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)
@@ -5337,6 +5394,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
+| Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 
 ## 8. Source map
@@ -5375,7 +5433,7 @@ people most often need to find.
 | Slash-template commands (Plan / Run) | `src/features/template/` |
 | Skill (prompt template) documents | `src/features/skill/` |
 | Reference table (related notes) | `src/features/index-table/` |
-| Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
+| Export (PROV-JSON-LD, PDF, Word, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-export/`, `src/features/docx-import/` |
 | PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |

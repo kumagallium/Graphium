@@ -2731,6 +2731,7 @@ type SourceCheckEntry = {
   passageNotFound?: string; // new-format pages only: the passage the AI copied for this sentence (marked `|?|` in topicMarkdown) that was not found in the source. Shown to the reader; never affects the verdict
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  sourceTextHash?: string;          // "sha256:<hex>" of the exact source text read for the check; set only when the source text could be read (never on "source-missing"). Recorded only
   statement?: string;               // the sentence checked (topics only; a claim's whole body is
                                      // the statement, so claims never set this)
   statementBlockId?: string;        // the topic block statement came from, when statement is set
@@ -2794,6 +2795,12 @@ type SourceCheckProfile = {
   `memo`, `claim`, `chat`, `unknown`) never sets it. When the same quoted
   text appears more than once at different positions, no location is
   recorded rather than guessed.
+- **`sourceTextHash`** is the SHA-256 (`"sha256:<hex>"`, the same blob-hash
+  utility) of the exact source text read for the check — the very string the
+  judgment used, with no normalization. It is set only when the source text
+  could be read, so `source-missing` entries never carry it. It is never used
+  for the judgment. **It is recorded only: the app does not currently read or
+  display this value.**
 - **`claimHash`** is a hash of the checked document's `title` + body at the
   moment of checking (`computeClaimHash`, the same SHA-256 blob-hash
   utility team-shared-storage uses) — for a topic this is the whole topic
@@ -3436,6 +3443,7 @@ type NoteIndexEntry = {
   }[];
   derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
   templateFrom?: { kind: "official" | "user" | "shared"; id: string };  // v34: mirror of doc.templateFrom
+  hasRecording?: true;  // v35: set when the body has a recorded transcript block (meetingTranscript with a fileId or recordingId)
                                                                           // (sharedId → shared, userTemplateId → user,
                                                                           // officialTemplateId → official); id only
 
@@ -3524,7 +3532,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **34**.
+Defined in `src/features/navigation/index-file.ts`. Currently **35**.
 Bumping rules:
 
 | Version | Change |
@@ -3559,6 +3567,7 @@ Bumping rules:
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
 | **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **35** | Added `hasRecording` — `true` when the note body contains a recorded transcript block (a `meetingTranscript` block with a `fileId` or `recordingId`, at any depth; a block not yet recorded does not count). The Records view uses it to show a "From a recording" origin tag from the index alone, because a material's `usedIn` does not carry the block type. Notes without such a block keep `hasRecording: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -4596,6 +4605,76 @@ seen record (never negative — a comment being deleted does not produce
 a "negative new comments" reading). Neither function is exposed as a
 library-wide total (tab headers and the sidebar do not carry a shared
 badge count — a v1 decision to keep this per-row only).
+
+### 7.8 Shared folder layout and readable copies
+
+Layout of one shared folder (the "shared root"):
+
+```
+<root>/
+  notes/<id>.json                       # { entry, body_base64 } — the source of truth
+  <other entry types>/<id>.json
+  _meta/tombstones/<id>.json            # a deleted (unshared) entry
+  _blobs/…                              # large files (default blob root)
+  readable/notes/
+    <title>_<id12>.md                   # optional, see below
+    <title>_<id12>.prov.jsonld
+```
+
+`readable/` is an optional, **derived** copy for people and tools that do
+not run Graphium. The authoritative data is always `notes/<id>.json`; the
+app never reads `readable/` back, so deleting it loses nothing.
+
+**Switch.** `SharedFolder.readableCopies?: boolean` (Settings → Sharing →
+a shared folder's details). It is a per-device setting stored with the
+folder list in `localStorage`, default off; it is kept only when true. It
+applies to the notes the current device shares, so copies of someone
+else's notes follow that person's setting.
+
+**Scope.** Notes only (entry type `notes`). Knowledge pages, proposals,
+templates and other entry types get no copy.
+
+**File names.** Built by Rust (`shared_readable_sync`) from the title and
+the shared id; TypeScript passes no path. `<id12>` is the last 12
+characters of the shared id (a UUIDv7). In `<title>`, `/ \ : * ? " < > |`
+and control characters become `_`; bidirectional controls, zero-width
+characters, other invisible characters (e.g. U+061C, U+2060–206F, U+00AD, U+3164),
+variation selectors, tag characters and the BOM are removed; runs of whitespace collapse to one
+space; leading dots and leading/trailing whitespace and trailing dots are
+trimmed; the result is cut at 150 bytes of UTF-8 on a character boundary;
+an empty result becomes `untitled`.
+
+**Content.** AI chats, edit history and memos are never written, even when
+"include private history" is on for sharing (the history carries editors'
+email addresses, and these files are plain text anyone can open). Otherwise
+the same range as the shared copy.
+
+- `.md` starts with a front matter of five keys, all JSON-quoted:
+  `title`, `graphium_note_id`, `graphium_shared_id`, `author` (name only,
+  no email), `shared_at` (ISO 8601). The body is the same Markdown as the
+  Markdown export; images are references, not embedded bytes.
+- `.prov.jsonld` is built by the same builder as the menu export for one
+  note (PROV-JSON-LD), from the document without chats and edit history.
+  It differs from the menu export: the author is given by name only (no
+  email address) and Wiki entities are not included. Links to other notes
+  carry the other note's id and title. Asset nodes (name, URL, MIME type,
+  source info) are looked up in this device's asset index, so an asset
+  that is only cited by the note (not embedded in the shared body) also
+  appears there by name and source.
+
+**Lifecycle.** A note has at most one pair of copies at any time.
+
+| Event | Result |
+|---|---|
+| Share / re-share, switch on | The pair is written, then older files of the same `<id12>` with other names are removed |
+| Title changed, then re-shared | New names are written; the files under the old title are removed (also when only the letter case changes, on file systems that ignore case: the same file is kept, not deleted) |
+| A write fails part-way | The remaining old files are still cleaned up on a best-effort basis; the failure is returned |
+| Re-share, switch off | Any existing copy for that id is removed; none is written |
+| Unshare (`shared_delete`) | The copy for that id is removed (a failure here does not fail the unshare) |
+| Copy fails | The share still succeeds; the failure is returned to the UI and shown |
+
+Copies are written only when sharing; nothing follows later edits until
+the next share.
 
 ## 8. Compatibility rules
 

@@ -519,3 +519,48 @@ describe("runSourceCheck — 出典ごとの並列", () => {
     expect(callApi.mock.calls.length).toBe(result.profiles.size);
   });
 });
+
+describe("runSourceCheck — sourceTextHash（読んだ原文の指紋）", () => {
+  const run = async (deps: ResolveSourceTextDeps, ids: string[], omit = false) => {
+    const c1 = claim("c1", ids);
+    const plan = planSourceCheck([c1]);
+    const callApi = vi.fn(async (_s: CheckSourcesApiSource, claims: CheckSourcesApiClaim[]): Promise<CheckSourcesApiResult> => ({
+      model: "mock-model",
+      results: omit ? [] : claims.map((c) => ({ claimId: c.id, verdict: "unclear" as const, rationale: "x" })),
+    }));
+    const result = await runSourceCheck(plan, {
+      statementsById: new Map([[c1.id, c1]]),
+      deps,
+      language: "ja",
+      callApi,
+      logger: noopLogger,
+    });
+    return result.profiles.get("c1")!.entries;
+  };
+
+  it("原文を読めたエントリに sha256: で始まる値が入る（応答が欠けた unclear にも）", async () => {
+    const [e] = await run(makeDeps(), ["note-a"]);
+    expect(e.sourceTextHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const [m] = await run(makeDeps(), ["note-a"], true);
+    expect(m.verdict).toBe("unclear");
+    expect(m.sourceTextHash).toBe(e.sourceTextHash);
+  });
+
+  it("同じ原文なら同じ値、1 文字違えば違う値", async () => {
+    const withText = (text: string): ResolveSourceTextDeps => ({
+      ...makeDeps(),
+      loadNoteDoc: async () => noteDoc("ノートA", text),
+    });
+    const [a1] = await run(withText("融点は800℃だった。"), ["note-a"]);
+    const [a2] = await run(withText("融点は800℃だった。"), ["note-a"]);
+    const [b] = await run(withText("融点は801℃だった。"), ["note-a"]);
+    expect(a1.sourceTextHash).toBe(a2.sourceTextHash);
+    expect(b.sourceTextHash).not.toBe(a1.sourceTextHash);
+  });
+
+  it("source-missing のエントリには付かない", async () => {
+    const [e] = await run(makeDeps(), ["memo:missing-cap"]);
+    expect(e.verdict).toBe("source-missing");
+    expect(e).not.toHaveProperty("sourceTextHash");
+  });
+});

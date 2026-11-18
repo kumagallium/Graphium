@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -579,6 +579,8 @@ import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { useTranscribeJobs } from "./features/meeting-recorder/use-meeting-recorder";
+import { loadTranscriptText } from "./features/meeting-recorder/transcript-text";
 import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
 import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
@@ -886,6 +888,7 @@ function NoteHeaderMenu({
   onExportPdf,
   pdfExporting,
   onExportMarkdown,
+  onExportDocx,
   onExportProvJsonLd,
   provExportDisabled,
   onExportPlanProv,
@@ -935,6 +938,8 @@ function NoteHeaderMenu({
   pdfExporting: boolean;
   /** ノートを Markdown ファイルとしてエクスポートする */
   onExportMarkdown: () => void;
+  /** ノートを Word（.docx）ファイルとして書き出す */
+  onExportDocx: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
   /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
@@ -1133,6 +1138,14 @@ function NoteHeaderMenu({
           >
             <FileText size={14} />
             {t("markdown.export")}
+          </button>
+          <button
+            className={itemClass}
+            data-tooltip={t("docx.exportHint")}
+            onClick={() => { onExportDocx(); setOpen(false); }}
+          >
+            <FileType size={14} />
+            {t("docx.export")}
           </button>
           <button
             className={itemClass}
@@ -4200,6 +4213,18 @@ function NoteEditorInner({
     : t("share.privateHistoryExcludedHint");
   // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
   const [shareFolderDialogOpen, setShareFolderDialogOpen] = useState(false);
+  // 共有のたびに置く「読める写し」の材料（Wiki ページには置かない）。noteId は PROV 書き出しと同じ規則
+  const readableCopyContext = useMemo(
+    () =>
+      !isWikiDoc && fileId
+        ? {
+            noteId: fileId.replace(/^(wiki|skill):/, ""),
+            noteIndex: rawNoteIndex ?? noteIndex ?? null,
+            mediaIndex: mediaIndex?.media ?? null,
+          }
+        : undefined,
+    [isWikiDoc, fileId, rawNoteIndex, noteIndex, mediaIndex],
+  );
   const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
     if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
@@ -4234,6 +4259,7 @@ function NoteEditorInner({
         blobRoot: shareTarget.blobRoot ?? undefined,
         // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4252,15 +4278,17 @@ function NoteEditorInner({
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
       setShareFolderDialogOpen(false);
+      const successMessage = result.isUpdate ? t("share.successReshare") : t("share.successFirst");
+      // 読める写しだけ置けなかったときは、共有の成功に 1 行足して知らせる（共有は成功している）
       window.alert(
-        result.isUpdate
-          ? t("share.successReshare")
-          : t("share.successFirst"),
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? successMessage + "\n" + t("share.readableCopyFailed")
+          : successMessage,
       );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4291,6 +4319,7 @@ function NoteEditorInner({
         author: sharedAuthor,
         blobRoot: getBlobRoot(toRoot) ?? undefined,
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4306,11 +4335,17 @@ function NoteEditorInner({
       });
       notifySharedLibraryChanged();
       setMoveFolderDialogOpen(false);
-      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+      const moveMessage = removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error });
+      // 移した先に読める写しだけ置けなかったときは、共有のときと同じ 1 行を足して知らせる
+      window.alert(
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? moveMessage + "\n" + t("share.readableCopyFailed")
+          : moveMessage,
+      );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4619,6 +4654,8 @@ function NoteEditorInner({
       mediaIndex: mediaIndex?.media ?? null,
       wikiEntities: provWikiEntities,
       identity: loadAuthorIdentity() ?? undefined,
+      // ノート間のつながり（dcterms:references）の相手の種類・題を引く（アーカイブ込み）
+      noteIndex: rawNoteIndex ?? noteIndex ?? null,
     });
     const jsonLd = buildNoteProvJsonLd({
       provDoc: exportProvDoc,
@@ -4634,7 +4671,7 @@ function NoteEditorInner({
     const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
     // タイトルが空なら noteId をファイル名・label に使う（'.jsonld' の隠しファイル化を避ける）
     void downloadBlob(blob, `${(title || noteId).replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`);
-  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links]);
+  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links, rawNoteIndex, noteIndex]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -6385,6 +6422,33 @@ function NoteEditorInner({
       }
     }
   }, [markDirty, showAiTitleToast]);
+  // ── Word（.docx）エクスポートハンドラー ──
+  // Markdown と同じく今のエディタ内容（未保存の編集含む）が対象。docx は書き出すときに読み込む
+  // （最初の読み込みに入れない）。失敗は題のトーストと同じ見え方で知らせる
+  const docxExportingRef = useRef(false);
+  const handleExportDocx = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (docxExportingRef.current) return;
+    docxExportingRef.current = true;
+    try {
+      const { exportNoteToDocx, captureChartImage } = await import("./features/docx-export");
+      await exportNoteToDocx({
+        title,
+        blocks: editor.document,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+        captureBlockImage: async (blockId) => {
+          const root = document.querySelector("[data-label-wrapper] .bn-editor");
+          return root ? captureChartImage(root, blockId) : null;
+        },
+      });
+    } catch (e) {
+      console.error("[docx-export] export failed:", e);
+      showAiTitleToast({ kind: "error", message: t("docx.exportFailed") });
+    } finally {
+      docxExportingRef.current = false;
+    }
+  }, [title, showAiTitleToast, t]);
   const undoAiTitle = useCallback(() => {
     if (aiTitleToast?.kind !== "done") return;
     // 付けたあとに手で直していたら、その直しを消さない
@@ -7263,6 +7327,7 @@ function NoteEditorInner({
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
+          onExportDocx={handleExportDocx}
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!fileId}
           onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
@@ -9239,12 +9304,19 @@ export function NoteApp() {
   // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
   // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
   // 索引は端末ローカルの再構築可能なキャッシュで、ノートデータには何も書かない。
+  // 録音・動画の文字起こしも全文の索引に載せる（文字起こしを読めるのはデスクトップ版だけ）
+  const transcribeJobs = useTranscribeJobs();
+  const lexicalTranscripts = useMemo(
+    () => (isTauri() ? { load: loadTranscriptText, jobs: transcribeJobs } : undefined),
+    [transcribeJobs],
+  );
   useLexicalIndexSync({
     authenticated,
     noteIndex: fm.noteIndex ?? null,
     mediaIndex: fm.mediaIndex ?? null,
     getCachedDoc: fm.getCachedDoc,
     loadDoc: fm.loadDoc,
+    transcripts: lexicalTranscripts,
   });
 
   // 共有ライブラリ（共有ルートに置いたままのエントリ）を語彙索引の第 3 レーンに追従させる。
@@ -11617,6 +11689,7 @@ export function NoteApp() {
           captureIndex: capture.captureIndex ?? null,
           mediaIndex: fm.mediaIndex?.media ?? null,
           identity,
+          noteIndex: fm.rawNoteIndex ?? index,
           planContext: { index, planDocs: docs },
         });
         notes.set(noteId, { provDoc, title: doc.title || noteId, page, extras });
@@ -11630,7 +11703,7 @@ export function NoteApp() {
     } finally {
       planExportingRef.current = false;
     }
-  }, [fm.activeFileId, fm.noteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
+  }, [fm.activeFileId, fm.noteIndex, fm.rawNoteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
 
   const handleAdoptProposalInNote = useCallback(
     (input: { proposalId: string; targetId: string }) => {
@@ -18120,6 +18193,9 @@ export function NoteApp() {
               // 単体共有（MaterialActionsMenu）と同じ書き戻し関数・同じフォルダ導出表を使う
               saveMediaSharedRef: fm.handleUpdateMediaSharedRef,
               noteFolderLookup,
+              // 読める写しの来歴に使う索引（単発の共有と同じもの）
+              noteIndex: fm.rawNoteIndex ?? fm.noteIndex ?? null,
+              mediaIndex: fm.mediaIndex?.media ?? null,
             }}
             onClose={(didShareAny) => {
               if (didShareAny) notifySharedLibraryChanged();

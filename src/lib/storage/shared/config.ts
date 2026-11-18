@@ -30,6 +30,11 @@ export type SharedFolder = {
   blobRoot: string | null;
   /** ネットワーク共有の接続先（smb://… / \\host\share）。再接続ボタンの行き先 */
   remote: string | null;
+  /**
+   * 共有のたびに「読める写し」（Markdown と来歴）を同じ共有フォルダの readable/ に置くか。
+   * 端末ごとの設定。無ければ切（真のときだけ持つ。旧キー（1 件目の写し）には書かない）
+   */
+  readableCopies?: boolean;
 };
 
 function readKey(key: string): string | null {
@@ -78,6 +83,8 @@ export function parseSharedFolders(raw: string | null): SharedFolder[] | null {
         root: o.root,
         blobRoot: typeof o.blobRoot === "string" && o.blobRoot.trim() ? o.blobRoot : null,
         remote: typeof o.remote === "string" && o.remote.trim() ? o.remote : null,
+        // 真のときだけ保つ（真偽値でない値は捨てる）
+        ...(o.readableCopies === true ? { readableCopies: true } : {}),
       });
     }
     return out;

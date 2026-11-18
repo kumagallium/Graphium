@@ -28,8 +28,9 @@ import { formatTime } from "./model";
 import type { RecordItem, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
 /** 出どころごとのアイコンと色の系統。色は 3 系統＋無彩色に抑える */
-export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain" | "amber" | "sky" | "forest" }> = {
+export const ORIGIN_STYLE: Record<RecordOrigin, { icon: LucideIcon; tone: "plain" | "rose" | "amber" | "sky" | "forest" }> = {
   written: { icon: PenLine, tone: "plain" },
+  recording: { icon: Mic, tone: "rose" },
   webClip: { icon: Globe, tone: "amber" },
   quote: { icon: Quote, tone: "amber" },
   aiChat: { icon: MessagesSquare, tone: "sky" },

@@ -432,6 +432,101 @@ describe("collectNoteProvExtras — 計画の線の名前", () => {
   });
 });
 
+describe("collectNoteProvExtras — ノート間のつながり（references）", () => {
+  const entry = (noteId: string, over?: Partial<NoteIndexEntry>): NoteIndexEntry =>
+    ({
+      noteId,
+      title: noteId,
+      modifiedAt: "2026-10-01T00:00:00.000Z",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      ...over,
+    }) as NoteIndexEntry;
+  const idx = (notes: NoteIndexEntry[]): GraphiumIndex => ({
+    version: 33,
+    updatedAt: "2026-10-01T00:00:00.000Z",
+    notes,
+  });
+  const links = (...ids: string[]) =>
+    ids.map((targetNoteId) => ({ targetNoteId, sourceBlockId: "b", type: "derived_from" }));
+  const docWith = (...ids: string[]) => makeDoc({ noteLinks: links(...ids) as any });
+
+  it("向きの無いつながりは題つきで出る", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("note-a"),
+      noteId: NOTE_ID,
+      noteIndex: idx([entry("note-a", { title: "相手" })]),
+    });
+    expect(extras.references).toEqual([{ id: "note-a", label: "相手" }]);
+  });
+
+  it("題が空なら label は付けない", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("note-a"),
+      noteId: NOTE_ID,
+      noteIndex: idx([entry("note-a", { title: "" })]),
+    });
+    expect(extras.references).toEqual([{ id: "note-a" }]);
+  });
+
+  it("派生の子ノート（相手の derivedFromNoteId がこのノート）は出さない", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("child", "note-a"),
+      noteId: NOTE_ID,
+      noteIndex: idx([entry("child", { derivedFromNoteId: NOTE_ID }), entry("note-a")]),
+    });
+    expect(extras.references).toEqual([{ id: "note-a", label: "note-a" }]);
+  });
+
+  it("索引が無ければ 1 件も出さない", () => {
+    expect(collectNoteProvExtras({ doc: docWith("note-a"), noteId: NOTE_ID }).references).toBeUndefined();
+    expect(
+      collectNoteProvExtras({ doc: docWith("note-a"), noteId: NOTE_ID, noteIndex: null }).references,
+    ).toBeUndefined();
+  });
+
+  it("索引に無い相手は出さない", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("ghost"),
+      noteId: NOTE_ID,
+      noteIndex: idx([entry("note-a")]),
+    });
+    expect(extras.references).toBeUndefined();
+  });
+
+  it("自分自身・空・重複は 1 件にまとまる", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith(NOTE_ID, "", "note-a", "note-a"),
+      noteId: NOTE_ID,
+      noteIndex: idx([entry(NOTE_ID), entry("note-a")]),
+    });
+    expect(extras.references).toEqual([{ id: "note-a", label: "note-a" }]);
+  });
+
+  it("ゴミ箱の相手は出さず、アーカイブの相手は出す", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("trashed", "archived"),
+      noteId: NOTE_ID,
+      noteIndex: idx([
+        entry("trashed", { deletedAt: "2026-10-02T00:00:00.000Z" }),
+        entry("archived", { archivedAt: "2026-10-02T00:00:00.000Z" }),
+      ]),
+    });
+    expect(extras.references).toEqual([{ id: "archived", label: "archived" }]);
+  });
+
+  it("noteIndex 未指定なら planContext.index を使う", () => {
+    const extras = collectNoteProvExtras({
+      doc: docWith("note-a"),
+      noteId: NOTE_ID,
+      planContext: { index: idx([entry("note-a")]), planDocs: new Map() },
+    });
+    expect(extras.references).toEqual([{ id: "note-a", label: "note-a" }]);
+  });
+});
+
 describe("collectNoteProvExtras → buildNoteProvJsonLd（結合）", () => {
   it("集めた extras をそのまま渡して書き出せる", () => {
     const doc = makeDoc({

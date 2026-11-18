@@ -10,3 +10,4 @@ export {
 } from "./note-export";
 export { collectNoteProvExtras, type CollectNoteProvExtrasInput } from "./note-extras";
 export { buildPlanProvJsonLd, type PlanProvExportInput } from "./plan-export";
+export { buildNoteProvJsonLdText, type NoteProvJsonLdTextInput } from "./note-jsonld-text";

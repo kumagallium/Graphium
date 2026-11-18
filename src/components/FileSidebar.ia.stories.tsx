@@ -4,7 +4,7 @@
 //
 // 本ストーリーは Storybook 上での視覚合意用。確定したら FileSidebar.tsx に反映する。
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   Image, FileText as FileTextIcon, FileText, Video, Volume2, Link, StickyNote, Bot, History,
@@ -19,7 +19,7 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { type RecentNote } from "../features/navigation";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
-import { useT, getDisplayLabelName, LocaleProvider } from "../i18n";
+import { useT, getDisplayLabelName, LocaleProvider, syncLocale, type Locale } from "../i18n";
 import "../app.css";
 
 // ── モックデータ ─────────────────────────────────────────
@@ -1429,4 +1429,80 @@ export const TabsEachTab: Story = {
       </div>
     </WithFoldersOpen>
   ),
+};
+
+// ── ヘッダーの入口の並べ方（2026-11-17 提案） ─────────────────────────
+//
+// 現状（stacked）は、検索・ノート・取り込み・ホームがタブの手前に 4 段積まれている。
+// 提案（paired）は、意味で 2 段にまとめる:
+//   1 段目 = 行き先（ホーム｜検索）  2 段目 = 入れる（ノート｜取り込み）
+// 提案 B（pairedWideNote）は、1 段目だけまとめ、ノートは幅いっぱいのまま残す（ノートがいちばん大事な操作のため）。
+// 検索は入力欄ではなく ⌘K を開くボタンなので、幅いっぱいにする理由が無い。
+// ホームは、残したものを残した順に振り返る画面（中の見出しは「記録」）。
+
+function HeaderCompare({ locale, active }: { locale: Locale; active?: boolean }) {
+  // 表示言語をストーリーの引数に合わせる（アプリと同じ辞書・同じ切り替えの経路を通す）
+  useLayoutEffect(() => {
+    syncLocale(locale);
+  }, [locale]);
+  const [home, setHome] = useState(!!active);
+  const ja = locale === "ja";
+  const shared = {
+    ...COMMON_PROPS,
+    layout: "tabs" as const,
+    onOpenSearch: () => {},
+    onOpenIntake: () => {},
+    onShowMobile: () => {},
+    mobileCount: 2,
+    onNewNoteFromTemplate: () => {},
+    onShowRecords: () => setHome(true),
+    recordsActive: home,
+    onShowNoteList: () => setHome(false),
+  };
+  const column = (title: string, note: string, node: ReactNode) => (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <p style={{ padding: "8px 16px 0", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{title}</p>
+      <p style={{ padding: "0 16px 8px", fontSize: 12, color: "var(--ink-3)", width: 256 }}>{note}</p>
+      <div style={{ flex: 1, minHeight: 0, width: 256, borderTop: "1px solid var(--rule)" }}>{node}</div>
+    </div>
+  );
+  return (
+    <div style={{ height: "100vh", display: "flex", gap: 32, padding: "0 24px", background: "var(--paper)", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {column(
+        ja ? "現状" : "Current",
+        ja ? "タブの手前に 4 段。足すたびに 1 段増える" : "Four rows above the tabs; each addition adds a row",
+        <FileSidebar {...shared} headerLayout="stacked" />,
+      )}
+      {column(
+        ja ? "提案 A" : "Proposal A",
+        ja ? "意味で 2 段に。行き先（ホーム｜検索）と、入れる（ノート｜取り込み）" : "Two rows by meaning: where to go, and what to bring in",
+        <FileSidebar {...shared} headerLayout="paired" />,
+      )}
+      {column(
+        ja ? "提案 B" : "Proposal B",
+        ja ? "ホームと検索だけ並べる。ノートは幅いっぱいのまま" : "Pair only Home and Search; the note button keeps its full width",
+        <FileSidebar {...shared} headerLayout="pairedWideNote" />,
+      )}
+    </div>
+  );
+}
+
+export const HeaderComparison: Story = {
+  name: "ヘッダーの入口: 現状と提案",
+  render: () => <HeaderCompare locale="ja" />,
+};
+
+export const HeaderComparisonHomeActive: Story = {
+  name: "ヘッダーの入口: ホームを開いているとき",
+  render: () => <HeaderCompare locale="ja" active />,
+};
+
+export const HeaderComparisonEnglish: Story = {
+  name: "ヘッダーの入口: 英語",
+  render: () => <HeaderCompare locale="en" />,
+};
+
+export const HeaderComparisonKorean: Story = {
+  name: "ヘッダーの入口: 韓国語",
+  render: () => <HeaderCompare locale="ko" />,
 };

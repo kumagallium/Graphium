@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.140.0](https://github.com/kumagallium/Graphium/compare/v0.139.0...v0.140.0) - 2026-11-17
+
+- feat: export a note as a Word (.docx) file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1718
+
+## [v0.139.0](https://github.com/kumagallium/Graphium/compare/v0.138.1...v0.139.0) - 2026-11-17
+
+- feat(prov-export): export links between notes as dcterms:references by @kumagallium in https://github.com/kumagallium/Graphium/pull/1717
+- feat(sharing): keep readable copies of shared notes in the shared folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1719
+- feat(records): find records by body text, index transcripts, tag notes made from a recording by @kumagallium in https://github.com/kumagallium/Graphium/pull/1721
+
+## [v0.138.1](https://github.com/kumagallium/Graphium/compare/v0.138.0...v0.138.1) - 2026-11-17
+
+- feat: call the Records entry Home, pair it with Search, and add a month calendar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1720
+
 ## [v0.138.0](https://github.com/kumagallium/Graphium/compare/v0.137.5...v0.138.0) - 2026-11-17
 
 - docs(manual): make the Security page easier to find and correct it after an audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1713
