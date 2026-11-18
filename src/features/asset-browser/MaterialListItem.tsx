@@ -224,7 +224,6 @@ export function MaterialListItem({
             {entry.name}
           </span>
           {linked && <LinkedBadge />}
-          {linked && linkState && linkState !== "ok" && <LinkStateBadge state={linkState} className="shrink min-w-0" />}
           {entry.type === "url" && !linked && entry.url && (
             (() => {
               const href = safeExternalHref(entry.url);
@@ -244,6 +243,12 @@ export function MaterialListItem({
             })()
           )}
         </div>
+        {/* 状態の印は名前の下の行に置く（同じ行だと狭い幅で名前が押しつぶされる） */}
+        {linked && linkState && linkState !== "ok" && (
+          <div className="mt-0.5 flex min-w-0">
+            <LinkStateBadge state={linkState} className="shrink min-w-0" />
+          </div>
+        )}
         {entry.type === "url" && entry.urlMeta?.domain && (
           <p className="text-[10px] text-muted-foreground truncate mt-0.5">
             {entry.urlMeta.domain}

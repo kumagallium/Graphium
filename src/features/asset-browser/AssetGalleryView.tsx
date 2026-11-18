@@ -2321,10 +2321,6 @@ export function AssetGalleryView({
                           <span className="text-foreground truncate" title={entry.name}>
                             {entry.name}
                           </span>
-                          {isLinkedEntry(entry) && <LinkedBadge />}
-                          {isLinkedEntry(entry) && linkStates.get(entry.fileId) && linkStates.get(entry.fileId) !== "ok" && (
-                            <LinkStateBadge state={linkStates.get(entry.fileId)!} className="shrink min-w-0" />
-                          )}
                           {entry.type === "url" && !isLinkedEntry(entry) && (
                             (() => {
                               const href = safeExternalHref(entry.url);
@@ -2372,6 +2368,16 @@ export function AssetGalleryView({
                             </button>
                           )}
                         </div>
+                        {/* 「リンク」の札と状態の印は名前の下の行に置く。名前と同じ行に並べると、
+                            右に詳細を開いた狭い幅で名前が押しつぶされて読めなくなる */}
+                        {isLinkedEntry(entry) && (
+                          <div className="mt-0.5 flex items-center gap-1 min-w-0">
+                            <LinkedBadge />
+                            {linkStates.get(entry.fileId) && linkStates.get(entry.fileId) !== "ok" && (
+                              <LinkStateBadge state={linkStates.get(entry.fileId)!} className="shrink min-w-0" />
+                            )}
+                          </div>
+                        )}
                         {entry.type === "data" && <DataSummaryLine entry={entry} />}
                         {(() => {
                           const line = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));
