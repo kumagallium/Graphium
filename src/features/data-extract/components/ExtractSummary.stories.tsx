@@ -25,3 +25,8 @@ export const ZeroRows: Story = {
 export const SameAsSource: Story = {
   args: { sourceRows: 120, resultRows: 120, columnCount: 5, sameAsSource: true },
 };
+
+/** 「なし」を押した直後。確定できない理由を添える */
+export const ZeroColumns: Story = {
+  args: { sourceRows: 120, resultRows: 120, columnCount: 0, sameAsSource: false },
+};

@@ -18,7 +18,18 @@ import {
   PREVIEW_SAMPLE_ROWS,
   SYNC_PARSE_MAX_ROWS,
 } from "./large-file";
-import { countDataRows, parseDelimitedLines, parseDelimitedSample, splitLines } from "./parse";
+import {
+  countDataRows,
+  parseDelimitedLines,
+  parseDelimitedLinesAsync,
+  parseDelimitedSample,
+  splitLines,
+} from "./parse";
+import { applyExtract, isActiveCondition } from "../data-extract/apply";
+import { ExtractSection } from "../data-extract/components/ExtractSection";
+import { describeSpec } from "../data-extract/describe";
+import { profileColumns, profileColumnsAsync } from "../data-extract/profile";
+import type { ColumnProfile, ExtractCondition, ExtractSpec } from "../data-extract/types";
 import { DOC_TABLE_DEFAULT_MAX_ROWS, DOC_TABLE_HARD_MAX_ROWS, defaultImportTarget } from "./target";
 import type { DelimitedImportOptions, DelimiterKind, ImportTarget, ParsedDelimited } from "./types";
 
@@ -44,12 +55,26 @@ export type DataImportResult = {
    * 全行が要る使い方をするなら rowsComplete を確かめること
    */
   parsed: ParsedDelimited;
-  /** 範囲内のデータ行の総数（parsed.rows が標本のときも全体の数） */
+  /**
+   * 範囲内のデータ行の総数（parsed.rows が標本のときも全体の数）。
+   * 絞り込みが入っているときも、parsed / rowCount は絞り込む前のまま。
+   * 絞った後の中身は extract.result を見ること
+   */
   rowCount: number;
   /** parsed.rows が全行か。大きなファイル（SYNC_PARSE_MAX_ROWS 超）では false */
   rowsComplete: boolean;
   /** 行き先（文書の表 / データ表）。ブロックを作るのはホスト側 */
   target: ImportTarget;
+  /**
+   * 絞り込みが入っているときだけ付く（無ければ項目ごと無い）。
+   * result は絞った後の全行（大きなファイルでも標本ではない）、sourceRows は絞る前の行数。
+   * spec.columns が空なら全列、conditions は効いている条件だけ（書きかけは除く）
+   */
+  extract?: {
+    spec: ExtractSpec;
+    result: { headers: string[]; rows: string[][] };
+    sourceRows: number;
+  };
 };
 
 export function DataImportModal({
@@ -61,6 +86,7 @@ export function DataImportModal({
   headerMetaLabel,
   showTargetChoice = true,
   initialTarget,
+  initialExtract,
   onCancel,
   onConfirm,
 }: {
@@ -91,6 +117,11 @@ export function DataImportModal({
   showTargetChoice?: boolean;
   /** 挿入形式の初期値。未指定なら行数から決める（多ければデータ表） */
   initialTarget?: ImportTarget;
+  /**
+   * 再び開くときに前回の絞り込みを渡す。渡されたら「絞り込む」の段を開いた状態で、
+   * その条件と列を復元する
+   */
+  initialExtract?: ExtractSpec;
   onCancel: () => void;
   onConfirm: (result: DataImportResult) => void;
 }) {
@@ -149,13 +180,128 @@ export function DataImportModal({
   );
   const meta = useMemo(() => extractHeaderMeta(parsed.headerLines), [parsed.headerLines]);
   const canImport = parsed.headers.length > 0;
+
+  // ── 絞り込み ──
+  // 段を開いていない・条件も列の選択も無いときは、ここから先は何も計算せず
+  // 今までと同じ値（parsed / rowCount）をそのまま使う
+  const [extractOpen, setExtractOpen] = useState(() => initialExtract !== undefined);
+  // null は全列。「なし」は空配列（0 列）として持ち、全列扱いにしない
+  const [extractColumns, setExtractColumns] = useState<string[] | null>(() =>
+    initialExtract && initialExtract.columns.length > 0 ? initialExtract.columns : null
+  );
+  const [extractConditions, setExtractConditions] = useState<ExtractCondition[]>(
+    () => initialExtract?.conditions ?? []
+  );
+  const activeConditions = useMemo(
+    () => extractConditions.filter(isActiveCondition),
+    [extractConditions]
+  );
+  const hasExtractSpec = activeConditions.length > 0 || extractColumns !== null;
+  // 畳んでも条件や列の選択が残っているあいだは絞り込みを効かせる（畳んだ途端に
+  // 黙って全部取り込む形に戻らないように）。表が要るのはそのあいだと開いているあいだ
+  const needExtractTable = extractOpen || hasExtractSpec;
+
+  // 大きなファイルは、段を開いたとき（か条件が入っているとき）にだけ全行を読む。
+  // 先頭の標本では、絞った結果の行数も列の種類も当たらないため
+  const [fullTable, setFullTable] = useState<{
+    lines: string[];
+    options: DelimitedImportOptions;
+    headers: string[];
+    rows: string[][];
+    profiles: ColumnProfile[];
+  } | null>(null);
+  useEffect(() => {
+    if (!needExtractTable || !isLarge) {
+      setFullTable((cur) => (cur === null ? cur : null));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const full = await parseDelimitedLinesAsync(lines, options);
+      if (cancelled) return;
+      const profiles = await profileColumnsAsync(full.headers, full.rows);
+      if (cancelled) return;
+      setFullTable({ lines, options, headers: full.headers, rows: full.rows, profiles });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needExtractTable, isLarge, lines, options]);
+
+  const extractTable = useMemo(() => {
+    if (!needExtractTable || !canImport) return null;
+    if (isLarge) {
+      // 設定を変えた直後は、古い設定で読んだ結果を使わない
+      return fullTable && fullTable.lines === lines && fullTable.options === options
+        ? fullTable
+        : null;
+    }
+    return {
+      headers: parsed.headers,
+      rows: parsed.rows,
+      profiles: profileColumns(parsed.headers, parsed.rows),
+    };
+  }, [needExtractTable, canImport, isLarge, fullTable, lines, options, parsed]);
+  const extractLoading = needExtractTable && canImport && extractTable === null;
+
+  const extractProfiles = extractTable?.profiles ?? [];
+  const extractAllNames = extractProfiles.map((p) => p.name);
+  // 設定を変えて無くなった列は選択から外す
+  const chosenColumns =
+    extractColumns === null ? extractAllNames : extractColumns.filter((n) => extractAllNames.includes(n));
+  const noColumns = extractColumns !== null && chosenColumns.length === 0;
+
+  const extractView = useMemo(() => {
+    if (!extractTable || !hasExtractSpec) return null;
+    const names = extractTable.profiles.map((p) => p.name);
+    const picked =
+      extractColumns === null ? [] : extractColumns.filter((n) => names.includes(n));
+    const r = applyExtract(
+      extractTable.headers,
+      extractTable.rows,
+      { columns: picked, conditions: activeConditions },
+      extractTable.profiles
+    );
+    // 0 列は「全列」と区別する。行の数だけ残し、中身は持たない
+    if (extractColumns !== null && picked.length === 0) {
+      return { headers: [] as string[], rows: [] as string[][], rowCount: r.rows.length, sourceRows: r.sourceRows };
+    }
+    return { headers: r.headers, rows: r.rows, rowCount: r.rows.length, sourceRows: r.sourceRows };
+  }, [extractTable, hasExtractSpec, extractColumns, activeConditions]);
+
+  // 行数の判定・要約・プレビューは、絞った後の表で行う（絞れば文書の表にもできる）
+  const effectiveRowCount = extractView ? extractView.rowCount : rowCount;
+  const shownHeaders = extractView ? extractView.headers : parsed.headers;
+  const shownRows = extractView ? extractView.rows : parsed.rows;
+  // 絞った結果が 0 列・0 行、または全体を読んでいる最中は確定できない
+  const extractBlocked =
+    needExtractTable &&
+    canImport &&
+    (extractLoading ||
+      (extractView !== null && (extractView.headers.length === 0 || extractView.rowCount === 0)));
+
+  const collapsedSummary = !hasExtractSpec
+    ? null
+    : extractView
+      ? t("dataExtract.describe.withRows", {
+          spec: noColumns
+            ? t("dataExtract.zeroColumns")
+            : describeSpec(
+                { columns: extractColumns === null ? [] : chosenColumns, conditions: activeConditions },
+                t
+              ),
+          rows: extractView.rowCount.toLocaleString(),
+          total: extractView.sourceRows.toLocaleString(),
+        })
+      : t("dataExtract.loading");
+
   // データ表は本文に表を作らないので行数の上限は要らない
   const effectiveRowLimit = target === "dataTable" ? null : rowLimit;
   // 文書の表にすると固まる量は入口で止める（データ表なら制限なし）。
   // 挿入形式を選べない画面（チャートが素材から直接読む）は内部の target が "table" だが
   // 表を作らないので、上限は掛けない
   const overHardLimit =
-    showTargetChoice && target === "table" && rowCount > DOC_TABLE_HARD_MAX_ROWS;
+    showTargetChoice && target === "table" && effectiveRowCount > DOC_TABLE_HARD_MAX_ROWS;
   const switchTarget = (next: ImportTarget) => {
     setTarget(next);
     // 文書の表向けに丸めていた終了行は、データ表なら全部読める
@@ -171,7 +317,7 @@ export function DataImportModal({
   const clampRow = (value: number) => Math.min(Math.max(1, value), Math.max(1, lines.length));
 
   const previewLines = lines.slice(0, PREVIEW_LINE_LIMIT);
-  const previewRows = parsed.rows.slice(0, PREVIEW_ROW_LIMIT);
+  const previewRows = shownRows.slice(0, PREVIEW_ROW_LIMIT);
 
   return (
     <div
@@ -199,8 +345,8 @@ export function DataImportModal({
             {canImport
               ? t("dataImport.summary", {
                   headerRow: String(options.headerRow),
-                  rows: String(rowCount),
-                  columns: String(parsed.headers.length),
+                  rows: String(effectiveRowCount),
+                  columns: String(shownHeaders.length),
                   delimiter: t(`dataImport.delimiter.${options.delimiter}`),
                 })
               : t("dataImport.summaryEmpty")}
@@ -208,7 +354,8 @@ export function DataImportModal({
         </div>
 
         {/* 大きなファイルは設定を先頭の標本から推定し、プレビューも先頭だけ。警告ではないので地味に出す */}
-        {isLarge && (
+        {/* 絞り込んだ結果は全行から作った表なので、標本の注意は出さない */}
+        {isLarge && !extractView && (
           <div className="px-4 py-2 border-b border-border bg-muted/30">
             <p className="text-[11px] text-muted-foreground">
               {/* 再取り込みは前回の設定を使うので「推定した」とは言わない */}
@@ -251,15 +398,15 @@ export function DataImportModal({
             <p className="text-[11px] text-foreground">
               {t("dataImport.target.tableTooLarge", {
                 limit: String(DOC_TABLE_HARD_MAX_ROWS),
-                count: String(rowCount),
+                count: String(effectiveRowCount),
               })}
             </p>
           </div>
         )}
-        {!overHardLimit && showTargetChoice && canImport && target === "table" && rowCount > DOC_TABLE_DEFAULT_MAX_ROWS && (
+        {!overHardLimit && showTargetChoice && canImport && target === "table" && effectiveRowCount > DOC_TABLE_DEFAULT_MAX_ROWS && (
           <div className="px-4 py-2 border-b border-border bg-amber-500/10">
             <p className="text-[11px] text-foreground">
-              {t("dataImport.target.recommendedDataTable", { count: String(rowCount) })}
+              {t("dataImport.target.recommendedDataTable", { count: String(effectiveRowCount) })}
             </p>
           </div>
         )}
@@ -275,11 +422,11 @@ export function DataImportModal({
         {/* 行数が多いときの注意。丸めた場合はその旨、伸ばした場合は重さの警告。
             上限を外した行き先（チャート）ではどちらも出ない */}
         {effectiveRowLimit !== null &&
-          (truncatedTotal !== null || rowCount > effectiveRowLimit) && (
+          (truncatedTotal !== null || effectiveRowCount > effectiveRowLimit) && (
             <div className="px-4 py-2 border-b border-border bg-amber-500/10">
               <p className="text-[11px] text-foreground">
-                {rowCount > effectiveRowLimit
-                  ? t("dataImport.rowLimitWarning", { count: String(rowCount) })
+                {effectiveRowCount > effectiveRowLimit
+                  ? t("dataImport.rowLimitWarning", { count: String(effectiveRowCount) })
                   : t("dataImport.rowLimitNotice", {
                       limit: String(effectiveRowLimit),
                       total: String(truncatedTotal),
@@ -350,6 +497,28 @@ export function DataImportModal({
             </div>
         </div>
 
+        {/* 絞り込み。設定の下・プレビューの上。畳んだ状態が既定で、絞らなければ今までと変わらない */}
+        {canImport && (
+          <ExtractSection
+            open={extractOpen}
+            onToggle={() => setExtractOpen((v) => !v)}
+            collapsedSummary={collapsedSummary}
+            loading={extractLoading}
+            columns={extractProfiles}
+            selectedColumns={chosenColumns}
+            onColumnsChange={(next) =>
+              // 全部選んだら「全列」に戻す（元と同じ内容として扱う）。空は「なし」として残す
+              setExtractColumns(next.length === extractAllNames.length ? null : next)
+            }
+            conditions={extractConditions}
+            onConditionsChange={setExtractConditions}
+            sourceRows={extractTable ? extractTable.rows.length : 0}
+            resultRows={extractView ? extractView.rowCount : (extractTable?.rows.length ?? 0)}
+            columnCount={extractView ? extractView.headers.length : (extractTable?.headers.length ?? 0)}
+            sameAsSource={extractView === null}
+          />
+        )}
+
         {/* プレビュー（左: 生テキスト / 右: 変換結果） */}
         <div className="flex-1 min-h-0 grid grid-cols-2 gap-0 divide-x divide-border">
           <section className="flex flex-col min-h-0">
@@ -392,11 +561,11 @@ export function DataImportModal({
               {t("dataImport.tablePreview")}
             </div>
             <div className="flex-1 overflow-auto p-3">
-              {canImport ? (
+              {canImport && shownHeaders.length > 0 ? (
                 <table className="text-[11px] border-collapse">
                   <thead>
                     <tr>
-                      {parsed.headers.map((h, i) => (
+                      {shownHeaders.map((h, i) => (
                         <th
                           key={i}
                           className="border border-border px-2 py-1 text-left font-medium text-foreground bg-muted/50 whitespace-nowrap"
@@ -421,13 +590,14 @@ export function DataImportModal({
                     ))}
                   </tbody>
                 </table>
-              ) : (
+              ) : canImport ? null : (
+                // 絞り込みで 0 列にしたときは、理由を段の要約が出しているのでここは空にする
                 <p className="text-[11px] text-muted-foreground">{t("dataImport.noTable")}</p>
               )}
-              {rowCount > PREVIEW_ROW_LIMIT && (
+              {effectiveRowCount > PREVIEW_ROW_LIMIT && (
                 <p className="mt-2 text-[11px] text-muted-foreground opacity-70">
                   {t("dataImport.moreRows", {
-                    count: String(rowCount - PREVIEW_ROW_LIMIT),
+                    count: String(effectiveRowCount - PREVIEW_ROW_LIMIT),
                   })}
                 </p>
               )}
@@ -465,8 +635,29 @@ export function DataImportModal({
           </button>
           <button
             type="button"
-            disabled={!canImport || overHardLimit}
-            onClick={() => onConfirm({ options, parsed, rowCount, rowsComplete: !isLarge, target })}
+            disabled={!canImport || overHardLimit || extractBlocked}
+            onClick={() =>
+              onConfirm({
+                options,
+                parsed,
+                rowCount,
+                rowsComplete: !isLarge,
+                target,
+                // 絞り込みが入っているときだけ付ける（無ければ項目ごと無い）
+                ...(extractView
+                  ? {
+                      extract: {
+                        spec: {
+                          columns: extractColumns === null ? [] : chosenColumns,
+                          conditions: activeConditions,
+                        },
+                        result: { headers: extractView.headers, rows: extractView.rows },
+                        sourceRows: extractView.sourceRows,
+                      },
+                    }
+                  : {}),
+              })
+            }
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {confirmLabel ?? t("dataImport.confirm")}

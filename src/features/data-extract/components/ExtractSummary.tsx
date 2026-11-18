@@ -18,12 +18,15 @@ export function ExtractSummary({
   sameAsSource: boolean;
 }) {
   useLocaleSubscription();
+  // 列が 1 つも無いときは行の数に関わらず確定できないので、その理由を先に出す
   const note =
-    resultRows === 0
-      ? t("dataExtract.zeroRows")
-      : sameAsSource
-        ? t("dataExtract.sameAsSource")
-        : null;
+    columnCount === 0
+      ? t("dataExtract.zeroColumns")
+      : resultRows === 0
+        ? t("dataExtract.zeroRows")
+        : sameAsSource
+          ? t("dataExtract.sameAsSource")
+          : null;
   return (
     <div>
       <span className="text-xs text-foreground">

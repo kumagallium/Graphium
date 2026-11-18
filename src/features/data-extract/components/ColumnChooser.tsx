@@ -1,13 +1,14 @@
 // 列の選択: チェックの並び + 「すべて」「なし」
 //
 // 制御された部品。selected は選んだ列名（表の列の順に並べ直して返す）。
-// 列が多いときは高さを決めて中でスクロールし、後ろの操作を押し流さない。
+// チェックは横に流して折り返す（縦に並べると列が多い表で段が長くなる）。
+// 折り返しても高さが決まった量を超えるときは中でスクロールし、後ろの操作を押し流さない。
 
 import { t, useLocaleSubscription } from "../../../i18n";
 import type { ColumnProfile } from "../types";
 
-/** この数以上の列があるときは、高さを決めて中でスクロールする */
-const SCROLL_FROM = 20;
+/** チェックの並びの最大の高さ（約 4 行）。超えたら中でスクロールする */
+const MAX_HEIGHT = "max-h-24";
 
 const ACTION =
   "px-2.5 py-1 text-[11px] rounded border border-border text-muted-foreground hover:bg-muted transition-colors";
@@ -45,12 +46,12 @@ export function ColumnChooser({
         </button>
       </div>
       <div
-        className={`flex flex-col gap-0.5 ${columns.length >= SCROLL_FROM ? "max-h-56 overflow-y-auto" : ""}`}
+        className={`flex flex-wrap gap-x-3 gap-y-1 ${MAX_HEIGHT} overflow-y-auto`}
       >
         {columns.map((c) => (
           <label
             key={c.name}
-            className="flex items-center gap-1.5 text-[11px] text-foreground cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-[11px] text-foreground cursor-pointer max-w-full"
           >
             <input type="checkbox" checked={chosen.has(c.name)} onChange={() => toggle(c.name)} />
             <span className="truncate">{c.name}</span>

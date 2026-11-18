@@ -1,13 +1,12 @@
-// 4 つの部品を縦に並べて見る story。ダイアログの形ではない（枠・見出し・確定ボタンは付けない）。
+// 3 つの部品を縦に並べて見る story。ダイアログの形ではない（枠・見出し・確定ボタンは付けない）。
 // 部品どうしの余白と文字の釣り合いを見るためのもの。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useMemo, useState } from "react";
 import { applyExtract, isActiveCondition } from "../apply";
-import type { ExtractCondition, TableDerivation } from "../types";
+import type { ExtractCondition } from "../types";
 import { ColumnChooser } from "./ColumnChooser";
 import { ConditionRow } from "./ConditionRow";
-import { DerivationBadge } from "./DerivationBadge";
 import { ExtractSummary } from "./ExtractSummary";
 import { BREAD_HEADERS, BREAD_PROFILES, BREAD_ROWS } from "./sample-data";
 
@@ -19,15 +18,6 @@ function Parts() {
   ]);
   const spec = useMemo(() => ({ columns, conditions: conds }), [columns, conds]);
   const result = useMemo(() => applyExtract(BREAD_HEADERS, BREAD_ROWS, spec), [spec]);
-  const derivation: TableDerivation = {
-    kind: "filter",
-    fromFileName: "oven-curves.csv",
-    columns,
-    conditions: conds.filter(isActiveCondition),
-    sourceRows: result.sourceRows,
-    resultRows: result.rows.length,
-    createdAt: "2026-11-18T09:00:00.000Z",
-  };
   const sameAsSource =
     !conds.some(isActiveCondition) &&
     (columns.length === 0 || columns.length === BREAD_HEADERS.length);
@@ -51,9 +41,6 @@ function Parts() {
         columnCount={result.headers.length}
         sameAsSource={sameAsSource}
       />
-      <div>
-        <DerivationBadge derivation={derivation} />
-      </div>
     </div>
   );
 }

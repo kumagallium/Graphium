@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { syncLocale } from "../../i18n";
 import { dataTableToMarkdown, DATA_TABLE_EXPORT_ROW_LIMIT } from "./to-markdown";
 import { serializeDataTableSource } from "./model";
 import { clearDataTableCache } from "./data";
@@ -32,6 +33,7 @@ function csvWithRows(n: number): string {
 }
 
 beforeEach(() => {
+  syncLocale("ja");
   clearAssetTextCache();
   clearDataTableCache();
 });
@@ -76,6 +78,37 @@ describe("dataTableToMarkdown", () => {
     const more = out[2];
     expect(more.type).toBe("paragraph");
     expect(more.content[0].styles.italic).toBe(true);
+  });
+
+  it("derivation があれば見出しの次、表の前に条件の行（斜体）を出す", () => {
+    primeAssetText("asset-1", csvWithRows(10));
+    const derived: TableSource = {
+      ...source,
+      derivation: {
+        kind: "filter",
+        fromFileName: "oven-curves.csv",
+        columns: [],
+        conditions: [{ column: "temp_c", op: "ge", value: "185" }],
+        sourceRows: 120,
+        resultRows: 10,
+        createdAt: "2026-11-18T09:00:00.000Z",
+      },
+    };
+    const out = dataTableToMarkdown(
+      { type: "dataTable", props: { source: serializeDataTableSource(derived) }, children: [] } as any,
+      ctx
+    );
+    expect(out).toHaveLength(3);
+    expect(out[1].type).toBe("paragraph");
+    expect(out[1].content[0].styles.italic).toBe(true);
+    expect(out[1].content[0].text).toBe("絞り込み: temp_c ≥ 185（120 行のうち 10 行）");
+    expect(out[2].type).toBe("table");
+  });
+
+  it("derivation が無ければ条件の行は出ない", () => {
+    primeAssetText("asset-1", csvWithRows(10));
+    const out = dataTableToMarkdown(block() as any, ctx);
+    expect(out.map((b) => b.type)).toEqual(["paragraph", "table"]);
   });
 
   it("ctx.children は末尾にそのまま引き継がれる", () => {

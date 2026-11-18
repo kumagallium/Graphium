@@ -3,10 +3,10 @@
 // 取り出しは「表示のたびに絞る」のではなく、絞った結果を新しい小さな素材（CSV）として
 // 書き出す。ここにあるのは、その条件の指定と、来歴として残す形。
 
-export type ExtractOperator = "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty";
+import type { ExtractCondition } from "../../lib/document-types";
 
-/** 1 つの条件。value が空（notEmpty 以外）の条件は「書きかけ」として無視される */
-export type ExtractCondition = { column: string; op: ExtractOperator; value?: string };
+// 条件と来歴は、保存される形（TableSource）の一部なので定義は document-types.ts にある
+export type { ExtractCondition, ExtractOperator, TableDerivation } from "../../lib/document-types";
 
 /** 取り出しの指定。conditions はすべて満たす（AND）。columns が空なら全列 */
 export type ExtractSpec = { columns: string[]; conditions: ExtractCondition[] };
@@ -17,15 +17,3 @@ export type ColumnKind = "number" | "text";
 export type ColumnProfile = { name: string; kind: ColumnKind; distinct?: string[] };
 
 export type ExtractResult = { headers: string[]; rows: string[][]; sourceRows: number };
-
-/** 来歴として残す形（次の段で素材とノートに保存する） */
-export type TableDerivation = {
-  kind: "filter";
-  fromFileId?: string;
-  fromFileName: string;
-  columns: string[];
-  conditions: ExtractCondition[];
-  sourceRows: number;
-  resultRows: number;
-  createdAt: string;
-};

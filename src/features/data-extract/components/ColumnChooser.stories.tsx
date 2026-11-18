@@ -33,7 +33,7 @@ export const AllSelected: Story = {
   render: () => <Controlled columns={BREAD_PROFILES} initial={BREAD_PROFILES.map((c) => c.name)} />,
 };
 
-/** 20 列以上。高さを決めて中でスクロールする */
+/** 26 列。横に折り返し、約 4 行を超えたら中でスクロールする */
 export const ManyColumns: Story = {
   render: () => <Controlled columns={WIDE_PROFILES} initial={["time"]} />,
 };

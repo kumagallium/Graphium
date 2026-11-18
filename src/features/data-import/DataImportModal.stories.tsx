@@ -5,6 +5,8 @@
 // 「取り込む」を押せること）がこの画面の合否になる。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ExtractSection } from "../data-extract/components/ExtractSection";
+import { BREAD_HEADERS, BREAD_PROFILES, BREAD_ROWS } from "../data-extract/components/sample-data";
 import { DataImportModal } from "./DataImportModal";
 import { SYNC_PARSE_MAX_ROWS } from "./large-file";
 
@@ -115,4 +117,117 @@ export const NotATable: Story = {
     onCancel: noop,
     onConfirm: noop,
   },
+};
+
+// ─── 絞り込む（列と行を選んで、小さな表として取り込む）─────────────────
+// データはパン作りのオーブン温度ログ（components/sample-data.ts）。
+
+const BREAD_CSV = [BREAD_HEADERS.join(","), ...BREAD_ROWS.map((r) => r.join(","))].join("\n");
+
+/** 列が 16 ある表。チェックの並びが横に折り返し、はみ出すぶんは中でスクロールする */
+const WIDE_HEADERS = [
+  ...BREAD_HEADERS,
+  ...Array.from({ length: 11 }, (_, i) => `probe_${String(i + 1).padStart(2, "0")}`),
+];
+const WIDE_CSV = [
+  WIDE_HEADERS.join(","),
+  ...BREAD_ROWS.map((r, i) => [...r, ...Array.from({ length: 11 }, (_, j) => String(i + j))].join(",")),
+].join("\n");
+
+const BREAD_SPEC = {
+  columns: ["time", "temp_c", "dough"],
+  conditions: [
+    { column: "temp_c", op: "ge" as const, value: "200" },
+    { column: "dough", op: "eq" as const, value: "baguette" },
+  ],
+};
+
+/** 既定。段は畳んだ 1 行で、絞らなければ今までの取り込み画面と変わらない */
+export const ExtractCollapsed: Story = {
+  name: "絞り込み（畳んだ状態）",
+  args: { fileName: "oven-curves.csv", text: BREAD_CSV, onCancel: noop, onConfirm: noop },
+};
+
+/** 開いた状態。列を 3 つ選び、条件を 2 つ付けている。右のプレビューは絞った後の表 */
+export const ExtractOpen: Story = {
+  name: "絞り込み（開いた状態・条件 2 つ）",
+  args: {
+    fileName: "oven-curves.csv",
+    text: BREAD_CSV,
+    initialExtract: BREAD_SPEC,
+    onCancel: noop,
+    onConfirm: noop,
+  },
+};
+
+/** 条件が入ったまま畳んだ状態。説明の代わりに条件の文と行数が出る */
+export const ExtractCollapsedWithConditions: Story = {
+  name: "絞り込み（条件ありで畳んだ状態）",
+  args: { ...ExtractOpen.args },
+  // 開いた状態で始まるので、描画後に 1 度だけ畳む
+  play: ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click();
+  },
+};
+
+/** 結果が 0 行。確定は押せず、段の中の注記が理由を言う */
+export const ExtractZeroRows: Story = {
+  name: "絞り込み（0 行）",
+  args: {
+    fileName: "oven-curves.csv",
+    text: BREAD_CSV,
+    initialExtract: { columns: [], conditions: [{ column: "temp_c", op: "ge", value: "999" }] },
+    onCancel: noop,
+    onConfirm: noop,
+  },
+};
+
+/** 列が 16。チェックの並びが縦に伸びず、横に折り返す */
+export const ExtractManyColumns: Story = {
+  name: "絞り込み（列が 16）",
+  args: {
+    fileName: "oven-probes.csv",
+    text: WIDE_CSV,
+    initialExtract: { columns: ["time", "temp_c", "probe_01", "probe_02"], conditions: [] },
+    onCancel: noop,
+    onConfirm: noop,
+  },
+};
+
+/**
+ * 大きなファイル（2 万行超）で段を開いた直後。全体を小分けで読んでいる間は、
+ * 段の中に「全体を読んでいます…」だけが出て、確定ボタンは押せない。
+ * 実物は数秒で読み終わるので、状態を固定して見せるために段の部品だけを枠に入れている
+ */
+export const ExtractLoadingLargeFile: Story = {
+  name: "大きなファイルで段を開いた直後（読んでいる間）",
+  render: () => (
+    <div className="bg-background border border-border rounded-lg w-[900px] max-w-full overflow-hidden">
+      <ExtractSection
+        open
+        onToggle={noop}
+        collapsedSummary={null}
+        loading
+        columns={BREAD_PROFILES}
+        selectedColumns={BREAD_PROFILES.map((c) => c.name)}
+        onColumnsChange={noop}
+        conditions={[]}
+        onConditionsChange={noop}
+        sourceRows={0}
+        resultRows={0}
+        columnCount={0}
+        sameAsSource
+      />
+      <div className="flex items-center justify-end gap-2 px-4 py-3">
+        <button
+          type="button"
+          disabled
+          className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground opacity-40 cursor-not-allowed"
+        >
+          取り込む
+        </button>
+      </div>
+    </div>
+  ),
+  parameters: { layout: "padded" },
 };

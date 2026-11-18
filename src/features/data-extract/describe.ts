@@ -4,7 +4,7 @@
 // t は呼び出し側から渡す（部品も来歴表示も同じ文言を引ける）。
 
 import { isActiveCondition } from "./apply";
-import type { ExtractCondition, ExtractSpec } from "./types";
+import type { ExtractCondition, ExtractSpec, TableDerivation } from "./types";
 
 type T = (key: string, params?: Record<string, string>) => string;
 
@@ -25,4 +25,26 @@ export function describeSpec(spec: ExtractSpec, t: T): string {
   const conds = spec.conditions.filter(isActiveCondition).map((c) => describeCondition(c, t));
   if (conds.length > 0) parts.push(conds.join(t("dataExtract.describe.and")));
   return parts.length > 0 ? parts.join(" / ") : t("dataExtract.describe.all");
+}
+
+/**
+ * 表の上の「条件の 1 行」。条件の文に行数を添える:
+ * 「temp_c ≥ 200 かつ dough = baguette（120 行のうち 30 行）」
+ *
+ * 列だけ選んで条件が無いときは、列名を並べず個数で言う（長くなって 1 行に収まらないため）:
+ * 「3 列を選択（120 行のうち 120 行）」。何も絞っていない来歴は「全列・全行」
+ */
+export function describeDerivation(derivation: TableDerivation, t: T): string {
+  const parts: string[] = [];
+  const conds = derivation.conditions.filter(isActiveCondition).map((c) => describeCondition(c, t));
+  if (conds.length > 0) parts.push(conds.join(t("dataExtract.describe.and")));
+  if (derivation.columns.length > 0) {
+    parts.push(t("dataExtract.describe.columnCount", { count: String(derivation.columns.length) }));
+  }
+  const spec = parts.length > 0 ? parts.join(" / ") : t("dataExtract.describe.all");
+  return t("dataExtract.describe.withRows", {
+    spec,
+    rows: derivation.resultRows.toLocaleString(),
+    total: derivation.sourceRows.toLocaleString(),
+  });
 }
