@@ -1421,11 +1421,12 @@ export type MediaInlineLabel = {
 };
 
 /**
- * 画像ブロックの OCR 結果（端末内 Tesseract.js で抽出）。
+ * 画像ブロックの OCR 結果（端末内で抽出。Tesseract.js、またはデスクトップ版の PP-OCRv6 small）。
  *
  * - text: 抽出したテキスト本体。ノート横断検索の対象になる（index-file.ts が回収）
- * - confidence: Tesseract の信頼度（0-100）
- * - lang: 認識に使った言語（"jpn+eng" 等）
+ * - confidence: 信頼度（0-100）
+ * - lang: 認識に使った言語（"jpn+eng" 等）。PP-OCRv6 small では使わないが、依頼した言語として残す
+ * - engine: 読んだエンジン（"tesseract" / "pp-ocrv6-small"）。任意。無ければ（過去のデータ）Tesseract
  * - extractedAt: 抽出日時（ISO 文字列）。画像を差し替えたときの古さ判断に使う
  */
 export type MediaOcrEntry = {
@@ -1433,6 +1434,7 @@ export type MediaOcrEntry = {
   confidence: number;
   lang: string;
   extractedAt: string;
+  engine?: string;
 };
 
 /**

@@ -18,6 +18,8 @@ mod meeting_audio;
 mod meeting_transcribe;
 mod model_download;
 mod embedding_models;
+mod ocr_engine;
+mod ocr_models;
 mod ui_zoom;
 
 // --- sidecar ログファイル ---
@@ -4314,6 +4316,11 @@ pub fn run() {
             embedding_models::embedding_model_cancel,
             embedding_models::embedding_model_delete,
             embedding_models::embedding_embed,
+            ocr_models::ocr_model_status,
+            ocr_models::ocr_model_download,
+            ocr_models::ocr_model_cancel,
+            ocr_models::ocr_model_delete,
+            ocr_models::ocr_recognize,
             meeting_transcribe::meeting_model_status,
             meeting_transcribe::meeting_model_download,
             meeting_transcribe::meeting_model_cancel,
@@ -4406,6 +4413,7 @@ pub fn run() {
         .manage(meeting_audio::MeetingRecState::default())
         .manage(meeting_transcribe::TranscribeState::default())
         .manage(embedding_models::EmbeddingState::default())
+        .manage(ocr_models::OcrState::default())
         .manage(ui_zoom::ZoomState::default())
         .manage(NativeSidecarState::default())
         .manage(ScanAllowlistState::default())

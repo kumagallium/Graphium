@@ -347,8 +347,12 @@ type GraphiumPage = {
 
   // ── on-device image OCR ─────────────────────────────
   mediaOcr?: Record<string, MediaOcrEntry>;
-                                     // blockId → text read out of an image with
-                                     // Tesseract.js, entirely on the user's device.
+                                     // blockId → text read out of an image entirely on
+                                     // the user's device (PP-OCRv6 small in the desktop
+                                     // app, Tesseract.js otherwise). Each entry has an
+                                     // optional `engine` ("pp-ocrv6-small" |
+                                     // "tesseract"); entries without it were read by
+                                     // Tesseract.
                                      // An annotation layer over the *standard* image
                                      // block (same approach as mediaInlineLabels), so
                                      // any image can be read later regardless of how it
@@ -885,7 +889,7 @@ from the executed Entity to the planned one.
 
 #### Image OCR
 
-On-device OCR results (Tesseract.js; stored in `page.mediaOcr[blockId]`,
+On-device OCR results (PP-OCRv6 small or Tesseract.js, recorded in `MediaOcrEntry.engine`; stored in `page.mediaOcr[blockId]`,
 §1) are deliberately **not** projected into the PROV graph. The graph
 describes the procedure the user wrote; an automatic OCR pass is tooling
 provenance, not a step of that procedure, and an earlier release that did
