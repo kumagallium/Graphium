@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.146.0](https://github.com/kumagallium/Graphium/compare/v0.145.0...v0.146.0) - 2026-11-18
+
+- feat(conversation): keep AI conversations as materials — reader, material type and source id (no screen yet) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1757
+- fix(deps): move @tailwindcss/vite to devDependencies by @kumagallium in https://github.com/kumagallium/Graphium/pull/1743
+- [docs] Manual: badges and roadmap row for the OCR changes in v0.145.0 by @kumagallium in https://github.com/kumagallium/Graphium/pull/1758
+- feat: link a file in a data place without copying it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1745
+
 ## [v0.145.0](https://github.com/kumagallium/Graphium/compare/v0.144.0...v0.145.0) - 2026-11-18
 
 - [feat] Settings row for the on-device OCR model (switch, status, delete) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1754
