@@ -668,74 +668,6 @@ body {
   padding: 0.9rem 1rem 1rem;
 }
 
-.lp-mp3-card-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--color-border-subtle, #dce5dd);
-  font-size: 0.98rem;
-  font-weight: 600;
-  color: #2d4a32;
-}
-
-.lp-mp3-count {
-  font-size: 0.76rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-muted-foreground, #4a6350);
-}
-
-.lp-mp3-in li {
-  display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
-  column-gap: 0.7rem;
-}
-
-.lp-mp3-in time {
-  padding-top: 0.6rem;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.375rem;
-  text-align: right;
-  color: var(--color-muted-foreground, #4a6350);
-}
-
-.lp-mp3-entry {
-  position: relative;
-  padding: 0.6rem 0 0.6rem 1rem;
-  border-left: 1.5px solid var(--mp-line);
-}
-
-.lp-mp3-in li:first-child .lp-mp3-entry {
-  border-image: linear-gradient(180deg, transparent 1.1rem, var(--mp-line) 1.1rem) 1;
-}
-
-.lp-mp3-in li:last-child .lp-mp3-entry {
-  padding-bottom: 0.1rem;
-  border-image: linear-gradient(180deg, var(--mp-line) 1.3rem, transparent 1.3rem) 1;
-}
-
-/* 線の上の、残した人の印（自分 = 塗りの丸） */
-.lp-mp3-mark {
-  position: absolute;
-  left: -5.25px;
-  top: calc(0.6rem + 0.6875rem - 4.5px);
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: var(--forest, #4b7a52);
-  outline: 3px solid var(--color-card, #ffffff);
-}
-
-.lp-mp3-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.15rem 0.5rem;
-  min-height: 1.375rem;
-}
-
 .lp-mp3-where {
   display: inline-flex;
   align-items: center;
@@ -775,13 +707,129 @@ body {
   color: var(--color-muted-foreground, #4a6350);
 }
 
-.lp-mp3-name {
-  margin-top: 0.2rem !important;
-  font-size: 0.88rem;
+/* ── 2 段目: ノート。録音は発言の行に、写真は読み取った文字になっている ───────────────────────────── */
+.lp-mp3-note {
+  padding: 1rem 1.1rem 1.05rem;
+  box-shadow: var(--shadow-2, 0 6px 18px -10px rgba(30, 20, 10, 0.18));
+}
+
+.lp-mp3-note-kind {
+  font-size: 0.7rem;
   font-weight: 600;
-  line-height: 1.45;
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary, #8fa394);
+}
+
+.lp-mp3-note-title {
+  margin-top: 0.1rem !important;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: #2d4a32;
+}
+
+/* ノートの中のブロック（文字起こし・読み取った文字） */
+.lp-mp3-block,
+.lp-mp3-ocr {
+  border: 1px solid var(--color-border-subtle, #dce5dd);
+  border-radius: 10px;
+  background: var(--color-surface, #f5f8f5);
+  padding: 0.55rem 0.7rem 0.6rem;
+}
+
+.lp-mp3-block {
+  margin-top: 0.8rem;
+}
+
+.lp-mp3-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem !important;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp3-utter {
+  font-size: 0.84rem;
+  line-height: 1.55;
   color: var(--ink, #1a2e1d);
-  overflow-wrap: anywhere;
+}
+
+.lp-mp3-utter + .lp-mp3-utter {
+  margin-top: 0.25rem !important;
+}
+
+.lp-mp3-utter b {
+  margin-right: 0.4rem;
+  font-weight: 600;
+}
+
+/* 発言の時刻（押すとその位置から再生できる札） */
+.lp-mp3-chip {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--color-card, #ffffff);
+  border: 1px solid var(--color-border, #d5e0d7);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1rem;
+  color: var(--color-muted-foreground, #4a6350);
+}
+
+.lp-mp3-photo {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: stretch;
+  margin-top: 0.6rem;
+}
+
+.lp-mp3-photo-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--forest-soft, #e3f0e4), var(--amber-soft, #fbefd9));
+  color: var(--forest-ink, #2d4a32);
+}
+
+.lp-mp3-ocr pre {
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--ink, #1a2e1d);
+}
+
+/* 同じ場所に入っている、ほかの記録 */
+.lp-mp3-also {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem !important;
+  padding-top: 0.65rem !important;
+  border-top: 1px dashed var(--color-border-subtle, #dce5dd);
+}
+
+.lp-mp3-also li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.lp-mp3-also-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--ink, #1a2e1d);
 }
 
 /* ── 3 段目: 読む人と AI ───────────────────────────── */

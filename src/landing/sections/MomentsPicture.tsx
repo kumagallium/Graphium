@@ -1,12 +1,15 @@
 // LP のコンセプトの絵（ヒーローの中、ボタンの下）。
 // 眠っている記録（開かないと中身が分からない形）→ Graphium に入れると文字になって 1 か所に並ぶ
-// → 人が言葉で探せて、つながりを辿れる。AI を使い始めたら、AI も同じ記録を読んでまとめる、を 1 枚で伝える。
+// → 人が言葉で探せて、つながりを辿れる。（2 段目はノートの中身。録音が発言の行に、写真が読み取った文字になる）
+//AI を使い始めたら、AI も同じ記録を読んでまとめる、を 1 枚で伝える。
 //
 // 絵に出すのは、公開済みのアプリで実際に起きることだけにする。描く前にコードで確かめたこと（v0.140.0）:
 // - 写真の文字は端末の中で読む（Tesseract.js。手書きを読める根拠は無いので、印刷された紙にする）
 // - 録音の文字起こしは端末の中の whisper（デスクトップ版）。文字起こしは全文の索引に入る
 // - PDF は文字の層を読む（スキャンしただけの PDF は読めない）。Web クリップは抜粋が残る
 // - 記録の画面は、素材の中の文字でも当たり、当たった箇所を名前の下に出す
+// - ノートの文字起こしブロックは「時刻・話者（相手／自分）・発言」の行を出す。画像は、読み取った文字を
+//   ツールバーの「テキスト抽出済み（N 文字）」から開いて見られる（画像の下に常に出るわけではない）
 // - 素材には「使われているノート」が自動で残る（文字起こしブロックの録音も数える。記録の画面に
 //   「1 つのノートで使っています」と出る）。AI がまとめたページには「元の記録 3 件」と出る
 // 札の言葉はアプリの文言（src/i18n の records.origin.*）と同じにする。実装が変わったら、ここも合わせる。
@@ -19,6 +22,7 @@ import {
   Globe,
   Image as ImageIcon,
   Mic,
+  Play,
   Search,
   Smartphone,
   Sparkles,
@@ -35,7 +39,6 @@ type RowId = "photo" | "audio" | "web" | "pdf";
 
 type Row = {
   id: RowId;
-  time: string;
   // 眠っているときの形を表す印
   beforeIcon: LucideIcon;
   // 出どころの札の印と色
@@ -44,10 +47,10 @@ type Row = {
 };
 
 const ROWS: Row[] = [
-  { id: "photo", time: "09:05", beforeIcon: ImageIcon, icon: Smartphone, tone: "forest" },
-  { id: "audio", time: "10:12", beforeIcon: AudioLines, icon: FileDown, tone: "plain" },
-  { id: "web", time: "13:40", beforeIcon: Globe, icon: Globe, tone: "amber" },
-  { id: "pdf", time: "16:05", beforeIcon: FileText, icon: FileDown, tone: "plain" },
+  { id: "photo", beforeIcon: ImageIcon, icon: Smartphone, tone: "forest" },
+  { id: "audio", beforeIcon: AudioLines, icon: FileDown, tone: "plain" },
+  { id: "web", beforeIcon: Globe, icon: Globe, tone: "amber" },
+  { id: "pdf", beforeIcon: FileText, icon: FileDown, tone: "plain" },
 ];
 
 // 探す言葉にあたる部分だけを <mark> で囲む
@@ -161,34 +164,59 @@ export function MomentsPicture() {
 
         <Flow />
 
-        {/* 2 段目: Graphium に入れると、文字になって 1 か所に並ぶ（記録の画面） */}
+        {/* 2 段目: Graphium のノート。録音は文字起こしブロックで発言の行になり、写真は読み取った文字を持つ。
+            どちらもアプリの実際の見え方（文字起こしブロックの「時刻・話者・発言」、画像の「テキスト抽出済み」）に合わせる */}
         <section className="lp-mp3-col lp-mp3-in">
           <h3 className="lp-mp3-h">{k("moments.in.heading")}</h3>
-          <div className="lp-mp3-card">
-            <p className="lp-mp3-card-head">
-              <span>{k("moments.heading")}</span>
-              <span className="lp-mp3-count">{k("moments.count")}</span>
-            </p>
-            <ol>
-              {ROWS.map((r) => (
-                <li key={r.id}>
-                  <time>{r.time}</time>
-                  <div className="lp-mp3-entry">
-                    <span className="lp-mp3-mark" aria-hidden="true" />
-                    <p className="lp-mp3-meta">
-                      <span className="lp-mp3-where" data-tone={r.tone}>
-                        <r.icon size={12} aria-hidden="true" />
-                        {k(`moments.${r.id}.where` as Key)}
-                      </span>
-                      <span className="lp-mp3-who">{k("moments.who.self")}</span>
-                    </p>
-                    <p className="lp-mp3-name">{k(`moments.${r.id}.name` as Key)}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+          <div className="lp-mp3-card lp-mp3-note">
+            <p className="lp-mp3-note-kind">{k("moments.note.kind")}</p>
+            <p className="lp-mp3-note-title">{k("moments.note.title")}</p>
+
+            <div className="lp-mp3-block">
+              <p className="lp-mp3-block-head">
+                <Play size={11} aria-hidden="true" />
+                {k("moments.tr.heading")}
+              </p>
+              <p className="lp-mp3-utter">
+                <span className="lp-mp3-chip">00:12</span>
+                <b>{k("moments.tr.other")}</b>
+                {k("moments.audio.hit")}
+              </p>
+              <p className="lp-mp3-utter">
+                <span className="lp-mp3-chip">00:20</span>
+                <b>{k("moments.tr.self")}</b>
+                {k("moments.tr.line2")}
+              </p>
+            </div>
+
+            <div className="lp-mp3-photo">
+              <span className="lp-mp3-photo-thumb" aria-hidden="true">
+                <ImageIcon size={18} />
+              </span>
+              <div className="lp-mp3-ocr">
+                <p className="lp-mp3-block-head">
+                  <FileText size={11} aria-hidden="true" />
+                  {k("moments.ocr.done")}
+                </p>
+                <pre>{k("moments.ocr.text")}</pre>
+              </div>
+            </div>
+
+            <ul className="lp-mp3-also">
+              {(["web", "pdf"] as const).map((id) => {
+                const r = ROWS.find((row) => row.id === id)!;
+                return (
+                  <li key={id}>
+                    <span className="lp-mp3-where" data-tone={r.tone}>
+                      <r.icon size={12} aria-hidden="true" />
+                      {k(`moments.${id}.where` as Key)}
+                    </span>
+                    <span className="lp-mp3-also-name">{k(`moments.${id}.name` as Key)}</span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-          <p className="lp-mp3-foot">{k("moments.in.foot")}</p>
         </section>
 
         <Flow />
