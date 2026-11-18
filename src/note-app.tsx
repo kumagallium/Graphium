@@ -291,6 +291,7 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { isPlaceUrl } from "./features/linked-files/link-url";
+import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
@@ -2650,7 +2651,9 @@ function NoteEditorInner({
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
 
-    if (displayMode === "link") {
+    // リンクした素材は中身を読めないので、呼び出し元がどの形で渡しても @リンクにする
+    // （展開ブロックや、区切りテキストの中身を読む取り込みに入れない）
+    if (resolvePickerDisplayMode(entry, displayMode) === "link") {
       // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
       // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
@@ -12015,10 +12018,10 @@ export function NoteApp() {
       setComposerPrompt("");
       composer.closeComposer();
       closeAllViews();
-      fm.setActiveAssetType(entry.type);
+      fm.setActiveAssetType(displayTypeOf(entry));
       setFocusedMaterial({ fileId: entry.fileId, fullMode: false });
       setSidebarOpen(false);
-      router.navigate({ view: "assets", mediaType: entry.type });
+      router.navigate({ view: "assets", mediaType: displayTypeOf(entry) });
     },
     [composer, fm, closeAllViews, router],
   );
@@ -17959,10 +17962,10 @@ export function NoteApp() {
                 return;
               }
               const seqBefore = router.getSeq();
-              fm.setActiveAssetType(target.type);
+              fm.setActiveAssetType(displayTypeOf(target));
               // ノートから開いた全画面。閉じるとノートへ戻る（AssetGalleryView の onExitFullToNote）
               setFocusedMaterial({ fileId, fullMode: true, fromNote: true });
-              router.navigate({ view: "assets", mediaType: target.type });
+              router.navigate({ view: "assets", mediaType: displayTypeOf(target) });
               // 履歴が積まれたときだけノートへ戻れる（同じ URL の差し替えなら戻り先が無い）
               noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
@@ -18181,9 +18184,9 @@ export function NoteApp() {
                   if (!target) return;
                   setListMaterialPeekEntry(null);
                   closeAllViews();
-                  fm.setActiveAssetType(target.type);
+                  fm.setActiveAssetType(displayTypeOf(target));
                   setFocusedMaterial({ fileId: target.fileId, fullMode: true });
-                  router.navigate({ view: "assets", mediaType: target.type });
+                  router.navigate({ view: "assets", mediaType: displayTypeOf(target) });
                 }
               : undefined
           }

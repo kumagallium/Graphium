@@ -4627,6 +4627,7 @@ export const ko: Record<string, string> = {
   "linkedFile.badge": "링크",
   "linkedFile.add": "보관 위치의 파일 링크",
   "linkedFile.outsidePlace": "이 파일은 등록한 데이터 보관 위치 안에 없습니다. 보관 위치를 등록하거나 일반 가져오기를 사용해 주세요.",
+  "linkedFile.listedIn": "\"{type}\" 목록에 추가했습니다.",
   "linkedFile.linkFailed": "파일을 링크하지 못했습니다: {message}",
   "linkedFile.note": "Graphium은 이 파일의 위치만 기록합니다. 복사하지 않았고 내용도 읽지 않습니다.",
   "linkedFile.field.place": "데이터 보관 위치",

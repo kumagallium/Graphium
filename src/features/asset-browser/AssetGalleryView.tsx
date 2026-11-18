@@ -40,6 +40,7 @@ import { readEntryBytes } from "./read-entry-bytes";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
 import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
+import { displayTypeOf, displayMimeOf, isInMediaList } from "../linked-files/display-type";
 import type { LinkState } from "../linked-files/linked-entry";
 import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
 import { useLinkStates } from "../linked-files/use-link-states";
@@ -723,7 +724,7 @@ export type AssetGalleryViewProps = {
    * 置き場のファイルをリンクする（type === "url" のタブ・デスクトップ版のみ）。
    * 結果で「置き場の外のファイルだった」ときだけ、ここで知らせる。
    */
-  onLinkPlaceFile?: () => Promise<{ status: "cancelled" | "outside" | "linked" | "existing" }>;
+  onLinkPlaceFile?: () => Promise<{ status: "cancelled" | "outside" | "linked" | "existing"; entry?: MediaIndexEntry }>;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
   /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
@@ -1121,10 +1122,26 @@ export function AssetGalleryView({
     try {
       const result = await onLinkPlaceFile();
       if (result.status === "outside") setLinkNotice(t("linkedFile.outsidePlace"));
+      // 開いている一覧と違う種類の一覧に入ったときは、切り替えずに短く知らせる
+      else if (result.entry && !isInMediaList(result.entry, mediaType)) {
+        setLinkNotice(t("linkedFile.listedIn", { type: t(`asset.type.${displayTypeOf(result.entry)}`) }));
+      }
     } catch (err) {
       setLinkNotice(t("linkedFile.linkFailed", { message: err instanceof Error ? err.message : String(err) }));
     }
-  }, [onLinkPlaceFile, t]);
+  }, [onLinkPlaceFile, t, mediaType]);
+
+  // 「置き場のファイルをリンク」ボタン（デスクトップ版のみ）。URL の一覧と、ファイルの種類ごとの一覧で同じ見た目
+  const linkPlaceFileButton =
+    onLinkPlaceFile && isTauri() && ["url", "image", "document", "data", "video", "audio"].includes(mediaType) ? (
+      <button
+        onClick={() => void handleLinkPlaceFile()}
+        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap shrink-0"
+      >
+        <FileIcon size={12} />
+        {t("linkedFile.add")}
+      </button>
+    ) : null;
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1274,9 +1291,12 @@ export function AssetGalleryView({
     if (!mediaIndex) return [];
     let result = mediaIndex.media.filter((m) => {
       if (m.archivedAt) return false;
-      if (mediaType !== "document") return m.type === mediaType;
-      if (docFilter !== "all") return documentKindOf(m) === docFilter;
-      return m.type === "document" || m.type === "pdf";
+      // リンクした素材は拡張子から決めた種類の一覧に並べる（索引の type は "url" のまま）
+      if (!isInMediaList(m, mediaType)) return false;
+      if (mediaType === "document" && docFilter !== "all") {
+        return documentKindOf({ type: displayTypeOf(m), mimeType: displayMimeOf(m) }) === docFilter;
+      }
+      return true;
     });
     // フォルダ絞り込み（OR・小文字比較）。ノート一覧の文脈フィルタと同じ規則にそろえる
     if (folderFilter.length > 0) {
@@ -1340,8 +1360,7 @@ export function AssetGalleryView({
     if (!mediaIndex) return [];
     const inScope = mediaIndex.media.filter((m) => {
       if (m.archivedAt) return false;
-      if (mediaType !== "document") return m.type === mediaType;
-      return m.type === "document" || m.type === "pdf";
+      return isInMediaList(m, mediaType);
     });
     const counts = aggregateNoteContexts(
       inScope.map((m) => ({ noteContexts: assetFolderValues(m, noteFolderLookup ?? emptyLookup) })),
@@ -1385,9 +1404,10 @@ export function AssetGalleryView({
     if (!mediaIndex) return counts;
     for (const m of mediaIndex.media) {
       if (m.archivedAt) continue;
-      if (m.type !== "document" && m.type !== "pdf") continue;
+      const shown = displayTypeOf(m);
+      if (shown !== "document" && shown !== "pdf") continue;
       counts.all++;
-      const kind = documentKindOf(m);
+      const kind = documentKindOf({ type: shown, mimeType: displayMimeOf(m) });
       if (kind) counts[kind]++;
     }
     return counts;
@@ -1821,15 +1841,7 @@ export function AssetGalleryView({
           {mediaType === "url" && onAddUrlBookmark && (
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {/* 置き場のファイルをリンク（デスクトップ版のみ）。「URL を追加」の隣に並べる */}
-              {onLinkPlaceFile && isTauri() && (
-                <button
-                  onClick={() => void handleLinkPlaceFile()}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap shrink-0"
-                >
-                  <FileIcon size={12} />
-                  {t("linkedFile.add")}
-                </button>
-              )}
+              {linkPlaceFileButton}
               <button
                 onClick={() => setShowUrlModal(true)}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
@@ -1840,7 +1852,9 @@ export function AssetGalleryView({
             </div>
           )}
           {mediaType === "document" && onUploadMedia && (
-            <div className="ml-auto relative" ref={menuRef}>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+            {linkPlaceFileButton}
+            <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 disabled={uploading}
@@ -1907,13 +1921,15 @@ export function AssetGalleryView({
                 className="hidden"
               />
             </div>
+            </div>
           )}
           {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
             <>
+              {linkPlaceFileButton && <div className="ml-auto shrink-0">{linkPlaceFileButton}</div>}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 whitespace-nowrap shrink-0"
+                className={`${linkPlaceFileButton ? "" : "ml-auto "}flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 whitespace-nowrap shrink-0`}
               >
                 <Plus size={12} />
                 {uploading ? t("asset.uploading") : t("asset.upload")}

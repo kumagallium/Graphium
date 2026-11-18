@@ -17,7 +17,7 @@ Inside the gallery you can:
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | In **Images**, **Data**, **Videos** and **Audio**: upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
 | **Add URL** | In **URLs**: register a web page as a URL bookmark |
-| **Link a file from a data place** | In **URLs**, desktop app only: link a file that lives in a registered data place without copying it — see [Link a file without copying it](#linked-files) |
+| **Link a file from a data place** | In the image, document, data, video, audio and URL galleries, desktop app only: link a file that lives in a registered data place without copying it — see [Link a file without copying it](#linked-files) |
 | **Add PDF** / **Add Word** | In **Documents**, under the **⋯** menu at the top right: add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
@@ -136,8 +136,9 @@ Some files already have a home: an organization's synced folder, a lab NAS, a sh
 ### Set it up and link a file
 
 1. Open Settings → **Storage** and, under **Data places**, press **Register a folder**. Pick the folder (for example the synced folder). See [Data places](/settings#data-places).
-2. Open the **URLs** gallery and press **Link a file from a data place**.
+2. Open a gallery (images, documents, data, videos, audio or URLs) and press **Link a file from a data place**.
 3. Pick the file. It has to be inside a registered data place; if it is not, a message says so — register that folder first, or use the regular import.
+4. The linked file is listed by its kind: a PDF or an Office file under documents, a CSV under data, a picture under images. A kind Graphium does not recognise is listed under URLs.
 
 The file appears in the gallery with a **Link** mark. Linking the same file again does not add a second material; it finds the one you already have.
 

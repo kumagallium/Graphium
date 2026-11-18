@@ -4668,6 +4668,7 @@ export const ja: Record<string, string> = {
   "linkedFile.badge": "リンク",
   "linkedFile.add": "置き場のファイルをリンク",
   "linkedFile.outsidePlace": "このファイルは、登録したデータの置き場の中にありません。置き場を登録するか、ふつうの取り込みを使ってください。",
+  "linkedFile.listedIn": "「{type}」の一覧に入りました。",
   "linkedFile.linkFailed": "ファイルをリンクできませんでした：{message}",
   "linkedFile.note": "Graphium が控えているのは、このファイルの場所だけです。写してはおらず、中身も読んでいません。",
   "linkedFile.field.place": "データの置き場",

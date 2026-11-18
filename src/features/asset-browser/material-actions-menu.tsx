@@ -25,6 +25,7 @@ import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, getSharedFolders } from "../../lib/storage/shared";
 import { isPlaceUrl } from "../linked-files/link-url";
+import { displayTypeOf } from "../linked-files/display-type";
 import { notifySharedLibraryChanged, needsSharedFolderChoice, resolveShareTarget, shareMedia, shareReference, ShareToFolderDialog } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
@@ -475,7 +476,7 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 onClick={() => {
                   // この素材を開ける URL（#assets/<種類>/<fileId>）。Graphium のノートに貼ると @リンクになる
-                  void navigator.clipboard?.writeText(buildAssetLink(entry.type, entry.fileId));
+                  void navigator.clipboard?.writeText(buildAssetLink(displayTypeOf(entry), entry.fileId));
                   setLinkCopied(true);
                   // コピーしたことが分かるよう少し見せてから閉じる（ノートの「リンクをコピー」と同じ）
                   setTimeout(() => {

@@ -20,6 +20,8 @@ import {
 import { ensureCachedPreviewImage } from "./preview-image";
 import { thumbnailUrlFor, useInView } from "./thumbnail-source";
 import { Favicon } from "./favicon";
+import { isInMediaList, resolvePickerDisplayMode } from "../linked-files/display-type";
+import { isPlaceUrl } from "../linked-files/link-url";
 
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
 // AssetGalleryView.ImageThumbnail と同じパターン
@@ -135,6 +137,14 @@ function PickerItem({
           </div>
         );
       case "url":
+        // リンクした素材（置き場のファイル）は favicon を取りに行かず、ファイルの印を出す
+        if (isPlaceUrl(entry.url)) {
+          return (
+            <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
+              <span className="text-xl">📎</span>
+            </div>
+          );
+        }
         return (
           <div className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded bg-muted px-2">
             <Favicon
@@ -268,9 +278,8 @@ export function MediaPickerModal({
     // アーカイブ済み素材は新規挿入の候補に出さない（既存参照の表示は生きる）。
     let result = mediaIndex.media.filter((m) =>
       !m.archivedAt &&
-      (mediaType === "document"
-        ? m.type === "document" || m.type === "pdf"
-        : m.type === mediaType)
+      // リンクした素材は拡張子から決めた種類の一覧に出す（挿入は下の handleSelect で常に link）
+      isInMediaList(m, mediaType)
     );
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -291,7 +300,7 @@ export function MediaPickerModal({
 
   const handleSelect = useCallback(
     (entry: MediaIndexEntry) => {
-      onSelect(entry, displayMode);
+      onSelect(entry, resolvePickerDisplayMode(entry, displayMode));
       onClose();
     },
     [onSelect, onClose, displayMode],

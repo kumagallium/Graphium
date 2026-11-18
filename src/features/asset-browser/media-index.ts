@@ -1155,12 +1155,19 @@ export function removeNoteFromUsedIn(
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
 
-/** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
-export function countByType(index: MediaIndex): Record<MediaType, number> {
+/**
+ * メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない）。
+ * typeOf: 数える種類の決め方。既定は entry.type。リンクした素材を拡張子の種類で数えるときは
+ * linked-files の displayTypeOf を渡す（media-index から linked-files へは import しない）。
+ */
+export function countByType(
+  index: MediaIndex,
+  typeOf: (entry: MediaIndexEntry) => MediaType = (e) => e.type,
+): Record<MediaType, number> {
   const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
-    counts[entry.type]++;
+    counts[typeOf(entry)]++;
   }
   return counts;
 }

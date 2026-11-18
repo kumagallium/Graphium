@@ -25,3 +25,4 @@ export {
   LINK_HISTORY_MAX,
   type LinkState,
 } from "./linked-entry";
+export { displayTypeOf, displayMimeOf, isInMediaList } from "./display-type";
