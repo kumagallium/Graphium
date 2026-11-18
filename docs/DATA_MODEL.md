@@ -1768,6 +1768,90 @@ version is unchanged). Each clipped selection is an ordinary memo: its text is
 `sourceAsset` points at the URL material, so in the export it becomes an
 annotation targeting that material like any other memo.
 
+**AI conversations: `MediaIndexEntry.conversation`.** A conversation with an AI
+coding tool (today: Claude Code) can be kept as a material of type
+`"conversation"` — one conversation, one material. There is no screen for
+bringing one in yet; this is the data layer it will write to. Like a URL
+bookmark, the entry has no media binary: the index entry is the only
+registration, and the text lives in the media-text channel
+(`saveMediaText(fileId)`, §6.3). `isFilelessMediaEntry` names the two types
+that work this way, and the index rebuild keeps them instead of treating "not
+in the media listing" as "deleted".
+
+```ts
+type ConversationMeta = {
+  provider: "claude-code";        // more providers are added as readers are written
+  sessionId: string;              // unique together with provider
+  workdir: string;                // the folder the conversation was started in
+  startedAt: string;              // ISO 8601 in UTC, "" when the record has no timestamps
+  endedAt: string;
+  ownTurns: number;               // lines the user wrote (the opening brief is not counted)
+  ownChars: number;               // their total length; used to pick candidates for Knowledge
+  hasBrief?: boolean;             // the conversation opens with a long text of unknown authorship
+  bodyChars: number;              // length of the stored text
+  importedAt: string;             // last time it was brought in or replaced
+};
+```
+
+- **Identity.** `fileId` is `conv-<provider>-<sessionId>`
+  (`conversationFileId`), so bringing the same conversation in again never
+  makes a second material: the stored text and `conversation` are replaced
+  (a conversation keeps growing), while the name, folders (`noteContexts`),
+  `uploadedAt`, `usedIn` and `archivedAt` are kept. `sessionId` is limited to
+  letters, digits, `-` and `_` (it becomes part of a file name). `url` holds
+  the source id (`conversation:<fileId>`) and `mimeType` is `text/plain`.
+- **Stored text.** What the user typed is kept **verbatim** — no rewording, no
+  summarising, line breaks and inner whitespace untouched. Two things are
+  removed around it: text the tool inserted into the message (see the next
+  item — a message that was mostly a paste shrinks to the words typed around
+  it) and whitespace at the very start and end of the message. In the stored
+  text, the second and later lines of a multi-line message are indented by
+  two spaces, so a pasted line that happens to look like `- AI（…）: …` or
+  `## <date>` is never read as another turn or a heading; removing that
+  indent gives the original back. The AI's side is only the reply written
+  just before each of the user's lines, and a reply longer than 520 characters
+  is cut to its first 200 and last 300 characters (whitespace collapsed, the
+  cut marked ` […] `). Tool calls and tool output are never stored. The text
+  is plain Markdown: one explanatory paragraph, then `## <date>` headings and
+  one list item per line (`- AI（直前の返答の抜粋）: …` / `- 私（06:28）: …`; an
+  English variant uses `AI` / `Me`). Dates and times are in the time zone of
+  the device that brought the conversation in. The text is fixed at that
+  moment and is what quoted passages are checked against; it is not rebuilt
+  on read.
+- **What counts as the user's line** (Claude Code records;
+  `src/lib/conversation/claude-code-reader.ts`): a `user` record that is not
+  `isMeta` / `isCompactSummary` / `isSidechain`, carries no `tool_result`,
+  and whose `origin.kind` is absent or `"human"`. `<system-reminder>` and
+  `<pasted_content>` blocks are removed from it wherever they appear, and so
+  are machine wrappers at its start (`<bash-input>…</bash-input>` and the
+  like: a tag whose name has a hyphen or underscore, with its closing tag —
+  an HTML tag such as `<p>` is the user's text and stays). What is left is
+  the line; a record with nothing left, or one that opens with one of a few
+  fixed machine sentences, is dropped. A slash command that is sent to the AI keeps its
+  arguments as the line and the command name beside the time; a local
+  command the tool handles by itself is not part of the conversation. Timestamps are
+  normalised to UTC ISO 8601, and a value that does not start like a date is
+  not used. The first line of a
+  conversation, when longer than 700 characters, is kept as a **brief**
+  (`- 依頼文（…）`) and left out of `ownChars`: a request written by another
+  conversation is recorded exactly like a typed one, so its author cannot be
+  told from the record. Later long lines are the user's and are kept whole.
+- **Folder.** `noteContexts` is `["<root>/<name of the working folder>"]`,
+  where the root label is chosen by the caller in the UI language (folders
+  are two levels deep, so the provider is not a level of its own). The name
+  is the last component of the recorded working folder with control,
+  direction-changing and invisible characters removed and cut at 80
+  characters; `.` and `..` are not names. Two working folders with the same
+  last component share a folder.
+- **Known limit.** Identity is per session record. A tool that copies
+  earlier turns into a new record when a conversation is resumed produces two
+  materials that share those turns.
+- **Compatibility.** The field is optional and the media index version is
+  unchanged. A build older than this one does not know the type: when it
+  rebuilds the media index it drops the entry (the stored text stays on
+  disk), and bringing the conversation in again restores it under the same
+  `fileId`.
+
 **What the memo's fields become.**
 
 | Memo | `oa:motivatedBy` | `oa:hasTarget` |
@@ -1828,6 +1912,10 @@ type WikiMeta = {
   //   "document:<mediaFileId>" ingested from a Word (.docx) / document asset
   //   "chat:<timestamp>"       ingested from an AI chat session
   //   "memo:<captureId>"       ingested from a memo (capture) — no note is created
+  //   "conversation:<mediaFileId>" an AI conversation kept as a material (§2.7). Not the same
+  //                            as "chat:": a chat stub carries no reference back to its text,
+  //                            while this one resolves to the stored text. Nothing writes it
+  //                            yet — ingesting a conversation is not open
   // Lineage / graph views resolve these prefixes to external source nodes
   // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
@@ -2756,7 +2844,9 @@ type SourceMissingReason =
 
 // "claim" is a topic-only source kind (§ below): a topic sentence's source is one of the
 // claims it cites, not a derivedFromNotes entry.
-type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "claim" | "unknown";
+// "conversation" is an AI conversation kept as a material: its text is the stored text of the
+// material (`sourceTextOrigin: "stored"`). "chat" stays "no-reference".
+type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "conversation" | "claim" | "unknown";
 
 /** Where in the source text the quote was found (resolved mechanically, in the same pass that
  *  runs the check, from the exact source text judgment used). Left unset when the position is
@@ -4032,6 +4122,12 @@ Graphium/
 │   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
 │   ├── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── conv-<provider>-<sessionId>.txt  # the stored text of an AI conversation material (§2.7):
+│                                 #   the user's lines verbatim, the AI's replies as excerpts
+│                                 #   (the desktop app writes every media-text file into media/
+│                                 #   beside the binaries; the Node server uses media-text/; the
+│                                 #   `local` provider keeps it as a `textContent` record in its
+│                                 #   media store, §6.2)
 │   ├── preview_<fileId>.txt  # URL bookmark preview image (a downscaled data URL)
 │   └── datapreview_<fileId>.txt  # data material preview: { format: 1, preview: { headers,
 │                                 #   rowCount, numericColumns, sparkline: [{ column, points:
@@ -4777,6 +4873,14 @@ the new field.
 only the new field, so a note saved by a current build loses its timestamp and
 row-to-note behavior if an older build writes it back. Ship a change like this
 with a release note telling users to update every device they sync from.
+
+The media index has one case of the same kind. A material without a media
+binary is kept through an index rebuild only because the rebuild knows its
+type (`isFilelessMediaEntry`: URL bookmarks and AI conversations, §2.7). A
+build that predates the `"conversation"` type sees such an entry as a material
+whose file is gone and drops it from the index the next time it rebuilds. The
+stored text is not deleted, and bringing the conversation in again from a
+current build restores the entry under the same `fileId`.
 
 After any compatibility-affecting change, the verification ritual is:
 

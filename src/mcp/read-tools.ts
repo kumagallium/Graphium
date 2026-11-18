@@ -134,15 +134,16 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     {
       title: "資料の本文を読む",
       description:
-        "資料（PDF・Word・Web ページ・ノート）の本文を文字起こしして、窓（既定 4,000 字）に切って返す。" +
+        "資料（PDF・Word・Web ページ・AI との会話・ノート）の本文を文字起こしして、窓（既定 4,000 字）に切って返す。" +
         "トピックの出典（pdf:… / document:… / url:…）の中身を確かめたいとき、PDF の特定ページを読みたいときに使う。" +
         "PDF は窓ごとに「ページ n〜m」を示し、page を指定するとそのページを含む窓を返す。" +
         "続きは window を 1 つ進める。Web ページは Graphium に登録済みのものだけを、ネットワークから取り直して読む。" +
-        "Word は .docx だけに対応。資料の id は get_topic・search_media に出てくる。",
+        "Word は .docx だけに対応。AI との会話は、取り込んだときの本文（本人の発言の原文と AI の返答の抜粋）を返す。" +
+        "資料の id は get_topic・search_media に出てくる。",
       inputSchema: {
         sourceId: z
           .string()
-          .describe("資料の id: pdf:<fileId> / document:<fileId> / url:<URL>（登録済みのもの）/ ノート ID"),
+          .describe("資料の id: pdf:<fileId> / document:<fileId> / url:<URL>（登録済みのもの）/ conversation:<fileId> / ノート ID"),
         window: z.number().int().min(0).optional().describe("窓の番号（0 始まり。既定 0）"),
         page: z
           .number()

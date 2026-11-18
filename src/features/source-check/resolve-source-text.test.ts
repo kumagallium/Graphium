@@ -304,3 +304,59 @@ describe("resolveSourceText - chat: / 出典として扱えない ID", () => {
     });
   });
 });
+
+describe("resolveSourceText - conversation:（AI との会話の素材）", () => {
+  const FILE_ID = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+  const BODY = "- 私（09:00）: 全粒粉は 2 割までにする。3 割だと生地がだれたので\n";
+
+  it("保存済みの本文を text にし、題は findMediaName の値（origin: stored）", async () => {
+    const loadConversationText = vi.fn(async () => BODY);
+    const result = await resolveSourceText(
+      `conversation:${FILE_ID}`,
+      baseDeps({ loadConversationText, findMediaName: () => "全粒粉は 2 割までにする" }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.kind).toBe("conversation");
+    expect(result.origin).toBe("stored");
+    expect(result.title).toBe("全粒粉は 2 割までにする");
+    expect(result.text).toBe(BODY.trim());
+    expect(loadConversationText).toHaveBeenCalledWith(FILE_ID);
+  });
+
+  it("本文が無ければ deleted、空白だけなら empty、読み込みが投げれば unreadable", async () => {
+    const run = (load: ResolveSourceTextDeps["loadConversationText"]) =>
+      resolveSourceText(`conversation:${FILE_ID}`, baseDeps({ loadConversationText: load }));
+    expect(await run(async () => undefined)).toEqual({ ok: false, kind: "conversation", reason: "deleted" });
+    expect(await run(async () => " \n\t ")).toEqual({ ok: false, kind: "conversation", reason: "empty" });
+    expect(
+      await run(async () => {
+        throw new Error("read failed");
+      }),
+    ).toEqual({ ok: false, kind: "conversation", reason: "unreadable" });
+  });
+
+  it("依存（loadConversationText）が未指定なら unreadable", async () => {
+    expect(await resolveSourceText(`conversation:${FILE_ID}`, baseDeps())).toEqual({
+      ok: false,
+      kind: "conversation",
+      reason: "unreadable",
+    });
+  });
+
+  it("鍵の形が会話の素材 id でなければ、本文を読みに行かず deleted", async () => {
+    const loadConversationText = vi.fn(async () => BODY);
+    for (const key of ["preview_abc", "../../x", ""]) {
+      const result = await resolveSourceText(`conversation:${key}`, baseDeps({ loadConversationText }));
+      expect(result).toEqual({ ok: false, kind: "conversation", reason: "deleted" });
+    }
+    expect(loadConversationText).not.toHaveBeenCalled();
+  });
+
+  it("chat:<timestamp> は今までどおり no-reference（別の種類のまま）", async () => {
+    const loadConversationText = vi.fn(async () => BODY);
+    const result = await resolveSourceText("chat:1700000000", baseDeps({ loadConversationText }));
+    expect(result).toEqual({ ok: false, kind: "chat", reason: "no-reference" });
+    expect(loadConversationText).not.toHaveBeenCalled();
+  });
+});

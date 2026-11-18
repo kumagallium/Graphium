@@ -77,6 +77,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Insights from AI conversations', link: '/evaluations/ai-conversation-claims' },
       { text: 'Large data tables', link: '/evaluations/large-data-tables' },
       { text: 'OCR engines', link: '/evaluations/ocr-engines' },
       { text: 'Source passages behind sentences', link: '/evaluations/sentence-passages' },
@@ -162,6 +163,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'AI との会話から知見を作る', link: '/ja/evaluations/ai-conversation-claims' },
       { text: '大きなデータ表', link: '/ja/evaluations/large-data-tables' },
       { text: 'OCR エンジンの比較', link: '/ja/evaluations/ocr-engines' },
       { text: '文ごとに元の一節を控える', link: '/ja/evaluations/sentence-passages' },

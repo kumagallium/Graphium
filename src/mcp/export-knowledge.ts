@@ -36,7 +36,7 @@ function makeSourceName(root: string): (ref: string) => string | undefined {
     const colon = ref.indexOf(":");
     const prefix = colon > 0 ? ref.slice(0, colon) : "";
     const rest = colon > 0 ? ref.slice(colon + 1) : ref;
-    if (prefix === "pdf" || prefix === "document") return media.get(rest)?.name || undefined;
+    if (prefix === "pdf" || prefix === "document" || prefix === "conversation") return media.get(rest)?.name || undefined;
     if (prefix === "url") {
       for (const m of media.values()) if (m.type === "url" && m.url === rest) return m.name || undefined;
       return undefined;

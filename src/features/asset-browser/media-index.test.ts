@@ -23,6 +23,8 @@ import {
   normalizeMediaIndex,
   isLegacyDriveMediaUrl,
   repairLegacyMediaUrls,
+  isFilelessMediaEntry,
+  countByType,
   isLocalPreviewRef,
   previewImageKey,
   previewImageRef,
@@ -1631,5 +1633,102 @@ describe("normalizeMediaIndexEntry（旧 Drive 形式の素材 URL）", () => {
       usedIn: [],
     };
     expect(normalizeMediaIndexEntry(entry)).toBe(entry);
+  });
+});
+
+describe("AI との会話の素材（type: conversation）", () => {
+  const FILE_ID = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+  const conv = (over: Partial<MediaIndexEntry> = {}): MediaIndexEntry => ({
+    fileId: FILE_ID,
+    name: "全粒粉は 2 割までにする",
+    type: "conversation",
+    mimeType: "text/plain",
+    url: `conversation:${FILE_ID}`,
+    thumbnailUrl: "",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+    noteContexts: ["AI 会話/bakery-notes"],
+    conversation: {
+      provider: "claude-code",
+      sessionId: "11111111-2222-4333-8444-555555555555",
+      workdir: "/Users/example/bakery-notes",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      endedAt: "2026-01-01T01:00:00.000Z",
+      ownTurns: 2,
+      ownChars: 40,
+      bodyChars: 300,
+      importedAt: "2026-01-02T00:00:00.000Z",
+    },
+    ...over,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("isFilelessMediaEntry は url と conversation だけ true", () => {
+    expect(isFilelessMediaEntry({ type: "url" })).toBe(true);
+    expect(isFilelessMediaEntry({ type: "conversation" })).toBe(true);
+    for (const type of ["image", "video", "audio", "pdf", "document", "data", "memo", "other"] as const) {
+      expect(isFilelessMediaEntry({ type })).toBe(false);
+    }
+  });
+
+  it("countByType は conversation を数える（アーカイブ済みは数えない）", () => {
+    const index: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [
+        conv(),
+        conv({ fileId: "conv-claude-code-b" }),
+        conv({ fileId: "conv-claude-code-c", archivedAt: "2026-02-01T00:00:00.000Z" }),
+      ],
+    };
+    expect(countByType(index).conversation).toBe(2);
+  });
+
+  it("collectSourceAssetFileIdsFromDoc は conversation: 参照から素材 id を集める", () => {
+    const doc = {
+      wikiMeta: { derivedFromNotes: [`conversation:${FILE_ID}`, "note:other"] },
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set([FILE_ID]));
+  });
+
+  it("collectSourceAssetFileIdsFromDoc は空の id（conversation: だけ）を集めない", () => {
+    const doc = { wikiMeta: { derivedFromNotes: ["conversation:"] } };
+    expect(collectSourceAssetFileIdsFromDoc(doc).size).toBe(0);
+  });
+
+  it("repairLegacyMediaUrls は url が何であっても conversation を変えない", () => {
+    for (const url of [
+      `conversation:${FILE_ID}`,
+      "https://lh3.googleusercontent.com/d/abc=s0",
+      "",
+    ]) {
+      const entry = conv({ url, thumbnailUrl: url });
+      expect(repairLegacyMediaUrls(entry)).toBe(entry);
+    }
+  });
+
+  it("ensureMediaIndex の再構築のあとも、ディスクに実体の無い conversation が残る", async () => {
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue({
+        version: 3,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        media: [conv()],
+      }),
+      writeAppData: vi.fn().mockResolvedValue(undefined),
+      listMediaFiles: vi.fn().mockResolvedValue([]),
+    } as any);
+    const doc = { title: "ノート1", pages: [{ blocks: [] }] };
+    const index = await ensureMediaIndex(
+      [{ id: "note-1", name: "ノート1" }],
+      new Map<string, any>([["note-1", doc]]),
+      async () => doc,
+    );
+    const kept = index.media.find((m) => m.fileId === FILE_ID);
+    expect(kept?.type).toBe("conversation");
+    expect(kept?.conversation?.sessionId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(kept?.noteContexts).toEqual(["AI 会話/bakery-notes"]);
   });
 });

@@ -1042,6 +1042,10 @@ function openGraphNode(
     h.onOpenMedia?.(id.slice("document:".length));
     return;
   }
+  if (id.startsWith("conversation:")) {
+    h.onOpenMedia?.(id.slice("conversation:".length));
+    return;
+  }
   if (id.startsWith("chat:")) return;
   if (id.startsWith("memo:")) {
     // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）

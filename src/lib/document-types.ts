@@ -777,7 +777,8 @@ export type SourceMissingReason =
   | "ai-answer"
   | "not-recorded";
 
-/** "claim" は v1.1 で追加（トピックが引く知見を出典として扱う） */
+/** "claim" は v1.1 で追加（トピックが引く知見を出典として扱う）。
+ *  "conversation" は AI との会話の素材（"chat" はアプリの中の AI チャットで、原文を辿れない） */
 export type SourceCheckSourceKind =
   | "note"
   | "pdf"
@@ -785,6 +786,7 @@ export type SourceCheckSourceKind =
   | "url"
   | "memo"
   | "chat"
+  | "conversation"
   | "claim"
   | "unknown";
 

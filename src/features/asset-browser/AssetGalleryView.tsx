@@ -1142,6 +1142,8 @@ export function AssetGalleryView({
     data: DELIMITED_FILE_ACCEPT,
     // memo は transient なピーク専用タイプ（アップロード経路には現れない）
     memo: "",
+    // AI との会話はファイルのアップロードでは入らない（取り込みの入口から入る）
+    conversation: "",
     other: "",
   };
 

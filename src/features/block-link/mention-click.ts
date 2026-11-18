@@ -244,6 +244,7 @@ export function openPeekTarget(
       return false;
     case "pdf":
     case "document":
+    case "conversation":
     case "data":
     case "image": {
       const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);

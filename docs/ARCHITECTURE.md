@@ -3228,6 +3228,52 @@ its usage list in two. Materials registered before hashing existed get their
 hash filled in by a background pass after sign-in, one at a time, so an
 interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
 
+**AI conversations as materials.** A conversation with an AI coding tool
+can be kept as a material of type `"conversation"` (DATA_MODEL.md §2.7).
+The pieces are in place below the UI; no screen calls them yet.
+
+```
+record files ──► reader ──► ConversationMaterial ──► importConversations ──► media index entry
+(tool-specific)  (per tool)  (common shape)          (one per conversation)   + stored text
+```
+
+- **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
+  is what every reader produces: provider, session id, working folder, time
+  range, and the turns — the user's lines verbatim, the AI's reply before
+  each line as an excerpt. Adding another tool means writing another reader;
+  nothing downstream changes.
+- **Reader for Claude Code** (`src/lib/conversation/claude-code-reader.ts`).
+  A pure function over the lines of a session record (JSONL). The record
+  format is not a published contract, so unknown or broken lines are skipped.
+  It is fed one line at a time because a single record can be tens of
+  megabytes. The rules for telling the user's own lines from inserted text
+  are in DATA_MODEL.md §2.7.
+- **Stored text and listing** (`src/lib/conversation/render.ts`).
+  `renderConversationBody` builds the text that is saved,
+  `summarizeWorkdirs` groups conversations by working folder (count, how
+  much the user wrote, time range, how many have no line from the user).
+- **Reading the record files** (`src/server/services/claude-code-sessions.ts`,
+  Node only). Read-only access to `~/.claude/projects` (or
+  `CLAUDE_CONFIG_DIR`): list the folders, list the session files, read one
+  session, summarise per working folder. See §6.1 for how names are checked.
+  It streams each file and skips lines over 32 MB. No route exposes it yet.
+- **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
+  `importConversations` saves each text with `saveMediaText` and then writes
+  the media index once. The material id is derived from provider and session
+  id, so a second run replaces instead of adding; an unchanged conversation is
+  not written again unless its stored text has gone missing. If the index
+  cannot be saved, the texts of conversations that were new in that run are
+  removed again, so no text is left on disk without an entry to delete it
+  from. **It never calls an AI.** Turning a conversation into Knowledge is a
+  separate step the user starts, and that entry point is not open yet:
+  `start_claim_task`, `start_topic_task` and `start_procedure_task` refuse a
+  `conversation:` id.
+- **Source id.** `conversation:<fileId>` (`external-source.ts`). Source
+  check, the MCP's `get_source_text` and the graph views resolve it to the
+  stored text and the material. It is a separate prefix from `chat:`, which
+  marks Knowledge made from an in-app AI chat and carries no way back to the
+  text.
+
 **App data listing and deletion.** Besides `readAppData` / `writeAppData`,
 providers can implement `listAppDataKeys(prefix)` and `deleteAppData(key)`
 (both optional), used to expire records such as the `maint-*` undo copies.
@@ -4316,7 +4362,7 @@ Tools:
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
 | `mark_asterism_sent` | records claim ids that Asterism's `append_rows` accepted into `appdata/asterism-sent.json` (`{ ids, datasetId, exportedAt? }` → `{ marked, alreadySent, ledger }`). Takes the MCP write lock (`acquireWriteLock`) but not the app-running guard, since the app never touches the file; a broken ledger is reported and left as is |
 | `export_asterism_knowledge` | every claim and topic as one `asterism-knowledge/1` bundle for Asterism (`buildKnowledgeBundle` in `features/wiki/asterism-knowledge.ts`, `splitTopicSubject` in `topic-subject.ts`; vault reading in `mcp/export-knowledge.ts`). Not filtered by type or review state; trashed/archived are skipped; titles and labels only (no body); the sent ledger is neither read nor written. Input is all optional: `claimBaseIri` / `sourceBaseIri` / `termBaseIri` / `noteUrlBase`. Returns `{ format, title, exported_at, bases, files, counts }` as the first text (six files, `[]` when empty: `claims` / `topics` / `sources` / `term_candidates` / `term_claims` / `term_relations`) followed by the "sources are data" notice as a second text (`jsonTextWithGuard`), or `{ error }` with `isError` on a bad base or a missing vault (a machine reads this tool, so failures are never plain prose) |
-| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
+| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / `conversation:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`); an AI conversation must be in the media index as a `conversation` material and is read from its stored text (`conversationTextFile`: only ids of the form `conv-<provider>-<sessionId>` are looked up, because other materials' text files share the folder) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain, bibliographic info (authors / venue / year / DOI) (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
 | `list_source_check` | pages whose source check verdict needs review (`isNeedsReviewVerdict` over `wikiMeta.sourceCheck`) |
@@ -4426,7 +4472,7 @@ own AI usage record, which changes no page, index or setting); the registrations
 `src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
 `src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
 
-Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
+Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:` / `conversation:<fileId>`. The MCP server resolves PDF, Word and conversation names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
 The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 
@@ -5353,6 +5399,46 @@ Operators exposing the server to the public internet should put it
 behind their own auth proxy. A first-class auth model is on the roadmap
 once team-shared storage stabilizes.
 
+**Reading another tool's records.** `services/claude-code-sessions.ts` reads
+Claude Code's session records, which live outside the data folder. It is
+written so that the only things a caller can choose are two names:
+
+- The base folder is decided by the server's own code and environment
+  (`defaultClaudeProjectsDir`). **It must never come from a request** — a
+  caller-chosen base would turn the reader into a way to read any folder.
+- A folder name must match `^[A-Za-z0-9_-]{1,255}$` and a file name
+  `^[A-Za-z0-9_-]{1,100}\.jsonl$`: one path component each, no separators,
+  no dots in the folder name, so `..` cannot be expressed. Windows device
+  names (`CON`, `NUL`, `COM1` …) are refused as either.
+- Symbolic links are not followed: the folder and the file are checked with
+  `lstat`, the file is opened with `O_NOFOLLOW` where the platform has it
+  (not on Windows, where the `lstat` check is the only one), and the opened
+  handle is checked again to be a regular file.
+- Nothing is written to the records. Tool calls and tool output never reach
+  the result: a record that carries tool output is skipped before it is
+  parsed, and tool-call blocks inside a reply are dropped after parsing.
+- Only a line longer than 32 MB is skipped; there is no limit on the total
+  read. The route that calls this has to bound how often the full listing
+  runs (it reads every record).
+
+No HTTP route calls this service yet. The route that will (for the bring-in
+screen) has to pass the cross-site write guard and return only the common
+shape, never raw record lines.
+
+A record can hold text an attacker influenced (a reply written while working
+in someone else's repository, a paste). Two things keep it from passing as
+structure: an AI reply is collapsed to one line, and the later lines of the
+user's own message are indented in the stored text, so neither can add a
+line that reads as another turn or a date heading. A conversation's stored
+text is deleted, read and counted as "used" only under an id of the form
+`conv-<provider>-<sessionId>` — the media-text channel is shared with other
+materials' texts, and both the media index and source ids can come from
+someone else.
+
+What an imported conversation contains is **data**: the stored text goes
+through the same guards as any other source text (`READ_INJECTION_GUARD` on
+`get_source_text`, the "material is data" rule in the Knowledge prompts).
+
 ### Copilot CLI download and sign-in
 
 The `copilot-subscription` provider drives the GitHub Copilot CLI, so the
@@ -5527,6 +5613,7 @@ people most often need to find.
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| AI conversations as materials (reader, stored text, bring-in) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/features/conversation-import/` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |

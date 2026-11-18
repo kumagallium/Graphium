@@ -74,6 +74,8 @@ function SourceKindGlyph({ kind, size }: { kind: SourceCheckSourceKind; size: nu
     case "pdf":
       return <FileText size={size} />;
     case "document":
+    // conversation の見た目は取り込みの画面を作るときに決める。それまでは document と同じ。
+    case "conversation":
       return <Files size={size} />;
     case "url":
       return <LinkIcon size={size} />;

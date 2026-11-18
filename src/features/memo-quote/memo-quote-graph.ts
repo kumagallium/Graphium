@@ -45,7 +45,7 @@ export function memoGroupNodeId(targetNodeId: string): string {
 /** 素材ノードの ID から MediaIndex の fileId を取る。素材でなければ null */
 export function assetFileIdOfNode(nodeId: string): string | null {
   if (nodeId.startsWith("url:")) return nodeId; // URL 素材の fileId は "url:<生URL>"
-  for (const p of ["media:", "pdf:", "document:", "data:"]) {
+  for (const p of ["media:", "pdf:", "document:", "conversation:", "data:"]) {
     if (nodeId.startsWith(p)) return nodeId.slice(p.length) || null;
   }
   return null;

@@ -9,6 +9,11 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 // chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
 import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
 import { parseDataTableSource } from "../../blocks/data-table/source";
+import {
+  CONVERSATION_SOURCE_PREFIX,
+  parseConversationFileId,
+  type ConversationProvider,
+} from "../../lib/conversation/types";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -17,7 +22,30 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "memo" | "other";
+export type MediaType =
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "url"
+  | "document"
+  | "data"
+  | "memo"
+  // AI との会話（Claude Code などの会話の記録を取り込んだもの）。実体のファイルを持たず、
+  // 本文は saveMediaText に置く（下の isFilelessMediaEntry）
+  | "conversation"
+  | "other";
+
+/**
+ * 実体のファイル（uploadMedia のバイト列）を持たない素材か。
+ *
+ * URL ブックマークと AI との会話は、索引のエントリが唯一の登録で、ディスクの素材一覧
+ * （listMediaFiles）には現れない。索引の再構築は「一覧に無い = 消えた」と見なして落とすので、
+ * この 2 種類は一覧と突き合わせずに温存する。
+ */
+export function isFilelessMediaEntry(entry: { type: MediaType }): boolean {
+  return entry.type === "url" || entry.type === "conversation";
+}
 
 /**
  * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
@@ -373,6 +401,36 @@ export type MediaIndexEntry = {
    * （`backfillDocumentInfo`）が読んだうえで付ける。optional なので既存インデックスはそのまま読める。
    */
   sourceInfoScanned?: boolean;
+  /**
+   * AI との会話の来歴（type === "conversation" のとき）。
+   *
+   * 本文（本人の発言の原文と AI の返答の抜粋）は `saveMediaText(fileId)` に置き、ここには
+   * 一覧と絞り込みに使う数字だけを持つ。fileId は provider と sessionId から決まるので、
+   * 同じ会話を取り込み直してもエントリは増えず、本文とこの欄が差し替わる。
+   * optional なので既存インデックスはそのまま読める（版は上げない）。
+   */
+  conversation?: ConversationMeta;
+};
+
+/** AI との会話の来歴（MediaIndexEntry.conversation） */
+export type ConversationMeta = {
+  provider: ConversationProvider;
+  /** 会話の id（provider と組で一意） */
+  sessionId: string;
+  /** 会話を始めた作業フォルダ */
+  workdir: string;
+  /** 会話の期間（ISO 8601。記録に時刻が無ければ ""） */
+  startedAt: string;
+  endedAt: string;
+  /** 本人の発言の数と字数の合計（会話の始まりの依頼文は数えない） */
+  ownTurns: number;
+  ownChars: number;
+  /** 会話の始まりに、書き手の分からない依頼文があるか */
+  hasBrief?: boolean;
+  /** 保存した本文の字数 */
+  bodyChars: number;
+  /** 最後に取り込んだ（差し替えた）時刻（ISO 8601） */
+  importedAt: string;
 };
 
 /** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
@@ -959,6 +1017,13 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     if (typeof ref === "string" && ref.startsWith("url:") && ref.length > "url:".length) {
       ids.add(ref);
     }
+    // AI との会話を出典に持つ知見・トピック（"conversation:<fileId>"）。これを入れないと
+    // 会話の素材だけ「利用ノート」が空になり、削除前の参照チェックをすり抜ける。
+    if (typeof ref === "string" && ref.startsWith(CONVERSATION_SOURCE_PREFIX)) {
+      // 会話の素材 id の形をしたものだけ（別の素材の id を書いて、その「利用ノート」に入り込ませない）
+      const fileId = ref.slice(CONVERSATION_SOURCE_PREFIX.length);
+      if (parseConversationFileId(fileId)) ids.add(fileId);
+    }
   }
   // 区切りテキストから取り込んだテーブルの元ファイル（tableMeta.source.fileId）。
   // 表のセルにはファイルの痕跡が残らないため、ブロック走査では拾えない。これを
@@ -1122,7 +1187,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, conversation: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
     counts[entry.type]++;
@@ -1307,7 +1372,8 @@ export function isLegacyDriveMediaUrl(url: string): boolean {
  * 直すのは素材の実体を指すはずのフィールドだけ。
  */
 export function repairLegacyMediaUrls(entry: MediaIndexEntry): MediaIndexEntry {
-  if (entry.type === "url") return entry;
+  // 実体のファイルを持たない素材（URL ブックマーク・AI との会話）の url は、素材の実体を指さない
+  if (isFilelessMediaEntry(entry)) return entry;
   const urlIsLegacy = isLegacyDriveMediaUrl(entry.url);
   const thumbIsLegacy = isLegacyDriveMediaUrl(entry.thumbnailUrl);
   if (!urlIsLegacy && !thumbIsLegacy) return entry;
@@ -1397,8 +1463,8 @@ export async function ensureMediaIndex(
   // Drive の uploadFiles/ を走査
   const driveFiles = await listUploadFiles();
 
-  // 既存の URL ブックマーク（Drive にファイルがないエントリ）を保持
-  const existingUrlBookmarks = (existing?.media ?? []).filter((m) => m.type === "url");
+  // 実体のファイルを持たないエントリ（URL ブックマーク・AI との会話）を保持
+  const existingUrlBookmarks = (existing?.media ?? []).filter(isFilelessMediaEntry);
 
   // 既存インデックスがあり、ファイル数が一致し（URL ブックマークを除外して比較）、usedIn も構築済みなら最新とみなす。
   // ただしスキーマバージョンが旧版（v1: block 由来の usedIn しか集計していない）なら強制再構築する。
