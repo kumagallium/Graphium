@@ -61,7 +61,8 @@ export function ConversationWorkdirList({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-foreground">{t("intake.conversation.rule")}</p>
+      {/* 文ごとに改行する（語の途中で折り返さないよう、文言の側に改行を入れている） */}
+      <p className="text-sm text-foreground whitespace-pre-line">{t("intake.conversation.rule")}</p>
 
       {status === "loading" ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-6 py-8 text-center">
@@ -81,7 +82,8 @@ export function ConversationWorkdirList({
         </div>
       ) : (
         <>
-          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer w-fit">
+          {/* 下の一覧の行とチェックボックス・文字の左端を揃える（一覧の枠線 1px + 行の px-3 = 13px、間隔も gap-3） */}
+          <label className="flex items-center gap-3 pl-[13px] text-sm text-foreground cursor-pointer w-fit">
             <input
               ref={allRef}
               type="checkbox"

@@ -3586,7 +3586,7 @@ export const ja: Record<string, string> = {
   "intake.section.label": "取り込むものの種類",
   "intake.section.files": "ファイル",
   "intake.section.conversations": "AI との会話",
-  "intake.conversation.rule": "Claude Code との会話を、作業フォルダごとに選んで素材にします。入るのは、自分の発言の全文と、AI の返答の抜粋です",
+  "intake.conversation.rule": "Claude Code との会話を、作業フォルダごとに選んで素材にします。\n入るのは、自分の発言の全文と、AI の返答の抜粋です",
   "intake.conversation.selectAll": "すべて選ぶ",
   "intake.conversation.folderCount": "作業フォルダ {count} 個",
   "intake.conversation.rowSessions": "会話 {sessions} 本",
