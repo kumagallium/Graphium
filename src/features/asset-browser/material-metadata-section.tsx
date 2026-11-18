@@ -334,7 +334,7 @@ export function MaterialMetadataSection({
     try {
       const result = await runOcrForImage(entry.url);
       setOcrText(result.text || null);
-      await persistOcrTextPatch(entry.fileId, result.text);
+      await persistOcrTextPatch(entry.fileId, result.text, result.altText ?? "");
     } catch (e) {
       console.warn("素材の OCR に失敗:", e);
     } finally {

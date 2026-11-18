@@ -2,19 +2,28 @@
 //
 // - LLM を一切使わず、画像から文字を抽出する。
 // - 画像（File/Blob）はブラウザ内だけで処理され、外部サーバーへ送信されない。
-//   （wasm と言語データのみ CDN から取得する。完全オフライン運用時は self-host も可能）
+//   （wasm と言語データはアプリに同梱したものを使う）
 // - デスクトップ版は、端末内の PP-OCRv6 small（Rust 側・ocr-native.ts）でモデル取得済みならそちらで読む。
 //   未取得なら取得を裏で始め、今回は Tesseract で読む。端末内の読み取りが失敗した回も Tesseract に落とす。
+//   設定で「端末内のモデルで読む」をオフにすると、この経路も自動取得も使わない。
 // - Tesseract ワーカーは 1 つを使い回し、認識ジョブは直列化する
 //   （ワーカーは同時に 1 ジョブしか処理できず、logger も共有のため）。
 
+import { sanitizeAltText } from "./ocr-alt";
 import type { Worker, LoggerMessage } from "tesseract.js";
 import { isTauri } from "./platform";
 
 export type OcrProgress = { status: string; progress: number };
 /** 読んだエンジン。tesseract = Tesseract.js、pp-ocrv6-small = 端末内の PP-OCRv6 small（デスクトップ版） */
 export type OcrEngineName = "tesseract" | "pp-ocrv6-small";
-export type OcrResult = { text: string; confidence: number; engine?: OcrEngineName };
+export type OcrResult = {
+  text: string;
+  confidence: number;
+  engine?: OcrEngineName;
+  /** 検索用の別の読み（macOS の Vision。デスクトップ版のみ）。表示・コピー・書き出しには使わない */
+  altText?: string;
+  altEngine?: string;
+};
 
 /** 既定の認識言語（日本語＋英語）。日本語ノート向け。 */
 export const DEFAULT_OCR_LANG = "jpn+eng";
@@ -169,6 +178,13 @@ const NATIVE_PROGRESS_STATUS = "recognizing text";
 
 type NativeApi = typeof import("./ocr-native");
 
+// 端末内モデルを使うかの読み取り関数。設定の層（features/settings）には依存せず、
+// アプリの起動時に main.tsx が注入する（既定は常にオン）
+let nativeEnabledReader: () => boolean = () => true;
+export function setOcrNativeEnabledReader(reader: () => boolean): void {
+  nativeEnabledReader = reader;
+}
+
 /** 自動取得が失敗してから次に試すまでの待ち（一括 OCR で画像ごとに取得を始めない） */
 export const OCR_DOWNLOAD_RETRY_MS = 10 * 60 * 1000;
 
@@ -215,6 +231,8 @@ async function recognizeNativeOrNull(
   onProgress?: (p: OcrProgress) => void,
 ): Promise<OcrResult | null> {
   if (!isTauri()) return null;
+  // 設定でオフなら、端末内の経路にも自動取得にも触れず Tesseract で読む
+  if (!nativeEnabledReader()) return null;
   let native: NativeApi;
   try {
     native = await import("./ocr-native");
@@ -238,6 +256,7 @@ async function recognizeNativeOrNull(
       text: (r.text ?? "").trim(),
       confidence: Math.round(r.confidence ?? 0),
       engine: "pp-ocrv6-small",
+      ...(sanitizeAltText(r.altText) ? { altText: sanitizeAltText(r.altText), altEngine: r.altEngine ?? "apple-vision" } : {}),
     };
   } catch (e) {
     console.warn("[ocr] 端末内 OCR に失敗。Tesseract で読みます", e);

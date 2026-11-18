@@ -33,5 +33,5 @@ export {
 export { reciprocalRankFusion, type RankedItem, type FusedItem } from "./fuse";
 export { buildSnippet, type Snippet } from "./snippet";
 export { bestHitsBySource, phraseHitsBySource, type BestHit } from "./best-hits";
-export { desiredNoteSources, desiredAssetSources, desiredSharedSources, fnv1a } from "./sources";
+export { desiredNoteSources, desiredAssetSources, desiredSharedSources, fnv1a, ALT_CHUNK_PREFIX, isAltChunk, isAltChunkId } from "./sources";
 export { useLexicalIndexSync, useLexicalStatus, useLexicalGeneration, currentScopeKey, type LexicalSyncParams } from "./use-lexical-sync";

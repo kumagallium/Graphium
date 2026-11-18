@@ -16,6 +16,7 @@
 // メモ（付箋キャプチャ）は 4 本目の軸として searchMemos() で探す。題名を持たず本文だけの
 // 短い文なので、語彙索引は通さず captureIndex の本文をその場で照合する。
 
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { matchesAllTokens, sourceInfoSearchText } from "../asset-browser/source-info-text";
@@ -417,8 +418,11 @@ export function searchMedia(
     }
 
     // 画像の中の文字（部分一致）。ファイル名より弱いが、これが画像検索の主目的
-    const ocrSnippet = entry.type === "image" && entry.ocrText
-      ? buildOcrSnippet(entry.ocrText, parsed.text.trim())
+    // 表示する抜粋は ocrText（PP-OCR の読み）を先に見る。当たらなければ検索用の別の読み
+    // （macOS の Vision）でも探す。見つかった抜粋の出どころは別の読みでも同じ見た目で出す
+    const ocrSnippet = entry.type === "image"
+      ? (entry.ocrText ? buildOcrSnippet(entry.ocrText, parsed.text.trim()) : undefined) ??
+        (sanitizeAltText(entry.ocrAltText) ? buildOcrSnippet(sanitizeAltText(entry.ocrAltText)!, parsed.text.trim()) : undefined)
       : undefined;
     if (ocrSnippet) {
       score += 40;

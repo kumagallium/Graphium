@@ -10,7 +10,14 @@ export type NativeOcrModelStatus = {
   bytes: number;
   expectedBytes: number;
 };
-export type NativeOcrResult = { text: string; confidence: number; engine: string };
+export type NativeOcrResult = {
+  text: string;
+  confidence: number;
+  engine: string;
+  /** 検索用の別の読み（macOS の Vision）。表示には使わない。無ければ付かない */
+  altText?: string;
+  altEngine?: string;
+};
 export type NativeOcrProgressEvent = { name: string; received: number; total: number };
 export type NativeOcrDoneEvent = { name: string };
 export type NativeOcrCancelledEvent = { name: string };

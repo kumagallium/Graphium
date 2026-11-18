@@ -1,6 +1,7 @@
 // .graphium-media-index.json の型定義と Drive 読み書き
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
 import { normalizeNoteContexts } from "../note-context/context-tags";
@@ -309,6 +310,12 @@ export type MediaIndexEntry = {
    */
   ocrText?: string;
   /**
+   * 検索用の「別の読み」（macOS の Vision。ocrText と同じ画像の別エンジンの読み）。
+   * 素材ギャラリー・Cmd+K・全文の索引で探すときだけ使い、表示・AI への本文・書き出しには
+   * 出さない（表示する文字は ocrText だけ）。optional なので既存インデックスはそのまま読める。
+   */
+  ocrAltText?: string;
+  /**
    * メモピーク用の本文（type === "memo" のとき）。
    * buildMemoPeekEntry が組む transient エントリ専用で、media-index には保存されない。
    */
@@ -487,13 +494,16 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       表が読むのは写しなので、source.fileId だけでは元の素材が未使用扱いになり、削除前の
  *       参照チェックをすり抜けて来歴（と条件つきの開き直し）が切れる。bump により既存ノートの
  *       参照を一度の再構築で回収する
+ *  - 12: 検索用の別の読み（macOS の Vision。`ocrAltText`）を素材側にも集約する。
+ *       ノートの `page.mediaOcr[*].altText` を再構築で素材へ写す。bump により
+ *       フィールド追加の慣例どおり既存索引を一度の再構築で揃える
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 11 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 12 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -792,6 +802,9 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
+ * altText: 検索用の別の読み（ocrAltText）。undefined なら触らない（PowerPoint のスライド文字など
+ * 別の読みを持たない書き込み）。OCR の結果を書くときは、無ければ "" を渡して古い別の読みを消す。
+ *
  * 呼び出し元は 3 つ:
  *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
  *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
@@ -802,22 +815,26 @@ export async function persistUrlMetaPatch(
 export async function persistOcrTextPatch(
   fileId: string,
   ocrText: string,
+  altText?: string,
 ): Promise<void> {
   const index = await readMediaIndex();
   if (!index) return;
   const text = ocrText.trim();
+  const alt = altText === undefined ? undefined : (sanitizeAltText(altText) ?? "");
   let changed = false;
   const nextMedia = index.media.map((m) => {
     if (m.fileId !== fileId) return m;
     // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
-    if ((m.ocrText ?? "") === text) return m;
+    const sameAlt = alt === undefined || (m.ocrAltText ?? "") === alt;
+    if ((m.ocrText ?? "") === text && sameAlt) return m;
     changed = true;
     // 空文字は「読んだが文字が無かった」なのでキー自体を落とす
-    if (!text) {
-      const { ocrText: _omit, ...rest } = m;
-      return rest;
-    }
-    return { ...m, ocrText: text };
+    const { ocrText: _omit, ocrAltText: _omitAlt, ...rest } = m;
+    const next: MediaIndexEntry = { ...rest };
+    if (text) next.ocrText = text;
+    const nextAlt = alt === undefined ? m.ocrAltText : alt;
+    if (nextAlt) next.ocrAltText = nextAlt;
+    return next;
   });
   if (!changed) return;
   const next: MediaIndex = {
@@ -1402,7 +1419,7 @@ type IndexableDoc = {
   /** mediaOcr は画像ブロックの OCR 結果（blockId → 抽出テキスト）。素材側の ocrText 集約に使う */
   pages: {
     blocks: any[];
-    mediaOcr?: Record<string, { text?: string }> | undefined;
+    mediaOcr?: Record<string, { text?: string; altText?: string }> | undefined;
     /** 取り込みで作られたテーブルの出所（元ファイルの fileId を持つ） */
     tableMeta?: Record<string, { source?: { fileId?: string } }> | undefined;
   }[];
@@ -1516,6 +1533,8 @@ export async function ensureMediaIndex(
   // 走査で集めるのはこの 2 つだけ
   const usageByFileId = new Map<string, MediaUsage[]>();
   const ocrByFileId = new Map<string, string>();
+  // 検索用の別の読み（macOS の Vision）。ocrText と同じ扱いで素材側へ写す
+  const ocrAltByFileId = new Map<string, string>();
 
   // 走査対象: 通常ノート + Wiki ノート。
   // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つので、
@@ -1578,6 +1597,10 @@ export async function ensureMediaIndex(
           if (noteOcr && !ocrByFileId.has(fileId)) {
             ocrByFileId.set(fileId, noteOcr);
           }
+          const noteAlt = sanitizeAltText(page.mediaOcr?.[blockId]?.altText);
+          if (noteAlt && !ocrAltByFileId.has(fileId)) {
+            ocrAltByFileId.set(fileId, noteAlt);
+          }
         }
       }
     }
@@ -1610,6 +1633,8 @@ export async function ensureMediaIndex(
     const noteOcr = ocrByFileId.get(entry.fileId);
     const next: MediaIndexEntry = { ...entry, usedIn: usageByFileId.get(entry.fileId) ?? [] };
     if (noteOcr && !next.ocrText) next.ocrText = noteOcr;
+    const noteAlt = ocrAltByFileId.get(entry.fileId);
+    if (noteAlt && !next.ocrAltText) next.ocrAltText = noteAlt;
     return next;
   };
 

@@ -17,8 +17,10 @@ import { persistOcrTextPatch } from "../asset-browser/media-index";
  *
  * @param imageUrl 画像ブロックの props.url（プロバイダ内部スキームのままで可）
  * @param text 抽出テキスト。空文字なら素材側のキーを落とす（読んだが文字が無かった）
+ * @param altText 検索用の別の読み（macOS の Vision）。素材側の ocrAltText に写す（探す用だけ）。
+ *   OCR 結果を写すときは無ければ ""（古い別の読みを消す）。undefined なら触らない
  */
-export function mirrorOcrToMediaIndex(imageUrl: string, text: string): void {
+export function mirrorOcrToMediaIndex(imageUrl: string, text: string, altText?: string): void {
   if (!imageUrl) return;
   let fileId: string | null = null;
   try {
@@ -29,7 +31,7 @@ export function mirrorOcrToMediaIndex(imageUrl: string, text: string): void {
   }
   // 外部 URL の画像など、素材として登録されていないものは写す先が無い
   if (!fileId) return;
-  void persistOcrTextPatch(fileId, text.trim()).catch((err) => {
+  void persistOcrTextPatch(fileId, text.trim(), altText).catch((err) => {
     console.warn("OCR テキストの素材への写しに失敗:", err);
   });
 }
