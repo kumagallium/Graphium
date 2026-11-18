@@ -52,7 +52,7 @@ describe("recognizeImage", () => {
 
     const a = await recognizeImage("blob:a");
     const b = await recognizeImage("blob:b");
-    expect(a).toEqual({ text: "hello", confidence: 89 });
+    expect(a).toEqual({ text: "hello", confidence: 89, engine: "tesseract" });
     expect(b.text).toBe("hello");
     expect(h.createWorker).toHaveBeenCalledTimes(1);
     expect(recognize).toHaveBeenCalledTimes(2);

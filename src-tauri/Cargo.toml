@@ -48,6 +48,11 @@ rubato = "5.0.1"
 # 5.13.0（ort rc.11 = ONNX Runtime 1.23.2）は同じ負荷が 6.5 秒・ピーク 1.4 GB で完走する。
 # 上げるときは Crucible experiments/2026-11-05-embedding-memory-regression/ の手順で同じ計測をしてから
 fastembed = { version = "=5.13.0", default-features = false, features = ["ort-download-binaries-rustls-tls"] }
+# 画像 OCR（ocr_engine.rs / ocr_models.rs）。fastembed と同じ ort（版・feature とも揃える。Cargo.lock の
+# ort / ort-sys が増えないこと）。ndarray も fastembed の経由と同じ 0.17 に解決される
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["ndarray", "std", "download-binaries", "tls-rustls"] }
+ndarray = { version = "0.17", default-features = false }
+anyhow = "1"
 
 # ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
 # モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。

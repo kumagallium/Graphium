@@ -702,9 +702,15 @@ Beyond labelled blocks, images can have their text **read on-device**, with
 no label required. Newly pasted images are read automatically (progress is
 shown in a corner toast; images that were already in the note when it was
 opened are left alone), and the user can also trigger a read from the image
-block's drag-handle menu ("Read text from image"). Tesseract.js runs
-entirely in the browser — the wasm core and language data are bundled with
-the app, and the image itself never leaves the device. For a just-pasted
+block's drag-handle menu ("Read text from image"). Reading happens
+entirely on the device; the image itself never leaves it. The desktop app
+reads with PP-OCRv6 small (detection + recognition on ONNX Runtime, in Rust;
+see the on-device OCR row of the dependency table in §7). The model is
+fetched in the background the first time a read is needed; until it is on
+disk, when it fails, for an image format the Rust decoder does not support,
+and in the browser build, the read falls back to Tesseract.js (wasm core and
+language data bundled with the app, run in the WebView). Each entry records
+which engine read it (`MediaOcrEntry.engine`). For a just-pasted
 image the original `File` is handed straight to the recognizer instead of
 being read back from the storage provider, and recognition jobs wait for
 any in-progress drag gesture to finish before starting (on desktop, a large
@@ -3890,11 +3896,28 @@ The same `src/` tree is built four different ways.
   (`app.security.csp` in `tauri.conf.json`): `script-src 'self'` so
   injected scripts from note content / imported URLs / AI output cannot
   execute. `script-src` also carries `'wasm-unsafe-eval'`, which permits
-  compiling WebAssembly (the bundled Tesseract OCR core) but not `eval` of
-  JavaScript; without it the OCR worker aborts and image OCR never
-  finishes. `img-src`/`connect-src` allow `https:` for arbitrary
+  compiling WebAssembly (the bundled Tesseract OCR core, the fallback reader)
+  but not `eval` of JavaScript; without it the OCR worker aborts and the
+  fallback never finishes. `img-src`/`connect-src` allow `https:` for arbitrary
   bookmark images and user-pasted URL previews. `devCsp` additionally
   allows the Vite dev server (`localhost:5174` + its HMR websocket).
+- On-device OCR models come only from fixed, commit-pinned Hugging Face URLs
+  (`PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx`) and are rejected unless
+  their SHA-256 matches; the character dictionary is embedded in the binary.
+  `ocr_recognize` receives the image's raw bytes over IPC, never a file path,
+  so it cannot be pointed at other files; decoding is bounded in dimensions
+  and memory. Images are processed on the device only.
+- `ocr_recognize` assumes the image is attacker-chosen (web clips, shared
+  notes) and that scripts in the webview can call it directly and in
+  parallel. The body is capped at 64 MB (`OCR_INPUT_TOO_LARGE`); jobs run one
+  at a time in Rust from decode to inference, with at most 32 waiting
+  (`OCR_BUSY`); each job has a 90-second deadline checked after detection and
+  before every recognition batch (`OCR_TIMEOUT`), shorter than the 120-second
+  job timeout in `ocr.ts`, so a timed-out job never overlaps the next one.
+  The detection input is bounded whatever the image shape (long side ≤ 3200
+  and ≤ 1600 × 1600 pixels after rounding to a multiple of 32; images with a
+  side under 8 px are skipped), and a poisoned lock after a panic is recovered
+  rather than disabling OCR until restart.
 - Two Tauri commands that touch the host are deliberately narrowed:
   `kill_pid` refuses any PID that is not Graphium's own sidecar
   (`node .../sidecar/server.mjs`), and file export goes through
@@ -5418,6 +5441,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
+| On-device OCR (desktop) | PP-OCRv6 small (Apache-2.0; text detection + recognition) run on ONNX Runtime from Rust through `ort` (pinned to `=2.0.0-rc.11`, the same ONNX Runtime 1.23.2 as `fastembed`), with `ndarray` for tensors and `anyhow` for errors; no new binary. `src-tauri/src/ocr_engine.rs` does the pre / post-processing and `src-tauri/src/ocr_models.rs` manages the models: one detector + recogniser pair is loaded lazily and unloaded after the same idle time as the embedding models. Images are shrunk to a long side of 1600 px before detection, and decoding has dimension and memory limits. The models are not shipped: `det.onnx` and `rec.onnx` (about 31 MB in total) are downloaded in the background at the first OCR from Hugging Face at commit-pinned URLs, verified with SHA-256 and stored in `appdata/models/ocr/pp-ocrv6-small/` through the same `.part` downloader as the other models (`src-tauri/src/model_download.rs`); the character dictionary is embedded in the binary. Tauri commands: `ocr_model_status` / `ocr_model_download` / `ocr_model_cancel` / `ocr_model_delete` / `ocr_recognize` (raw image bytes in). Until the models are present, on failure, for unsupported image formats and in the browser build, `src/lib/ocr.ts` reads with the bundled Tesseract.js instead |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. Formulas are written as Word equations (OMML): KaTeX, the renderer the editor already uses, parses the LaTeX and emits MathML, and `features/docx-export/mathml-to-omml.ts` maps that to OMML with our own code (the ready-made `mathml2omml` is LGPL-3.0, so it is not used). The decision is per formula and all-or-nothing: if any element has no mapping (matrices, aligned lines, equation numbers, boxes) or KaTeX cannot parse the source, the whole formula falls back to its LaTeX text, so a file never carries a half-converted equation. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |

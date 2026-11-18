@@ -1810,6 +1810,7 @@ dependencies = [
 name = "graphium"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64 0.22.1",
  "cpal",
  "dirs 6.0.0",
@@ -1819,8 +1820,10 @@ dependencies = [
  "humantime",
  "image",
  "libc",
+ "ndarray",
  "objc2",
  "objc2-foundation",
+ "ort",
  "pinray",
  "reqwest",
  "rubato",

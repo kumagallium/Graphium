@@ -72,3 +72,22 @@ Data:     Based on https://caniuse.com/ data by Alexis Deveria
 CC-BY-4.0 requires attribution. This notice serves as attribution.
 
 Full license text: https://creativecommons.org/licenses/by/4.0/
+
+
+================================================================================
+PP-OCRv6 (PaddleOCR) small detection / recognition models
+================================================================================
+
+License: Apache-2.0
+Source:   https://github.com/PaddlePaddle/PaddleOCR
+          https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx
+          https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx
+Copyright: PaddlePaddle Authors
+Usage:    The desktop app's on-device image OCR. The ONNX model files are NOT
+          bundled: the app downloads them from Hugging Face on first use
+          (pinned to a commit and verified by SHA-256) and stores them in the
+          app data directory. The character dictionary used with the
+          recognition model (src-tauri/src/ocr_rec_dict.txt) is bundled in
+          the app, unmodified.
+
+Full license text: https://www.apache.org/licenses/LICENSE-2.0
