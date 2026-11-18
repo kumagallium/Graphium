@@ -2731,6 +2731,7 @@ type SourceCheckEntry = {
   passageNotFound?: string; // new-format pages only: the passage the AI copied for this sentence (marked `|?|` in topicMarkdown) that was not found in the source. Shown to the reader; never affects the verdict
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  sourceTextHash?: string;          // "sha256:<hex>" of the exact source text read for the check; set only when the source text could be read (never on "source-missing"). Recorded only
   statement?: string;               // the sentence checked (topics only; a claim's whole body is
                                      // the statement, so claims never set this)
   statementBlockId?: string;        // the topic block statement came from, when statement is set
@@ -2794,6 +2795,12 @@ type SourceCheckProfile = {
   `memo`, `claim`, `chat`, `unknown`) never sets it. When the same quoted
   text appears more than once at different positions, no location is
   recorded rather than guessed.
+- **`sourceTextHash`** is the SHA-256 (`"sha256:<hex>"`, the same blob-hash
+  utility) of the exact source text read for the check — the very string the
+  judgment used, with no normalization. It is set only when the source text
+  could be read, so `source-missing` entries never carry it. It is never used
+  for the judgment. **It is recorded only: the app does not currently read or
+  display this value.**
 - **`claimHash`** is a hash of the checked document's `title` + body at the
   moment of checking (`computeClaimHash`, the same SHA-256 blob-hash
   utility team-shared-storage uses) — for a topic this is the whole topic

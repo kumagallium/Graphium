@@ -820,6 +820,12 @@ export type SourceCheckEntry = {
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
   /**
+   * 照合で読んだ出典の原文（判定に使った `text` そのまま）の指紋。"sha256:<hex>"。
+   * 原文を読めたときだけ付く（source-missing には付かない）。あとで出典が変わったかを
+   * 確かめる材料で、判定には使わない
+   */
+  sourceTextHash?: string;
+  /**
    * 照合した文（v1.1, トピックのみ）。知見は知見全体が照合対象のため付けない。
    * トピック本文中の該当ブロックのプレーンテキスト（引用の "@タイトル" 部分は除く）。
    */
