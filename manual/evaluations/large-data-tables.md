@@ -110,3 +110,18 @@ After the measurements above, the same synthetic data (233,000 rows × 16 column
 - The memory of the process that draws the window peaked at 3.2 GB during the import and was 2.1 GB after reopening.
 - Confirming and reopening are slower than in the web version because saving and reading back an asset passes the whole file as a base64 string. For the 188 MB asset, reading back took 0.5 seconds to receive, 0.4 seconds to decode and 0.2 seconds to copy into bytes; saving took 0.6 seconds to encode and 0.9 seconds to send. The screen stalls during the decoding, copying and encoding.
 - In an unoptimised development build, confirming until the table appears took 9.3 seconds and reloading 15.3 seconds. Numbers from a development build do not indicate what a release does.
+
+## Measured when bringing in only part of a file
+
+Afterwards the import screen gained a **Filter** section ([Bringing in only part of a file](../notes-and-editor#bringing-in-part-of-a-file)). With the same synthetic data (233,000 rows × 16 columns, 188 MB), I measured from opening the section to the import. Web version, development server, headless Chromium, two runs.
+
+| Step | Time taken | Longest single stall |
+|---|---|---|
+| Opening the section until every row and column has been read | 3.0–3.6 s | 0.07–0.09 s |
+| Entering one condition until the remaining row count appears | 0.13–0.20 s | 0.18 s (recorded in the second run only) |
+| Confirming until the filtered data table (466 rows) appears | 0.8 s (recorded in the second run only) | 0.05 s |
+| Then typing 30 characters in the body | — | 0.03 s |
+
+- The whole file is not read until the section is opened. If it stays closed, the import screen is as fast as before.
+- Empty cells, date comparison, a column that has gone from the source file and stopping a read were checked by unit tests only.
+- The desktop app was not exercised.

@@ -27,7 +27,8 @@ function nodeColor(node: LineageNode): string {
 function NodeIcon({ node }: { node: LineageNode }) {
   if (node.kind === "wiki") return <Diamond size={14} />;
   if (node.kind === "pdf") return <FileType size={14} />;
-  if (node.kind === "document") return <File size={14} />;
+  // conversation の見た目は取り込みの画面を作るときに決める。それまでは document と同じ。
+  if (node.kind === "document" || node.kind === "conversation") return <File size={14} />;
   if (node.kind === "url") return <Link2 size={14} />;
   if (node.kind === "chat") return <MessageSquare size={14} />;
   if (node.kind === "memo") return <StickyNote size={14} />;
@@ -50,7 +51,7 @@ function NodeRow({
 }) {
   // pdf / document はストレージ上の素材として開ける（onOpenMedia 経由でアセットモーダル）。
   const openableAsset =
-    (node.kind === "pdf" || node.kind === "document") && !!onOpenMedia;
+    (node.kind === "pdf" || node.kind === "document" || node.kind === "conversation") && !!onOpenMedia;
   // memo はアプリ内に実体があるので、メモギャラリーの該当詳細を開ける。
   const openableMemo = node.kind === "memo" && !!onOpenMemo;
   const handleClick = () => {

@@ -2,6 +2,7 @@
 // インデックスファイルから取得する IndexFileNoteListSource を使用
 
 import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./index-file";
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import { buildLinkCounts, linkCountsOf } from "./link-counts";
 
 export type NoteListEntry = {
@@ -24,6 +25,8 @@ export type NoteListEntry = {
   primaryKnowledgeWikiId?: string;
   /** OCR 画像ブロックから抽出したテキスト（一覧のテキスト検索対象） */
   ocrText?: string;
+  /** 検索用の別の読み（macOS の Vision）。一覧の検索にだけ使い、表示しない */
+  ocrAltText?: string;
 };
 
 export interface NoteListSource {
@@ -71,6 +74,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         knowledgeCount: wikiEntries.length,
         primaryKnowledgeWikiId: wikiEntries[0]?.noteId,
         ocrText: n.ocrText,
+        ocrAltText: sanitizeAltText(n.ocrAltText),
       };
     });
   }
@@ -91,7 +95,9 @@ export class IndexFileNoteListSource implements NoteListSource {
         [...n.headings, ...(n.steps ?? [])].some((h) =>
           h.text.toLowerCase().includes(q),
         ) ||
-        (n.ocrText?.toLowerCase().includes(q) ?? false)
+        (n.ocrText?.toLowerCase().includes(q) ?? false) ||
+        // 別の読み（検索用だけ。表示はしない）
+        (sanitizeAltText(n.ocrAltText)?.toLowerCase().includes(q) ?? false)
     );
   }
 }

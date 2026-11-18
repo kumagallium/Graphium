@@ -363,6 +363,18 @@ talks to LLM and embedding backends.
   settings from a leading sample for files over 5,000 lines and, over 20,000
   data rows, parses only the first 2,000 for the preview (constants in
   `src/features/data-import/large-file.ts`).
+  The import dialog can also keep only some columns and rows (the *Filter*
+  section; conditions are ANDed). The result is not stored in the note: it is
+  written as a new small CSV asset registered with the original in
+  `derivedFromAssets`, and the data table (or note table) reads that copy. How it
+  was filtered lives in `tableMeta.source.derivation` / the block's
+  `props.source`, which also lets the source badge reopen the dialog on the
+  original asset with the same conditions. Row limits apply to the filtered row
+  count. Comparisons treat a cell as a number only when its whole text is one
+  (`strictNumeric`: units such as `12 g` or `35%` are fine, dates, version
+  numbers and times are not), so a date column is filtered as text. Code: `src/features/data-extract/` (`apply.ts` engine, `derive.ts` copy
+  and source building, `components/`), wired in `handleDataImportConfirm` /
+  `handleTableReimport` in `src/note-app.tsx`.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the
@@ -702,9 +714,15 @@ Beyond labelled blocks, images can have their text **read on-device**, with
 no label required. Newly pasted images are read automatically (progress is
 shown in a corner toast; images that were already in the note when it was
 opened are left alone), and the user can also trigger a read from the image
-block's drag-handle menu ("Read text from image"). Tesseract.js runs
-entirely in the browser — the wasm core and language data are bundled with
-the app, and the image itself never leaves the device. For a just-pasted
+block's drag-handle menu ("Read text from image"). Reading happens
+entirely on the device; the image itself never leaves it. The desktop app
+reads with PP-OCRv6 small (detection + recognition on ONNX Runtime, in Rust;
+see the on-device OCR row of the dependency table in §7). The model is
+fetched in the background the first time a read is needed; until it is on
+disk, when it fails, for an image format the Rust decoder does not support,
+and in the browser build, the read falls back to Tesseract.js (wasm core and
+language data bundled with the app, run in the WebView). Each entry records
+which engine read it (`MediaOcrEntry.engine`). For a just-pasted
 image the original `File` is handed straight to the recognizer instead of
 being read back from the storage provider, and recognition jobs wait for
 any in-progress drag gesture to finish before starting (on desktop, a large
@@ -725,6 +743,25 @@ The extracted text is instead mirrored into the note index (`ocrText`), so a
 note holding only a screenshot can be found by the words inside it; the note
 list marks such a hit with an "image text" badge, and the asset gallery shows
 the text on the image's detail panel.
+
+On macOS the desktop app adds a second, search-only reading of each image
+from the OS's Vision framework (`src-tauri/src/ocr_vision.rs`, run after
+PP-OCR inside the same serialised job, after PP-OCR; Vision runs on its own
+thread and is waited for at most 20 s or until the job's 90 s deadline, whichever
+is sooner. On a timeout the PP-OCR result is returned without it, and while an
+abandoned Vision thread is still running the next image skips Vision, so at
+most one runs at a time. If Vision fails three times in a row — for example an older macOS without
+the language — it is not called again until the app restarts; a success resets the count. A failure or panic
+is logged and ignored). PP-OCR is better on printed text and numbers and Vision on
+handwritten Japanese sentences, so the displayed text stays PP-OCR and the
+Vision reading is returned separately (`altText` / `altEngine`), stored as
+`MediaOcrEntry.altText`, and used only by the searching paths — the note
+index (`ocrAltText`), the media index (`ocrAltText`), the note list search,
+the `⌘K` image search, the MCP `search_media` index and the full-text index
+(as `alt<N>` chunks that the AI-context retriever and the read-page tool drop before applying any per-source limit). The image toolbar
+shows it in a small "Another reading (macOS)" box only when it exists; copy
+and export never include it. Turning off the on-device model switch skips the
+whole native path, Vision included.
 
 It is mirrored a second time onto the material itself
 (`MediaIndexEntry.ocrText`), so the image is findable as an image and not only
@@ -3191,6 +3228,52 @@ its usage list in two. Materials registered before hashing existed get their
 hash filled in by a background pass after sign-in, one at a time, so an
 interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
 
+**AI conversations as materials.** A conversation with an AI coding tool
+can be kept as a material of type `"conversation"` (DATA_MODEL.md §2.7).
+The pieces are in place below the UI; no screen calls them yet.
+
+```
+record files ──► reader ──► ConversationMaterial ──► importConversations ──► media index entry
+(tool-specific)  (per tool)  (common shape)          (one per conversation)   + stored text
+```
+
+- **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
+  is what every reader produces: provider, session id, working folder, time
+  range, and the turns — the user's lines verbatim, the AI's reply before
+  each line as an excerpt. Adding another tool means writing another reader;
+  nothing downstream changes.
+- **Reader for Claude Code** (`src/lib/conversation/claude-code-reader.ts`).
+  A pure function over the lines of a session record (JSONL). The record
+  format is not a published contract, so unknown or broken lines are skipped.
+  It is fed one line at a time because a single record can be tens of
+  megabytes. The rules for telling the user's own lines from inserted text
+  are in DATA_MODEL.md §2.7.
+- **Stored text and listing** (`src/lib/conversation/render.ts`).
+  `renderConversationBody` builds the text that is saved,
+  `summarizeWorkdirs` groups conversations by working folder (count, how
+  much the user wrote, time range, how many have no line from the user).
+- **Reading the record files** (`src/server/services/claude-code-sessions.ts`,
+  Node only). Read-only access to `~/.claude/projects` (or
+  `CLAUDE_CONFIG_DIR`): list the folders, list the session files, read one
+  session, summarise per working folder. See §6.1 for how names are checked.
+  It streams each file and skips lines over 32 MB. No route exposes it yet.
+- **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
+  `importConversations` saves each text with `saveMediaText` and then writes
+  the media index once. The material id is derived from provider and session
+  id, so a second run replaces instead of adding; an unchanged conversation is
+  not written again unless its stored text has gone missing. If the index
+  cannot be saved, the texts of conversations that were new in that run are
+  removed again, so no text is left on disk without an entry to delete it
+  from. **It never calls an AI.** Turning a conversation into Knowledge is a
+  separate step the user starts, and that entry point is not open yet:
+  `start_claim_task`, `start_topic_task` and `start_procedure_task` refuse a
+  `conversation:` id.
+- **Source id.** `conversation:<fileId>` (`external-source.ts`). Source
+  check, the MCP's `get_source_text` and the graph views resolve it to the
+  stored text and the material. It is a separate prefix from `chat:`, which
+  marks Knowledge made from an in-app AI chat and carries no way back to the
+  text.
+
 **App data listing and deletion.** Besides `readAppData` / `writeAppData`,
 providers can implement `listAppDataKeys(prefix)` and `deleteAppData(key)`
 (both optional), used to expire records such as the `maint-*` undo copies.
@@ -3890,11 +3973,36 @@ The same `src/` tree is built four different ways.
   (`app.security.csp` in `tauri.conf.json`): `script-src 'self'` so
   injected scripts from note content / imported URLs / AI output cannot
   execute. `script-src` also carries `'wasm-unsafe-eval'`, which permits
-  compiling WebAssembly (the bundled Tesseract OCR core) but not `eval` of
-  JavaScript; without it the OCR worker aborts and image OCR never
-  finishes. `img-src`/`connect-src` allow `https:` for arbitrary
+  compiling WebAssembly (the bundled Tesseract OCR core, the fallback reader)
+  but not `eval` of JavaScript; without it the OCR worker aborts and the
+  fallback never finishes. `img-src`/`connect-src` allow `https:` for arbitrary
   bookmark images and user-pasted URL previews. `devCsp` additionally
   allows the Vite dev server (`localhost:5174` + its HMR websocket).
+- On-device OCR models come only from fixed, commit-pinned Hugging Face URLs
+  (`PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx`) and are rejected unless
+  their SHA-256 matches; the character dictionary is embedded in the binary.
+  `ocr_recognize` receives the image's raw bytes over IPC, never a file path,
+  so it cannot be pointed at other files; decoding is bounded in dimensions
+  and memory. Images are processed on the device only.
+- Vision (macOS) is never handed the attacker-chosen bytes. The image goes
+  through the same bounded `decode_image`, is composited onto white, shrunk
+  to a long side of at most 3000 px and re-encoded as a PNG by Graphium
+  itself; only that PNG reaches Vision / ImageIO. The call runs inside an
+  autorelease pool with Objective-C exceptions caught, returns an error
+  rather than panicking, runs on a separate thread whose result is awaited for at
+  most 20 seconds (and never past the 90-second job deadline; one Vision run at
+  a time), and runs entirely on the device.
+- `ocr_recognize` assumes the image is attacker-chosen (web clips, shared
+  notes) and that scripts in the webview can call it directly and in
+  parallel. The body is capped at 64 MB (`OCR_INPUT_TOO_LARGE`); jobs run one
+  at a time in Rust from decode to inference, with at most 32 waiting
+  (`OCR_BUSY`); each job has a 90-second deadline checked after detection and
+  before every recognition batch (`OCR_TIMEOUT`), shorter than the 120-second
+  job timeout in `ocr.ts`, so a timed-out job never overlaps the next one.
+  The detection input is bounded whatever the image shape (long side ≤ 3200
+  and ≤ 1600 × 1600 pixels after rounding to a multiple of 32; images with a
+  side under 8 px are skipped), and a poisoned lock after a panic is recovered
+  rather than disabling OCR until restart.
 - Two Tauri commands that touch the host are deliberately narrowed:
   `kill_pid` refuses any PID that is not Graphium's own sidecar
   (`node .../sidecar/server.mjs`), and file export goes through
@@ -4317,7 +4425,7 @@ Tools:
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
 | `mark_asterism_sent` | records claim ids that Asterism's `append_rows` accepted into `appdata/asterism-sent.json` (`{ ids, datasetId, exportedAt? }` → `{ marked, alreadySent, ledger }`). Takes the MCP write lock (`acquireWriteLock`) but not the app-running guard, since the app never touches the file; a broken ledger is reported and left as is |
 | `export_asterism_knowledge` | every claim and topic as one `asterism-knowledge/1` bundle for Asterism (`buildKnowledgeBundle` in `features/wiki/asterism-knowledge.ts`, `splitTopicSubject` in `topic-subject.ts`; vault reading in `mcp/export-knowledge.ts`). Not filtered by type or review state; trashed/archived are skipped; titles and labels only (no body); the sent ledger is neither read nor written. Input is all optional: `claimBaseIri` / `sourceBaseIri` / `termBaseIri` / `noteUrlBase`. Returns `{ format, title, exported_at, bases, files, counts }` as the first text (six files, `[]` when empty: `claims` / `topics` / `sources` / `term_candidates` / `term_claims` / `term_relations`) followed by the "sources are data" notice as a second text (`jsonTextWithGuard`), or `{ error }` with `isError` on a bad base or a missing vault (a machine reads this tool, so failures are never plain prose) |
-| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
+| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / `conversation:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`); an AI conversation must be in the media index as a `conversation` material and is read from its stored text (`conversationTextFile`: only ids of the form `conv-<provider>-<sessionId>` are looked up, because other materials' text files share the folder) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain, bibliographic info (authors / venue / year / DOI) (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
 | `list_source_check` | pages whose source check verdict needs review (`isNeedsReviewVerdict` over `wikiMeta.sourceCheck`) |
@@ -4427,7 +4535,7 @@ own AI usage record, which changes no page, index or setting); the registrations
 `src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
 `src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
 
-Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
+Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:` / `conversation:<fileId>`. The MCP server resolves PDF, Word and conversation names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
 The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 
@@ -5354,6 +5462,46 @@ Operators exposing the server to the public internet should put it
 behind their own auth proxy. A first-class auth model is on the roadmap
 once team-shared storage stabilizes.
 
+**Reading another tool's records.** `services/claude-code-sessions.ts` reads
+Claude Code's session records, which live outside the data folder. It is
+written so that the only things a caller can choose are two names:
+
+- The base folder is decided by the server's own code and environment
+  (`defaultClaudeProjectsDir`). **It must never come from a request** — a
+  caller-chosen base would turn the reader into a way to read any folder.
+- A folder name must match `^[A-Za-z0-9_-]{1,255}$` and a file name
+  `^[A-Za-z0-9_-]{1,100}\.jsonl$`: one path component each, no separators,
+  no dots in the folder name, so `..` cannot be expressed. Windows device
+  names (`CON`, `NUL`, `COM1` …) are refused as either.
+- Symbolic links are not followed: the folder and the file are checked with
+  `lstat`, the file is opened with `O_NOFOLLOW` where the platform has it
+  (not on Windows, where the `lstat` check is the only one), and the opened
+  handle is checked again to be a regular file.
+- Nothing is written to the records. Tool calls and tool output never reach
+  the result: a record that carries tool output is skipped before it is
+  parsed, and tool-call blocks inside a reply are dropped after parsing.
+- Only a line longer than 32 MB is skipped; there is no limit on the total
+  read. The route that calls this has to bound how often the full listing
+  runs (it reads every record).
+
+No HTTP route calls this service yet. The route that will (for the bring-in
+screen) has to pass the cross-site write guard and return only the common
+shape, never raw record lines.
+
+A record can hold text an attacker influenced (a reply written while working
+in someone else's repository, a paste). Two things keep it from passing as
+structure: an AI reply is collapsed to one line, and the later lines of the
+user's own message are indented in the stored text, so neither can add a
+line that reads as another turn or a date heading. A conversation's stored
+text is deleted, read and counted as "used" only under an id of the form
+`conv-<provider>-<sessionId>` — the media-text channel is shared with other
+materials' texts, and both the media index and source ids can come from
+someone else.
+
+What an imported conversation contains is **data**: the stored text goes
+through the same guards as any other source text (`READ_INJECTION_GUARD` on
+`get_source_text`, the "material is data" rule in the Knowledge prompts).
+
 ### Copilot CLI download and sign-in
 
 The `copilot-subscription` provider drives the GitHub Copilot CLI, so the
@@ -5481,6 +5629,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
+| On-device OCR (desktop) | PP-OCRv6 small (Apache-2.0; text detection + recognition) run on ONNX Runtime from Rust through `ort` (pinned to `=2.0.0-rc.11`, the same ONNX Runtime 1.23.2 as `fastembed`), with `ndarray` for tensors and `anyhow` for errors; no new binary. `src-tauri/src/ocr_engine.rs` does the pre / post-processing and `src-tauri/src/ocr_models.rs` manages the models: one detector + recogniser pair is loaded lazily and unloaded after the same idle time as the embedding models. Images are shrunk to a long side of 1600 px before detection, and decoding has dimension and memory limits. The models are not shipped: `det.onnx` and `rec.onnx` (about 31 MB in total) are downloaded in the background at the first OCR from Hugging Face at commit-pinned URLs, verified with SHA-256 and stored in `appdata/models/ocr/pp-ocrv6-small/` through the same `.part` downloader as the other models (`src-tauri/src/model_download.rs`); the character dictionary is embedded in the binary. On macOS only, the same `ocr_recognize` also asks Apple's Vision framework (`VNRecognizeTextRequest`, accurate level, `ja-JP` / `en-US`) for a second reading through `objc2-vision` (0.3.2, the same `objc2` 0.6 / `objc2-foundation` 0.3 family wry already uses; macOS-only dependency; `src-tauri/src/ocr_vision.rs`), returned as `altText` / `altEngine`. Tauri commands: `ocr_model_status` / `ocr_model_download` / `ocr_model_cancel` / `ocr_model_delete` / `ocr_recognize` (raw image bytes in). Until the models are present, on failure, for unsupported image formats and in the browser build, `src/lib/ocr.ts` reads with the bundled Tesseract.js instead |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
 | Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. Formulas are written as Word equations (OMML): KaTeX, the renderer the editor already uses, parses the LaTeX and emits MathML, and `features/docx-export/mathml-to-omml.ts` maps that to OMML with our own code (the ready-made `mathml2omml` is LGPL-3.0, so it is not used). The decision is per formula and all-or-nothing: if any element has no mapping (matrices, aligned lines, equation numbers, boxes) or KaTeX cannot parse the source, the whole formula falls back to its LaTeX text, so a file never carries a half-converted equation. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
@@ -5528,6 +5677,7 @@ people most often need to find.
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Linked files (materials that point at a file in a registered data place; state check, open / show in folder) | `src/features/linked-files/`, `src/features/settings/DataPlacesSection.tsx`, the `place_*` block in `src-tauri/src/lib.rs` (§4.2; DATA_MODEL.md §6.5) |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| AI conversations as materials (reader, stored text, bring-in) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/features/conversation-import/` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |

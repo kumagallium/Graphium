@@ -48,6 +48,9 @@ export type RecordCopy = {
   calMore: string;
   showingFrom: (date: string) => string;
   backToLatest: string;
+  folder: string;
+  allFolders: string;
+  noFolder: string;
 };
 
 export function buildRecordCopy(t: Translate): RecordCopy {
@@ -128,6 +131,9 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     calMore: t("records.calMore"),
     showingFrom: (date) => t("records.showingFrom", { date }),
     backToLatest: t("records.backToLatest"),
+    folder: t("records.folder"),
+    allFolders: t("records.allFolders"),
+    noFolder: t("records.noFolder"),
   };
 }
 

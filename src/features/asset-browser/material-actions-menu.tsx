@@ -28,7 +28,7 @@ import { isPlaceUrl } from "../linked-files/link-url";
 import { displayTypeOf } from "../linked-files/display-type";
 import { notifySharedLibraryChanged, needsSharedFolderChoice, resolveShareTarget, shareMedia, shareReference, ShareToFolderDialog } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
-import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
+import { canExpandOffice, hasExpandedOffice, isFilelessMediaEntry, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
 import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
 import { readEntryBytes } from "./read-entry-bytes";
@@ -273,7 +273,8 @@ export function MaterialActionsMenu({
   const expandLabelKey = isPptxEntry(entry) ? "asset.expandPptx" : "asset.expandXlsx";
   const canTitleRename = !!onRequestRename && canExtractTitle(entry);
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
-  const canDownload = entry.type !== "url";
+  // 実体のファイルを持たない素材（URL ブックマーク・AI との会話）はダウンロードできない
+  const canDownload = !isFilelessMediaEntry(entry);
   // AI 系アクション（Knowledge 化 / PROV ノート化 / 翻訳）が 1 つでも出ているか。
   // AI モデル未登録でコールバックが渡されないと全て消えるので、後続グループの
   // 区切り線は「前に項目があるときだけ」出す（先頭に線だけ残るのを防ぐ）。

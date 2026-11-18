@@ -12,8 +12,10 @@ import {
   isBundle,
   isHit,
   lastSevenDays,
+  matchesFolder,
   matchesOrigin,
   matchesQuery,
+  summarizeFolders,
   matchesWho,
   tidyBodyHit,
   monthGrid,
@@ -236,5 +238,40 @@ describe("カレンダー", () => {
     expect(densityLevel(60, 592)).toBe(2);
     expect(densityLevel(200, 592)).toBe(3);
     expect(densityLevel(1, 1)).toBe(4);
+  });
+});
+
+describe("summarizeFolders", () => {
+  const item = (id: string, at: string, extra: Partial<RecordItem> = {}): RecordItem => ({
+    id, kind: "note", at, origin: "written", who: { type: "self" }, title: id, ...extra,
+  });
+
+  it("新しく動いたフォルダを上に、フォルダなしを最後に並べる", () => {
+    const out = summarizeFolders([
+      item("a", "2026-11-10T10:00:00", { folders: ["古い"] }),
+      item("b", "2026-11-17T09:00:00"),
+      item("c", "2026-11-16T10:00:00", { folders: ["新しい"] }),
+    ]);
+    expect(out.map((f) => f.name)).toEqual(["新しい", "古い", null]);
+  });
+
+  it("複数のフォルダに入っている記録は、それぞれで数える。大文字・小文字の違いは同じフォルダ", () => {
+    const out = summarizeFolders([
+      item("a", "2026-11-17T10:00:00", { folders: ["Bread", "Class"] }),
+      item("b", "2026-11-16T10:00:00", { folders: ["bread"] }),
+    ]);
+    expect(out.find((f) => f.name === "Bread")).toEqual({ name: "Bread", count: 2, lastAt: "2026-11-17T10:00:00" });
+    expect(out.find((f) => f.name === "Class")?.count).toBe(1);
+    expect(out).toHaveLength(2);
+  });
+});
+
+describe("matchesFolder", () => {
+  const it0: RecordItem = { id: "a", kind: "memo", at: "2026-11-17T10:00:00", origin: "memo", who: { type: "self" }, folders: ["Bread"] };
+  it("名前は大文字・小文字を区別しない。null はフォルダなし", () => {
+    expect(matchesFolder(it0, "bread")).toBe(true);
+    expect(matchesFolder(it0, "curry")).toBe(false);
+    expect(matchesFolder(it0, null)).toBe(false);
+    expect(matchesFolder({ ...it0, folders: undefined }, null)).toBe(true);
   });
 });

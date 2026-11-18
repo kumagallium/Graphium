@@ -1,7 +1,7 @@
 // 出典照合（Source check, v1） — 出典 ID から原文テキストを取り出すクライアント側の解決層。
 //
 // derivedFromNotes に入る ID（"pdf:<fileId>" / "url:<url>" / "document:<fileId>" /
-// "memo:<captureId>" / "chat:<timestamp>" / プレフィックス無しの通常ノート ID）を種別ごとに
+// "memo:<captureId>" / "chat:<timestamp>" / "conversation:<fileId>" / プレフィックス無しの通常ノート ID）を種別ごとに
 // 解決し、取り込み（ingest）が LLM に渡したときと同じ原文テキストを取り出す。
 // "claim:<wikiId>"（v1.1、derivedFromNotes には現れない合成プレフィックス）はトピックが
 // 引く知見を出典として解決するときに使う（build-statements.ts が付与する）。
@@ -16,6 +16,7 @@ import { isPlaceUrl } from "../linked-files/link-url";
 import { parseClaimSourceId } from "./claim-source-id";
 import { extractPlainTextBlocks, extractPlainTextFromDoc } from "../wiki/wiki-service";
 import { extractDocxText } from "../../lib/docx-text";
+import { parseConversationFileId } from "../../lib/conversation/types";
 
 /** 1 ブロック分のプレーンテキスト（blockId 対応の quote 照合に使う） */
 export type SourceTextBlock = {
@@ -76,6 +77,11 @@ export type ResolveSourceTextDeps = {
   fetchUrlText?: (url: string) => Promise<{ title?: string; description?: string; text: string } | null>;
   /** メモ（capture）本文の検索。無ければ undefined */
   findCaptureText: (captureId: string) => string | undefined;
+  /**
+   * AI との会話の素材の本文（取り込みのときに保存した文字列そのもの）を読む。素材が無ければ undefined。
+   * 未指定なら conversation 出典は常に unreadable。
+   */
+  loadConversationText?: (fileId: string) => Promise<string | undefined>;
   /**
    * "claim:" 出典（トピックが引く知見）の存在・ゴミ箱・アーカイブ判定（v1.1）。
    * 通常ノートと同じインデックスを引く想定だが、意味論が異なる（Wiki ページ）ため
@@ -146,6 +152,7 @@ async function extractMediaText(
  * - "url:": 保存済み原文があればそれ、無ければ再取得
  * - "memo:": capture 本文
  * - "chat:": 元チャットへの参照キーを持たないため常に no-reference
+ * - "conversation:": 取り込んだ会話の本文（保存済みの文字列）
  * - それ以外（shared: / data: / image: 等）: 出典として扱えないので unsupported-kind
  */
 export async function resolveSourceText(
@@ -233,6 +240,24 @@ export async function resolveSourceText(
     case "chat":
       // chat:<timestamp> は元チャットへの参照キーを持たない（推測で探し当てない）。
       return { ok: false, kind: "chat", reason: "no-reference" };
+    case "conversation": {
+      // 本文は取り込みのときに組んで保存してある。ここで組み直さない（引いた一節は、
+      // 保存した本文と照らす。組み方をあとで変えても、過去の一節が外れないようにするため）
+      if (!deps.loadConversationText) return { ok: false, kind: "conversation", reason: "unreadable" };
+      // 出典 id は他人のノートにも書ける。会話の素材 id の形をしたものだけを読みに行く
+      // （本文テキストの置き場には、ほかの素材の原文や下見の画像も同じ鍵空間で入っている）
+      if (!parseConversationFileId(parsed.key)) return { ok: false, kind: "conversation", reason: "deleted" };
+      let raw: string | undefined;
+      try {
+        raw = await deps.loadConversationText(parsed.key);
+      } catch {
+        return { ok: false, kind: "conversation", reason: "unreadable" };
+      }
+      if (raw === undefined) return { ok: false, kind: "conversation", reason: "deleted" };
+      const text = raw.trim();
+      if (!text) return { ok: false, kind: "conversation", reason: "empty" };
+      return { ok: true, kind: "conversation", title: deps.findMediaName?.(parsed.key), text, origin: "stored" };
+    }
     default:
       // shared: / data: / image: など、Knowledge 化の出典として扱えない ID。
       return { ok: false, kind: "unknown", reason: "unsupported-kind" };

@@ -245,9 +245,9 @@ export type ListMediaOptions = {
   limit?: number;
 };
 
-/** 索引に載っていて実体を持ちうる素材か（URL ブックマークとメモには実体ファイルが無い） */
+/** 索引に載っていて実体を持ちうる素材か（URL ブックマーク・メモ・AI との会話には実体ファイルが無い） */
 function hasDataFile(m: MediaIndexEntry): boolean {
-  return m.type !== "url" && m.type !== "memo";
+  return m.type !== "url" && m.type !== "memo" && m.type !== "conversation";
 }
 
 function normalizeExts(exts: string[] | undefined): string[] | null {

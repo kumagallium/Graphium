@@ -40,7 +40,7 @@ describe("runBulkOcr", () => {
 
     expect(result).toEqual({ running: 0, chars: 10, empty: 1, failed: 1, aborted: false });
     expect(h.persistOcrTextPatch).toHaveBeenCalledTimes(2);
-    expect(h.persistOcrTextPatch).toHaveBeenCalledWith("a", "hello world");
+    expect(h.persistOcrTextPatch).toHaveBeenCalledWith("a", "hello world", "");
     // 進捗が最初（running=total）と各件ごとに流れている
     expect(progresses[0]).toEqual({ running: 3, chars: 0, empty: 0, failed: 0, aborted: false });
     expect(progresses[progresses.length - 1]).toEqual({ running: 0, chars: 10, empty: 1, failed: 1, aborted: false });

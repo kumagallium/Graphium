@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.145.0](https://github.com/kumagallium/Graphium/compare/v0.144.0...v0.145.0) - 2026-11-18
+
+- [feat] Settings row for the on-device OCR model (switch, status, delete) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1754
+- [feat] Keep the macOS text-recognition reading of an image for finding by @kumagallium in https://github.com/kumagallium/Graphium/pull/1756
+
+## [v0.144.0](https://github.com/kumagallium/Graphium/compare/v0.143.0...v0.144.0) - 2026-11-18
+
+- [docs] Describe the on-device OCR model in the manual (v0.142.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1750
+- docs(manual): Home figures, v0.143.0 badges and roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1753
+- feat(data-extract): bring in only part of a delimited file, and keep the conditions on the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1747
+
+## [v0.143.0](https://github.com/kumagallium/Graphium/compare/v0.142.0...v0.143.0) - 2026-11-18
+
+- feat: filter Home by folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1739
+- feat(records): tag recordings, find a note by what was said in its recording, translate material info labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/1746
+
+## [v0.142.0](https://github.com/kumagallium/Graphium/compare/v0.141.2...v0.142.0) - 2026-11-18
+
+- [docs] Record the OCR engine comparison (handwriting and printed text) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1744
+- [feat] Read images with PP-OCRv6 small on the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1748
+
 ## [v0.141.2](https://github.com/kumagallium/Graphium/compare/v0.141.1...v0.141.2) - 2026-11-18
 
 - feat(docx): write formulas as Word equations instead of LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1741

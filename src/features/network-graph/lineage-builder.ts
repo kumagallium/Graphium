@@ -10,7 +10,7 @@ import { parseExternalSource, isExternalSourceId } from "./external-source";
 import { noteLinkKind } from "../../lib/note-link-kind";
 import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 
-export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat" | "memo";
+export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "conversation" | "chat" | "memo";
 
 export type LineageNode = {
   id: string;
@@ -82,7 +82,7 @@ function buildReverseParentIndex(
     }
     if (doc.source === "ai" && doc.wikiMeta?.derivedFromNotes) {
       for (const sourceId of doc.wikiMeta.derivedFromNotes) {
-        // pdf:/url:/document:/chat: は外部ソースとして扱う（fileIds チェックをスキップ）
+        // pdf:/url:/document:/conversation:/chat: は外部ソースとして扱う（fileIds チェックをスキップ）
         if (isExternalSourceId(sourceId)) {
           add(docId, sourceId, "external");
         } else {
@@ -167,6 +167,21 @@ export function buildLineageTree(
         navId: null,
         isCurrent: false,
         kind: "document",
+        depth,
+        relations,
+        parents: [],
+        externalUrl: m?.url,
+      };
+    }
+    if (ext?.kind === "conversation") {
+      // AI との会話の素材。document と同じく mediaIndex から名前と URL を解決する。
+      const m = mediaByFileId.get(ext.key);
+      return {
+        id,
+        title: m?.name ?? "AI conversation",
+        navId: null,
+        isCurrent: false,
+        kind: "conversation",
         depth,
         relations,
         parents: [],

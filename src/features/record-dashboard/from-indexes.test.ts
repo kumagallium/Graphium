@@ -4,6 +4,7 @@ import type { CaptureEntry } from "../mobile-capture/capture-store";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import {
   buildRecords,
+  collectRecordingNoteIds,
   collectWebClipNoteIds,
   deriveMediaOrigin,
   deriveMemoOrigin,
@@ -12,6 +13,7 @@ import {
   mediaToRecord,
   memoToRecord,
   noteToRecord,
+  spreadRecordingHits,
 } from "./from-indexes";
 
 function note(over: Partial<NoteIndexEntry> = {}): NoteIndexEntry {
@@ -251,5 +253,99 @@ describe("リンクした素材の分類", () => {
     const linked = media({ type: "url", url: "graphium-place://place-1/docs/a.xlsx", name: "a.xlsx" });
     expect(deriveMediaOrigin(linked)).toBe("file");
     expect(mediaToRecord(linked).origin).toBe("file");
+  });
+});
+
+describe("録音の素材と、録音を持つノート", () => {
+  const usedIn = (noteId: string) => [{ noteId, noteTitle: "打ち合わせ", blockId: "b1" }];
+  const recNotes = new Set(["n1"]);
+
+  it("録音・文字起こしを持つノートの ID を集める", () => {
+    expect([...collectRecordingNoteIds([note({ noteId: "n1", hasRecording: true }), note({ noteId: "n2" })])]).toEqual(["n1"]);
+  });
+
+  it("録音を持つノートが使っている音声・動画は「録音から」", () => {
+    expect(deriveMediaOrigin(media({ type: "audio", usedIn: usedIn("n1") }), recNotes)).toBe("recording");
+    expect(deriveMediaOrigin(media({ type: "video", usedIn: usedIn("n1") }), recNotes)).toBe("recording");
+  });
+
+  it("どのノートにも置いていない音声・録音を持たないノートの音声・画像は「取り込んだファイル」のまま", () => {
+    expect(deriveMediaOrigin(media({ type: "audio" }), recNotes)).toBe("file");
+    expect(deriveMediaOrigin(media({ type: "audio", usedIn: usedIn("n2") }), recNotes)).toBe("file");
+    expect(deriveMediaOrigin(media({ type: "image", usedIn: usedIn("n1") }), recNotes)).toBe("file");
+    expect(deriveMediaOrigin(media({ type: "audio", usedIn: usedIn("n1") }))).toBe("file");
+  });
+
+  it("スマホからの音声は、録音を持つノートで使っていても「スマホから」", () => {
+    const capture = { capturedAt: "2026-11-17T03:00:00.000Z" } as MediaIndexEntry["capture"];
+    expect(deriveMediaOrigin(media({ type: "audio", capture, usedIn: usedIn("n1") }), recNotes)).toBe("phone");
+  });
+
+  it("buildRecords は、ノートの hasRecording から素材の札を導く", () => {
+    const records = buildRecords({
+      notes: [note({ noteId: "n1", hasRecording: true })],
+      media: [media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") })],
+      captures: [],
+    });
+    expect(records.find((r) => r.id === "media:a1")?.origin).toBe("recording");
+    expect(records.find((r) => r.id === "note:n1")?.origin).toBe("recording");
+  });
+
+  it("録音を置いたノートがごみ箱・アーカイブにあっても、録音の素材は「録音から」のまま。ノートは出さない", () => {
+    const records = buildRecords({
+      notes: [],
+      hiddenNotes: [
+        note({ noteId: "n1", hasRecording: true, deletedAt: "2026-11-18T00:00:00.000Z" }),
+        note({ noteId: "n2", hasRecording: true, archivedAt: "2026-11-18T00:00:00.000Z" }),
+      ],
+      media: [
+        media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") }),
+        media({ fileId: "a2", type: "audio", usedIn: usedIn("n2") }),
+      ],
+      captures: [],
+    });
+    expect(records.find((r) => r.id === "media:a1")?.origin).toBe("recording");
+    expect(records.find((r) => r.id === "media:a2")?.origin).toBe("recording");
+    expect(records.some((r) => r.kind === "note")).toBe(false);
+  });
+
+  it("文字起こしで当たった録音から、その録音を持つノートにも当たりを広げる", () => {
+    const m = [media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") })];
+    const hits = spreadRecordingHits(new Map([["media:a1", "抜粋"]]), m, recNotes);
+    expect(hits.get("note:n1")).toBe("抜粋");
+    expect(hits.get("media:a1")).toBe("抜粋");
+  });
+
+  it("ノート自身が本文で当たっていれば、その当たりを残す。録音でない素材からは広げない", () => {
+    const m = [
+      media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") }),
+      media({ fileId: "i1", type: "image", usedIn: usedIn("n3") }),
+    ];
+    const hits = spreadRecordingHits(
+      new Map([
+        ["media:a1", "文字起こしの抜粋"],
+        ["note:n1", "本文の抜粋"],
+        ["media:i1", "画像の文字"],
+      ]),
+      m,
+      new Set(["n1", "n3"]),
+    );
+    expect(hits.get("note:n1")).toBe("本文の抜粋");
+    expect(hits.has("note:n3")).toBe(false);
+  });
+
+  it("文字起こしで当たっていない録音からは広げない", () => {
+    const m = [media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") })];
+    expect(spreadRecordingHits(new Map<string, string>(), m, recNotes).size).toBe(0);
+  });
+});
+
+describe("フォルダ", () => {
+  it("ノート・素材・メモのフォルダを写す", () => {
+    expect(noteToRecord(note({ noteContexts: ["食パンの試作"] }), new Set()).folders).toEqual(["食パンの試作"]);
+  });
+
+  it("フォルダの無いノートは項目を持たない", () => {
+    expect("folders" in noteToRecord(note(), new Set())).toBe(false);
   });
 });

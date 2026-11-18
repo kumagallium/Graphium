@@ -60,6 +60,7 @@ import {
 } from "./knowledge-tasks";
 import { INLINE_SOURCE_MAX_CHARS } from "./procedure-tools";
 import { resolveFullSourceText } from "./source-text";
+import { CONVERSATION_SOURCE_PREFIX } from "../lib/conversation/types";
 import type { ToolContext } from "./tools";
 import { agentLabelFor, buildActor, stampGeneratedBy } from "./upkeep/actor";
 import { appRunningMessage, detectRunningApp } from "./upkeep/guard";
@@ -191,6 +192,11 @@ export async function startTopicTask(input: StartTopicTaskInput, ctx: ToolContex
 
   const sourceId = input.sourceId?.trim();
   if (!sourceId) return "INVALID_INPUT: sourceId を指定してください（ノート id、pdf:<fileId>、document:<fileId>、url:<URL>）。";
+  // AI との会話の素材は、読むこと（get_source_text）だけに対応している。知見の課題
+  // （start_claim_task）と同じく、ナレッジ化の入口はまだ開けていない
+  if (sourceId.startsWith(CONVERSATION_SOURCE_PREFIX)) {
+    return `NOT_SUPPORTED: AI との会話の素材からのトピック作成には、まだ対応していません: ${sourceId}`;
+  }
   // ナレッジのページ自身からトピックは作らない（アプリの取り込みもノートと素材だけ）
   if (readWikiDoc(root, sourceId)) {
     return `NOT_SUPPORTED: ナレッジのページは対象外です（ノートか素材を指定してください）: ${sourceId}`;

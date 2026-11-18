@@ -132,6 +132,10 @@ function sourceTitleFrom(id: string, data: AppGraphData, titles?: Map<string, st
     const m = data.media().find((x) => x.fileId === rest);
     return m?.name ?? `${prefix === "pdf" ? "PDF" : "Document"} ${rest.slice(0, 8)}`;
   }
+  if (prefix === "conversation") {
+    // AI との会話の素材。document と同じく素材の一覧から名前を引く。
+    return data.media().find((x) => x.fileId === rest)?.name ?? "AI conversation";
+  }
   if (prefix === "url") {
     const m = data.media().find((x) => x.type === "url" && x.url === rest);
     return m ? `${m.name} (${rest})` : rest;

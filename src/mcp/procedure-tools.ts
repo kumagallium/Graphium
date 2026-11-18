@@ -143,6 +143,10 @@ export async function startProcedureTask(
   const vocabulary = collectLabelVocabulary(readNoteIndex(root)?.notes);
   const systemPrompt = buildProvIngesterSystemPrompt(language, vocabulary);
 
+  // AI との会話は上の対象の確認で断っているので、ここには来ない（型の上でも外す）
+  if (full.kind === "conversation") {
+    return `NOT_SUPPORTED: この種類の資料（conversation:）からは手順を取り出せません（対象: ノート・PDF・Word・URL 素材）。`;
+  }
   const kind = full.kind;
   const media = parsed ? readMediaIndex(root).get(parsed.key) : undefined;
   const sourceTitle =

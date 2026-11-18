@@ -33,7 +33,8 @@ function resolveTitle(id: string, root: string): string | null {
   const prefix = colon > 0 ? id.slice(0, colon) : "";
   const rest = colon > 0 ? id.slice(colon + 1) : id;
 
-  if (prefix === "pdf" || prefix === "document") {
+  // conversation: は AI との会話の素材。document と同じく素材の一覧から名前を引く。
+  if (prefix === "pdf" || prefix === "document" || prefix === "conversation") {
     return readMediaIndex(root).get(rest)?.name?.trim() || null;
   }
   if (prefix === "url") {

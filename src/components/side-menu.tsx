@@ -765,7 +765,8 @@ function ReadImageTextMenuItem() {
     try {
       const entry = await runOcrForImage(url);
       // 文字が取れなかった画像はエントリを残さない（検索ノイズを避ける）
-      ocrStore.setEntry(block.id, entry.text ? entry : null);
+      // text が空でも別の読み（検索用）があれば残す
+      ocrStore.setEntry(block.id, entry.text || entry.altText ? entry : null);
     } catch (e) {
       console.warn("OCR に失敗:", e);
     } finally {

@@ -122,7 +122,8 @@ import {
   countDocumentPages,
   recleanFileAuthors,
 } from "../features/asset-browser/document-info";
-import { documentKindOf, type SourceInfo } from "../features/asset-browser/media-index";
+import { documentKindOf, isFilelessMediaEntry, type SourceInfo } from "../features/asset-browser/media-index";
+import { parseConversationFileId } from "../lib/conversation/types";
 import { extractPdfSourceInfo } from "../features/asset-browser/source-info";
 import { MAX_HASH_BYTES } from "../features/asset-browser/dedupe";
 
@@ -2881,8 +2882,8 @@ export function useFileManager(authenticated: boolean) {
     [],
   );
   const handleRenameMedia = useCallback(async (entry: MediaIndexEntry, newName: string) => {
-    // URL ブックマークは Drive ファイルがないのでインデックスのみ更新
-    if (entry.type !== "url") {
+    // URL ブックマークと AI との会話は実体のファイルがないのでインデックスのみ更新
+    if (!isFilelessMediaEntry(entry)) {
       await renameMediaFile(entry.fileId, newName);
     }
     const current = mediaIndexRef.current ?? createEmptyIndex();
@@ -2933,7 +2934,19 @@ export function useFileManager(authenticated: boolean) {
   // メディア削除（ギャラリーから呼ぶ）
   const handleDeleteMedia = useCallback(async (entry: MediaIndexEntry) => {
     // URL ブックマークは Drive 上にファイルがないので削除 API を呼ばない
-    if (entry.type !== "url") {
+    if (entry.type === "conversation") {
+      // AI との会話の実体は、本文テキスト（media-text チャネル）だけ。本文を残すと、
+      // 一覧から消したのに本人の発言がディスクに残る。
+      // 一覧は同期・共有されうるので、会話の素材 id の形をしたものだけを消す
+      // （本文テキストの置き場には、ほかの素材の原文や下見も同じ鍵空間で入っている）
+      if (parseConversationFileId(entry.fileId)) {
+        try {
+          await getActiveProvider().deleteMediaText?.(entry.fileId);
+        } catch (err) {
+          console.warn("会話の本文の削除に失敗:", err);
+        }
+      }
+    } else if (entry.type !== "url") {
       await deleteMediaFile(entry.fileId);
       // データ素材は保存した下見（列名・線の形）も道連れにする。失敗は無視される
       if (entry.type === "data") void deleteSavedPreview(entry.fileId);

@@ -34,7 +34,7 @@ export function describeLinkedFile(
 import { allEntries } from "./search";
 import { appDataDir, resolveGraphiumRoot } from "./vault";
 
-export type SourceKind = "note" | "pdf" | "document" | "url" | "chat" | "memo" | "unknown";
+export type SourceKind = "note" | "pdf" | "document" | "url" | "chat" | "memo" | "conversation" | "unknown";
 
 export type SourceRef = {
   /** 元の ID（そのまま返す。Graphium 側で開くときの手がかり） */
@@ -52,6 +52,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   url: "Web ページ",
   chat: "AI チャット",
   memo: "メモ",
+  conversation: "AI との会話",
   unknown: "不明",
 };
 
@@ -117,6 +118,10 @@ export function describeSource(
   }
   if (prefix === "chat") return { id, kind: "chat", title: "AI チャット" };
   if (prefix === "memo") return { id, kind: "memo", title: "メモ" };
+  if (prefix === "conversation") {
+    const m = readMediaIndex(root).get(rest);
+    return { id, kind: "conversation", title: m?.name ?? "AI との会話" };
+  }
 
   const table = titles ?? new Map(allEntries(root).map((e) => [e.noteId, e.title]));
   const title = table.get(id);
@@ -125,7 +130,7 @@ export function describeSource(
 
 /** 素材インデックスにも索引にも見当たらない外部資料 ID か（pdf:/document: の打ち間違いなど） */
 export function isUnknownExternalSource(id: string, root = resolveGraphiumRoot()): boolean {
-  const m = /^(pdf|document):(.+)$/.exec(id);
+  const m = /^(pdf|document|conversation):(.+)$/.exec(id);
   return m ? !readMediaIndex(root).has(m[2]) : false;
 }
 

@@ -5,6 +5,7 @@
 // 「このノートを開いている間に新しく入った画像」だけに絞る。
 // 進行状況は OcrToast で見せる（裏で勝手に走っていると不安なため）。
 
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import { useCallback, useRef, useState } from "react";
 import { useMediaOcrStore } from "./store";
 import { runOcrForImage } from "./run-ocr";
@@ -125,10 +126,11 @@ export function useAutoImageOcr({
           // タイムアウト（宙吊り検知）と worker の作り直しは recognizeImage 側が
           // 持つ（lib/ocr.ts）。ここでは失敗として数えて先へ進むだけでよい
           const result = await runOcrForImage(source);
-          if (result.text) {
+          // 手書きだけで PP-OCR が空でも、別の読み（検索用）があればエントリを残す
+          if (result.text || result.altText) {
             store.setEntry(target.id, result);
             // 素材側にも写して、素材ギャラリー・Cmd+K から同じ文字で引けるようにする
-            mirrorOcrToMediaIndex(target.url, result.text);
+            mirrorOcrToMediaIndex(target.url, result.text, result.altText ?? "");
             chars += result.text.replace(/\s/g, "").length;
           } else {
             empty += 1;
@@ -175,15 +177,19 @@ export function useAutoImageOcr({
       const assetId = assetIdOf(target.url);
       if (assetId) {
         const entry = assetEntryOf(assetId);
-        const cached =
-          typeof entry?.ocrText === "string" && entry.ocrText.trim() ? entry.ocrText : null;
+        const cachedText =
+          typeof entry?.ocrText === "string" && entry.ocrText.trim() ? entry.ocrText : "";
+        // 表示用の文字が無く、検索用の別の読みだけがある素材（手書きだけの画像など）も写す
+        const cached = cachedText || sanitizeAltText(entry?.ocrAltText) ? true : null;
         if (cached) {
           store.setEntry(target.id, {
-            text: cached,
+            text: cachedText,
             // 素材側には読み取り時の確度・言語を残していない（表示は 0 で省かれる）
             confidence: 0,
             lang: "",
             extractedAt: new Date().toISOString(),
+            // 検索用の別の読みも素材側から写す（表示には使わない）
+            ...(sanitizeAltText(entry?.ocrAltText) ? { altText: sanitizeAltText(entry?.ocrAltText), altEngine: "apple-vision" } : {}),
           });
           continue;
         }

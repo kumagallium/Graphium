@@ -21,6 +21,7 @@ import {
   formatWeekday,
   groupByDay,
   lastSevenDays,
+  matchesFolder,
   matchesOrigin,
   isHit,
   matchesQuery,
@@ -29,10 +30,12 @@ import {
   matchesWho,
   monthKeyOf,
   type RecordDayGroup,
+  summarizeFolders,
   timeOf,
 } from "./model";
 import { RecordCalendar } from "./RecordCalendar";
 import { RecordDay } from "./RecordDay";
+import { RecordFolderFilter } from "./RecordFolderFilter";
 import { Marked, ORIGIN_STYLE, WhoLabel, WhoMark } from "./RecordRow";
 import type { RecordItem, RecordKind, RecordOrigin, RecordWho, WhoFilter } from "./types";
 
@@ -305,6 +308,8 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
   const [who, setWho] = useState<WhoFilter>(initialWho);
   const [origins, setOrigins] = useState<ReadonlySet<RecordOrigin>>(new Set());
   const [kind, setKind] = useState<RecordKind | null>(null);
+  // 絞っているフォルダ。undefined は絞っていない、null は「フォルダなし」
+  const [folder, setFolder] = useState<string | null | undefined>(undefined);
   // 狭い幅では見つかった記録を初めの数件だけ出す（下の記録が押し下げられないように）
   const [hitsOpen, setHitsOpen] = useState(false);
   // 見つかった記録の側で指している記録（左の同じ行に色を付ける）
@@ -312,14 +317,9 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
   const rootRef = useRef<HTMLDivElement>(null);
   // カレンダーで選んだ日。選ぶと、その日から前の記録を出す（null は最新から）
   const [anchorDay, setAnchorDay] = useState<string | null>(null);
-  // カレンダーで開いている月。初めは、いちばん新しい記録のある月（無ければ今月）
-  const [calMonth, setCalMonth] = useState(() => {
-    const newest = items.reduce((max, it) => {
-      const k = dayKeyOf(it.at);
-      return k > max ? k : max;
-    }, "");
-    return monthKeyOf(newest || dayKeyOf(now));
-  });
+  // カレンダーで自分で動かした月。動かすまで（null）は、いま出している記録のいちばん新しい月を開く
+  // （索引があとから読み終わったときや、フォルダで絞ったときに、記録のある月へ付いていく）
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   // 狭い幅でカレンダーを開いているか（広い幅では常に出す）
   const [calOpen, setCalOpen] = useState(false);
   // 見つかった記録を押したら、左の同じ行まで動かす
@@ -340,9 +340,31 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
 
   // 誰・出どころ・種類で絞ったもの（探す言葉はまだ掛けない）
   const faceted = useMemo(
-    () => items.filter((it) => matchesWho(it, who) && matchesOrigin(it, origins) && (!kind || it.kind === kind)),
-    [items, who, origins, kind],
+    () =>
+      items.filter(
+        (it) => matchesWho(it, who) && matchesOrigin(it, origins) && (!kind || it.kind === kind) && (folder === undefined || matchesFolder(it, folder)),
+      ),
+    [items, who, origins, kind, folder],
   );
+  // フォルダの並びと件数は、誰で絞ったあとの記録で数える（フォルダでは絞らない。選び直せるように）
+  const folders = useMemo(() => summarizeFolders(items.filter((it) => matchesWho(it, who))), [items, who]);
+  // フォルダに入っている記録が 1 つも無ければ、絞り込みは出さない
+  const hasFolders = folders.some((f) => f.name !== null) || folder !== undefined;
+  const newestDay = useMemo(
+    () =>
+      faceted.reduce((max, it) => {
+        const k = dayKeyOf(it.at);
+        return k > max ? k : max;
+      }, ""),
+    [faceted],
+  );
+  const calMonth = pickedMonth ?? monthKeyOf(newestDay || dayKeyOf(now));
+  // フォルダを選び直したら、月もそのフォルダのいちばん新しい記録の月に戻し、日の指定も外す
+  const changeFolder = (next: string | null | undefined) => {
+    setFolder(next);
+    setPickedMonth(null);
+    setAnchorDay(null);
+  };
   // 本文で当たった記録（全文の索引）。索引ができあがると findInBody が替わり、引き直される
   const bodyHits = useMemo(() => (query.trim() && findInBody ? findInBody(query) : NO_BODY_HITS), [findInBody, query]);
   const hits = useMemo(() => faceted.filter((it) => isHit(it, query, bodyHits)), [faceted, query, bodyHits]);
@@ -376,6 +398,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
             </header>
             <div className="rd-controls">
               <WhoSwitch value={who} onChange={setWho} copy={copy} />
+              {hasFolders && <RecordFolderFilter folders={folders} value={folder} onChange={changeFolder} now={now} locale={locale} copy={copy} />}
             </div>
             {anchorDay && (
               <p className="rd-anchor">
@@ -390,7 +413,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
             {days.length === 0 && <Empty copy={copy} />}
             {/* 日を選び直したら、描く行の数の区切りも初めに戻す */}
             <DayList
-              key={anchorDay ?? "latest"}
+              key={`${anchorDay ?? "latest"}|${folder === undefined ? "" : folder === null ? "none" : `f:${folder}`}`}
               days={days}
               now={now}
               locale={locale}
@@ -413,7 +436,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
               counts={dayCounts}
               maxCount={maxDayCount}
               month={calMonth}
-              onMonthChange={setCalMonth}
+              onMonthChange={setPickedMonth}
               selectedDay={anchorDay}
               onSelectDay={selectDay}
               today={dayKeyOf(now)}

@@ -242,3 +242,18 @@ describe("parseDelimitedSample", () => {
     expect(sample.rows).toEqual([["1", "1"], ["2", "2"]]);
   });
 });
+
+describe("parseDelimitedLinesAsync の shouldStop", () => {
+  const lines = ["a,b", ...Array.from({ length: 3000 }, (_, i) => `${i},${i}`)];
+  const opts = { ...base, endRow: 3001 };
+
+  it("譲ったあとで true なら、結果を返さず（null）抜ける", async () => {
+    const r = await parseDelimitedLinesAsync(lines, opts, { sliceMs: 0, shouldStop: () => true });
+    expect(r).toBeNull();
+  });
+
+  it("false のままなら同期版と同じ結果", async () => {
+    const r = await parseDelimitedLinesAsync(lines, opts, { sliceMs: 0, shouldStop: () => false });
+    expect(r).toEqual(parseDelimitedLines(lines, opts));
+  });
+});

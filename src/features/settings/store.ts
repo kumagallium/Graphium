@@ -440,6 +440,11 @@ export type Settings = {
    * （設定の「取得」や音声の「文字起こし」ボタンなど、利用者が自分で押したときに外れる）。空なら持たない
    */
   meetingAutoDownloadDeclined?: MeetingModelSize[];
+  /**
+   * 画像の文字読みに、端末内のモデル（PP-OCRv6 small）を使うか。デスクトップのみ。
+   * 未設定 = オン。false にすると Tesseract だけで読み、モデルの自動取得もしない
+   */
+  ocrNativeEnabled?: boolean;
   /** 文字起こしのヒントにする用語（カンマ区切り。既定は空） */
   meetingVocabulary: string;
   /** 録音中に文字起こしを進めるか（既定 ON） */
@@ -1004,6 +1009,8 @@ function loadStoredSettings(): Settings {
         : {}),
       meetingLiveTranscribe:
         typeof parsed.meetingLiveTranscribe === "boolean" ? parsed.meetingLiveTranscribe : true,
+      // オフだけを持つ（未設定・壊れた値はオン）
+      ...(parsed.ocrNativeEnabled === false ? { ocrNativeEnabled: false } : {}),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -1421,6 +1428,17 @@ export function getMeetingSettings(): {
     aiModel: s.meetingAiModel ?? "",
     maskTerms: s.meetingMaskTerms ?? "",
   };
+}
+
+/** 画像の文字読みで端末内のモデルを使うか（未設定はオン。画像を読むたびに即時判定する） */
+export function isOcrNativeEnabled(): boolean {
+  return loadSettings().ocrNativeEnabled !== false;
+}
+
+/** 端末内のモデルで読むかを保存する（他の設定は触らない。オンに戻すときはキーごと消す） */
+export function setOcrNativeEnabled(on: boolean): void {
+  const { ocrNativeEnabled: _old, ...rest } = loadSettings();
+  saveSettings({ ...rest, ...(on ? {} : { ocrNativeEnabled: false }) });
 }
 
 /** 利用者が取り消した・削除した文字起こしモデルか（自動では取得し直さない印） */

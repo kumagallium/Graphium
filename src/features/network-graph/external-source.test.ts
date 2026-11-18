@@ -46,3 +46,17 @@ describe("classifyNodeTap", () => {
     expect(classifyNodeTap("note-1", { hasSelect: false })).toBe("open");
   });
 });
+
+describe("conversation:（AI との会話の素材）", () => {
+  it("parseExternalSource は kind conversation と key に分解し、chat: と取り違えない", () => {
+    expect(parseExternalSource("conversation:conv-claude-code-abc")).toEqual({
+      kind: "conversation",
+      key: "conv-claude-code-abc",
+    });
+    expect(parseExternalSource("chat:1700000000")?.kind).toBe("chat");
+  });
+
+  it("classifyNodeTap は open", () => {
+    expect(classifyNodeTap("conversation:conv-claude-code-abc", { hasSelect: true })).toBe("open");
+  });
+});

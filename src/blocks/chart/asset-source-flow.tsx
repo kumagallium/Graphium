@@ -128,6 +128,8 @@ export function ChartAssetSourceFlow({
         rowLimit={null}
         // 表もデータ表も作らない（チャートが素材を直接読む）ので、挿入形式の選択は出さない
         showTargetChoice={false}
+        // 絞った結果の書き出し先が無い（チャートは素材を直接読む）ので、今回は絞り込みを出さない
+        showExtract={false}
         confirmLabel={t("chart.useForChart")}
         // 前置きの条件はどこにも写さない（素材の本文に残るだけ）ので、表の文言を使わない
         headerMetaLabel={t("chart.headerMeta")}

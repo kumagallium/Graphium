@@ -79,6 +79,7 @@ import { ModelFitHint } from "./ModelFitHint";
 import { SharedFoldersSection } from "./SharedFoldersSection";
 import { DataPlacesSection } from "./DataPlacesSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
+import { OcrModelSettingsSection } from "../media-ocr/OcrModelSettingsSection";
 import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
 import { DEFAULT_LOCAL_EMBEDDING_MODEL, LOCAL_EMBEDDING_MODELS, isLocalEmbeddingValue, localEmbeddingInfo, localEmbeddingValue, parseLocalEmbeddingValue } from "../embedding/engine";
 import * as localEmbedding from "../embedding/api";
@@ -787,6 +788,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         aiModelNames={models.length > 0 && preciseTierEnabled ? models.map((m) => m.name) : null}
         aiFallbackName={preciseModel || standardModel || model || models[0]?.name || ""}
       />
+    </div>
+  ) : null;
+  // 画像の文字を読む端末内モデル。AI を使わない機能なので、モデル登録の有無・バックエンドの接続に依らず音声ノートと並べて出す（デスクトップのみ）
+  const ocrSection = isTauri() ? (
+    <div>
+      <OcrModelSettingsSection />
     </div>
   ) : null;
   // このモデルを選んでいる項目の名前（削除の確認で、どれが既定に戻るかを見せる）。
@@ -2755,6 +2762,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 </p>
               </div>
               {meetingSection}
+              {ocrSection}
               </>
             ) : <>
             {/* いまの状態と、次にやること 1 つ。設定を並べる前に結論を出す。
@@ -3589,6 +3597,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             {/* 音声ノート（録音と文字起こし・清書と要約のモデル）。ローカル処理なのでモデル登録の有無に依らず出す（デスクトップのみ）。
                 先行公開ではない機能なので、モデルの割り当てとチャットのすぐ下に置く */}
             {meetingSection}
+
+            {/* 画像の文字を読む端末内モデル（AI を使わないので、音声ノートと同じくモデル登録の有無に依らず出す。デスクトップのみ） */}
+            {ocrSection}
 
             {/* ナレッジ — 先行公開ではない取り込み・点検の設定。先行公開のもの（知見・洞察・世界照合）は下の束へ */}
             {models.length > 0 && (
