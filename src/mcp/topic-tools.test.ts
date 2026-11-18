@@ -169,6 +169,19 @@ describe("start_topic_task / submit_topic_routes", () => {
     expect(taskIdOf(reply)).not.toBe("");
     expect(reply).toContain("全粒粉は 2 割までにする");
   });
+
+  it("アーカイブした AI との会話からは課題を作らない", async () => {
+    const fileId = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+    const id = `conversation:${fileId}`;
+    writeFileSync(p("media", `${fileId}.txt`), "## 2026-10-05\n\n- 私（09:12）: 全粒粉は 2 割までにする\n");
+    writeJson(p("appdata", "media-index.json"), {
+      version: 12,
+      media: [{ fileId, name: "全粒粉の配合", type: "conversation", mimeType: "text/plain", url: id, thumbnailUrl: "", uploadedAt: "2026-11-10T00:00:00Z", usedIn: [], archivedAt: "2026-11-11T00:00:00Z" }],
+    });
+    resetMediaIndexCache();
+    resetSourceTextCache();
+    expect(await startTopicTask({ sourceId: id }, ctx, root)).toMatch(/^NOT_FOUND/);
+  });
 });
 
 describe("get_topic_write_task / submit_topic_page", () => {

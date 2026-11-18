@@ -62,6 +62,8 @@ import { INLINE_SOURCE_MAX_CHARS } from "./procedure-tools";
 import { resolveFullSourceText } from "./source-text";
 import type { ToolContext } from "./tools";
 import { agentLabelFor, buildActor, stampGeneratedBy } from "./upkeep/actor";
+import { isConversationSourceId } from "../lib/conversation/types";
+import { readMediaIndex } from "./sources";
 import { appRunningMessage, detectRunningApp } from "./upkeep/guard";
 import { createMcpMaintenanceHost } from "./upkeep/host";
 import { getFlags, readIndexStrict } from "./upkeep/index-store";
@@ -196,6 +198,10 @@ export async function startTopicTask(input: StartTopicTaskInput, ctx: ToolContex
     return `NOT_SUPPORTED: ナレッジのページは対象外です（ノートか素材を指定してください）: ${sourceId}`;
   }
   if (getFlags(root, sourceId)?.deletedAt) return `NOT_FOUND: 資料はゴミ箱にあります: ${sourceId}`;
+  // アーカイブした会話は、知見の課題（claim-source.ts）と同じくナレッジ化の対象にしない
+  if (isConversationSourceId(sourceId) && readMediaIndex(root).get(sourceId.slice(sourceId.indexOf(":") + 1))?.archivedAt) {
+    return `NOT_FOUND: AI との会話はアーカイブされています: ${sourceId}`;
+  }
   const full = await resolveFullSourceText(sourceId, root);
   if (!full.ok) return full.message;
   if (!full.text.trim()) return `EMPTY_SOURCE: 本文が空です: ${sourceId}`;

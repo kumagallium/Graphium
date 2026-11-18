@@ -13,6 +13,7 @@
 // しない — 設定の「話題を整理」（consolidateExistingTopics）と点検（wiki-linter）の
 // redundant 検出に任せる。
 
+import { isConversationSourceId } from "../../lib/conversation/types";
 import type { GraphiumDocument, TopicType } from "../../lib/document-types";
 import type { EditActivityType } from "../document-provenance/types";
 import {
@@ -640,6 +641,8 @@ export const TOPIC_REVISE_CONCURRENCY = 4;
  * フォールバックする。解決できない id は結果から静かに落ちる（本文中の [[source:id]]
  * 引用自体は resolveSourceCitations のフォールバックで文字列として残るため、参照そのものが
  * 消えるわけではない）。
+ * ただし AI との会話の id は、読めなくても落とさない。本文には会話から書いた文が残っているので、
+ * 出典の id が消えると「会話を出典に持つページは外へ書き出さない」決まりが効かなくなる。
  */
 export async function collectSourceRefs(
   ids: string[],
@@ -659,6 +662,7 @@ export async function collectSourceRefs(
     }
     const resolved = await deps.resolveSource(id);
     if (resolved) refs.push({ id, title: resolved.title });
+    else if (isConversationSourceId(id)) refs.push({ id, title: id });
   }
   return refs;
 }

@@ -190,7 +190,7 @@ pnpm bundle:mcp
 | `restore_page` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「そのページをアーカイブから戻して」 |
 | `list_operations` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「最近の手入れの操作は何をした？」 |
 | `undo_operation` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「さっきの統合を取り消して」 |
-| `start_claim_task` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 「このノートから知見を作って」（知見はアシスタント自身が書きます。[下の節](#アシスタントに知見を作ってもらう)を参照） |
+| `start_claim_task` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 「このノート（取り込んだ AI との会話でも）から知見を作って」（知見はアシスタント自身が書きます。[下の節](#アシスタントに知見を作ってもらう)を参照） |
 | `submit_claims` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | `start_claim_task` のあとに、アシスタントが書いた知見を渡すために呼びます |
 | `find_claims_for_task` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 書き足し先になりそうな既存の知見を、アシスタントが追加で探すために呼びます |
 | `submit_rewrite` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 書き足した知見を、アシスタントが整えるために呼びます（任意） |
@@ -199,7 +199,7 @@ pnpm bundle:mcp
 | `submit_insight_review` <Badge type="tip" text="v0.98.0 (2026-10-27) で追加" /> | 審査の答えを渡すために呼びます。洞察はここで保存されます |
 | `start_procedure_task` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 「この論文から手順ノートを作って」（手順はアシスタント自身が書きます。[下の節](#procedure-notes-from-your-assistant)を参照） |
 | `submit_procedure` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 書いた手順を渡すために呼びます。手順ノートはここで作られます |
-| `start_topic_task` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 「この論文からトピックを作って」（トピックはアシスタント自身が書きます。[下の節](#topics-from-your-assistant)を参照） |
+| `start_topic_task` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 「この論文（取り込んだ AI との会話でも）からトピックを作って」（トピックはアシスタント自身が書きます。[下の節](#topics-from-your-assistant)を参照） |
 | `submit_topic_routes` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | どのトピックを改訂し、どれを新しく作るかを渡すために呼びます |
 | `get_topic_write_task` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | トピック 1 件を書くのに要るものを受け取るために呼びます |
 | `submit_topic_page` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | トピック 1 件の本文を渡すために呼びます。1 件ずつここで保存されます |
@@ -348,7 +348,7 @@ MCP Apps に対応していないクライアント（Claude Code・Codex など
 
 ### アシスタントに知見を作ってもらう <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> {#アシスタントに知見を作ってもらう}
 
-ノート・メモ・素材（PDF、Word の `.docx`、登録済みの Web ページ）から、アシスタントに[知見](/ja/knowledge-layer)を作ってもらえます。アプリの **ナレッジに追加** と同じことを、Graphium に設定した AI ではなく、アシスタント自身のモデルで行います。Claude などで性能の高いモデルを契約していれば、そのために Graphium 側に AI を用意する必要はありません。
+ノート・メモ・素材（PDF、Word の `.docx`、登録済みの Web ページ、取り込んだ [AI との会話](/ja/materials-and-citations#bring-in-ai-conversations)）から、アシスタントに[知見](/ja/knowledge-layer)を作ってもらえます。アプリの **ナレッジに追加** と同じことを、Graphium に設定した AI ではなく、アシスタント自身のモデルで行います。Claude などで性能の高いモデルを契約していれば、そのために Graphium 側に AI を用意する必要はありません。
 
 アシスタントが知見のページを自由に書くわけではありません。Graphium が知見を作る手順の中に、アシスタントが加わる形です。
 

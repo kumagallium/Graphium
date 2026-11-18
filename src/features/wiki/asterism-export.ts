@@ -109,7 +109,8 @@ export type AsterismSkipReason = "not-claim" | "untyped" | "inferred" | "unknown
  * 外の知識基盤（Asterism）への書き出しの対象にしない
  */
 export function hasConversationSource(meta: Pick<WikiMeta, "derivedFromNotes">): boolean {
-  return (meta.derivedFromNotes ?? []).some(isConversationSourceId);
+  const sources: unknown = meta.derivedFromNotes;
+  return Array.isArray(sources) && sources.some(isConversationSourceId);
 }
 
 export type AsterismExportOptions = {

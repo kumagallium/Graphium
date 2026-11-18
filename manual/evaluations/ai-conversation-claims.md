@@ -7,7 +7,7 @@
 
 **Short answer.**
 
-- Adding one section to the claim instructions raised claims grounded only in the user's own words from 69% to 85%. I decided to add it. This is a future change and is not in the app yet.
+- Adding one section to the claim instructions raised claims grounded only in the user's own words from 69% to 85%. I decided to add it, and the app now uses it when the source is a conversation.
 - The AI excerpt stays at the first 200 and last 300 characters. Shortening it showed no readable difference in how many of the user's points were picked up, and fewer of the user's lines could still be understood.
 - The one short conversation with a single user line gave 0 claims in all 6 combinations.
 - Each combination was run once, and run-to-run variation is large, so read the differences as rough guides ([Limits](#limits)).
@@ -111,7 +111,7 @@ One conversation with a single user line: a short work instruction with a brief 
 
 | What | Decision | Why |
 |---|---|---|
-| Claim instructions | Add the B section (only when the source is a conversation). **This is a future change and is not in the app yet** | Claims grounded only in the user's words went up (69% → 85%), more lines with a judgment were picked up (24/39 → 31/39), and AI content written as the user's went down (5 → 2). The 0 claims for the single-line conversation held |
+| Claim instructions | Add the B section (only when the source is a conversation). **The app now does this** | Claims grounded only in the user's words went up (69% → 85%), more lines with a judgment were picked up (24/39 → 31/39), and AI content written as the user's went down (5 → 2). The 0 claims for the single-line conversation held |
 | Length of the AI excerpt | Keep first 200 + last 300 characters | Shortening showed no readable difference in how many of the user's points were picked up (19 → 17 → 19 of 26). But fewer lines could still be understood (of the 29 that need context, 26 → 23 → 18). Most of the cost is the fixed part of the task (about 60,000 characters), so shortening saves only 15% for the many conversation and 3% for the mid one |
 
 ## Where it differed from the earlier trial
