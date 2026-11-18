@@ -4351,8 +4351,8 @@ the media index.
 **Not part of this feature.** Searching, previewing or extracting the
 contents of a linked file; using one in a table or chart; AI ingest or
 translation; sharing a linked file itself (it is skipped in bulk share and
-the share action is hidden); linking several files or a whole folder at
-once; converting a link into a copy. For the Tauri commands and their
+the share action is hidden); linking a whole folder at once (up to 500
+files can be picked together); converting a link into a copy. For the Tauri commands and their
 guards see ARCHITECTURE.md §4.2.
 
 ## 7. Shared storage and Library

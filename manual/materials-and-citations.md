@@ -217,7 +217,7 @@ It can be set on images, PDFs, documents, data, videos and audio that you brough
 - Search inside a linked file, preview it, or use it in a table or chart. Graphium does not read the contents.
 - Read it with AI: no importing it as knowledge, extracting steps, or translating.
 - Share the linked file itself. Sharing and the shared folder skip it.
-- Link several files, or a whole folder, at once. One file at a time.
+- Link a whole folder at once. Pick the files inside it instead (up to 500 at a time).
 - Turn a link into a copy in Graphium. If you want a copy, bring the file in the usual way.
 - Check the source data. Graphium does not read the linked file to confirm that the small material really came from it. The relationship is a record that you set by hand.
 
