@@ -137,7 +137,7 @@ The full menu, top to bottom:
 | **Align** | **Align left** / **Align center** / **Align right** — works even for tables, audio, and file blocks. |
 | **Label** | Mark a table or media block as an Entity in the provenance graph — see [Labels & provenance](/labels-and-provenance). |
 | **Name this table** | Give a table a name, shown above it where a caption belongs and used as its reference name in charts. Tables only. |
-| **Read text from image** | On-device OCR for image blocks — see [Materials & citations](/materials-and-citations). |
+| **Read text from image** | On-device OCR for image blocks — see [Materials & citations](/materials-and-citations). How other OCR engines compare on handwriting: [Can a downloaded model read handwriting that the built-in OCR cannot?](/evaluations/ocr-engines). |
 | **📝 Add memo** | Attach a memo to this block; it shows up in the Memos panel. |
 | **🔗 Derive new page** | Fork a new note that records where it came from. |
 | **🤖 AI Assistant** | Ask AI about this block (headings and steps pass their whole section). Hidden until AI is set up — see [AI setup](/ai-setup). |
