@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  listClaudeConversations,
   listClaudeProjectDirs,
   listClaudeSessionFiles,
   listClaudeWorkdirs,
@@ -209,5 +210,25 @@ describe("baseDir が使えないとき", () => {
     expect(await listClaudeProjectDirs(file)).toEqual([]);
     expect(await listClaudeSessionFiles(DIR, file)).toEqual([]);
     expect(await readClaudeSession(DIR, `${SID1}.jsonl`, {}, file)).toBeNull();
+  });
+});
+
+describe("listClaudeConversations", () => {
+  it("会話ごとの集計と名前の組を返し、読めない記録は飛ばす", async () => {
+    putSession(DIR, SID1, [rec("user", "生地をこねる")]);
+    putSession("-Users-example-curry-lab", SID2, [rec("user", "スパイスを足す", { cwd: "/Users/example/curry-lab" })]);
+    // 会話として読めないファイル
+    writeFileSync(join(base, DIR, "33333333-4444-4555-8666-777777777777.jsonl"), "not json\n");
+    const list = await listClaudeConversations(base);
+    const refs = list.map((l) => `${l.ref.dirName}/${l.ref.fileName}`).sort();
+    expect(refs).toContain(`${DIR}/${SID1}.jsonl`);
+    expect(refs).toContain(`-Users-example-curry-lab/${SID2}.jsonl`);
+    const bakery = list.find((l) => l.ref.dirName === DIR && l.ref.fileName === `${SID1}.jsonl`);
+    expect(bakery?.summary.ownTurns).toBe(1);
+    expect(bakery?.summary.workdir).toBe("/Users/example/bakery-notes");
+  });
+
+  it("存在しない baseDir は空配列", async () => {
+    expect(await listClaudeConversations(join(base, "no-such-dir"))).toEqual([]);
   });
 });

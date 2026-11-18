@@ -117,6 +117,8 @@ export function renderConversationBody(
     const parts = turn.at ? localParts(turn.at, options.utcOffsetMinutes) : null;
     if (parts && parts.date !== day) {
       day = parts.date;
+      // 2 つ目以降の日付の見出しは、前の発言と空行で離す
+      if (out[out.length - 1] !== "") out.push("");
       out.push(`## ${day}`, "");
     }
     if (turn.speaker === "assistant") {
@@ -243,7 +245,7 @@ export type WorkdirSummary = {
   candidateSessions: number;
   ownTurns: number;
   ownChars: number;
-  /** 期間（ISO 8601。時刻の分かる会話が無ければ ""） */
+  /** 本人の発言がある会話の期間（ISO 8601。そういう会話が無い・時刻が分からなければ ""） */
   startedAt: string;
   endedAt: string;
 };
@@ -275,6 +277,8 @@ export function summarizeWorkdirs(
     if (s.ownChars >= min) row.candidateSessions += 1;
     row.ownTurns += s.ownTurns;
     row.ownChars += s.ownChars;
+    // 期間は、本人の発言がある会話だけで数える（取り込まない会話の日付で広げない）
+    if (s.ownTurns === 0) continue;
     if (s.startedAt && (!row.startedAt || Date.parse(s.startedAt) < Date.parse(row.startedAt))) {
       row.startedAt = s.startedAt;
     }

@@ -16,6 +16,11 @@ describe("conversationFileId / parseConversationFileId", () => {
     expect(parseConversationFileId(id as string)).toEqual({ provider: "claude-code", sessionId: SID });
   });
 
+  it("知らない provider では id を作らない（応答が細工されていても、戻せない形の id を作らない）", () => {
+    expect(conversationFileId("evil/x" as never, "11111111-2222-4333-8444-555555555555")).toBeNull();
+    expect(conversationFileId("codex" as never, "abc")).toBeNull();
+  });
+
   it("下線とハイフンと 100 字ちょうどは通る", () => {
     expect(conversationFileId("claude-code", "a_b-c")).not.toBeNull();
     expect(conversationFileId("claude-code", "a".repeat(100))).not.toBeNull();

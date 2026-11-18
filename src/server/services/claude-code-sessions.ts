@@ -264,3 +264,23 @@ export async function listClaudeWorkdirs(
   }
   return summarizeWorkdirs(all, { candidateMinOwnChars: options.candidateMinOwnChars });
 }
+
+/** 会話 1 本を指す名前の組（`readClaudeSession` にそのまま渡せる） */
+export type ClaudeConversationRef = { dirName: string; fileName: string };
+export type ClaudeConversationListing = { ref: ClaudeConversationRef; summary: ConversationSummary };
+
+/** 記録のフォルダを全部読み、会話ごとの集計と、その会話を指す名前の組を返す（本文は持たない） */
+export async function listClaudeConversations(
+  baseDir: string = defaultClaudeProjectsDir(),
+): Promise<ClaudeConversationListing[]> {
+  const out: ClaudeConversationListing[] = [];
+  for (const dir of await listClaudeProjectDirs(baseDir)) {
+    for (const file of await listClaudeSessionFiles(dir.dirName, baseDir)) {
+      const material = await readClaudeSession(dir.dirName, file.fileName, { includeAssistant: false }, baseDir);
+      // 読めなかった会話は飛ばす
+      if (!material) continue;
+      out.push({ ref: { dirName: dir.dirName, fileName: file.fileName }, summary: summarizeConversation(material) });
+    }
+  }
+  return out;
+}

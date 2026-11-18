@@ -354,6 +354,11 @@ describe("sessionId・作業フォルダ・時刻", () => {
     expect(read([l, l.replace(/"uuid":"[^"]*"/, '"uuid":"other"')])).toBeNull();
   });
 
+  it("workdir から、向きを変える文字・見えない文字を落とす", () => {
+    const m = read([userLine({ content: "中辛で", cwd: "/Users/example/curry\u202elab\u200b/\u2066notes" })]);
+    expect(m?.workdir).toBe("/Users/example/currylab/notes");
+  });
+
   it("workdir は最初の記録の cwd", () => {
     const m = read([
       userLine({ cwd: "/Users/example/bakery-notes" }),

@@ -84,6 +84,9 @@ const PROVIDERS: readonly ConversationProvider[] = ["claude-code"];
  * 二重に作らない）。sessionId が受け付ける形でなければ null。
  */
 export function conversationFileId(provider: ConversationProvider, sessionId: string): string | null {
+  // provider は型の上では決まった値だが、サーバーの応答から来る。知らない値では id を作らない
+  // （作ると、会話の素材 id の形に戻せない id ができ、削除の守りを通らずに本文が残る）
+  if (!PROVIDERS.includes(provider)) return null;
   if (!isValidConversationSessionId(sessionId)) return null;
   return `${FILE_ID_PREFIX}${provider}-${sessionId}`;
 }
