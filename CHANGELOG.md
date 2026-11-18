@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.145.0](https://github.com/kumagallium/Graphium/compare/v0.144.0...v0.145.0) - 2026-11-18
+
+- [feat] Settings row for the on-device OCR model (switch, status, delete) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1754
+- [feat] Keep the macOS text-recognition reading of an image for finding by @kumagallium in https://github.com/kumagallium/Graphium/pull/1756
+
 ## [v0.144.0](https://github.com/kumagallium/Graphium/compare/v0.143.0...v0.144.0) - 2026-11-18
 
 - [docs] Describe the on-device OCR model in the manual (v0.142.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1750
