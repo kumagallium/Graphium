@@ -3982,6 +3982,7 @@ export const ko: Record<string, string> = {
   "ocr.runningCount": "텍스트를 읽는 중… {count}개 남음",
   "ocr.copy": "복사",
   "ocr.matchBadge": "이미지 텍스트",
+  "ocr.altReading": "다른 인식 결과 (macOS, 검색에 사용)",
   "search.bodyMatchBadge": "본문",
 
   // ── Data import (turn instrument .txt / .dat / .csv into a table) ──

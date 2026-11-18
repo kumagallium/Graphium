@@ -1428,6 +1428,9 @@ export type MediaInlineLabel = {
  * - lang: 認識に使った言語（"jpn+eng" 等）。PP-OCRv6 small では使わないが、依頼した言語として残す
  * - engine: 読んだエンジン（"tesseract" / "pp-ocrv6-small"）。任意。無ければ（過去のデータ）Tesseract
  * - extractedAt: 抽出日時（ISO 文字列）。画像を差し替えたときの古さ判断に使う
+ * - altText / altEngine: 検索用の別の読み（macOS の Vision = "apple-vision"）。任意。
+ *   手書きの文など text（PP-OCR）が苦手な箇所を、探すときだけ補う。表示・コピー・書き出し・
+ *   AI への本文には使わない（表示する文字は text だけ）。無い既存データはそのまま読める
  */
 export type MediaOcrEntry = {
   text: string;
@@ -1435,6 +1438,8 @@ export type MediaOcrEntry = {
   lang: string;
   extractedAt: string;
   engine?: string;
+  altText?: string;
+  altEngine?: string;
 };
 
 /**

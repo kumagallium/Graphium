@@ -286,6 +286,26 @@ describe("retrieveWikiContext（共有ライブラリのレーン）", () => {
     expect(askedKinds).toContainEqual(["note", "asset", "shared"]);
   });
 
+  it("別の読み（alt）の断片は AI に渡す passages に入らず、検索側にも除外の指定が渡る", async () => {
+    serveHits([
+      lex("img1", "alt0", 9, "手書きメモ", "asset"),
+      lex("img1", "c0", 8, "手書きメモ", "asset"),
+      lex("n1", "alt0", 7, "手元ノート", "note"),
+    ]);
+    const ctx = (await retrieveWikiContext("焼結 条件"))!;
+    expect(ctx).not.toContain("img1/alt0 text");
+    expect(ctx).toContain("img1/c0 text");
+    // ノートの chunkId が偶然 alt で始まっても、素材ではないので除外しない
+    expect(ctx).toContain("n1/alt0 text");
+    // 上限を数える前に外すため、検索側へ excludeChunk を渡している
+    const opts = searchMock.mock.calls
+      .map((c) => c[1] as { kinds?: string[]; excludeChunk?: (k: string, id: string) => boolean })
+      .find((o) => o.kinds?.includes("asset"))!;
+    expect(opts.excludeChunk?.("asset", "alt3")).toBe(true);
+    expect(opts.excludeChunk?.("asset", "c0")).toBe(false);
+    expect(opts.excludeChunk?.("note", "alt0")).toBe(false);
+  });
+
   it("スイッチ OFF なら kinds に shared を足さない", async () => {
     // localStorage に "0"（明示 OFF）を置く。Node 環境には localStorage が無いので丸ごと差し替える
     vi.stubGlobal("localStorage", {

@@ -45,7 +45,7 @@ export async function runOcrForImage(
     typeof source === "string" ? await resolveMediaUrl(source) : source;
   if (!input) throw new Error("画像を解決できませんでした");
 
-  const { text, confidence, engine } = await recognizeImage(input, {
+  const { text, confidence, engine, altText, altEngine } = await recognizeImage(input, {
     langs,
     onProgress: opts.onProgress,
   });
@@ -56,5 +56,6 @@ export async function runOcrForImage(
     lang: langs,
     extractedAt: new Date().toISOString(),
     ...(engine ? { engine } : {}),
+    ...(altText?.trim() ? { altText: altText.trim(), altEngine: altEngine ?? "apple-vision" } : {}),
   };
 }

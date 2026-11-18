@@ -4034,6 +4034,7 @@ export const en: Record<string, string> = {
   "ocr.runningCount": "Reading text… {count} left",
   "ocr.copy": "Copy",
   "ocr.matchBadge": "image text",
+  "ocr.altReading": "Another reading (macOS, used for search)",
   "search.bodyMatchBadge": "in body",
 
   // ── Data import (turn instrument .txt / .dat / .csv into a table) ──

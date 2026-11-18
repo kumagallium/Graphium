@@ -20,6 +20,8 @@ mod model_download;
 mod embedding_models;
 mod ocr_engine;
 mod ocr_models;
+#[cfg(target_os = "macos")]
+mod ocr_vision;
 mod ui_zoom;
 
 // --- sidecar ログファイル ---

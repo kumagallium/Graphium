@@ -174,7 +174,7 @@ fn check_deadline(deadline: Option<Instant>) -> Result<()> {
 
 /// RGB 化。アルファ付きは白い背景に合成する（透明部の RGB は黒のことが多く、
 /// そのまま捨てると黒文字の透過 PNG が黒地に黒文字になる）
-fn to_rgb_on_white(img: &DynamicImage) -> Cow<'_, RgbImage> {
+pub fn to_rgb_on_white(img: &DynamicImage) -> Cow<'_, RgbImage> {
     match img {
         DynamicImage::ImageRgb8(i) => Cow::Borrowed(i),
         other if other.color().has_alpha() => {

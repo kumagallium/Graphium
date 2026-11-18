@@ -9,13 +9,21 @@
 // - Tesseract ワーカーは 1 つを使い回し、認識ジョブは直列化する
 //   （ワーカーは同時に 1 ジョブしか処理できず、logger も共有のため）。
 
+import { sanitizeAltText } from "./ocr-alt";
 import type { Worker, LoggerMessage } from "tesseract.js";
 import { isTauri } from "./platform";
 
 export type OcrProgress = { status: string; progress: number };
 /** 読んだエンジン。tesseract = Tesseract.js、pp-ocrv6-small = 端末内の PP-OCRv6 small（デスクトップ版） */
 export type OcrEngineName = "tesseract" | "pp-ocrv6-small";
-export type OcrResult = { text: string; confidence: number; engine?: OcrEngineName };
+export type OcrResult = {
+  text: string;
+  confidence: number;
+  engine?: OcrEngineName;
+  /** 検索用の別の読み（macOS の Vision。デスクトップ版のみ）。表示・コピー・書き出しには使わない */
+  altText?: string;
+  altEngine?: string;
+};
 
 /** 既定の認識言語（日本語＋英語）。日本語ノート向け。 */
 export const DEFAULT_OCR_LANG = "jpn+eng";
@@ -248,6 +256,7 @@ async function recognizeNativeOrNull(
       text: (r.text ?? "").trim(),
       confidence: Math.round(r.confidence ?? 0),
       engine: "pp-ocrv6-small",
+      ...(sanitizeAltText(r.altText) ? { altText: sanitizeAltText(r.altText), altEngine: r.altEngine ?? "apple-vision" } : {}),
     };
   } catch (e) {
     console.warn("[ocr] 端末内 OCR に失敗。Tesseract で読みます", e);

@@ -60,6 +60,20 @@ describe("recognizeImage の振り分け", () => {
     expect(h.downloadOcrModel).not.toHaveBeenCalled();
   });
 
+  it("別の読み（altText）があれば結果に載せ、text には混ぜない。無ければキー自体を付けない", async () => {
+    h.getOcrModelStatus.mockResolvedValue(status(true));
+    h.recognizeNative.mockResolvedValueOnce({
+      text: "焼給", confidence: 80, engine: "pp-ocrv6-small", altText: " 焼結 ", altEngine: "apple-vision",
+    });
+    const { recognizeImage } = await loadOcr();
+    expect(await recognizeImage(blob())).toEqual({
+      text: "焼給", confidence: 80, engine: "pp-ocrv6-small", altText: "焼結", altEngine: "apple-vision",
+    });
+    h.recognizeNative.mockResolvedValueOnce({ text: "x", confidence: 80, engine: "pp-ocrv6-small" });
+    const r2 = await recognizeImage(blob());
+    expect("altText" in r2).toBe(false);
+  });
+
   it("URL（string）は fetch してバイト列にして渡す", async () => {
     h.getOcrModelStatus.mockResolvedValue(status(true));
     h.recognizeNative.mockResolvedValue({ text: "x", confidence: 50, engine: "pp-ocrv6-small" });

@@ -4036,6 +4036,7 @@ export const ja: Record<string, string> = {
   "ocr.runningCount": "文字を認識中… 残り {count} 件",
   "ocr.copy": "コピー",
   "ocr.matchBadge": "画像テキスト",
+  "ocr.altReading": "別の読み（macOS・探すときに使います）",
   "search.bodyMatchBadge": "本文",
 
   // ── データ取り込み（装置の .txt / .dat / .csv を表にする） ──

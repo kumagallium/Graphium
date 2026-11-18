@@ -3,6 +3,7 @@
 // 索引は search.ts と同じトークナイザ（本体の語彙索引と同じ）で MiniSearch に載せる。
 // media-index.json の更新時刻が変われば組み直す（アプリが素材を足したら次の検索で追いつく）。
 
+import { sanitizeAltText } from "../lib/ocr-alt";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import MiniSearch from "minisearch";
@@ -20,6 +21,8 @@ type MediaDoc = {
   id: string;
   name: string;
   ocrText: string;
+  /** 検索用の別の読み（macOS の Vision）。探すためだけ。結果には返さない */
+  ocrAltText: string;
   description: string;
   excerpt: string;
   domain: string;
@@ -64,7 +67,7 @@ function getIndex(root: string): Cache {
 
   const mini = new MiniSearch<MediaDoc>({
     idField: "id",
-    fields: ["name", "ocrText", "description", "excerpt", "domain", "source"],
+    fields: ["name", "ocrText", "ocrAltText", "description", "excerpt", "domain", "source"],
     tokenize: (s: string) => tokenize(s),
     processTerm: (term: string) => (term ? term : null),
     searchOptions: { boost: { name: 3, domain: 1.5 }, combineWith: "OR" as const },
@@ -82,6 +85,7 @@ function getIndex(root: string): Cache {
       id,
       name: m.name ?? "",
       ocrText: m.ocrText ?? "",
+      ocrAltText: sanitizeAltText(m.ocrAltText) ?? "",
       description: m.urlMeta?.description ?? "",
       excerpt: m.urlMeta?.excerpt ?? "",
       domain: m.urlMeta?.domain ?? "",

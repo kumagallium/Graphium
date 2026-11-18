@@ -19,7 +19,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { getDemoId } from "../../lib/demo/demo-mode";
 import { chunkNoteDocument, chunkPlainText } from "./chunk";
 import { extractWikiSections } from "../wiki/section-extract";
-import { desiredAssetSources, desiredNoteSources } from "./sources";
+import { ALT_CHUNK_PREFIX, desiredAssetSources, desiredNoteSources } from "./sources";
 import { lexicalSearch, type DesiredSource, type LexicalStatus, type SourceLoader } from "./service";
 
 /** noteIndex が動いてから reconcile を走らせるまでの待ち（自動保存の連打を 1 回にまとめる） */
@@ -252,7 +252,11 @@ export function useLexicalIndexSync(params: LexicalSyncParams): void {
         const name = names.get(d.sourceId) ?? "";
         if (!plan) return null;
         if (plan.mode === "inline") {
-          return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: chunkPlainText(plan.text) };
+          // 別の読み（検索用）は alt 接頭辞の断片として足す。表示する文字（plan.text）の断片とは分ける
+          const altChunks = plan.altText
+            ? chunkPlainText(plan.altText).map((c, i) => ({ ...c, chunkId: `${ALT_CHUNK_PREFIX}${i}` }))
+            : [];
+          return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: [...chunkPlainText(plan.text), ...altChunks] };
         }
         if (plan.mode === "transcript") {
           const epoch = epochOf(d.sourceId);

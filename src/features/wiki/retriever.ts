@@ -18,7 +18,7 @@
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
 import { notifyEmbeddingFailure } from "../../lib/ai-error";
 import { embedTexts } from "../embedding/client";
-import { lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
+import { isAltChunk, isAltChunkId, lexicalSearch, reciprocalRankFusion, type LexicalHit, type LexicalSourceKind } from "../lexical-search";
 // 共有ストアは実ファイル指定で読む（sharing の barrel は View まで引き込むので循環を避ける）
 import { getSharedLibrarySnapshot } from "../sharing/shared-library-store";
 // 設定も config を直に読む（storage/shared の barrel は Tauri のダイアログまで連れてくる）
@@ -161,6 +161,8 @@ function lexicalHits(
       excludeSourceIds: excludeIds,
       onlySourceIds: onlyIds,
       perSourceLimit,
+      // 別の読み（検索用）の断片は、上限を数える前に外す（枠を食わせない・AI に渡さない）
+      excludeChunk: isAltChunk,
       // 質問文は完成した文なので前方一致は不要（打鍵中の Cmd-K とは違う）
       prefixLastTerm: false,
       // 「時間」「条件」のような 1 語だけで当たる弱い候補を落とす（2 語以上当たったものだけ）
@@ -238,6 +240,8 @@ async function searchLanes(
   // 素材はフォルダを持たないので、onlyIds があれば自然に外れる
   const passages = lexicalHits(query, shared.enabled ? ["note", "asset", "shared"] : ["note", "asset"], excludeIds, 2, onlyIds)
     .filter((h) => h.kind !== "shared" || !shared.isKnowledge(h.sourceId))
+    // 念のための二重の防御（検索側の excludeChunk が本体）
+    .filter((h) => !isAltChunk(h.kind, h.chunkId))
     .map<RetrievedPassage>((h) => ({ kind: passageKind(h.kind), sourceId: h.sourceId, chunkId: h.chunkId, title: h.title, text: h.text, score: h.score }));
 
   return { wikiSections, passages };
@@ -423,7 +427,8 @@ export function readSourceForTool(
 
   let chunks: ReturnType<typeof lexicalSearch.listChunks> = [];
   try {
-    chunks = lexicalSearch.listChunks(sourceId);
+    // 別の読み（検索用）の断片は、AI の道具の戻り値（本文）には連結しない
+    chunks = lexicalSearch.listChunks(sourceId).filter((c) => !isAltChunkId(c.chunkId));
   } catch {
     chunks = [];
   }

@@ -353,6 +353,17 @@ type GraphiumPage = {
                                      // optional `engine` ("pp-ocrv6-small" |
                                      // "tesseract"); entries without it were read by
                                      // Tesseract.
+                                     // Optional `altText` / `altEngine`
+                                     // ("apple-vision"): a second reading of the
+                                     // same image by macOS's built-in Vision
+                                     // (desktop app on macOS only), kept for
+                                     // *search only* — shown only as a small
+                                     // "another reading" box in the image's text
+                                     // panel; never part of the body text display,
+                                     // the copy action, exports, or anything
+                                     // handed to an AI;
+                                     // `text` stays the PP-OCR reading. Entries
+                                     // without it are read as before.
                                      // An annotation layer over the *standard* image
                                      // block (same approach as mediaInlineLabels), so
                                      // any image can be read later regardless of how it
@@ -923,6 +934,17 @@ project image → OCR → extracted-text chains put distracting noise next to
 hand-labelled steps, so the projection was withdrawn. The extracted text
 still powers full-text search (`ocrText` in the note index, §5) and the
 asset gallery's detail panel.
+
+On macOS the desktop app also keeps a second reading of each image from the
+OS's own Vision framework (`MediaOcrEntry.altText`, `altEngine: "apple-vision"`).
+PP-OCR is the more accurate reader of printed text and numbers, so `text` —
+the only reading that is displayed, copied or exported — stays PP-OCR; Vision
+is better at handwritten Japanese sentences, so its reading is kept only to
+widen what search can find. The alternative reading is mirrored next to
+`ocrText` as `NoteIndexEntry.ocrAltText` (§5) and `MediaIndexEntry.ocrAltText`,
+and is added to the full-text index as separate chunks (`alt<N>`) that are
+excluded from the passages given to an AI and from the page text the AI's read tool returns. Its length is capped at 20,000 characters and non-string values are ignored where it enters an index. It is not stored when it is empty or
+equals the PP-OCR reading after folding width and whitespace.
 
 The same text is also mirrored onto the *material* it was read from
 (`MediaIndexEntry.ocrText` in the media index), which is what makes an image
@@ -3557,12 +3579,19 @@ type NoteIndexEntry = {
   //   includes this field).
   //   Absent → undefined (no image read yet, or none produced text).
   ocrText?: string;
+
+  // Search-only second reading of those images (macOS Vision,
+  //   `mediaOcr[*].altText`), newline-joined. Used by searchNotes and the
+  //   note list's search; shown only in the image text panel's small
+  //   "another reading" box, never as body text. Absent → undefined.
+  //   v36. Legacy notes keep `ocrAltText: undefined`.
+  ocrAltText?: string;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **35**.
+Defined in `src/features/navigation/index-file.ts`. Currently **36**.
 Bumping rules:
 
 | Version | Change |
@@ -3598,6 +3627,7 @@ Bumping rules:
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
 | **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **35** | Added `hasRecording` — `true` when the note body contains a recorded transcript block (a `meetingTranscript` block with a `fileId` or `recordingId`, at any depth; a block not yet recorded does not count). The Records view uses it to show a "From a recording" origin tag from the index alone, because a material's `usedIn` does not carry the block type. Notes without such a block keep `hasRecording: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **36** | Added `ocrAltText` on `NoteIndexEntry` — the newline-joined, search-only second reading (macOS Vision, `page.mediaOcr[*].altText`) of the note's images, collected in `buildIndexEntry` and included in `searchNotes` and the note list search; shown only in the image text panel's small "another reading" box, never as body text, in copies, exports or AI input. Legacy notes keep `ocrAltText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. The media index gets the matching `MediaIndexEntry.ocrAltText` (media index version 11). |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
