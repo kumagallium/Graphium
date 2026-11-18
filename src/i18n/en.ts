@@ -4663,7 +4663,7 @@ export const en: Record<string, string> = {
   "linkedFile.name": "Linked file",
   "linkedFile.badge": "Link",
   "linkedFile.add": "Link a file from a data place",
-  "linkedFile.outsidePlace": "This file isn't inside a registered data place. Register the place, or use the regular import.",
+  "linkedFile.outsidePlace": "This file isn't inside a registered data place. Register its folder as a data place, or use the normal import.",
   "linkedFile.linkFailed": "Couldn't link the file: {message}",
   "linkedFile.note": "Graphium keeps only where this file is. It isn't copied, and its contents aren't read.",
   "linkedFile.field.place": "Data place",

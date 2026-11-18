@@ -26,9 +26,17 @@ function desktopOnly(): never {
   throw new Error("desktop only");
 }
 
-export async function listPlaces(): Promise<PlaceInfo[]> {
-  if (!isTauri()) return [];
-  return invoke<PlaceInfo[]>("place_list");
+/** 進行中の呼び出しがあれば同じ Promise を返す（終わったら・失敗したら消す）。 */
+let listInFlight: Promise<PlaceInfo[]> | null = null;
+
+export function listPlaces(): Promise<PlaceInfo[]> {
+  if (!isTauri()) return Promise.resolve([]);
+  if (listInFlight) return listInFlight;
+  const p = invoke<PlaceInfo[]>("place_list").finally(() => {
+    if (listInFlight === p) listInFlight = null;
+  });
+  listInFlight = p;
+  return p;
 }
 
 /** Rust がフォルダ選択を開く。キャンセルは null。 */
@@ -54,9 +62,22 @@ export async function pickPlaceFile(): Promise<PickedFile | null> {
   return invoke<PickedFile | null>("place_pick_file");
 }
 
-/** 大きさと更新日時をまとめて見る。結果は items と同じ順。 */
-export async function statLinks(items: { placeId: string; relPath: string }[]): Promise<LinkStat[]> {
-  if (!isTauri()) return items.map(() => ({ state: "unregistered" as const }));
+const statInFlight = new Map<string, Promise<LinkStat[]>>();
+
+/** 大きさと更新日時をまとめて見る。結果は items と同じ順。同じ引数で進行中なら同じ Promise を返す。 */
+export function statLinks(items: { placeId: string; relPath: string }[]): Promise<LinkStat[]> {
+  if (!isTauri()) return Promise.resolve(items.map(() => ({ state: "unregistered" as const })));
+  const key = JSON.stringify(items.map((i) => [i.placeId, i.relPath]));
+  const running = statInFlight.get(key);
+  if (running) return running;
+  const p = statLinksNow(items).finally(() => {
+    if (statInFlight.get(key) === p) statInFlight.delete(key);
+  });
+  statInFlight.set(key, p);
+  return p;
+}
+
+async function statLinksNow(items: { placeId: string; relPath: string }[]): Promise<LinkStat[]> {
   const out: LinkStat[] = [];
   for (let i = 0; i < items.length; i += STAT_CHUNK) {
     const part = await invoke<LinkStat[]>("place_stat_many", { items: items.slice(i, i + STAT_CHUNK) });

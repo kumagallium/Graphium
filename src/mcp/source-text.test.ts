@@ -160,7 +160,8 @@ describe("getSourceText — リンクした素材", () => {
       const out = await getSourceText({ sourceId: `url:${url}` }, root);
       expect(out.startsWith("LINKED_FILE")).toBe(true);
       expect(out).toContain("Graphium は中身を持っていません");
-      expect(out).toContain("共有ドライブ/実験/a.xlsx");
+      expect(out).toContain("「共有ドライブ」");
+      expect(out).toContain("「実験/a.xlsx」");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

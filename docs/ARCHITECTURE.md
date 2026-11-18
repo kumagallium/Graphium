@@ -3909,6 +3909,69 @@ The same `src/` tree is built four different ways.
   new id so later saves edit the new, not-yet-cited version instead of
   piling up versions. **Discard edits** runs `discard_opened_copy`, which
   deletes the copy. All five commands take only material ids.
+- **Data places** (linked files; shape in DATA_MODEL.md §6.5) are eight
+  commands that point at files without copying or reading them:
+  `place_list`, `place_register`, `place_rename`, `place_remove`,
+  `place_pick_file`, `place_stat_many`, `place_open` and `place_reveal`.
+  The wrapper is `src/features/linked-files/places.ts`; the Rust side is
+  the `place_*` block in `src-tauri/src/lib.rs`. The guards:
+  - **JavaScript never supplies a filesystem path.** A place is added only
+    through a native folder dialog opened by Rust (`place_register`), and a
+    file is chosen only through a native file dialog opened by Rust
+    (`place_pick_file`, which answers with a place id and a relative path,
+    or "outside every place"). Everything else takes a place id and a
+    relative path. The absolute path of each place lives only in Rust's
+    per-device ledger (`places.json` under `app_config_dir`).
+  - **The relative path is checked first.** It must be non-empty, at most
+    4096 bytes, `/`-separated with no leading `/`, and no segment may be
+    empty, `.` or `..`, contain `\`, NUL or a control character (and, on
+    Windows, `:`).
+  - **Symbolic links are not followed.** The joined path is looked at with
+    `symlink_metadata`; a link, or anything that is not a regular file,
+    counts as "missing". The same holds for the `.graphium-place.json`
+    marker, which is also opened with `O_NOFOLLOW` on Unix.
+  - **What is opened is the resolved real file.** The path is
+    canonicalized and must still be inside the place's canonicalized root
+    (a directory in the middle that is a link out of the place is
+    refused); the type is judged on that real file, and that same path is
+    what goes to the opener plugin. The ledger's stored root must still
+    resolve to itself, so a folder swapped for a link since registration is
+    refused. Just before the path is handed to the OS it is checked once
+    more (still a regular, non-link file, and `canonicalize` still returns
+    the same path). A swap in the very short gap between that check and the
+    OS opening the file cannot be ruled out; because only allow-listed kinds
+    are opened, a swapped file still cannot be executed.
+  - **Only an allow-list of kinds is opened.** `place_open` opens a file
+    only when its lower-cased extension is in a fixed list (documents,
+    spreadsheets, slides, plain text / CSV, images, audio, video, PDF),
+    its name does not end in `.` or a space (Windows would drop it and open
+    a different file). The executable bit is deliberately not consulted: SMB
+    shares and exFAT show every ordinary file as `-rwx------`, and the OS
+    opens allow-listed kinds in a viewer even when it is set. Anything else
+    returns `PLACE_OPEN_NOT_ALLOWED:<ext>` and the UI points the user to
+    **Show in folder**. It is a list of what is allowed, not of what is
+    blocked. `place_reveal` shows the file in the OS file manager and does
+    not open it, so it is not limited by kind.
+  - **No command reads a file's contents.** The commands return
+    `metadata` (size, modified time) or hand the file to the OS; the only
+    content Rust reads is the marker file, capped at 64 KiB.
+  - **Too-broad folders are refused.** `place_register` rejects a
+    filesystem root or drive, the home folder and its parents, and
+    Graphium's own data folder and app config folder (inside them or
+    containing them).
+  - **Only the `main` window may call them** (`require_main_window`), not
+    the viewer window. `place_stat_many` takes at most 2000 items and
+    checks each place's root on a separate thread with a 3 second limit, so
+    a stalled share or NAS marks its links `unreachable` instead of
+    freezing the app. The same check (at most one in flight per place; later
+    callers wait for it) gates `place_list`, `place_open` and `place_reveal`,
+    and a place that times out is listed as not reachable without reading
+    its marker.
+  - Unregistering (`place_remove`) only deletes the ledger entry; it never
+    touches the marker or any file.
+  Not verified on Windows or against sync services' placeholder files
+  (cloud-only files that are not downloaded yet); both are expected to
+  behave but have not been tested.
 - Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds
@@ -5446,6 +5509,7 @@ people most often need to find.
 | PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
+| Linked files (materials that point at a file in a registered data place; state check, open / show in folder) | `src/features/linked-files/`, `src/features/settings/DataPlacesSection.tsx`, the `place_*` block in `src-tauri/src/lib.rs` (§4.2; DATA_MODEL.md §6.5) |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |

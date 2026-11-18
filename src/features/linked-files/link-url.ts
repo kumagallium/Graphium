@@ -1,6 +1,7 @@
 // リンクした素材の URL（graphium-place://<placeId>/<相対パス>）の組み立てと解析。
 // Rust 側と共有する約束: 相対パスは常に "/" 区切り・先頭に "/" なし・各区切りを encodeURIComponent。
 
+import { isValidMtimeMs, isValidSize } from "./link-safe";
 import type { MediaIndexEntry, MediaLink, MediaLinkSnapshot } from "../asset-browser/media-index";
 
 export const PLACE_URL_SCHEME = "graphium-place://";
@@ -42,12 +43,11 @@ export function isPlaceUrl(url: string): boolean {
 export const MAX_LINK_HISTORY = 20;
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
-const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 function isValidSnapshot(v: unknown): v is MediaLinkSnapshot {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return isFiniteNumber(o.size) && isFiniteNumber(o.mtimeMs) && typeof o.recordedAt === "string";
+  return isValidSize(o.size) && isValidMtimeMs(o.mtimeMs) && typeof o.recordedAt === "string";
 }
 
 /** 控えの本体（履歴以外）が正しい形か。 */
@@ -57,8 +57,8 @@ function hasValidCore(link: unknown): link is Record<string, unknown> {
   return (
     isNonEmptyString(o.placeId) &&
     isNonEmptyString(o.relPath) &&
-    isFiniteNumber(o.size) &&
-    isFiniteNumber(o.mtimeMs) &&
+    isValidSize(o.size) &&
+    isValidMtimeMs(o.mtimeMs) &&
     typeof o.recordedAt === "string"
   );
 }

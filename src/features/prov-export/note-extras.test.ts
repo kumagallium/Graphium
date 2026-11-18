@@ -669,3 +669,38 @@ describe("リンクした素材（link 付きの url 素材）の来歴への書
     expect(extras.assets![0].link).toBeUndefined();
   });
 });
+
+describe("collectNoteProvExtras — リンクした素材の控えが細工されていても書き出せる", () => {
+  const url = "graphium-place://p1/a.xlsx";
+  const goodLink = { placeId: "p1", relPath: "a.xlsx", size: 10, mtimeMs: 1700000000000, recordedAt: "x" };
+  const build = (over: Partial<MediaIndexEntry>) => {
+    const doc = makeDoc({ citedAssetFileIds: ["l1"] });
+    const extras = collectNoteProvExtras({
+      doc,
+      noteId: NOTE_ID,
+      mediaIndex: [media({ fileId: "l1", type: "url", name: "a.xlsx", url, mimeType: "", ...over })],
+    });
+    const page = doc.pages[0];
+    const provDoc = generateProvDocument({ blocks: page.blocks, labels: new Map(), links: [] });
+    const out = buildNoteProvJsonLd({ provDoc, title: doc.title, noteId: NOTE_ID, page, extras });
+    return { extras, node: out["@graph"].find((n) => n["graphium:sourceKind"] === "url") as Record<string, unknown> | undefined };
+  };
+
+  it("正しい控えは出る", () => {
+    const { node } = build({ link: goodLink });
+    expect(node?.["graphium:placeId"]).toBe("p1");
+    expect(node?.["graphium:fileModified"]).toBeDefined();
+  });
+
+  it.each([
+    ["mtimeMs が範囲外", { ...goodLink, mtimeMs: 1e300 }],
+    ["size が負", { ...goodLink, size: -1 }],
+    ["控えが空", {}],
+    ["URL と控えが食い違う", { ...goodLink, relPath: "other.xlsx" }],
+  ])("%s: 落ちず、控えの項目を出さない", (_n, link) => {
+    const { extras, node } = build({ link: link as never });
+    expect(extras.assets?.[0]?.link).toBeUndefined();
+    expect(node?.["graphium:fileModified"]).toBeUndefined();
+    expect(node?.["graphium:placeId"]).toBeUndefined();
+  });
+});

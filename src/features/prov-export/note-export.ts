@@ -11,6 +11,7 @@
 // ──────────────────────────────────────────────
 
 import type { ProvJsonLd } from "../prov-generator/generator";
+import { isValidSize, linkModifiedIso } from "../linked-files/link-safe";
 import type { BlockLink } from "../block-link/link-types";
 import type { GraphiumPage, TableSource } from "../../lib/document-types";
 import type { SourceInfo } from "../asset-browser/media-index";
@@ -427,12 +428,10 @@ function buildAssetNode(a: AssetExportEntry): W3CProvNode {
   if (a.link) {
     node["graphium:placeId"] = a.link.placeId;
     node["graphium:relPath"] = a.link.relPath;
-    node["graphium:fileSize"] = a.link.size;
-    if (Number.isFinite(a.link.mtimeMs)) {
-      node["graphium:fileModified"] = {
-        "@value": new Date(a.link.mtimeMs).toISOString(),
-        "@type": "xsd:dateTime",
-      };
+    if (isValidSize(a.link.size)) node["graphium:fileSize"] = a.link.size;
+    const modified = linkModifiedIso(a.link.mtimeMs);
+    if (modified) {
+      node["graphium:fileModified"] = { "@value": modified, "@type": "xsd:dateTime" };
     }
   }
   const info = a.sourceInfo;

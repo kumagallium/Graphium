@@ -74,3 +74,43 @@ describe("デスクトップ版でない", () => {
     await expect(revealLinkedFile("p", "a")).rejects.toThrow("desktop only");
   });
 });
+
+describe("呼び出しの重ね防止", () => {
+  beforeEach(() => isTauri.mockReturnValue(true));
+
+  it("同じ引数の statLinks を続けて呼んでも invoke は 1 回、終わったら新しく呼ぶ", async () => {
+    let resolve!: (v: unknown) => void;
+    invoke.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const items = [{ placeId: "p", relPath: "a" }];
+    const a = statLinks(items);
+    const b = statLinks([{ placeId: "p", relPath: "a" }]);
+    const c = statLinks(items);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    resolve([{ state: "ok" }]);
+    expect(await a).toEqual([{ state: "ok" }]);
+    expect(await b).toEqual([{ state: "ok" }]);
+    await c;
+    invoke.mockResolvedValue([{ state: "missing" }]);
+    expect(await statLinks(items)).toEqual([{ state: "missing" }]);
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("引数が違えば別の呼び出し。失敗したあとも詰まらない", async () => {
+    invoke.mockRejectedValueOnce(new Error("boom"));
+    await expect(statLinks([{ placeId: "p", relPath: "x" }])).rejects.toThrow("boom");
+    invoke.mockResolvedValue([{ state: "ok" }]);
+    expect(await statLinks([{ placeId: "p", relPath: "x" }])).toEqual([{ state: "ok" }]);
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("listPlaces も重ねず、失敗後に詰まらない", async () => {
+    invoke.mockResolvedValue([]);
+    await Promise.all([listPlaces(), listPlaces(), listPlaces()]);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    invoke.mockRejectedValueOnce(new Error("x"));
+    await expect(listPlaces()).rejects.toThrow("x");
+    invoke.mockResolvedValue([]);
+    await listPlaces();
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
+});

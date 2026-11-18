@@ -15,6 +15,7 @@ import { useT } from "../../i18n";
 import { formatBytes } from "../../lib/format-bytes";
 import { formatDateTime } from "../../lib/format-datetime";
 import { persistLinkPatch, type MediaIndexEntry, type MediaLink } from "../asset-browser/media-index";
+import { linkModifiedIso } from "./link-safe";
 import { sanitizeMediaLink } from "./link-url";
 import { acceptLinkChange, linkState, type LinkState } from "./linked-entry";
 import { LinkedBadge, LinkStateBadge } from "./LinkStateBadge";
@@ -162,7 +163,7 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
         <Field label={t("linkedFile.field.place")} value={shownPlace} />
         <Field label={t("linkedFile.field.path")} value={link.relPath} mono />
         <Field label={t("linkedFile.field.size")} value={formatBytes(link.size)} />
-        <Field label={t("linkedFile.field.modified")} value={formatDateTime(link.mtimeMs)} />
+        <Field label={t("linkedFile.field.modified")} value={formatModified(link.mtimeMs)} />
         <Field label={t("linkedFile.field.recorded")} value={formatDateTime(link.recordedAt)} />
       </dl>
 
@@ -202,8 +203,8 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
               </tr>
               <tr>
                 <td className="text-muted-foreground">{t("linkedFile.field.modified")}</td>
-                <td>{formatDateTime(link.mtimeMs)}</td>
-                <td>{current.mtimeMs == null ? "" : formatDateTime(current.mtimeMs)}</td>
+                <td>{formatModified(link.mtimeMs)}</td>
+                <td>{current.mtimeMs == null ? "" : formatModified(current.mtimeMs)}</td>
               </tr>
             </tbody>
           </table>
@@ -252,7 +253,7 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
           <ul className="mt-1.5 space-y-1 tabular-nums">
             {history.map((h, i) => (
               <li key={`${h.recordedAt}-${i}`} className="text-muted-foreground">
-                {formatDateTime(h.recordedAt)} · {formatBytes(h.size)} · {formatDateTime(h.mtimeMs)}
+                {formatDateTime(h.recordedAt)} · {formatBytes(h.size)} · {formatModified(h.mtimeMs)}
               </li>
             ))}
           </ul>
@@ -260,6 +261,12 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
       )}
     </div>
   );
+}
+
+/** 更新日時の表示。範囲外・壊れた値は空文字（Invalid Date を描かない）。 */
+function formatModified(mtimeMs: number): string {
+  const iso = linkModifiedIso(mtimeMs);
+  return iso ? formatDateTime(iso) : "";
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

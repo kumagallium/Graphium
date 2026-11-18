@@ -67,7 +67,7 @@ describe("isLinkedEntry（細工した控えを通さない）", () => {
 
 describe("isValidMediaLink / sanitizeMediaLink", () => {
   const good = { placeId: "p", relPath: "a.txt", size: 1, mtimeMs: 1, recordedAt: "x" };
-  const snap = (i: number) => ({ size: i, mtimeMs: i, recordedAt: String(i) });
+  const snap = (i: number) => ({ size: i, mtimeMs: i + 1, recordedAt: String(i) });
   it("履歴が配列でなければ無効", () => expect(isValidMediaLink({ ...good, history: "x" })).toBe(false));
   it("placeId が空なら無効・null にする", () => {
     expect(isValidMediaLink({ ...good, placeId: "" })).toBe(false);

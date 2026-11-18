@@ -1,3 +1,4 @@
+export { linkModifiedIso, plainLabel, isValidMtimeMs, isValidSize } from "./link-safe";
 export { PLACE_URL_SCHEME, buildPlaceUrl, parsePlaceUrl, isPlaceUrl, isLinkedEntry, isValidMediaLink, sanitizeMediaLink } from "./link-url";
 export {
   listPlaces,
