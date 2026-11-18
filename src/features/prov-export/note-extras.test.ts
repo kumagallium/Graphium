@@ -748,19 +748,51 @@ describe("素材の派生元（prov:wasDerivedFrom）の書き出し", () => {
     expect(JSON.stringify(graph)).not.toContain("gone");
   });
 
+  it("リンクしていない親（抽出画像の元 PDF など）は来歴に増やさない", () => {
+    const mediaIndex = [
+      media({ fileId: "img1", type: "data", name: "summary.csv", mimeType: "text/csv", derivedFromAssets: ["pdf1"] }),
+      media({ fileId: "pdf1", type: "pdf", name: "secret-paper.pdf", mimeType: "application/pdf" }),
+    ];
+    const extras = collectNoteProvExtras({ doc: makeDoc({ citedAssetFileIds: ["img1"] }), noteId: NOTE_ID, mediaIndex });
+    expect(extras.assets!.map((a) => a.fileId)).toEqual(["img1"]);
+    expect(extras.assets![0].derivedFrom).toBeUndefined();
+  });
+
+  it("includeSourceData: false（読める写し）では元データの名前も場所も出さない", () => {
+    const linkedRaw = media({
+      fileId: "raw1",
+      type: "url",
+      name: "raw.csv",
+      url: "graphium-place://p1/raw/raw.csv",
+      link: { placeId: "p1", relPath: "raw/raw.csv", size: 4_000_000_000, mtimeMs: 1000, recordedAt: "2026-11-19T00:00:00.000Z" },
+    });
+    const mediaIndex = [
+      media({ fileId: "sum1", type: "data", name: "summary.csv", mimeType: "text/csv", derivedFromAssets: ["raw1"] }),
+      linkedRaw,
+    ];
+    const extras = collectNoteProvExtras({
+      doc: makeDoc({ citedAssetFileIds: ["sum1"] }),
+      noteId: NOTE_ID,
+      mediaIndex,
+      includeSourceData: false,
+    });
+    expect(extras.assets!.map((a) => a.fileId)).toEqual(["sum1"]);
+    expect(JSON.stringify(extras.assets)).not.toContain("raw.csv");
+  });
+
   it("親が無い素材には wasDerivedFrom を足さない", () => {
     const { sum } = run([media({ fileId: "sum1", type: "data", name: "summary.csv", mimeType: "text/csv" })]);
     expect(sum!["prov:wasDerivedFrom"]).toBeUndefined();
   });
 
-  it("親の親までたどり、循環していても止まる", () => {
+  it("派生元が循環していても止まり、リンクしていない親はたどらない", () => {
     const { graph } = run([
-      media({ fileId: "sum1", type: "data", mimeType: "text/csv", derivedFromAssets: ["mid"] }),
-      media({ fileId: "mid", type: "data", mimeType: "text/csv", derivedFromAssets: ["raw1", "sum1"] }),
+      media({ fileId: "sum1", type: "data", mimeType: "text/csv", derivedFromAssets: ["mid", "raw1"] }),
+      media({ fileId: "mid", type: "data", mimeType: "text/csv", derivedFromAssets: ["sum1"] }),
       linkedRaw(),
     ]);
     const ids = graph.map((n) => n["@id"]);
-    expect(ids).toContain("graphium:data/mid");
+    expect(ids).not.toContain("graphium:data/mid");
     expect(ids.some((i) => String(i).startsWith("graphium:url/"))).toBe(true);
   });
 });

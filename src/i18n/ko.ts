@@ -4722,6 +4722,7 @@ export const ko: Record<string, string> = {
   "linkedFile.origin.noMatch": "일치하는 항목이 없습니다",
   "linkedFile.origin.clearAll": "모두 해제",
   "linkedFile.origin.none": "지정하지 않았습니다",
+  "linkedFile.origin.saveFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
   "linkedFile.origin.remove": "“{name}”을(를) 원본 데이터에서 해제",
   "linkedFile.origin.removeTooltip": "해제",
   "linkedFile.origin.open": "“{name}”(으)로 이동",

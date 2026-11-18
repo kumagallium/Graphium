@@ -200,7 +200,7 @@ Graphium compares only size and modified time. An edit that leaves both unchange
 
 Say you link a 40 GB `raw.csv`, analyse it on your own computer, and bring the small `summary.csv` into Graphium. You can record that `summary.csv` came from `raw.csv`.
 
-1. Open `summary.csv` in full view and go to the **Metadata** tab. A **Source data** row appears there once you have at least one linked file.
+1. Open `summary.csv` in full view and go to the **Metadata** tab. A **Source data** row appears there once you have a linked file that is not archived.
 2. Press **Set source data**, type part of a name to narrow the list, and pick the linked file. Pick several if there are several.
 3. The row lists each one with its data place and its location in the place. Press a name to go to that material; press the **×** beside it to remove it.
 
@@ -209,7 +209,7 @@ It can be set on images, PDFs, documents, data, videos and audio that you brough
 ### Good to know
 
 - Where a place is on a computer is kept on that computer only. The notes and the library hold the place's id and the path inside it, never the full path on your disk. When Graphium can, it also leaves a small file named `.graphium-place.json` in the folder, so a colleague who registers the same folder on their own computer gets the same place. If it can't write there, the place works on this device only.
-- The provenance export of a note lists a linked file with its place id, its path in the place, its size and its modified time. The full path on your disk is not included. A material with source data is written as derived from that linked file (`prov:wasDerivedFrom`), so the chain from the small table back to the raw file can be followed in the export.
+- The provenance export of a note lists a linked file with its place id, its path in the place, its size and its modified time. The full path on your disk is not included. A material with source data is written as derived from that linked file (`prov:wasDerivedFrom`), so the chain from the small table back to the raw file can be followed in the export. The readable copy in a shared folder leaves source data out.
 - This has not been checked on Windows, nor with synced folders whose files are not downloaded to the computer yet. Treat both as untested.
 
 ### What it can't do

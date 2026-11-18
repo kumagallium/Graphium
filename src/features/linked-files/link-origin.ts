@@ -103,7 +103,7 @@ export function removeLinkedOrigin(index: MediaIndex, childId: string, parentId:
 
 /**
  * 元データの指定を索引に書き戻す。persistLinkPatch と同じ流儀（読み直し → 差分があるときだけ保存 → 変更通知）。
- * @returns 実際に索引へ反映できたら true
+ * @returns 索引が指定どおりの状態になっていれば true（すでにそうなっていたときも true）
  */
 export async function persistLinkedOrigins(
   fileId: string,
@@ -112,7 +112,7 @@ export async function persistLinkedOrigins(
   const index = await readMediaIndex();
   if (!index) return false;
   const { index: next, changed } = changeLinkedOrigins(index, fileId, change);
-  if (!changed) return false;
+  if (!changed) return true;
   try {
     await saveMediaIndex(next);
     if (typeof window !== "undefined") {

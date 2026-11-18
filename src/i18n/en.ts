@@ -4774,6 +4774,7 @@ export const en: Record<string, string> = {
   "linkedFile.origin.noMatch": "No match",
   "linkedFile.origin.clearAll": "Remove all",
   "linkedFile.origin.none": "Not set",
+  "linkedFile.origin.saveFailed": "Couldn't save this. Please try again.",
   "linkedFile.origin.remove": "Remove “{name}” from source data",
   "linkedFile.origin.removeTooltip": "Remove",
   "linkedFile.origin.open": "Go to “{name}”",

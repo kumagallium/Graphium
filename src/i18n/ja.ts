@@ -4776,6 +4776,7 @@ export const ja: Record<string, string> = {
   "linkedFile.origin.noMatch": "一致するものがありません",
   "linkedFile.origin.clearAll": "すべて外す",
   "linkedFile.origin.none": "指定していません",
+  "linkedFile.origin.saveFailed": "保存できませんでした。もう一度お試しください。",
   "linkedFile.origin.remove": "「{name}」を元データから外す",
   "linkedFile.origin.removeTooltip": "外す",
   "linkedFile.origin.open": "「{name}」へ移動",

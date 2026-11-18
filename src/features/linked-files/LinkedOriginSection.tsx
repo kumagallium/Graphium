@@ -48,11 +48,18 @@ export function LinkedOriginSection({ entry, mediaIndex, onSwitchAsset, __test }
   const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const apply = (change: { add?: string[]; remove?: string[] }) => {
-    const result = changeLinkedOrigins(index, entry.fileId, change);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const apply = async (change: { add?: string[]; remove?: string[] }) => {
+    const before = index;
+    const result = changeLinkedOrigins(before, entry.fileId, change);
     if (!result.changed) return;
+    setSaveFailed(false);
     setIndex(result.index);
-    void persist(entry.fileId, change);
+    const saved = await persist(entry.fileId, change).catch(() => false);
+    if (saved) return;
+    // 保存できなかった指定を、できたように見せない
+    setIndex(before);
+    setSaveFailed(true);
   };
 
   const options: FilterOption[] = useMemo(() => {
@@ -73,7 +80,7 @@ export function LinkedOriginSection({ entry, mediaIndex, onSwitchAsset, __test }
   const onPick = (next: string[]) => {
     const add = next.filter((id) => !originIds.includes(id));
     const remove = originIds.filter((id) => !next.includes(id));
-    apply({ add, remove });
+    void apply({ add, remove });
   };
 
   return (
@@ -104,7 +111,7 @@ export function LinkedOriginSection({ entry, mediaIndex, onSwitchAsset, __test }
                 </div>
                 <button
                   type="button"
-                  onClick={() => apply({ remove: [o.fileId] })}
+                  onClick={() => void apply({ remove: [o.fileId] })}
                   aria-label={t("linkedFile.origin.remove", { name: o.name })}
                   data-tooltip={t("linkedFile.origin.removeTooltip")}
                   className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -126,6 +133,11 @@ export function LinkedOriginSection({ entry, mediaIndex, onSwitchAsset, __test }
           {t("linkedFile.origin.set")}
         </button>
       </div>
+      {saveFailed && (
+        <div role="alert" className="text-[11px] text-destructive">
+          {t("linkedFile.origin.saveFailed")}
+        </div>
+      )}
       <div className="text-[11px] text-muted-foreground/80">{t("linkedFile.origin.note")}</div>
       {pickerAnchor && (
         <FilterPopup

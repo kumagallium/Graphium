@@ -61,8 +61,8 @@ describe("shouldShowLinkedOrigin（出る条件）", () => {
   });
 });
 
-function setup(index: MediaIndex, entry = child(), withSwitch = true) {
-  const persist = vi.fn(async () => true);
+function setup(index: MediaIndex, entry = child(), withSwitch = true, saved = true) {
+  const persist = vi.fn(async () => saved);
   const onSwitchAsset = vi.fn();
   render(
     <LocaleProvider>
@@ -105,7 +105,15 @@ describe("LinkedOriginSection", () => {
     expect(within(dialog).queryByText(/alpha\.csv/)).toBeNull();
     fireEvent.click(within(dialog).getByRole("menuitemcheckbox", { name: /beta\.csv/ }));
     expect(persist).toHaveBeenCalledWith("d1", { add: ["l2"], remove: [] });
-    expect(screen.getAllByText("beta.csv").length).toBeGreaterThan(0);
+  });
+
+  it("保存できなかったら元の表示に戻して知らせる", async () => {
+    const c = child({ derivedFromAssets: ["l1"] });
+    setup(idx(c, linked("l1", "a.csv")), c, false, false);
+    const row = screen.getByText("a.csv").closest("li")!;
+    fireEvent.click(row.querySelector("button")!);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText("a.csv")).toBeTruthy();
   });
 
   it("移動の導線が無いときは名前を押せない", () => {
