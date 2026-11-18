@@ -2,7 +2,7 @@
 // インデックスファイルから取得する IndexFileNoteListSource を使用
 
 import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./index-file";
-import { sanitizeAltText } from "../../lib/ocr-alt";
+import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import { buildLinkCounts, linkCountsOf } from "./link-counts";
 
 export type NoteListEntry = {
@@ -73,7 +73,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         model: n.model,
         knowledgeCount: wikiEntries.length,
         primaryKnowledgeWikiId: wikiEntries[0]?.noteId,
-        ocrText: n.ocrText,
+        ocrText: sanitizeOcrText(n.ocrText),
         ocrAltText: sanitizeAltText(n.ocrAltText),
       };
     });
@@ -95,7 +95,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         [...n.headings, ...(n.steps ?? [])].some((h) =>
           h.text.toLowerCase().includes(q),
         ) ||
-        (n.ocrText?.toLowerCase().includes(q) ?? false) ||
+        (sanitizeOcrText(n.ocrText)?.toLowerCase().includes(q) ?? false) ||
         // 別の読み（検索用だけ。表示はしない）
         (sanitizeAltText(n.ocrAltText)?.toLowerCase().includes(q) ?? false)
     );

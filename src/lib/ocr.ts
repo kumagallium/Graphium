@@ -9,7 +9,7 @@
 // - Tesseract ワーカーは 1 つを使い回し、認識ジョブは直列化する
 //   （ワーカーは同時に 1 ジョブしか処理できず、logger も共有のため）。
 
-import { sanitizeAltText } from "./ocr-alt";
+import { capOcrText, sanitizeAltText } from "./ocr-text";
 import type { Worker, LoggerMessage } from "tesseract.js";
 import { isTauri } from "./platform";
 
@@ -253,7 +253,8 @@ async function recognizeNativeOrNull(
     const r = await native.recognizeNative(bytes);
     onProgress?.({ status: NATIVE_PROGRESS_STATUS, progress: 1 });
     return {
-      text: (r.text ?? "").trim(),
+      // 自分で読んだ直後の結果。上限だけかける
+      text: capOcrText((r.text ?? "").trim()),
       confidence: Math.round(r.confidence ?? 0),
       engine: "pp-ocrv6-small",
       ...(sanitizeAltText(r.altText) ? { altText: sanitizeAltText(r.altText), altEngine: r.altEngine ?? "apple-vision" } : {}),
@@ -294,7 +295,7 @@ export function recognizeImage(
       try {
         const { data } = await worker.recognize(image);
         return {
-          text: (data.text ?? "").trim(),
+          text: capOcrText((data.text ?? "").trim()),
           confidence: Math.round(data.confidence ?? 0),
           engine: "tesseract",
         };

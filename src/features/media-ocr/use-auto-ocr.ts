@@ -5,7 +5,7 @@
 // 「このノートを開いている間に新しく入った画像」だけに絞る。
 // 進行状況は OcrToast で見せる（裏で勝手に走っていると不安なため）。
 
-import { sanitizeAltText } from "../../lib/ocr-alt";
+import { capOcrText, sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import { useCallback, useRef, useState } from "react";
 import { useMediaOcrStore } from "./store";
 import { runOcrForImage } from "./run-ocr";
@@ -177,8 +177,9 @@ export function useAutoImageOcr({
       const assetId = assetIdOf(target.url);
       if (assetId) {
         const entry = assetEntryOf(assetId);
-        const cachedText =
-          typeof entry?.ocrText === "string" && entry.ocrText.trim() ? entry.ocrText : "";
+        // 素材索引の JSON から来る値。文字列でなければ無視し、長すぎれば切る
+        // （正常な値は前後の空白を含めて従来のまま）
+        const cachedText = sanitizeOcrText(entry?.ocrText) ? capOcrText(entry!.ocrText as string) : "";
         // 表示用の文字が無く、検索用の別の読みだけがある素材（手書きだけの画像など）も写す
         const cached = cachedText || sanitizeAltText(entry?.ocrAltText) ? true : null;
         if (cached) {

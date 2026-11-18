@@ -35,6 +35,7 @@ import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { UNFILED_PATH, splitFolderPath } from "../note-context/folder-tree-model";
 import { FOLDER_DRAG_MIME } from "../note-context/folder-drop";
+import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import {
   aggregateNoteContexts,
   addNoteContext,
@@ -323,9 +324,9 @@ export function NoteListView({
       result = result.filter(
         (e) =>
           e.title.toLowerCase().includes(q) ||
-          (e.ocrText?.toLowerCase().includes(q) ?? false) ||
+          (sanitizeOcrText(e.ocrText)?.toLowerCase().includes(q) ?? false) ||
           // 別の読み（検索用だけ。表示はしない）
-          (e.ocrAltText?.toLowerCase().includes(q) ?? false) ||
+          (sanitizeAltText(e.ocrAltText)?.toLowerCase().includes(q) ?? false) ||
           bodyHits.has(e.noteId)
       );
     }
@@ -512,7 +513,7 @@ export function NoteListView({
     for (const e of entries) {
       if (
         !e.title.toLowerCase().includes(q) &&
-        (e.ocrText?.toLowerCase().includes(q) || e.ocrAltText?.toLowerCase().includes(q))
+        (sanitizeOcrText(e.ocrText)?.toLowerCase().includes(q) || sanitizeAltText(e.ocrAltText)?.toLowerCase().includes(q))
       ) {
         matched.add(e.noteId);
       }
@@ -528,7 +529,7 @@ export function NoteListView({
     if (!q) return matched;
     for (const e of entries) {
       if (e.title.toLowerCase().includes(q)) continue;
-      if (e.ocrText?.toLowerCase().includes(q) || e.ocrAltText?.toLowerCase().includes(q)) continue;
+      if (sanitizeOcrText(e.ocrText)?.toLowerCase().includes(q) || sanitizeAltText(e.ocrAltText)?.toLowerCase().includes(q)) continue;
       const hit = bodyHits.get(e.noteId);
       if (hit) matched.set(e.noteId, hit.snippet.text);
     }
@@ -1018,7 +1019,7 @@ export function NoteListView({
                     {ocrMatchedIds.has(entry.noteId) && (
                       <span
                         className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle"
-                        title={entry.ocrText}
+                        title={sanitizeOcrText(entry.ocrText)}
                       >
                         <ImageIcon size={10} />
                         {t("ocr.matchBadge")}

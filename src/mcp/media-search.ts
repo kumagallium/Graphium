@@ -3,7 +3,7 @@
 // 索引は search.ts と同じトークナイザ（本体の語彙索引と同じ）で MiniSearch に載せる。
 // media-index.json の更新時刻が変われば組み直す（アプリが素材を足したら次の検索で追いつく）。
 
-import { sanitizeAltText } from "../lib/ocr-alt";
+import { sanitizeAltText, sanitizeOcrText } from "../lib/ocr-text";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import MiniSearch from "minisearch";
@@ -84,7 +84,7 @@ function getIndex(root: string): Cache {
     docs.push({
       id,
       name: m.name ?? "",
-      ocrText: m.ocrText ?? "",
+      ocrText: sanitizeOcrText(m.ocrText) ?? "",
       ocrAltText: sanitizeAltText(m.ocrAltText) ?? "",
       description: m.urlMeta?.description ?? "",
       excerpt: m.urlMeta?.excerpt ?? "",

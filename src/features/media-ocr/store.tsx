@@ -61,8 +61,11 @@ export function MediaOcrProvider({ children }: { children: ReactNode }) {
   const restoreSnapshot = useCallback(
     (snapshot: Record<string, MediaOcrEntry> | undefined) => {
       const m = new Map<string, MediaOcrEntry>();
-      if (snapshot) {
-        for (const [k, v] of Object.entries(snapshot)) m.set(k, v);
+      // 信用できない入り口（他人のノート JSON）から来るので、オブジェクト以外は読み飛ばす
+      if (snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)) {
+        for (const [k, v] of Object.entries(snapshot)) {
+          if (v && typeof v === "object" && !Array.isArray(v)) m.set(k, v);
+        }
       }
       setEntries(m);
     },
