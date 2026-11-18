@@ -1750,10 +1750,19 @@ Notes:
   with the stored one, so a sentence inserted directly after a figure
   counts as a change, as do a removed neighbour, different numbers, or
   a difference of more than two characters otherwise (a fixed typo
-  doesn't count). A side with no stored sentence (the passage started
-  or ended the note) is not checked, so text appended to the end of a
-  note doesn't count. Such passages are reported separately and more
-  softly, with the old and the current sentence. Stored sentences are
+  doesn't count). Where the passage started the note, text added
+  before it is not checked. Where it ended the note, a sentence
+  appended right after it counts only when it shares a number or a
+  term with the passage (`sharesNumberOrTerm`: Latin words of four or
+  more letters, two-character runs of kanji, katakana words of three
+  or more characters, the first two syllables of a Hangul word, each
+  outside a short list of common diary words; numbers after NFKC,
+  leaving out dates, times and single digits), since
+  the first thing appended after a note's last sentence is often a
+  correction of it, while an unrelated new entry is the most common
+  edit of all. Such passages are reported separately and more
+  softly, with the old and the current sentence (an appended sentence
+  has no old one, so only the current sentence is shown). Stored sentences are
   written by the app's ingest, regenerate and merge paths. Pages
   written before this field, answer pages, and pages rewritten from
   sources over MCP (which extracts note text differently, so the
