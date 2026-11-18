@@ -5,6 +5,7 @@ import {
   contextOf,
   passageContextChange,
   sameSentence,
+  sharesNumberOrTerm,
   splitSentences,
   withPassageContexts,
 } from "./passage-context";
@@ -70,7 +71,54 @@ describe("passage-context", () => {
     expect(sameSentence("生地はよく膨らんだ。", "生地は よく膨らんだ。")).toBe(true);
   });
 
-  it("すぐ隣に文が書き足されたら変わった。離れた場所・末尾の外側への追記は見ない", () => {
+  it("末尾だった一節のあとの書き足しは、同じ数字か同じ語を含むときだけ知らせる", () => {
+    const en = { sourceId: "n1", passage: "The yield was 65%", before: "We weighed the loaf." };
+    const base = "We weighed the loaf. The yield was 65%.";
+    expect(passageContextChange(en, base)).toBeNull();
+    // 関係ない追記は見ない
+    expect(passageContextChange(en, `${base} Baked a second batch the next day.`)).toBeNull();
+    // 同じ語（yield）
+    expect(passageContextChange(en, `${base} Re-measured: the yield came to 58%.`)).toEqual({
+      after: { now: "Re-measured: the yield came to 58%." },
+    });
+    // 同じ数字（65）
+    expect(passageContextChange(en, `${base}\nCorrection: 65% was before calibration.`)).toEqual({
+      after: { now: "Correction: 65% was before calibration." },
+    });
+    // よくある語（with / that）だけが同じなら見ない
+    const common = { sourceId: "n1", passage: "We baked that with steam", before: "Day one." };
+    expect(passageContextChange(common, "Day one. We baked that with steam. Lunch with friends after that.")).toBeNull();
+    // 和文: 漢字の 2 字の並び・カタカナ語
+    const ja = { sourceId: "n1", passage: "焼成温度は高めにした", before: "二次発酵は短かった。" };
+    const jaBase = "二次発酵は短かった。焼成温度は高めにした。";
+    expect(passageContextChange(ja, `${jaBase}翌日も焼いた。`)).toBeNull();
+    expect(passageContextChange(ja, `${jaBase}温度計が低く出ていたとあとで分かった。`)).toEqual({
+      after: { now: "温度計が低く出ていたとあとで分かった。" },
+    });
+    const kata = { sourceId: "n1", passage: "クラストは均一に色づいた" };
+    expect(passageContextChange(kata, "クラストは均一に色づいた。ただしクラストの底は焦げていた。")).toEqual({
+      after: { now: "ただしクラストの底は焦げていた。" },
+    });
+    // 一節が何か所にもあり、どこかが今も末尾なら変わっていない
+    expect(passageContextChange(en, `${base} The yield changed later. We weighed the loaf. The yield was 65%.`)).toBeNull();
+    expect(sharesNumberOrTerm("湿度は 65% だった", "65 回こねた")).toBe(true);
+    expect(sharesNumberOrTerm("湿度は 65% だった", "165 回こねた")).toBe(false);
+    // 日付・時刻・1 桁の数字は、同じ数字に数えない
+    expect(sharesNumberOrTerm("Rested the dough for 18 hours", "2026-11-18: baked a new batch")).toBe(false);
+    expect(sharesNumberOrTerm("温度は 11 度だった", "2026/11/18 新しい生地を仕込んだ")).toBe(false);
+    expect(sharesNumberOrTerm("加水は 11 割だった", "11月18日 新しい生地を仕込んだ")).toBe(false);
+    expect(sharesNumberOrTerm("Dough rested for 2 hours", "Step 2: buy flour.")).toBe(false);
+    // 全角の数字も同じ数字
+    expect(sharesNumberOrTerm("湿度は ６５％ だった", "再計測したら 65% ではなかった")).toBe(true);
+    // 日誌によく出る語は数えない
+    expect(sharesNumberOrTerm("今日は生地を確認した", "明日は窯を確認する")).toBe(false);
+    expect(sharesNumberOrTerm("Baked today with steam", "Shopping list for today")).toBe(false);
+    // ハングルは語の頭 2 字
+    expect(sharesNumberOrTerm("수율은 높았다", "수율이 다시 떨어졌다")).toBe(true);
+    expect(sharesNumberOrTerm("수율은 높았다", "다음 날 빵을 구웠다")).toBe(false);
+  });
+
+  it("すぐ隣に文が書き足されたら変わった。離れた場所・関係ない末尾への追記は見ない", () => {
     const stored = { sourceId: "n1", passage: "一次発酵の湿度は 65% だった", before: "室温は 24 度だった。", after: "生地はよく膨らんだ。" };
     expect(passageContextChange(stored, note)).toBeNull();
     expect(passageContextChange(stored, "室温は 24 度だった。一次発酵の湿度は 65% だった。ただし湿度計は校正前だった。生地はよく膨らんだ。")).toEqual({

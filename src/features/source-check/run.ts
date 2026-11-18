@@ -16,6 +16,7 @@ import {
 } from "./api";
 import { aggregateDocumentVerdict, aggregateVerdict } from "./aggregate";
 import { computeClaimHash } from "./claim-hash";
+import { computeBlobHash } from "../../lib/storage/shared/hash";
 import { findBlockIdForQuote, resolveQuoteLocation } from "./quote-match";
 import { missingResponseRationale, missingReasonRationale } from "./rationale-text";
 import { resolveSourceText, type ResolveSourceTextDeps } from "./resolve-source-text";
@@ -199,6 +200,8 @@ export async function runSourceCheck(
       return;
     }
     modelBySource.set(group.sourceId, apiResult.model);
+    // 読んだ原文そのまま（正規化しない）の指紋。出典ごとに 1 回。判定には使わない
+    const sourceTextHash = await computeBlobHash(new TextEncoder().encode(resolved.text));
 
     for (const statementId of group.statementIds) {
       const statement = statementsById.get(statementId);
@@ -210,6 +213,7 @@ export async function runSourceCheck(
           sourceKind: resolved.kind,
           verdict: "unclear",
           rationale: missingResponseRationale(language),
+          sourceTextHash,
         }]);
         continue;
       }
@@ -236,6 +240,7 @@ export async function runSourceCheck(
           ? { passageNotFound: statement.unverifiedPassages[group.sourceId] }
           : {}),
         sourceTextOrigin: resolved.origin,
+        sourceTextHash,
         ...(quoteLocation ? { quoteLocation } : {}),
       }]);
     }

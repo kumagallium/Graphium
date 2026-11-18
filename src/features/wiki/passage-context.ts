@@ -8,8 +8,12 @@
 // - 比べるのは、一節のすぐ前とすぐ後ろの 1 文ずつ。離れた場所の変更は見ない
 // - すぐ隣に文が書き足された（「…65% だった。」の直後に「ただし校正前の値。」）も「変わった」
 //   — 意味がずれるいちばんよくある形なので、隣が入れ替わったことを知らせる
-// - ノートの先頭・末尾にあった一節の外側（控えに前後の文が無い側）への書き足しは見ない
-//   （ノートの末尾への追記は、いちばんよくある関係ない編集）
+// - ノートの末尾にあった一節のあとへの書き足しは、一節と同じ数字か同じ語を含むときだけ「変わった」
+//   （末尾への追記はいちばんよくある関係ない編集。ただし最後の文のすぐあとに書き足されるのは、
+//   その文の訂正であることが多い — 「再測定したら収率は 58%」）。語は、欧文は 4 字以上の単語、
+//   和文は漢字の 2 字の並びと 3 字以上のカタカナ語、ハングルは語の頭 2 字（よくある語を除く）。
+//   日付・時刻と 1 桁の数字は、同じ数字に数えない
+// - ノートの先頭にあった一節の前への書き足しは見ない
 // - 数字が同じで、ほかが 2 字以内の違い（誤字の修正）なら、変わっていないとみなす
 // - 隣の文が消えた・入れ替わった・数字が変わった・3 字以上変わった、のどれかで「変わった」とする
 // 文の区切りは、行と「。！？」、欧文の「. ! ?」のあとの空白。表の行・箇条書きは 1 行が 1 文。
@@ -154,10 +158,68 @@ export function sameSentence(was: string, now: string): boolean {
   return editDistanceWithin(a, b, TYPO_EDIT_LIMIT) <= TYPO_EDIT_LIMIT;
 }
 
-/** 前後の文の変化（変わった側だけ。now が無ければ、その側の文が無くなった） */
+/** 一節と比べるときに語として数えない、欧文のよくある語（4 字以上。日誌によく出る語を含む） */
+const COMMON_WORDS = new Set(
+  ("about above after again also among around because been before being below between both could does doing down during each "
+    + "even ever every first from further have having here however into just last less like made make many more most much must "
+    + "next note notes only onto other over same second should since some such than that their them then there these they this "
+    + "those through thus time today tomorrow under until upon very were what when where which while will with within without "
+    + "would yesterday your").split(" "),
+);
+/** 語として数えない、和文のよくある漢字 2 字（日誌によく出る語） */
+const COMMON_KANJI = new Set(
+  ("今日 明日 昨日 翌日 本日 今回 次回 前回 午前 午後 時間 場合 必要 予定 確認 追記 記録 作業 開始 終了 以上 以下 今後 最初 最後").split(" "),
+);
+
+/**
+ * 一節の「語」。欧文は 4 字以上の単語、和文は漢字の 2 字の並びと 3 字以上のカタカナ語、
+ * ハングルは 2 字以上の語の頭 2 字（助詞が付いても同じ語として拾う）。よくある語は除く
+ */
+function keyTermsOf(text: string): { words: Set<string>; cjk: Set<string> } {
+  const lower = text.toLowerCase();
+  const words = new Set((lower.match(/[a-z\u00c0-\u024f]{4,}/g) ?? []).filter((w) => !COMMON_WORDS.has(w)));
+  const cjk = new Set<string>();
+  for (const run of text.match(/[\u4e00-\u9fff々]{2,}/g) ?? []) {
+    for (let i = 0; i + 1 < run.length; i++) {
+      const pair = run.slice(i, i + 2);
+      if (!COMMON_KANJI.has(pair)) cjk.add(pair);
+    }
+  }
+  for (const run of text.match(/[\u30a1-\u30faー]{3,}/g) ?? []) cjk.add(run);
+  for (const run of text.match(/[\uac00-\ud7a3]{2,}/g) ?? []) cjk.add(run.slice(0, 2));
+  return { words, cjk };
+}
+
+/**
+ * 照合に使う数字の集まり（「65%」の 65）。日付・時刻（2026-11-18、11/18、11月18日、9:30）と 1 桁の整数は除く
+ * — 追記の頭の日付や「手順 2」が、一節の数字とたまたま同じになるため
+ */
+const numbersOf = (s: string) =>
+  new Set(
+    (s.replace(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|\d{1,2}[/:]\d{2}(?::\d{2})?|\d{1,4}\s*[年月日]/g, " ").match(/\d+(?:\.\d+)?/g) ?? [])
+      .filter((n) => n.length > 1),
+  );
+
+/** 書き足された文が、一節と同じ数字か同じ語を含むか（一節の訂正・但し書きらしいか） */
+export function sharesNumberOrTerm(passage: string, sentence: string): boolean {
+  const a = passage.normalize("NFKC");
+  const b = sentence.normalize("NFKC");
+  const theirs = numbersOf(b);
+  for (const n of numbersOf(a)) if (theirs.has(n)) return true;
+  const mine = keyTermsOf(a);
+  const other = keyTermsOf(b);
+  for (const w of mine.words) if (other.words.has(w)) return true;
+  for (const c of mine.cjk) if (b.includes(c)) return true;
+  return false;
+}
+
+/**
+ * 前後の文の変化（変わった側だけ）。now が無ければ、その側の文が無くなった。
+ * after の was が無ければ、ノートの末尾だった一節のあとに文が書き足された。
+ */
 export type PassageContextChange = {
   before?: { was: string; now?: string };
-  after?: { was: string; now?: string };
+  after?: { was?: string; now?: string };
 };
 
 /**
@@ -166,19 +228,22 @@ export type PassageContextChange = {
  * 一節が何か所にもあれば、どれか 1 か所の前後が控えと同じなら変わっていないとみなす。
  */
 export function passageContextChange(stored: PassageContext, text: string): PassageContextChange | null {
-  if (stored.before === undefined && stored.after === undefined) return null;
   const places = neighborsOf(stored.passage, text);
   if (places.length === 0) return null;
   let firstChange: PassageContextChange | null = null;
   for (const { before, after } of places) {
     const change: PassageContextChange = {};
     // すぐ隣の文と比べる（隣に文が書き足されたときも、隣が入れ替わるので「変わった」）。
-    // 控えに無い側（ノートの先頭・末尾だった側）は見ない
+    // 控えに前の文が無い（ノートの先頭だった）側は見ない
     if (stored.before !== undefined && (before[0] === undefined || !sameSentence(stored.before, clipTail(before[0])))) {
       change.before = { was: stored.before, ...(before[0] !== undefined ? { now: clipTail(before[0]) } : {}) };
     }
     if (stored.after !== undefined && (after[0] === undefined || !sameSentence(stored.after, clipHead(after[0])))) {
       change.after = { was: stored.after, ...(after[0] !== undefined ? { now: clipHead(after[0]) } : {}) };
+    }
+    // ノートの末尾だった一節のあとに書き足された文は、一節と同じ数字か語を含むときだけ知らせる
+    if (stored.after === undefined && after[0] !== undefined && sharesNumberOrTerm(stored.passage, after[0])) {
+      change.after = { now: clipHead(after[0]) };
     }
     if (!change.before && !change.after) return null;
     firstChange ??= change;

@@ -8,7 +8,7 @@
 //   - 会話の内容から手順・来歴を推論して書き戻すツールは作らない。推論された来歴は
 //     検証できず、記録としての意味を失うため。
 
-import { textWithGuard } from "./injection-guard";
+import { jsonTextWithGuard, textWithGuard } from "./injection-guard";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -16,6 +16,7 @@ import { buildIndexEntry } from "../features/navigation/index-file";
 import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
 import { NOTE_PREVIEW_TOOL_META, PREVIEW_META_KEY } from "./app-tools";
 import { createNote } from "./create-note";
+import { exportAsterismKnowledge } from "./export-knowledge";
 import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { noteLinkKind } from "../lib/note-link-kind";
@@ -607,6 +608,50 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       } catch (err) {
         if (err instanceof SentLedgerCorruptError) return text(err.message);
         return text(`記録に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  );
+
+  // ── Asterism 向けの知識の全部の書き出し ──────────────────────
+  server.registerTool(
+    "export_asterism_knowledge",
+    {
+      title: "知識の全部を Asterism 向けに書き出す",
+      description:
+        "知識層の知見（claim）とトピックの全部を、Asterism の「知識の束」（asterism-knowledge/1）として返す。" +
+        "export_asterism_claims と違い、型の有無・確認の状態（candidate / verified）で絞らない。全量の上げ直し用で、台帳（mark_asterism_sent）は読まない・書かない。" +
+        "ゴミ箱・アーカイブ済みは除く。本文（トピックの Markdown・知見の本文）は出さず、題と札だけを出す。" +
+        "files に claims.json（知見。review_state は candidate / verified）・topics.json（topic_type と、題を割った material / property）・" +
+        "sources.json（出典の資料の名前と種類）・term_candidates.json（トピックの題から作った語の候補と役割の札）・term_claims.json（語と知見の対応）・" +
+        "term_relations.json（材料と物性の関係）を持つ。0 件のファイルも [] で必ず含め、全行が同じキーを持つ（無い値は null・配列は []）。" +
+        "各行の iri は基底 IRI + id。基底は claimBaseIri・sourceBaseIri・termBaseIri で変えられ（http(s)・空白なし・末尾が / か # でなければ / を補う）、" +
+        "noteUrlBase は source_url（Graphium で開く URL）の土台。すべて省略可で、省略時は公開の既定値を使う。" +
+        "戻りは { format, title, exported_at, bases, files, counts } の JSON 文字列。基底が不正・vault が無いときは { error } を isError で返す。",
+      inputSchema: {
+        claimBaseIri: z.string().optional().describe("知見とトピックの基底 IRI（既定は export_asterism_claims と同じ公開の値）"),
+        sourceBaseIri: z.string().optional().describe("資料の基底 IRI"),
+        termBaseIri: z.string().optional().describe("語の基底 IRI"),
+        noteUrlBase: z.string().optional().describe("source_url の土台（Graphium アプリの URL）。省略時は公開アプリ"),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ claimBaseIri, sourceBaseIri, termBaseIri, noteUrlBase }) => {
+      // 機械（Asterism）が JSON として読む道具なので、失敗は isError と { error } で返す
+      const failure = (error: string) => ({
+        isError: true as const,
+        content: [{ type: "text" as const, text: JSON.stringify({ error }) }],
+      });
+      if (!vaultExists()) return failure(`Graphium の vault が見つかりません: ${resolveGraphiumRoot()}`);
+      try {
+        const result = exportAsterismKnowledge(
+          { claimBaseIri, sourceBaseIri, termBaseIri, noteUrlBase },
+          new Date().toISOString(),
+        );
+        if ("error" in result) return failure(result.error);
+        // 題・資料名は第三者の文字でありうる。1 件目の JSON は変えず、注意を 2 件目に添える
+        return jsonTextWithGuard(JSON.stringify(result));
+      } catch (err) {
+        return failure(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   );

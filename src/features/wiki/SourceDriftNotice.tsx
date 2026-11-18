@@ -128,10 +128,20 @@ export function SourceDriftNotice({
                     {([["before", c.before], ["after", c.after]] as const).map(([side, ch]) =>
                       ch ? (
                         <div key={side} style={{ color: "var(--ink-3)", fontSize: 12, marginTop: 2 }}>
-                          <div>{t(side === "before" ? "sourceDrift.contextBefore" : "sourceDrift.contextAfter")}</div>
-                          <div style={{ paddingLeft: 10 }}>
-                            {t("sourceDrift.was")} “{ch.was}”
+                          <div>
+                            {t(
+                              side === "before"
+                                ? "sourceDrift.contextBefore"
+                                : ch.was === undefined
+                                  ? "sourceDrift.contextAppended"
+                                  : "sourceDrift.contextAfter",
+                            )}
                           </div>
+                          {ch.was !== undefined && (
+                            <div style={{ paddingLeft: 10 }}>
+                              {t("sourceDrift.was")} “{ch.was}”
+                            </div>
+                          )}
                           <div style={{ paddingLeft: 10 }}>
                             {t("sourceDrift.now")} {ch.now !== undefined ? `“${ch.now}”` : t("sourceDrift.removed")}
                           </div>

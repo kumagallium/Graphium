@@ -207,6 +207,7 @@ pnpm bundle:mcp
 | `show_lineage` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 「これがどこから来たか図で見せて」 |
 | `show_knowledge_graph` <Badge type="tip" text="v0.134.0 (2026-11-14) で追加" /> | 「全体グラフを見ながら話したい」 |
 | `mark_asterism_sent` <Badge type="tip" text="v0.95.0 で追加" /> | 「Asterism に追記できた知見を記録して」（次の `export_asterism_claims` で `onlyUnsent: true` にすると、送った知見を除いて出せる） |
+| `export_asterism_knowledge` | 自分で頼むものではなく、Asterism が知見とトピックを全部まとめて受け取るために呼びます（型や確認の状態で絞らず、本文は出しません。全量の上げ直し用）。`export_asterism_claims` と違い、トピックの題を材料と物性に割り、出典の資料も一緒に出します |
 | `list_media` <Badge type="tip" text="v0.95.0 で追加" /> | 人が頼むものではなく、別のアプリ（Asterism など）が素材の中のファイルを拡張子で絞って一覧するために呼びます（[下の節](#別のアプリから素材を使う)を参照） |
 | `get_media_file` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリが素材 1 件のファイル（名前・MIME タイプ・大きさ・求めれば中身）を取り出します |
 | `add_material` <Badge type="tip" text="v0.95.0 で追加" /> | 別のアプリがファイルを素材に置きます。同じ中身は二度置かれず、既にある素材の id が返ります |
@@ -588,6 +589,8 @@ Graphium は、ノートの上にナレッジ層を組み立てます。
 | 3. ふだんの同期 | AI | `export_asterism_claims`（`includeTopics: true`・全量）→ Asterism の `resync_rows` → `mark_asterism_sent`。直した知見・消した知見もこれで届きます |
 | 4. 増分だけ | AI | `export_asterism_claims`（`onlyUnsent: true`）→ Asterism の `append_rows` → `mark_asterism_sent` |
 | 5. 検索して戻す | AI | Asterism の `find_datasets` → `sparql_query`（出典は `source_url`＝Graphium のページ）→ Graphium の `save_answer`（`citations` に知見の id） |
+
+`export_asterism_knowledge` は、`export_asterism_claims` の「全部を出す」版です。知見とトピックの全部（ゴミ箱・アーカイブ済みは除く）を、型や確認の状態に関係なく、`asterism-knowledge/1` 形式の JSON 1 本で返します。出すのは題と札だけで、本文は出しません。送った記録（台帳）は読み書きしないので、全量を上げ直したいときに使います。
 
 - `source_url` は、このアプリのページの URL（`#knowledge/claim/<id>`・`#knowledge/topic/<id>`）です。Asterism の答えの出典になります。
 - トピックは、Asterism では概念（`skos:Concept`）として知見に結ばれます。材料名などが他のデータセットの値と重なると、Asterism が「つながり」の候補を出します。
