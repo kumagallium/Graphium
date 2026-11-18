@@ -7,8 +7,9 @@
 // 「録音から」は、録音済みの文字起こしブロックを持つノートに付く札。絵の 1 文はそのノートに
 // 書いた本文で、文字起こしの中の言葉ではない（文字起こしの言葉で見つかるのは録音の素材のほう）。
 // 実装が変わったら、ここも合わせる。
-// まだ LandingPage には組み込んでいない。文言はここに仮置きしている（決まったら i18n.ts へ移す）。
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// ヒーローの中（ボタンの下、動画の上）に置く。文言は i18n.ts の moments.* にある。
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { en, useI18n } from "../i18n";
 import {
   Globe,
   Image as ImageIcon,
@@ -19,8 +20,6 @@ import {
   StickyNote,
   type LucideIcon,
 } from "lucide-react";
-
-export type MomentsLocale = "ja" | "en";
 
 // 札の色。アプリの記録の画面（record-dashboard.css の data-tone）と同じ割り当て
 type Tone = "rose" | "amber" | "sky" | "forest" | "plain";
@@ -58,132 +57,40 @@ type Copy = {
   note: string;
 };
 
-const COPY: Record<MomentsLocale, Copy> = {
-  ja: {
-    moments: [
-      {
-        id: "memo",
-        time: "09:05",
-        icon: StickyNote,
-        tone: "plain",
-        where: "メモ",
-        who: "self",
-        text: "こね上げの温度を 26°C に抑えたら、きめが揃った気がする",
-      },
-      {
-        id: "meeting",
-        time: "10:12",
-        icon: Mic,
-        tone: "rose",
-        where: "録音から",
-        who: "self",
-        title: "パン教室の打ち合わせ",
-        text: "次は、発酵の温度を先に下げてみよう",
-      },
-      {
-        id: "photo",
-        time: "11:30",
-        icon: Smartphone,
-        tone: "forest",
-        where: "スマホから",
-        who: "self",
-        file: "焼き上がりの写真.jpg",
-      },
-      {
-        id: "web",
-        time: "13:40",
-        icon: Globe,
-        tone: "amber",
-        where: "Web クリップ",
-        who: "self",
-        title: "低温で長く発酵させると、風味が変わる理由",
-        text: "温度を下げると、発酵はゆっくり進みます",
-      },
-      {
-        id: "ai",
-        time: "16:05",
-        icon: MessagesSquare,
-        tone: "sky",
-        where: "AI から",
-        who: "selfWithAi",
-        title: "発酵時間の見直し案",
-        text: "温度はそのままで、時間を倍にする手があります",
-      },
-    ],
-    heading: "今日の記録",
-    date: "11月17日 火曜日",
-    count: "5 件",
-    legend: ["いつ", "どこで", "誰が", "何を"],
-    who: { self: "自分", selfWithAi: "自分と AI" },
-    query: "温度",
-    placeholder: "言葉で探す",
-    hits: "4 件",
-    foot: "残した場面が違っても、同じ言葉で見つかります",
-    note: "Web のクリップ、録音、スマホからの受け取りは、デスクトップ版で動きます。",
-  },
-  en: {
-    moments: [
-      {
-        id: "memo",
-        time: "09:05",
-        icon: StickyNote,
-        tone: "plain",
-        where: "Memo",
-        who: "self",
-        text: "Kept the dough temperature at 26°C and the crumb came out even",
-      },
-      {
-        id: "meeting",
-        time: "10:12",
-        icon: Mic,
-        tone: "rose",
-        where: "From a recording",
-        who: "self",
-        title: "Bread class planning",
-        text: "Next time, let's lower the proofing temperature first",
-      },
-      {
-        id: "photo",
-        time: "11:30",
-        icon: Smartphone,
-        tone: "forest",
-        where: "From phone",
-        who: "self",
-        file: "fresh-from-the-oven.jpg",
-      },
-      {
-        id: "web",
-        time: "13:40",
-        icon: Globe,
-        tone: "amber",
-        where: "Web clip",
-        who: "self",
-        title: "Why a long, cool proof changes the flavor",
-        text: "At a lower temperature, the dough rises slowly",
-      },
-      {
-        id: "ai",
-        time: "16:05",
-        icon: MessagesSquare,
-        tone: "sky",
-        where: "From AI",
-        who: "selfWithAi",
-        title: "A new proofing schedule",
-        text: "Keep the temperature and double the time",
-      },
-    ],
-    heading: "Today's records",
-    date: "Tuesday, November 17",
-    count: "5 records",
-    legend: ["When", "Where", "Who", "What"],
-    who: { self: "Me", selfWithAi: "Me and AI" },
-    query: "temperature",
-    placeholder: "Find by words",
-    hits: "4 found",
-    foot: "Different moments, found by the same word",
-    note: "Web clips, recording, and receiving from your phone run in the desktop app.",
-  },
-};
+// 記録の並び。言葉（どこで・題・題の下の 1 行・ファイル名）は i18n.ts の moments.<id>.* に置く
+const ROWS: Pick<Moment, "id" | "time" | "icon" | "tone" | "who">[] = [
+  { id: "memo", time: "09:05", icon: StickyNote, tone: "plain", who: "self" },
+  { id: "meeting", time: "10:12", icon: Mic, tone: "rose", who: "self" },
+  { id: "photo", time: "11:30", icon: Smartphone, tone: "forest", who: "self" },
+  { id: "web", time: "13:40", icon: Globe, tone: "amber", who: "self" },
+  { id: "ai", time: "16:05", icon: MessagesSquare, tone: "sky", who: "selfWithAi" },
+];
+
+type MomentsKey = Extract<keyof typeof en, `moments.${string}`>;
+
+function buildCopy(t: (key: keyof typeof en) => string): Copy {
+  // 行によって持たない項目（メモの題、写真の本文など）は、辞書に無ければ undefined にする
+  const opt = (key: string) => (key in en ? t(key as MomentsKey) : undefined);
+  return {
+    moments: ROWS.map((r) => ({
+      ...r,
+      where: t(`moments.${r.id}.where` as MomentsKey),
+      title: opt(`moments.${r.id}.title`),
+      text: opt(`moments.${r.id}.text`),
+      file: opt(`moments.${r.id}.file`),
+    })),
+    heading: t("moments.heading"),
+    date: t("moments.date"),
+    count: t("moments.count"),
+    legend: [t("moments.legend.when"), t("moments.legend.where"), t("moments.legend.who"), t("moments.legend.what")],
+    who: { self: t("moments.who.self"), selfWithAi: t("moments.who.selfWithAi") },
+    query: t("moments.query"),
+    placeholder: t("moments.placeholder"),
+    hits: t("moments.hits"),
+    foot: t("moments.foot"),
+    note: t("moments.note"),
+  };
+}
 
 // 探す言葉にあたる部分だけを <mark> で囲む
 function Marked({ text, query }: { text: string; query: string }) {
@@ -264,8 +171,9 @@ function WhoMark({ who }: { who: Who }) {
   return <span className="lp-mp-mark" data-who={who} aria-hidden="true" />;
 }
 
-export function MomentsPicture({ locale = "ja" }: { locale?: MomentsLocale }) {
-  const copy = COPY[locale];
+export function MomentsPicture() {
+  const { t, locale } = useI18n();
+  const copy = useMemo(() => buildCopy(t), [t]);
   const { ref, stage, typed } = usePlayOnce(copy.query);
   const [when, where, who, what] = copy.legend;
   const hits = copy.moments.filter((m) => matches(m, copy.query));

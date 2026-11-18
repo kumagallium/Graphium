@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n";
+import { MomentsPicture } from "./MomentsPicture";
 
 export function Hero() {
   const { t, locale } = useI18n();
@@ -40,6 +41,7 @@ export function Hero() {
           ★ {t("hero.starOnGithub")}
         </a>
       </div>
+      <MomentsPicture />
       <figure className="lp-hero-shot">
         <video
           controls

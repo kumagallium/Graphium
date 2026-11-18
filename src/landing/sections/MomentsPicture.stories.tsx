@@ -1,23 +1,38 @@
 // LP のコンセプトの絵を、ヒーローの題のすぐ下に置いたときの見え方で確かめるストーリー。
-// 題は仮に添えている（LandingPage にはまだ組み込んでいない）。
 
+import { useEffect } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import "../landing.css";
-import { en, ja } from "../i18n";
-import { MomentsPicture, type MomentsLocale } from "./MomentsPicture";
+import { LocaleProvider, useI18n } from "../i18n";
+import { MomentsPicture } from "./MomentsPicture";
 
-function InHero({ locale }: { locale: MomentsLocale }) {
-  const dict = locale === "ja" ? ja : en;
+type StoryLocale = "ja" | "en";
+
+function Stage({ locale }: { locale: StoryLocale }) {
+  const { t, setLocale, locale: current } = useI18n();
+  // ストーリーの言語に合わせる（LP は保存された言語かブラウザの言語で始まる）
+  useEffect(() => {
+    if (current !== locale) setLocale(locale);
+  }, [current, locale, setLocale]);
+  if (current !== locale) return null;
   return (
     <div className="lp-root">
       <section className="lp-section">
-        <p className="lp-eyebrow">{dict["hero.eyebrow"]}</p>
+        <p className="lp-eyebrow">{t("hero.eyebrow")}</p>
         <h1 className="lp-h1" style={{ marginTop: "0.6rem" }}>
-          {dict["hero.title"]}
+          {t("hero.title")}
         </h1>
-        <MomentsPicture locale={locale} />
+        <MomentsPicture />
       </section>
     </div>
+  );
+}
+
+function InHero({ locale }: { locale: StoryLocale }) {
+  return (
+    <LocaleProvider>
+      <Stage locale={locale} />
+    </LocaleProvider>
   );
 }
 
