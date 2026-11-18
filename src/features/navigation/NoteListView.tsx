@@ -324,6 +324,8 @@ export function NoteListView({
         (e) =>
           e.title.toLowerCase().includes(q) ||
           (e.ocrText?.toLowerCase().includes(q) ?? false) ||
+          // 別の読み（検索用だけ。表示はしない）
+          (e.ocrAltText?.toLowerCase().includes(q) ?? false) ||
           bodyHits.has(e.noteId)
       );
     }
@@ -508,7 +510,10 @@ export function NoteListView({
     const matched = new Set<string>();
     if (!q) return matched;
     for (const e of entries) {
-      if (!e.title.toLowerCase().includes(q) && e.ocrText?.toLowerCase().includes(q)) {
+      if (
+        !e.title.toLowerCase().includes(q) &&
+        (e.ocrText?.toLowerCase().includes(q) || e.ocrAltText?.toLowerCase().includes(q))
+      ) {
         matched.add(e.noteId);
       }
     }
@@ -523,7 +528,7 @@ export function NoteListView({
     if (!q) return matched;
     for (const e of entries) {
       if (e.title.toLowerCase().includes(q)) continue;
-      if (e.ocrText?.toLowerCase().includes(q)) continue;
+      if (e.ocrText?.toLowerCase().includes(q) || e.ocrAltText?.toLowerCase().includes(q)) continue;
       const hit = bodyHits.get(e.noteId);
       if (hit) matched.set(e.noteId, hit.snippet.text);
     }

@@ -143,6 +143,10 @@ export async function startProcedureTask(
   const vocabulary = collectLabelVocabulary(readNoteIndex(root)?.notes);
   const systemPrompt = buildProvIngesterSystemPrompt(language, vocabulary);
 
+  // AI との会話は上の対象の確認で断っているので、ここには来ない（型の上でも外す）
+  if (full.kind === "conversation") {
+    return `NOT_SUPPORTED: この種類の資料（conversation:）からは手順を取り出せません（対象: ノート・PDF・Word・URL 素材）。`;
+  }
   const kind = full.kind;
   const media = parsed ? readMediaIndex(root).get(parsed.key) : undefined;
   const sourceTitle =
@@ -443,6 +447,8 @@ export function registerProcedureTools(server: McpServer, ctx: ToolContext = {})
           .optional()
           .describe("作るノートを入れるフォルダ（\"親\" または \"親/子\"）。種類のフォルダ「手順」と素材のフォルダには、指定しなくても入る"),
       },
+      // 課題の台帳に記録するだけ。資料が登録済みの URL なら取りに行く
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => {
       try {
@@ -469,6 +475,8 @@ export function registerProcedureTools(server: McpServer, ctx: ToolContext = {})
         sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
       },
       _meta: NOTE_PREVIEW_TOOL_META,
+      // 手順ノートを新しく作るだけ
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (input) => {
       try {

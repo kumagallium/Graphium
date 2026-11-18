@@ -76,3 +76,8 @@ export const OneUnreachable: Story = {
   beforeEach: TWO,
   args: { __test: { ...FAKE, checkReachable: async (root: string) => root !== TEAM } },
 };
+
+/** 「読める写しも置く」が入っている 1 件（行を開くと詳細にスイッチが見える） */
+export const ReadableCopiesOn: Story = {
+  beforeEach: () => setSharedFolders([folder({ id: "org", name: "Whole bakery", root: ORG, readableCopies: true })]),
+};

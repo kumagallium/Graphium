@@ -105,6 +105,43 @@ describe("LexicalIndex", () => {
     expect(n2.length).toBe(1);
   });
 
+  it("excludeChunk で落とした断片は、ソースごとの上限（perSourceLimit）を食わない", () => {
+    const idx = new LexicalIndex();
+    idx.upsertSource({
+      kind: "asset",
+      sourceId: "img1",
+      title: "手書きメモ",
+      fingerprint: "v1",
+      chunks: [
+        // 別の読み（検索用）の断片のほうが語がよく当たって上位に来る
+        { chunkId: "alt0", text: "焼結温度 焼結温度 焼結温度 を 800 度に上げた" },
+        { chunkId: "c0", text: "焼結温度 800" },
+      ],
+    });
+    const isAlt = (_k: string, id: string) => id.startsWith("alt");
+    expect(idx.search("焼結温度", { perSourceLimit: 1 })[0].chunkId).toBe("alt0");
+    const hits = idx.search("焼結温度", { perSourceLimit: 1, excludeChunk: isAlt });
+    expect(hits.map((h) => h.chunkId)).toEqual(["c0"]);
+  });
+
+  it("accept で断片の文章を絞れる。落とした断片は件数とソースごとの上限に数えない", () => {
+    const idx = sampleIndex();
+    idx.upsertSource({
+      kind: "note",
+      sourceId: "n3",
+      title: "多段",
+      fingerprint: "v1",
+      chunks: [
+        { chunkId: "y1", text: "熱伝導率の測定" },
+        { chunkId: "y2", text: "熱伝導率の解析" },
+      ],
+    });
+    // 句がそのまま入っている断片だけ。点数が上の断片（測定）が落ちても、同じソースの次の断片が残る
+    const hits = idx.search("熱伝導率", { perSourceLimit: 1, limit: 1, accept: (text) => text.includes("解析") });
+    expect(hits.map((h) => h.chunkId)).toEqual(["y2"]);
+    expect(idx.search("熱伝導率", { accept: () => false })).toEqual([]);
+  });
+
   it("同じ fingerprint なら再索引しない。変わればチャンクが差し替わる", () => {
     const idx = sampleIndex();
     expect(

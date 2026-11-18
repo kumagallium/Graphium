@@ -347,8 +347,23 @@ type GraphiumPage = {
 
   // ── on-device image OCR ─────────────────────────────
   mediaOcr?: Record<string, MediaOcrEntry>;
-                                     // blockId → text read out of an image with
-                                     // Tesseract.js, entirely on the user's device.
+                                     // blockId → text read out of an image entirely on
+                                     // the user's device (PP-OCRv6 small in the desktop
+                                     // app, Tesseract.js otherwise). Each entry has an
+                                     // optional `engine` ("pp-ocrv6-small" |
+                                     // "tesseract"); entries without it were read by
+                                     // Tesseract.
+                                     // Optional `altText` / `altEngine`
+                                     // ("apple-vision"): a second reading of the
+                                     // same image by macOS's built-in Vision
+                                     // (desktop app on macOS only), kept for
+                                     // *search only* — shown only as a small
+                                     // "another reading" box in the image's text
+                                     // panel; never part of the body text display,
+                                     // the copy action, exports, or anything
+                                     // handed to an AI;
+                                     // `text` stays the PP-OCR reading. Entries
+                                     // without it are read as before.
                                      // An annotation layer over the *standard* image
                                      // block (same approach as mediaInlineLabels), so
                                      // any image can be read later regardless of how it
@@ -467,6 +482,21 @@ type TableSource = {
     collapseConsecutive: boolean;          // treat runs of the delimiter as one
   };
   meta?: { key: string; value: string }[]; // `key: value` lines read from the preamble
+  derivation?: TableDerivation;            // only on a table made by filtering a file
+};
+
+type TableDerivation = {                   // how a filtered copy was made
+  kind: "filter";
+  fromFileId?: string;                     // media index ID of the original asset
+  fromFileName: string;                    // name of the original file
+  fromOptions?: TableSource["options"];    // how the original was read (absent in older records)
+  columns: string[];                       // columns kept (every header when all were kept)
+  sourceColumns?: number;                  // columns in the original; equal to columns.length means "all"
+  conditions: { column: string; op: "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty"; value?: string }[];
+                                           // a row stays only when all of them hold
+  sourceRows: number;                      // data rows in the original, before filtering
+  resultRows: number;                      // data rows kept
+  createdAt: string;                       // ISO 8601
 };
 ```
 
@@ -501,6 +531,16 @@ type TableSource = {
   decision context in any domain.
   When the file was also registered as an asset, `fileId` links the table back to
   it and the import can be re-run with the stored settings.
+- **`source.derivation` is optional and only exists on filtered tables.** When
+  the import dialog filters a file (columns and conditions), the result is written
+  as a new small CSV asset (with the original in its `derivedFromAssets`) and the
+  table reads that copy: `source.fileName` / `fileId` / `options` describe the
+  copy, while `derivation` keeps the original file, how it was read
+  (`fromOptions`), the kept columns, the conditions and the row counts before and
+  after. Re-opening from the source badge restores them against the original
+  asset. Notes written before this field existed have no `derivation`, and a table
+  without it behaves exactly as before. Readers that ignore it still get a valid
+  source pointing at a real asset.
 - **Delimited imports become a `dataTable` block by default.** The block
   keeps no rows: `props.source` is the same object as `tableMeta.source`
   serialized as a JSON string (so the read settings and the preamble `meta`
@@ -509,7 +549,8 @@ type TableSource = {
   keeps a 2,000-row measurement from inflating every save, revision and index
   pass. The block is read-only; editing means re-importing (the source badge)
   or switching it back to a note table through the same dialog. The media
-  index counts `source.fileId` in `usedIn` (media index version 8), so the
+  index counts `source.fileId` in `usedIn` (media index version 8; the original
+  asset of a filtered table, `source.derivation.fromFileId`, since version 11), so the
   asset is protected from deletion while a data table refers to it. Without
   the asset the block renders a placeholder naming the source file. Calc
   blocks and charts resolve a data table by its caption, the same way they
@@ -885,7 +926,7 @@ from the executed Entity to the planned one.
 
 #### Image OCR
 
-On-device OCR results (Tesseract.js; stored in `page.mediaOcr[blockId]`,
+On-device OCR results (PP-OCRv6 small or Tesseract.js, recorded in `MediaOcrEntry.engine`; stored in `page.mediaOcr[blockId]`,
 §1) are deliberately **not** projected into the PROV graph. The graph
 describes the procedure the user wrote; an automatic OCR pass is tooling
 provenance, not a step of that procedure, and an earlier release that did
@@ -893,6 +934,17 @@ project image → OCR → extracted-text chains put distracting noise next to
 hand-labelled steps, so the projection was withdrawn. The extracted text
 still powers full-text search (`ocrText` in the note index, §5) and the
 asset gallery's detail panel.
+
+On macOS the desktop app also keeps a second reading of each image from the
+OS's own Vision framework (`MediaOcrEntry.altText`, `altEngine: "apple-vision"`).
+PP-OCR is the more accurate reader of printed text and numbers, so `text` —
+the only reading that is displayed, copied or exported — stays PP-OCR; Vision
+is better at handwritten Japanese sentences, so its reading is kept only to
+widen what search can find. The alternative reading is mirrored next to
+`ocrText` as `NoteIndexEntry.ocrAltText` (§5) and `MediaIndexEntry.ocrAltText`,
+and is added to the full-text index as separate chunks (`alt<N>`) that are
+excluded from the passages given to an AI and from the page text the AI's read tool returns. Its length is capped at 20,000 characters and non-string values are ignored where it enters an index. It is not stored when it is empty or
+equals the PP-OCR reading after folding width and whitespace.
 
 The same text is also mirrored onto the *material* it was read from
 (`MediaIndexEntry.ocrText` in the media index), which is what makes an image
@@ -1716,6 +1768,90 @@ version is unchanged). Each clipped selection is an ordinary memo: its text is
 `sourceAsset` points at the URL material, so in the export it becomes an
 annotation targeting that material like any other memo.
 
+**AI conversations: `MediaIndexEntry.conversation`.** A conversation with an AI
+coding tool (today: Claude Code) can be kept as a material of type
+`"conversation"` — one conversation, one material. There is no screen for
+bringing one in yet; this is the data layer it will write to. Like a URL
+bookmark, the entry has no media binary: the index entry is the only
+registration, and the text lives in the media-text channel
+(`saveMediaText(fileId)`, §6.3). `isFilelessMediaEntry` names the two types
+that work this way, and the index rebuild keeps them instead of treating "not
+in the media listing" as "deleted".
+
+```ts
+type ConversationMeta = {
+  provider: "claude-code";        // more providers are added as readers are written
+  sessionId: string;              // unique together with provider
+  workdir: string;                // the folder the conversation was started in
+  startedAt: string;              // ISO 8601 in UTC, "" when the record has no timestamps
+  endedAt: string;
+  ownTurns: number;               // lines the user wrote (the opening brief is not counted)
+  ownChars: number;               // their total length; used to pick candidates for Knowledge
+  hasBrief?: boolean;             // the conversation opens with a long text of unknown authorship
+  bodyChars: number;              // length of the stored text
+  importedAt: string;             // last time it was brought in or replaced
+};
+```
+
+- **Identity.** `fileId` is `conv-<provider>-<sessionId>`
+  (`conversationFileId`), so bringing the same conversation in again never
+  makes a second material: the stored text and `conversation` are replaced
+  (a conversation keeps growing), while the name, folders (`noteContexts`),
+  `uploadedAt`, `usedIn` and `archivedAt` are kept. `sessionId` is limited to
+  letters, digits, `-` and `_` (it becomes part of a file name). `url` holds
+  the source id (`conversation:<fileId>`) and `mimeType` is `text/plain`.
+- **Stored text.** What the user typed is kept **verbatim** — no rewording, no
+  summarising, line breaks and inner whitespace untouched. Two things are
+  removed around it: text the tool inserted into the message (see the next
+  item — a message that was mostly a paste shrinks to the words typed around
+  it) and whitespace at the very start and end of the message. In the stored
+  text, the second and later lines of a multi-line message are indented by
+  two spaces, so a pasted line that happens to look like `- AI（…）: …` or
+  `## <date>` is never read as another turn or a heading; removing that
+  indent gives the original back. The AI's side is only the reply written
+  just before each of the user's lines, and a reply longer than 520 characters
+  is cut to its first 200 and last 300 characters (whitespace collapsed, the
+  cut marked ` […] `). Tool calls and tool output are never stored. The text
+  is plain Markdown: one explanatory paragraph, then `## <date>` headings and
+  one list item per line (`- AI（直前の返答の抜粋）: …` / `- 私（06:28）: …`; an
+  English variant uses `AI` / `Me`). Dates and times are in the time zone of
+  the device that brought the conversation in. The text is fixed at that
+  moment and is what quoted passages are checked against; it is not rebuilt
+  on read.
+- **What counts as the user's line** (Claude Code records;
+  `src/lib/conversation/claude-code-reader.ts`): a `user` record that is not
+  `isMeta` / `isCompactSummary` / `isSidechain`, carries no `tool_result`,
+  and whose `origin.kind` is absent or `"human"`. `<system-reminder>` and
+  `<pasted_content>` blocks are removed from it wherever they appear, and so
+  are machine wrappers at its start (`<bash-input>…</bash-input>` and the
+  like: a tag whose name has a hyphen or underscore, with its closing tag —
+  an HTML tag such as `<p>` is the user's text and stays). What is left is
+  the line; a record with nothing left, or one that opens with one of a few
+  fixed machine sentences, is dropped. A slash command that is sent to the AI keeps its
+  arguments as the line and the command name beside the time; a local
+  command the tool handles by itself is not part of the conversation. Timestamps are
+  normalised to UTC ISO 8601, and a value that does not start like a date is
+  not used. The first line of a
+  conversation, when longer than 700 characters, is kept as a **brief**
+  (`- 依頼文（…）`) and left out of `ownChars`: a request written by another
+  conversation is recorded exactly like a typed one, so its author cannot be
+  told from the record. Later long lines are the user's and are kept whole.
+- **Folder.** `noteContexts` is `["<root>/<name of the working folder>"]`,
+  where the root label is chosen by the caller in the UI language (folders
+  are two levels deep, so the provider is not a level of its own). The name
+  is the last component of the recorded working folder with control,
+  direction-changing and invisible characters removed and cut at 80
+  characters; `.` and `..` are not names. Two working folders with the same
+  last component share a folder.
+- **Known limit.** Identity is per session record. A tool that copies
+  earlier turns into a new record when a conversation is resumed produces two
+  materials that share those turns.
+- **Compatibility.** The field is optional and the media index version is
+  unchanged. A build older than this one does not know the type: when it
+  rebuilds the media index it drops the entry (the stored text stays on
+  disk), and bringing the conversation in again restores it under the same
+  `fileId`.
+
 **What the memo's fields become.**
 
 | Memo | `oa:motivatedBy` | `oa:hasTarget` |
@@ -1776,6 +1912,10 @@ type WikiMeta = {
   //   "document:<mediaFileId>" ingested from a Word (.docx) / document asset
   //   "chat:<timestamp>"       ingested from an AI chat session
   //   "memo:<captureId>"       ingested from a memo (capture) — no note is created
+  //   "conversation:<mediaFileId>" an AI conversation kept as a material (§2.7). Not the same
+  //                            as "chat:": a chat stub carries no reference back to its text,
+  //                            while this one resolves to the stored text. Nothing writes it
+  //                            yet — ingesting a conversation is not open
   // Lineage / graph views resolve these prefixes to external source nodes
   // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
@@ -1855,6 +1995,20 @@ type WikiMeta = {
   // member Claims in `derivedFromClaims`, two-hop source-check) — see section
   // 3.1b. Answer pages always use this new format.
   topicMarkdown?: string;
+
+  // For each passage the body copied from a note: the sentence right before
+  // and right after it in the note text the page was written from (added
+  // 2026-11-17; optional — absent on pages written earlier). Used when the
+  // page is opened to tell that the text around a passage changed even
+  // though the passage itself is still there (`passage-context.ts`). Only
+  // note passages; each sentence is capped at 240 characters, keeping the
+  // side nearest the passage.
+  passageContexts?: Array<{
+    sourceId: string;
+    passage: string; // same text as in [[source:<id>|<passage>]]
+    before?: string; // absent when the passage starts the note
+    after?: string;  // absent when the passage ends the note
+  }>;
 
   // Topic type (Topics only; added 2026-10-20). The LLM-Wiki "entity page vs
   // concept page" distinction carried as a tag instead of a separate kind:
@@ -2690,7 +2844,9 @@ type SourceMissingReason =
 
 // "claim" is a topic-only source kind (§ below): a topic sentence's source is one of the
 // claims it cites, not a derivedFromNotes entry.
-type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "claim" | "unknown";
+// "conversation" is an AI conversation kept as a material: its text is the stored text of the
+// material (`sourceTextOrigin: "stored"`). "chat" stays "no-reference".
+type SourceCheckSourceKind = "note" | "pdf" | "document" | "url" | "memo" | "chat" | "conversation" | "claim" | "unknown";
 
 /** Where in the source text the quote was found (resolved mechanically, in the same pass that
  *  runs the check, from the exact source text judgment used). Left unset when the position is
@@ -2717,6 +2873,7 @@ type SourceCheckEntry = {
   passageNotFound?: string; // new-format pages only: the passage the AI copied for this sentence (marked `|?|` in topicMarkdown) that was not found in the source. Shown to the reader; never affects the verdict
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  sourceTextHash?: string;          // "sha256:<hex>" of the exact source text read for the check; set only when the source text could be read (never on "source-missing"). Recorded only
   statement?: string;               // the sentence checked (topics only; a claim's whole body is
                                      // the statement, so claims never set this)
   statementBlockId?: string;        // the topic block statement came from, when statement is set
@@ -2780,6 +2937,12 @@ type SourceCheckProfile = {
   `memo`, `claim`, `chat`, `unknown`) never sets it. When the same quoted
   text appears more than once at different positions, no location is
   recorded rather than guessed.
+- **`sourceTextHash`** is the SHA-256 (`"sha256:<hex>"`, the same blob-hash
+  utility) of the exact source text read for the check — the very string the
+  judgment used, with no normalization. It is set only when the source text
+  could be read, so `source-missing` entries never carry it. It is never used
+  for the judgment. **It is recorded only: the app does not currently read or
+  display this value.**
 - **`claimHash`** is a hash of the checked document's `title` + body at the
   moment of checking (`computeClaimHash`, the same SHA-256 blob-hash
   utility team-shared-storage uses) — for a topic this is the whole topic
@@ -3422,6 +3585,7 @@ type NoteIndexEntry = {
   }[];
   derivedFromNoteId?: string;  // v33: mirror of doc.derivedFromNoteId
   templateFrom?: { kind: "official" | "user" | "shared"; id: string };  // v34: mirror of doc.templateFrom
+  hasRecording?: true;  // v35: set when the body has a recorded transcript block (meetingTranscript with a fileId or recordingId)
                                                                           // (sharedId → shared, userTemplateId → user,
                                                                           // officialTemplateId → official); id only
 
@@ -3505,12 +3669,19 @@ type NoteIndexEntry = {
   //   includes this field).
   //   Absent → undefined (no image read yet, or none produced text).
   ocrText?: string;
+
+  // Search-only second reading of those images (macOS Vision,
+  //   `mediaOcr[*].altText`), newline-joined. Used by searchNotes and the
+  //   note list's search; shown only in the image text panel's small
+  //   "another reading" box, never as body text. Absent → undefined.
+  //   v36. Legacy notes keep `ocrAltText: undefined`.
+  ocrAltText?: string;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **34**.
+Defined in `src/features/navigation/index-file.ts`. Currently **36**.
 Bumping rules:
 
 | Version | Change |
@@ -3545,6 +3716,8 @@ Bumping rules:
 | **32** | Added `checklist` — every `checkListItem` in the note's block tree in document order (inside steps, columns and nested items too), with its plain `text`, whether it is `checked`, and the `links` found in its text. Feeds the MCP tool `list_todos`, which lists the unchecked items across notes from the index alone, without opening note files, and hands the hrefs to the assistant as a key for matching against an external task tool. Deliberately nothing else: no due date, owner, priority or status beyond the checkbox — Graphium records what is written and does not track tasks (CONCEPT.md §7). Notes without a checklist keep `checklist: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **33** | Added `derivedFromNoteId` (mirror of the note's own field) and `via: "noteLink"` on the `outgoingLinks` that come from `doc.noteLinks`. `noteLinks` mixes derivations (the target's `derivedFromNoteId` is this note) with connections made by an `@` mention, which have no direction (§2 "Derivation vs connection"); before this, every `noteLinks` entry was read as "the target derives from this note", so a later note mentioning an earlier one made the earlier note its child in lineage, in the graphs and in `trace_lineage`. With both fields the global graph draws connections as references and the lineage readers separate them without opening the target notes. Readers fall back to the note body when an older index lacks the fields. Existing indexes rebuild on the bump without touching note JSON. |
 | **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **35** | Added `hasRecording` — `true` when the note body contains a recorded transcript block (a `meetingTranscript` block with a `fileId` or `recordingId`, at any depth; a block not yet recorded does not count). The Records view uses it to show a "From a recording" origin tag from the index alone, because a material's `usedIn` does not carry the block type. Notes without such a block keep `hasRecording: undefined`; existing indexes rebuild on the bump without touching note JSON. |
+| **36** | Added `ocrAltText` on `NoteIndexEntry` — the newline-joined, search-only second reading (macOS Vision, `page.mediaOcr[*].altText`) of the note's images, collected in `buildIndexEntry` and included in `searchNotes` and the note list search; shown only in the image text panel's small "another reading" box, never as body text, in copies, exports or AI input. Legacy notes keep `ocrAltText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. The media index gets the matching `MediaIndexEntry.ocrAltText` (media index version 11). |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
@@ -3949,6 +4122,12 @@ Graphium/
 │   └── <fileId>.summary.json     # meeting recordings, when "Summarize" ran (desktop): SummaryDoc (§2.6)
 ├── media-text/
 │   ├── <fileId>.txt          # persisted URL source text (B-persist)
+│   ├── conv-<provider>-<sessionId>.txt  # the stored text of an AI conversation material (§2.7):
+│                                 #   the user's lines verbatim, the AI's replies as excerpts
+│                                 #   (the desktop app writes every media-text file into media/
+│                                 #   beside the binaries; the Node server uses media-text/; the
+│                                 #   `local` provider keeps it as a `textContent` record in its
+│                                 #   media store, §6.2)
 │   ├── preview_<fileId>.txt  # URL bookmark preview image (a downscaled data URL)
 │   └── datapreview_<fileId>.txt  # data material preview: { format: 1, preview: { headers,
 │                                 #   rowCount, numericColumns, sparkline: [{ column, points:
@@ -4583,6 +4762,76 @@ a "negative new comments" reading). Neither function is exposed as a
 library-wide total (tab headers and the sidebar do not carry a shared
 badge count — a v1 decision to keep this per-row only).
 
+### 7.8 Shared folder layout and readable copies
+
+Layout of one shared folder (the "shared root"):
+
+```
+<root>/
+  notes/<id>.json                       # { entry, body_base64 } — the source of truth
+  <other entry types>/<id>.json
+  _meta/tombstones/<id>.json            # a deleted (unshared) entry
+  _blobs/…                              # large files (default blob root)
+  readable/notes/
+    <title>_<id12>.md                   # optional, see below
+    <title>_<id12>.prov.jsonld
+```
+
+`readable/` is an optional, **derived** copy for people and tools that do
+not run Graphium. The authoritative data is always `notes/<id>.json`; the
+app never reads `readable/` back, so deleting it loses nothing.
+
+**Switch.** `SharedFolder.readableCopies?: boolean` (Settings → Sharing →
+a shared folder's details). It is a per-device setting stored with the
+folder list in `localStorage`, default off; it is kept only when true. It
+applies to the notes the current device shares, so copies of someone
+else's notes follow that person's setting.
+
+**Scope.** Notes only (entry type `notes`). Knowledge pages, proposals,
+templates and other entry types get no copy.
+
+**File names.** Built by Rust (`shared_readable_sync`) from the title and
+the shared id; TypeScript passes no path. `<id12>` is the last 12
+characters of the shared id (a UUIDv7). In `<title>`, `/ \ : * ? " < > |`
+and control characters become `_`; bidirectional controls, zero-width
+characters, other invisible characters (e.g. U+061C, U+2060–206F, U+00AD, U+3164),
+variation selectors, tag characters and the BOM are removed; runs of whitespace collapse to one
+space; leading dots and leading/trailing whitespace and trailing dots are
+trimmed; the result is cut at 150 bytes of UTF-8 on a character boundary;
+an empty result becomes `untitled`.
+
+**Content.** AI chats, edit history and memos are never written, even when
+"include private history" is on for sharing (the history carries editors'
+email addresses, and these files are plain text anyone can open). Otherwise
+the same range as the shared copy.
+
+- `.md` starts with a front matter of five keys, all JSON-quoted:
+  `title`, `graphium_note_id`, `graphium_shared_id`, `author` (name only,
+  no email), `shared_at` (ISO 8601). The body is the same Markdown as the
+  Markdown export; images are references, not embedded bytes.
+- `.prov.jsonld` is built by the same builder as the menu export for one
+  note (PROV-JSON-LD), from the document without chats and edit history.
+  It differs from the menu export: the author is given by name only (no
+  email address) and Wiki entities are not included. Links to other notes
+  carry the other note's id and title. Asset nodes (name, URL, MIME type,
+  source info) are looked up in this device's asset index, so an asset
+  that is only cited by the note (not embedded in the shared body) also
+  appears there by name and source.
+
+**Lifecycle.** A note has at most one pair of copies at any time.
+
+| Event | Result |
+|---|---|
+| Share / re-share, switch on | The pair is written, then older files of the same `<id12>` with other names are removed |
+| Title changed, then re-shared | New names are written; the files under the old title are removed (also when only the letter case changes, on file systems that ignore case: the same file is kept, not deleted) |
+| A write fails part-way | The remaining old files are still cleaned up on a best-effort basis; the failure is returned |
+| Re-share, switch off | Any existing copy for that id is removed; none is written |
+| Unshare (`shared_delete`) | The copy for that id is removed (a failure here does not fail the unshare) |
+| Copy fails | The share still succeeds; the failure is returned to the UI and shown |
+
+Copies are written only when sharing; nothing follows later edits until
+the next share.
+
 ## 8. Compatibility rules
 
 Hard rules for changing any schema in this document.
@@ -4624,6 +4873,14 @@ the new field.
 only the new field, so a note saved by a current build loses its timestamp and
 row-to-note behavior if an older build writes it back. Ship a change like this
 with a release note telling users to update every device they sync from.
+
+The media index has one case of the same kind. A material without a media
+binary is kept through an index rebuild only because the rebuild knows its
+type (`isFilelessMediaEntry`: URL bookmarks and AI conversations, §2.7). A
+build that predates the `"conversation"` type sees such an entry as a material
+whose file is gone and drops it from the index the next time it rebuilds. The
+stored text is not deleted, and bringing the conversation in again from a
+current build restores the entry under the same `fileId`.
 
 After any compatibility-affecting change, the verification ritual is:
 

@@ -17,7 +17,7 @@ import type {
 import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
 import { normalizeNoteContexts } from "../note-context/context-tags";
-import { collectOcrText } from "../media-ocr/collect";
+import { collectOcrAltText, collectOcrText } from "../media-ocr/collect";
 import { inlineContentToText } from "../markdown-export/inline-text";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool";
 
@@ -174,7 +174,20 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      v33 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
 //      bump を必ず実地確認する: Graphium 起動時に v33 インデックスが v34 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 34;
+// v35: 録音・文字起こしを持つノートの印。
+//      本文のどこかに、録音済みの文字起こしブロック（meetingTranscript で fileId か recordingId を持つ）
+//      があれば NoteIndexEntry.hasRecording を true にする。記録の画面が「録音から」の札を出すのに使う
+//      （素材の usedIn はブロックの種類を持たないので、索引だけでは見分けられなかった）。
+//      保存されたノートは書き換えない。v34 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v34 インデックスが v35 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+// v36: ocrAltText フィールド追加（macOS の Vision による検索用の別の読み）。
+//      page.mediaOcr[*].altText を改行区切りで集約し、ノート一覧の検索（searchNotes）の
+//      対象に含める。表示・AI への本文には使わない。既存エントリは ocrAltText=undefined のまま
+//      読める（後方互換）。プロジェクトの決まり（NoteIndexEntry を変えたら bump）に従う。
+//      bump を必ず実地確認する: Graphium 起動時に v35 インデックスが v36 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 36;
 
 export type GraphiumIndex = {
   version: number;
@@ -254,6 +267,11 @@ export type NoteIndexEntry = {
    * 共有 = SharedEntry.id / user = UserTemplateRecord.id / official = TemplateDef.id
    */
   templateFrom?: { kind: "official" | "user" | "shared"; id: string };
+  /**
+   * 録音・文字起こしを持つノートか（v35）。録音済みの文字起こしブロックが本文にあれば true。
+   * 無いノートは undefined。記録の画面の「録音から」の札に使う。
+   */
+  hasRecording?: true;
   /** ドキュメントソース: "human" or "ai"（Wiki）or "skill" */
   source?: "human" | "ai" | "skill";
   /** Wiki ドキュメントの種類（source === "ai" の場合のみ） */
@@ -377,6 +395,11 @@ export type NoteIndexEntry = {
   relatedAtoms?: AtomRelation[];
   /** OCR 画像ブロックから抽出したテキスト（横断検索用・改行区切り） */
   ocrText?: string;
+  /**
+   * 検索用の「別の読み」（macOS の Vision。画像ブロックの mediaOcr.altText を改行区切りで集約）。
+   * ノート一覧の検索にだけ使い、表示・AI への本文・書き出しには出さない。optional（既存は undefined）
+   */
+  ocrAltText?: string;
 };
 
 // ── Drive API ──
@@ -506,6 +529,19 @@ export function indexTemplateFrom(
   if (from.userTemplateId) return { kind: "user", id: from.userTemplateId };
   if (from.officialTemplateId) return { kind: "official", id: from.officialTemplateId };
   return undefined;
+}
+
+/**
+ * 録音済みの文字起こしブロックがあるか（置かれた深さを問わない）。
+ * 録音前のブロック（fileId も recordingId も空）は数えない。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function hasRecordedTranscript(blocks: readonly any[]): boolean {
+  for (const b of blocks) {
+    if (b?.type === "meetingTranscript" && (b.props?.fileId || b.props?.recordingId)) return true;
+    if (Array.isArray(b?.children) && b.children.length > 0 && hasRecordedTranscript(b.children)) return true;
+  }
+  return false;
 }
 
 export function buildIndexEntry(
@@ -686,6 +722,7 @@ export function buildIndexEntry(
     outgoingLinks,
     derivedFromNoteId: doc.derivedFromNoteId || undefined,
     templateFrom: indexTemplateFrom(doc.templateFrom),
+    hasRecording: page && hasRecordedTranscript(page.blocks || []) ? true : undefined,
     source: doc.source,
     wikiKind: doc.wikiMeta?.kind,
     author,
@@ -721,6 +758,8 @@ export function buildIndexEntry(
         : undefined,
     // 画像 OCR テキスト（page.mediaOcr サイドストア。画像を中身の文字で引けるようにする）
     ocrText: collectOcrText(page?.mediaOcr),
+    // 検索用の別の読み（探す経路だけで使う）
+    ocrAltText: collectOcrAltText(page?.mediaOcr),
   };
 }
 

@@ -226,7 +226,7 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 | **Manual** | Fill the form yourself. **Local** servers take a **Command**, **Arguments (one per line)**, and **Environment (KEY=value, one per line)**; **Remote** servers take an **Endpoint URL**, a **Transport** (**SSE** or **Streamable HTTP**), and an optional **API key** |
 | **From registry** | Enter a **Registry URL** for a [Crucible Registry](https://github.com/kumagallium/Crucible), click **Fetch servers**, and add candidates from the list |
 
-**Local** servers are launched and managed by Graphium over stdio, the same way Claude Desktop does — you never start or stop a process yourself. This requires the desktop app, since a browser can't launch local processes. **Remote** connects to an already-running server by URL.
+**Local** servers are launched and managed by Graphium over stdio, the same way Claude Desktop does — you never start or stop a process yourself. This requires the desktop app, since a browser can't launch local processes. **Remote** connects to an already-running server by URL. Because a local server runs a command on your computer, Graphium shows that command (and the names of any environment variables, never their values) and asks you to confirm before adding a new local server or changing its command, arguments or environment. Add it only if you trust where it came from.
 
 Every server in the list can be toggled on and off, edited, or removed. Editing always uses the advanced form. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 

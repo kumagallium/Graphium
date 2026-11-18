@@ -1,8 +1,9 @@
-// get_source_text の本体: 資料（PDF / Word / URL / ノート）の本文を窓に切って返す。
+// get_source_text の本体: 資料（PDF / Word / URL / AI との会話 / ノート）の本文を窓に切って返す。
 //
 // 原文の解決は出典照合と同じ resolveSourceText を Node 用の deps で呼ぶ（取り込みが LLM に
 // 渡したのと同じ抽出になる）。PDF は pdf-text-node.ts、Word は mammoth（buffer 渡し）、
 // URL は素材インデックスに登録されたものだけを url-reader で取り直す（任意の URL は受けない）。
+// AI との会話は、取り込みのときに保存した本文（media/<fileId>.txt）をそのまま読む。
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ import { extractPdfTextNode } from "./pdf-text-node";
 import { readMediaIndex } from "./sources";
 import { notesDir, readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
 import { extractDocxText } from "../lib/docx-text";
+import { parseConversationFileId } from "../lib/conversation/types";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -80,6 +82,20 @@ export function findMediaFile(fileId: string, root: string): string | null {
   return hit ? join(dir, hit) : null;
 }
 
+/**
+ * AI との会話の本文（`<root>/media/<fileId>.txt`）。会話の素材 id の形（英数字・ハイフン・下線だけ）で
+ * なければ探さない — 同じ場所に、ほかの素材の原文や文字起こしも `.txt` で置かれている
+ */
+export function conversationTextFile(fileId: string, root: string): string | null {
+  if (!parseConversationFileId(fileId)) return null;
+  // デスクトップ版は media/、セルフホストのサーバーは media-text/ に本文テキストを置く
+  for (const dir of ["media", "media-text"]) {
+    const path = join(root, dir, `${fileId}.txt`);
+    if (existsSync(path)) return path;
+  }
+  return null;
+}
+
 function mtimeOf(path: string | null): number {
   if (!path) return 0;
   try {
@@ -137,6 +153,10 @@ function buildDeps(root: string): ResolveSourceTextDeps {
       return fetchPublicUrlText(url);
     },
     findCaptureText: () => undefined,
+    loadConversationText: async (fileId) => {
+      const path = conversationTextFile(fileId, root);
+      return path ? readFileSync(path, "utf8") : undefined;
+    },
   };
 }
 
@@ -167,19 +187,19 @@ function pageRange(pageStarts: number[] | undefined, start: number, end: number)
 
 /** 資料の全文（窓に切る前）。断る場合は message の先頭に安定した語（UNKNOWN_SOURCE など）を置く */
 export type FullSourceText =
-  | { ok: true; title: string; text: string; pageStarts?: number[]; kind: "note" | "pdf" | "document" | "url" }
+  | { ok: true; title: string; text: string; pageStarts?: number[]; kind: "note" | "pdf" | "document" | "url" | "conversation" }
   | { ok: false; message: string };
 
 /**
  * 資料の全文を解決する（get_source_text と手順の課題が共有する。キャッシュも共有）。
- * 対象: 通常のノート・ナレッジのページ・PDF / Word（.docx）素材・素材に登録した URL
+ * 対象: 通常のノート・ナレッジのページ・PDF / Word（.docx）素材・素材に登録した URL・取り込んだ AI との会話
  */
 export async function resolveFullSourceText(sourceId: string, root = resolveGraphiumRoot()): Promise<FullSourceText> {
   const parsed = parseExternalSource(sourceId);
 
   // 種類ごとの事前確認と、キャッシュの鍵（ファイルの mtime）
   let stamp = 0;
-  let kind: "note" | "pdf" | "document" | "url" = "note";
+  let kind: "note" | "pdf" | "document" | "url" | "conversation" = "note";
   if (parsed?.kind === "pdf" || parsed?.kind === "document") {
     kind = parsed.kind;
     const media = readMediaIndex(root).get(parsed.key);
@@ -208,6 +228,15 @@ export async function resolveFullSourceText(sourceId: string, root = resolveGrap
       };
     }
     stamp = Math.floor(Date.now() / URL_CACHE_MS);
+  } else if (parsed?.kind === "conversation") {
+    kind = "conversation";
+    // 素材の一覧に「AI との会話」として載っていて、本文が置かれているものだけを読む
+    const media = readMediaIndex(root).get(parsed.key);
+    const file = conversationTextFile(parsed.key, root);
+    if (media?.type !== "conversation" || !file) {
+      return { ok: false, message: refuse("UNKNOWN_SOURCE", `資料が見つかりません: ${sourceId}`) };
+    }
+    stamp = mtimeOf(file);
   } else if (parsed) {
     return { ok: false, message: refuse("UNSUPPORTED_FORMAT", `この種類の資料（${parsed.kind}:）は文字起こしできません。`) };
   } else {

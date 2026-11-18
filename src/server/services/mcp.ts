@@ -51,6 +51,11 @@ function closeQuietly(p: Promise<MCPClient>): void {
   void p.then((c) => c.close()).catch(() => {});
 }
 
+/** ログ用: 文字列中の URL からクエリ文字列を落とす */
+function redactQuery(text: string): string {
+  return text.replace(/(https?:\/\/[^\s?#]+)\?[^\s#]*/gi, "$1?…");
+}
+
 /** 接続先の説明（ログ用） */
 function describe(s: MCPServerInfo): string {
   return s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
@@ -198,7 +203,8 @@ export async function getMCPTools(
           ? { name: reason.serverName, target: reason.target, message: reason.detail }
           : { name: "", target: "", message: reason instanceof Error ? reason.message : String(reason) };
       errors.push(failure);
-      console.warn(`MCP 接続失敗: ${failure.name} (${failure.target}): ${failure.message}`);
+      // URL のクエリに API キーが載る場合があるので、ログには出さない
+      console.warn(`MCP 接続失敗: ${failure.name} (${redactQuery(failure.target)}): ${redactQuery(failure.message)}`);
     }
   }
 

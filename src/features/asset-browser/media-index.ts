@@ -1,6 +1,7 @@
 // .graphium-media-index.json の型定義と Drive 読み書き
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
 import { normalizeNoteContexts } from "../note-context/context-tags";
@@ -8,6 +9,11 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 // chart-config は純関数の葉モジュールで、こちらへ戻る import は無い
 import { collectChartAssetFileIds, parseChartBlockConfig } from "../../blocks/chart/chart-config";
 import { parseDataTableSource } from "../../blocks/data-table/source";
+import {
+  CONVERSATION_SOURCE_PREFIX,
+  parseConversationFileId,
+  type ConversationProvider,
+} from "../../lib/conversation/types";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -16,7 +22,30 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "memo" | "other";
+export type MediaType =
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "url"
+  | "document"
+  | "data"
+  | "memo"
+  // AI との会話（Claude Code などの会話の記録を取り込んだもの）。実体のファイルを持たず、
+  // 本文は saveMediaText に置く（下の isFilelessMediaEntry）
+  | "conversation"
+  | "other";
+
+/**
+ * 実体のファイル（uploadMedia のバイト列）を持たない素材か。
+ *
+ * URL ブックマークと AI との会話は、索引のエントリが唯一の登録で、ディスクの素材一覧
+ * （listMediaFiles）には現れない。索引の再構築は「一覧に無い = 消えた」と見なして落とすので、
+ * この 2 種類は一覧と突き合わせずに温存する。
+ */
+export function isFilelessMediaEntry(entry: { type: MediaType }): boolean {
+  return entry.type === "url" || entry.type === "conversation";
+}
 
 /**
  * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
@@ -281,6 +310,12 @@ export type MediaIndexEntry = {
    */
   ocrText?: string;
   /**
+   * 検索用の「別の読み」（macOS の Vision。ocrText と同じ画像の別エンジンの読み）。
+   * 素材ギャラリー・Cmd+K・全文の索引で探すときだけ使い、表示・AI への本文・書き出しには
+   * 出さない（表示する文字は ocrText だけ）。optional なので既存インデックスはそのまま読める。
+   */
+  ocrAltText?: string;
+  /**
    * メモピーク用の本文（type === "memo" のとき）。
    * buildMemoPeekEntry が組む transient エントリ専用で、media-index には保存されない。
    */
@@ -366,6 +401,36 @@ export type MediaIndexEntry = {
    * （`backfillDocumentInfo`）が読んだうえで付ける。optional なので既存インデックスはそのまま読める。
    */
   sourceInfoScanned?: boolean;
+  /**
+   * AI との会話の来歴（type === "conversation" のとき）。
+   *
+   * 本文（本人の発言の原文と AI の返答の抜粋）は `saveMediaText(fileId)` に置き、ここには
+   * 一覧と絞り込みに使う数字だけを持つ。fileId は provider と sessionId から決まるので、
+   * 同じ会話を取り込み直してもエントリは増えず、本文とこの欄が差し替わる。
+   * optional なので既存インデックスはそのまま読める（版は上げない）。
+   */
+  conversation?: ConversationMeta;
+};
+
+/** AI との会話の来歴（MediaIndexEntry.conversation） */
+export type ConversationMeta = {
+  provider: ConversationProvider;
+  /** 会話の id（provider と組で一意） */
+  sessionId: string;
+  /** 会話を始めた作業フォルダ */
+  workdir: string;
+  /** 会話の期間（ISO 8601。記録に時刻が無ければ ""） */
+  startedAt: string;
+  endedAt: string;
+  /** 本人の発言の数と字数の合計（会話の始まりの依頼文は数えない） */
+  ownTurns: number;
+  ownChars: number;
+  /** 会話の始まりに、書き手の分からない依頼文があるか */
+  hasBrief?: boolean;
+  /** 保存した本文の字数 */
+  bodyChars: number;
+  /** 最後に取り込んだ（差し替えた）時刻（ISO 8601） */
+  importedAt: string;
 };
 
 /** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
@@ -425,13 +490,20 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       ブロックは録音素材を props.fileId で参照するだけで url も本文も持たないので、
  *       これを入れないと録音が未使用扱いになり、削除前の参照チェックをすり抜けて
  *       ブロックが参照切れになる。bump により既存ノートの参照を一度の再構築で回収する
+ *  - 11: 絞り込んだ表（source.derivation）の元の素材（derivation.fromFileId）を usedIn に含める。
+ *       表が読むのは写しなので、source.fileId だけでは元の素材が未使用扱いになり、削除前の
+ *       参照チェックをすり抜けて来歴（と条件つきの開き直し）が切れる。bump により既存ノートの
+ *       参照を一度の再構築で回収する
+ *  - 12: 検索用の別の読み（macOS の Vision。`ocrAltText`）を素材側にも集約する。
+ *       ノートの `page.mediaOcr[*].altText` を再構築で素材へ写す。bump により
+ *       フィールド追加の慣例どおり既存索引を一度の再構築で揃える
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 10 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 12 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -730,6 +802,9 @@ export async function persistUrlMetaPatch(
 /**
  * 画像の OCR テキストを media-index に書き戻す。
  *
+ * altText: 検索用の別の読み（ocrAltText）。undefined なら触らない（PowerPoint のスライド文字など
+ * 別の読みを持たない書き込み）。OCR の結果を書くときは、無ければ "" を渡して古い別の読みを消す。
+ *
  * 呼び出し元は 3 つ:
  *   - 素材ギャラリー / 素材ピークからの読み取り（そこが唯一の保存先）
  *   - ノートに貼った画像の読み取り（正は `page.mediaOcr`。ここへは
@@ -740,22 +815,26 @@ export async function persistUrlMetaPatch(
 export async function persistOcrTextPatch(
   fileId: string,
   ocrText: string,
+  altText?: string,
 ): Promise<void> {
   const index = await readMediaIndex();
   if (!index) return;
   const text = ocrText.trim();
+  const alt = altText === undefined ? undefined : (sanitizeAltText(altText) ?? "");
   let changed = false;
   const nextMedia = index.media.map((m) => {
     if (m.fileId !== fileId) return m;
     // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
-    if ((m.ocrText ?? "") === text) return m;
+    const sameAlt = alt === undefined || (m.ocrAltText ?? "") === alt;
+    if ((m.ocrText ?? "") === text && sameAlt) return m;
     changed = true;
     // 空文字は「読んだが文字が無かった」なのでキー自体を落とす
-    if (!text) {
-      const { ocrText: _omit, ...rest } = m;
-      return rest;
-    }
-    return { ...m, ocrText: text };
+    const { ocrText: _omit, ocrAltText: _omitAlt, ...rest } = m;
+    const next: MediaIndexEntry = { ...rest };
+    if (text) next.ocrText = text;
+    const nextAlt = alt === undefined ? m.ocrAltText : alt;
+    if (nextAlt) next.ocrAltText = nextAlt;
+    return next;
   });
   if (!changed) return;
   const next: MediaIndex = {
@@ -910,7 +989,7 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   sourceTextFileId?: string | null | undefined;
   pages?:
     | Array<{
-        tableMeta?: Record<string, { source?: { fileId?: string } }> | null;
+        tableMeta?: Record<string, { source?: { fileId?: string; derivation?: { fromFileId?: string } } }> | null;
         blocks?: any[] | null;
       }>
     | null
@@ -938,6 +1017,13 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     if (typeof ref === "string" && ref.startsWith("url:") && ref.length > "url:".length) {
       ids.add(ref);
     }
+    // AI との会話を出典に持つ知見・トピック（"conversation:<fileId>"）。これを入れないと
+    // 会話の素材だけ「利用ノート」が空になり、削除前の参照チェックをすり抜ける。
+    if (typeof ref === "string" && ref.startsWith(CONVERSATION_SOURCE_PREFIX)) {
+      // 会話の素材 id の形をしたものだけ（別の素材の id を書いて、その「利用ノート」に入り込ませない）
+      const fileId = ref.slice(CONVERSATION_SOURCE_PREFIX.length);
+      if (parseConversationFileId(fileId)) ids.add(fileId);
+    }
   }
   // 区切りテキストから取り込んだテーブルの元ファイル（tableMeta.source.fileId）。
   // 表のセルにはファイルの痕跡が残らないため、ブロック走査では拾えない。これを
@@ -947,6 +1033,10 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     for (const meta of Object.values(page?.tableMeta ?? {})) {
       const fileId = meta?.source?.fileId;
       if (fileId) ids.add(fileId);
+      // 絞り込んだ表の「元の素材」。表が読むのは写しなので source.fileId には出てこないが、
+      // 元を消すと、どう絞ったかの来歴（と開き直し）が切れる
+      const fromFileId = meta?.source?.derivation?.fromFileId;
+      if (fromFileId) ids.add(fromFileId);
     }
     // チャートが素材のデータを直接描いている場合（config.assetSources）。表を経由しない
     // ので tableMeta には出てこない。これを入れないと、別のノートの図に重ねただけの
@@ -1003,8 +1093,10 @@ export function collectDataTableAssetFileIdsFromBlocks(blocks: any[]): Set<strin
     for (const b of list ?? []) {
       if (!b || typeof b !== "object") continue;
       if (b.type === "dataTable") {
-        const fileId = parseDataTableSource(b.props?.source)?.fileId;
-        if (fileId) ids.add(fileId);
+        const source = parseDataTableSource(b.props?.source);
+        if (source?.fileId) ids.add(source.fileId);
+        // 絞り込んだ表の元の素材（写しを読むので source.fileId には出てこない）
+        if (source?.derivation?.fromFileId) ids.add(source.derivation.fromFileId);
       }
       if (Array.isArray(b.children)) visit(b.children);
     }
@@ -1095,7 +1187,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, conversation: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
     counts[entry.type]++;
@@ -1280,7 +1372,8 @@ export function isLegacyDriveMediaUrl(url: string): boolean {
  * 直すのは素材の実体を指すはずのフィールドだけ。
  */
 export function repairLegacyMediaUrls(entry: MediaIndexEntry): MediaIndexEntry {
-  if (entry.type === "url") return entry;
+  // 実体のファイルを持たない素材（URL ブックマーク・AI との会話）の url は、素材の実体を指さない
+  if (isFilelessMediaEntry(entry)) return entry;
   const urlIsLegacy = isLegacyDriveMediaUrl(entry.url);
   const thumbIsLegacy = isLegacyDriveMediaUrl(entry.thumbnailUrl);
   if (!urlIsLegacy && !thumbIsLegacy) return entry;
@@ -1326,7 +1419,7 @@ type IndexableDoc = {
   /** mediaOcr は画像ブロックの OCR 結果（blockId → 抽出テキスト）。素材側の ocrText 集約に使う */
   pages: {
     blocks: any[];
-    mediaOcr?: Record<string, { text?: string }> | undefined;
+    mediaOcr?: Record<string, { text?: string; altText?: string }> | undefined;
     /** 取り込みで作られたテーブルの出所（元ファイルの fileId を持つ） */
     tableMeta?: Record<string, { source?: { fileId?: string } }> | undefined;
   }[];
@@ -1370,8 +1463,8 @@ export async function ensureMediaIndex(
   // Drive の uploadFiles/ を走査
   const driveFiles = await listUploadFiles();
 
-  // 既存の URL ブックマーク（Drive にファイルがないエントリ）を保持
-  const existingUrlBookmarks = (existing?.media ?? []).filter((m) => m.type === "url");
+  // 実体のファイルを持たないエントリ（URL ブックマーク・AI との会話）を保持
+  const existingUrlBookmarks = (existing?.media ?? []).filter(isFilelessMediaEntry);
 
   // 既存インデックスがあり、ファイル数が一致し（URL ブックマークを除外して比較）、usedIn も構築済みなら最新とみなす。
   // ただしスキーマバージョンが旧版（v1: block 由来の usedIn しか集計していない）なら強制再構築する。
@@ -1440,6 +1533,8 @@ export async function ensureMediaIndex(
   // 走査で集めるのはこの 2 つだけ
   const usageByFileId = new Map<string, MediaUsage[]>();
   const ocrByFileId = new Map<string, string>();
+  // 検索用の別の読み（macOS の Vision）。ocrText と同じ扱いで素材側へ写す
+  const ocrAltByFileId = new Map<string, string>();
 
   // 走査対象: 通常ノート + Wiki ノート。
   // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つので、
@@ -1502,6 +1597,10 @@ export async function ensureMediaIndex(
           if (noteOcr && !ocrByFileId.has(fileId)) {
             ocrByFileId.set(fileId, noteOcr);
           }
+          const noteAlt = sanitizeAltText(page.mediaOcr?.[blockId]?.altText);
+          if (noteAlt && !ocrAltByFileId.has(fileId)) {
+            ocrAltByFileId.set(fileId, noteAlt);
+          }
         }
       }
     }
@@ -1534,6 +1633,8 @@ export async function ensureMediaIndex(
     const noteOcr = ocrByFileId.get(entry.fileId);
     const next: MediaIndexEntry = { ...entry, usedIn: usageByFileId.get(entry.fileId) ?? [] };
     if (noteOcr && !next.ocrText) next.ocrText = noteOcr;
+    const noteAlt = ocrAltByFileId.get(entry.fileId);
+    if (noteAlt && !next.ocrAltText) next.ocrAltText = noteAlt;
     return next;
   };
 

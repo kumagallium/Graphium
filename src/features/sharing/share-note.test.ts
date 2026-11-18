@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // shareNote のテスト。Tauri invoke をモックしてラウンドトリップを確認する。
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -8,7 +9,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
-import { shareNote, stripPrivateHistory } from "./share-note";
+import { shareNote, shareGraphiumDocument, stripPrivateHistory } from "./share-note";
+import { shareKnowledge } from "./share-knowledge";
+import { createSharedFolder, setSharedFolders } from "../../lib/storage/shared/config";
 import { computeSharedEntryHash } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
@@ -18,6 +21,10 @@ const author: AuthorIdentity = { name: "Ada", email: "a@b.co" };
 class FakeFs {
   entries = new Map<string, string>();
   blobs = new Map<string, string>(); // hash → base64
+  /** shared_readable_sync の呼び出しの記録 */
+  readable: any[] = [];
+  /** true なら shared_readable_sync を失敗させる */
+  failReadable = false;
   install() {
     invokeMock.mockReset();
     invokeMock.mockImplementation(async (cmd: string, args: any) => {
@@ -30,6 +37,10 @@ class FakeFs {
           if (!v) throw new Error("not found");
           return v;
         }
+        case "shared_readable_sync":
+          this.readable.push(args);
+          if (this.failReadable) throw new Error("readable failed");
+          return null;
         case "shared_blob_write":
           this.blobs.set(args.hash, args.contentBase64);
           return null;
@@ -49,6 +60,7 @@ class FakeFs {
 
 let fs: FakeFs;
 beforeEach(() => {
+  localStorage.clear();
   fs = new FakeFs();
   fs.install();
 });
@@ -457,5 +469,118 @@ describe("shareNote — 取り込んだ提案（§25b C-1）", () => {
     await shareNote(makeDoc(), { root: "/tmp/shared", author });
     const stored = JSON.parse([...fs.entries.values()][0]);
     expect(stored.entry.extra.adoptedProposals).toBeUndefined();
+  });
+});
+
+// --- 読める写し（共有フォルダの readable/）---
+
+describe("shareNote — 読める写し", () => {
+  const ROOT = "/tmp/shared";
+  const enable = () => setSharedFolders([{ ...createSharedFolder(ROOT), readableCopies: true }]);
+  const secretChats: NonNullable<GraphiumDocument["chats"]> = [
+    {
+      id: "chat-1",
+      scopeBlockId: "b1",
+      scopeType: "block",
+      messages: [{ role: "user", content: "ひみつのチャット質問", timestamp: "2026-05-04T00:00:00Z" }],
+      createdAt: "2026-05-04T00:00:00Z",
+      modifiedAt: "2026-05-04T00:00:01Z",
+    },
+  ];
+  const secretProvenance = {
+    revisions: [
+      {
+        id: "rev-secret",
+        pageId: "p1",
+        timestamp: "2026-05-04T00:00:00Z",
+        contentHash: "sha256:abc",
+        summary: "ひみつの編集メモ",
+      },
+    ],
+    activities: [],
+    agents: [],
+  } as unknown as NonNullable<GraphiumDocument["documentProvenance"]>;
+
+  it("ノートの共有で写しが置かれる（スイッチ入・context あり）", async () => {
+    enable();
+    const r = await shareNote(makeDoc(), { root: ROOT, author, readable: { noteId: "note-1" } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.readableCopy).toBe("written");
+    expect(fs.readable).toHaveLength(1);
+    expect(fs.readable[0].entryType).toBe("notes");
+    expect(fs.readable[0].id).toBe(r.doc.sharedRef!.id);
+    expect(fs.readable[0].markdown).toContain("hi");
+    expect(typeof fs.readable[0].prov).toBe("string");
+  });
+
+  it("スイッチが切なら markdown: null で呼ばれ off になる", async () => {
+    const r = await shareNote(makeDoc(), { root: ROOT, author, readable: { noteId: "note-1" } });
+    expect(r.ok && r.readableCopy).toBe("off");
+    expect(fs.readable[0].markdown).toBeNull();
+  });
+
+  it("knowledge と proposal では呼ばれず、readableCopy も付かない", async () => {
+    enable();
+    const k = await shareKnowledge(
+      makeDoc({ wikiMeta: { kind: "concept" } as unknown as GraphiumDocument["wikiMeta"] }),
+      { root: ROOT, author, readable: { noteId: "k" } },
+    );
+    expect(k.ok).toBe(true);
+    const p = await shareGraphiumDocument(makeDoc(), "proposal", {}, { root: ROOT, author, readable: { noteId: "p" } });
+    expect(p.ok).toBe(true);
+    expect(fs.readable).toHaveLength(0);
+    if (k.ok) expect("readableCopy" in k).toBe(false);
+    if (p.ok) expect("readableCopy" in p).toBe(false);
+  });
+
+  it("includePrivateHistory が偽のとき、写しにチャットと編集の履歴由来の中身が入らない", async () => {
+    enable();
+    const doc = makeDoc({ chats: secretChats, documentProvenance: secretProvenance });
+    const r = await shareNote(doc, { root: ROOT, author, readable: { noteId: "note-1" } });
+    expect(r.ok).toBe(true);
+    const { markdown, prov } = fs.readable[0];
+    for (const text of [markdown, prov]) {
+      expect(text).not.toContain("ひみつのチャット質問");
+      expect(text).not.toContain("ひみつの編集メモ");
+      expect(text).not.toContain("rev-secret");
+    }
+    expect(prov).not.toContain("chat-1");
+  });
+
+  it("includePrivateHistory が真でも、写しにチャット・編集の履歴・メールアドレスは入らない", async () => {
+    enable();
+    const doc = makeDoc({
+      chats: secretChats,
+      documentProvenance: {
+        ...secretProvenance,
+        agents: [{ id: "ag-1", type: "human", name: "Ada", email: "ada@example.com" }],
+      } as any,
+    });
+    const r = await shareNote(doc, {
+      root: ROOT,
+      author,
+      includePrivateHistory: true,
+      readable: { noteId: "note-1" },
+    });
+    expect(r.ok).toBe(true);
+    const { markdown, prov } = fs.readable[0];
+    for (const text of [markdown, prov]) {
+      expect(text).not.toContain("ひみつのチャット質問");
+      expect(text).not.toContain("ひみつの編集メモ");
+      expect(text).not.toContain("ada@example.com");
+    }
+  });
+
+  it("写しの失敗でも ok: true のまま readableCopy: failed", async () => {
+    enable();
+    fs.failReadable = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r = await shareNote(makeDoc(), { root: ROOT, author, readable: { noteId: "note-1" } });
+    warn.mockRestore();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.readableCopy).toBe("failed");
+    expect(r.doc.sharedRef).toBeDefined();
   });
 });

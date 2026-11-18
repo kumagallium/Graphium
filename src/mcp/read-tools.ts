@@ -54,7 +54,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         includeChats: z.boolean().optional().describe("AI チャットを含めるか（既定 false）"),
         includeBody: z.boolean().optional().describe("ノート本文を含めるか（既定 true）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId, scope, includeChats, includeBody }) => {
       if (!vaultExists()) return vaultMissing();
@@ -111,7 +111,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
           .optional()
           .describe("Graphium 設定の Asterism 連携（語の基底 IRI・知見の基底 IRI（必須）・型の語）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ includeUntyped, includeInferred, includeTopics, ids, onlyUnsent, asterism }) => {
       if (!vaultExists()) return vaultMissing();
@@ -134,15 +134,16 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     {
       title: "資料の本文を読む",
       description:
-        "資料（PDF・Word・Web ページ・ノート）の本文を文字起こしして、窓（既定 4,000 字）に切って返す。" +
+        "資料（PDF・Word・Web ページ・AI との会話・ノート）の本文を文字起こしして、窓（既定 4,000 字）に切って返す。" +
         "トピックの出典（pdf:… / document:… / url:…）の中身を確かめたいとき、PDF の特定ページを読みたいときに使う。" +
         "PDF は窓ごとに「ページ n〜m」を示し、page を指定するとそのページを含む窓を返す。" +
         "続きは window を 1 つ進める。Web ページは Graphium に登録済みのものだけを、ネットワークから取り直して読む。" +
-        "Word は .docx だけに対応。資料の id は get_topic・search_media に出てくる。",
+        "Word は .docx だけに対応。AI との会話は、取り込んだときの本文（本人の発言の原文と AI の返答の抜粋）を返す。" +
+        "資料の id は get_topic・search_media に出てくる。",
       inputSchema: {
         sourceId: z
           .string()
-          .describe("資料の id: pdf:<fileId> / document:<fileId> / url:<URL>（登録済みのもの）/ ノート ID"),
+          .describe("資料の id: pdf:<fileId> / document:<fileId> / url:<URL>（登録済みのもの）/ conversation:<fileId> / ノート ID"),
         window: z.number().int().min(0).optional().describe("窓の番号（0 始まり。既定 0）"),
         page: z
           .number()
@@ -156,7 +157,8 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
           .optional()
           .describe("窓の大きさ（文字数。既定 4000、1000 未満は 1000 になる）"),
       },
-      annotations: { readOnlyHint: true },
+      // 登録済みの URL 資料はネットワークから取り直して読む
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async ({ sourceId, window, page, windowChars }) => {
       if (!vaultExists()) return vaultMissing();
@@ -185,7 +187,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         type: z.enum(MEDIA_TYPES).optional().describe("素材の種類で絞る"),
         limit: z.number().int().min(1).max(100).optional().describe("最大件数（既定 20）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ query, type, limit }) => {
       if (!vaultExists()) return vaultMissing();
@@ -213,7 +215,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         "「ナレッジを整理したい」「重複しているトピックはあるか」のときの入口で、見つけた重複は merge_topics、" +
         "不要なページは archive_page で手入れできる。AI を使う判定（古さ・穴・意味的な重複）は含まない。",
       inputSchema: {},
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
       if (!vaultExists()) return vaultMissing();
@@ -236,7 +238,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         "該当する文と出典の抜粋を添える。書き直しが必要なページを探すときに使う（直すのは revise_topic）。" +
         "照合そのものは Graphium で行う。",
       inputSchema: {},
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
       if (!vaultExists()) return vaultMissing();
@@ -266,7 +268,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         includeDone: z.boolean().optional().describe("チェック済みの項目も含める（既定 false）"),
         limit: z.number().int().positive().optional().describe(`返す項目数の上限（既定 ${DEFAULT_LIMIT}）`),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ folder, noteId, includeDone, limit }) => {
       if (!vaultExists()) return vaultMissing();

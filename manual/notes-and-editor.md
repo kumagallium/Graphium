@@ -27,7 +27,11 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 ## The notes list
 
-<Badge type="tip" text="Added in v0.126.0 (2026-11-09)" /> The left nav has the actions on top and four tabs below. At the top are **Search** (it opens the same Composer as `⌘K`), **+ Note** and **Bring in files**; these do not scroll away. Under them, **Notes**, **Knowledge**, **Materials** and **Chat** switch only what the left nav lists — the screen on the right stays as it is. The **Chat** tab lists your [conversations that are not about a note](/ai-chat-and-ask#chat-without-a-note-open). The tab follows the screen you open, and Graphium remembers the one you chose. The **Notes** tab holds **Templates**, **Processes**, **Shared folder** and **Labels**, then **All Notes** with your folders — the list that grows comes last, so the short ones are not pushed out of view. If you have set up a shared folder, a **Shared folder** entry opens what your team shares of the same kind: in the **Notes** tab it follows **Templates** and **Processes**, and in the **Knowledge** and **Materials** tabs it sits at the bottom.
+<Badge type="tip" text="Added in v0.126.0 (2026-11-09)" /> The left nav has the actions on top and four tabs below. At the top are **Home** and **Search** side by side (Search opens the same Composer as `⌘K`), then **+ Note** and **Bring in files**; these do not scroll away. **Home** <Badge type="tip" text="Added in v0.138.0 (2026-11-17)" /> lists everything you kept — notes, AI pages, materials and memos — by day, in the order you kept it, with where each one came from and who kept it. Press a row to open it; a note or an AI page opens beside the list, so Home stays where it was, and you can switch to the full screen from there. The **Folder** button <Badge type="tip" text="Added in v0.143.0 (2026-11-18)" /> next to the who switch narrows the list, the calendar and the search to one folder; folders are listed with the one that moved most recently first. The panel on the right finds records by words; rows that do not match stay in place, dimmed. Under them, **Notes**, **Knowledge**, **Materials** and **Chat** switch only what the left nav lists — the screen on the right stays as it is. The **Chat** tab lists your [conversations that are not about a note](/ai-chat-and-ask#chat-without-a-note-open). The tab follows the screen you open, and Graphium remembers the one you chose. The **Notes** tab holds **Templates**, **Processes**, **Shared folder** and **Labels**, then **All Notes** with your folders — the list that grows comes last, so the short ones are not pushed out of view. If you have set up a shared folder, a **Shared folder** entry opens what your team shares of the same kind: in the **Notes** tab it follows **Templates** and **Processes**, and in the **Knowledge** and **Materials** tabs it sits at the bottom.
+
+![Home: the records of today listed by time, each with where it came from and who kept it — a memo, a note written by hand, a photo from the phone, a web clip, a quote from a material, a note from an AI conversation. Above the list are the All / Me / AI / Shared authors switch and the All folders button; on the right, a calendar of November 2026 with the days that have records shaded, and a Find by words box](/screenshots/home-records.png)
+
+![The Folder menu open on Home: All folders is checked, then Baking class, Sandwich loaf trials, Curry study and Recipe copies, each with the day of its newest record and its number of records, and Not in a folder at the end](/screenshots/home-folder-filter.png)
 
 ![The left nav shown four times, once per tab. The top is the same in all four: Search with ⌘K, + Note, and Bring in files with a phone icon and 3. Notes lists Templates, Processes and Shared folder, then Labels with Input, Result, Step, Parameter and Tool, then All Notes. Knowledge lists Topics, Q&A, Claims and Insights (both with a Preview badge) and Summaries, then Log and Upkeep, then a thin line and Shared folder. Materials lists Memos, Images, Documents, Data, Videos, Audio and URLs, then a thin line and Shared folder. Chat lists + New chat, then conversations grouped by Today, Yesterday, Previous 7 days and Older. Skill, Global Graph, Settings, Trash & Archive and Release Notes stay at the bottom.](/screenshots/sidebar-tabs.png)
 
@@ -137,7 +141,7 @@ The full menu, top to bottom:
 | **Align** | **Align left** / **Align center** / **Align right** — works even for tables, audio, and file blocks. |
 | **Label** | Mark a table or media block as an Entity in the provenance graph — see [Labels & provenance](/labels-and-provenance). |
 | **Name this table** | Give a table a name, shown above it where a caption belongs and used as its reference name in charts. Tables only. |
-| **Read text from image** | On-device OCR for image blocks — see [Materials & citations](/materials-and-citations). |
+| **Read text from image** | On-device OCR for image blocks — see [Materials & citations](/materials-and-citations). How other OCR engines compare on handwriting: [Can a downloaded model read handwriting that the built-in OCR cannot?](/evaluations/ocr-engines). |
 | **📝 Add memo** | Attach a memo to this block; it shows up in the Memos panel. |
 | **🔗 Derive new page** | Fork a new note that records where it came from. |
 | **🤖 AI Assistant** | Ask AI about this block (headings and steps pass their whole section). Hidden until AI is set up — see [AI setup](/ai-setup). |
@@ -505,7 +509,7 @@ Braces work as they do in LaTeX: a single character needs none (`H_2O` and `H_{2
 
 The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_p` — while `\it{C_p}` italicizes the subscript too.
 
-The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead.
+The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead. When a series has many points (more than 4,000 in the visible range), the chart draws a thinned set of them and a line under the figure says so. <Badge type="tip" text="Added in v0.141.1 (2026-11-18)" /> A line keeps the peaks and dips of each stretch; scatter and bar series are sampled at even intervals. The data itself is not changed.
 
 ## Importing measurement data <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> {#importing-measurement-data}
 
@@ -524,7 +528,7 @@ Lines like `Device Model: ENV-MONITOR-X9` from the preamble are **kept alongside
 
 An imported table carries its **source** next to its name. Press it to reopen the same screen and rebuild the table with a corrected range or delimiter — the table keeps its place and its name. The file itself stays as a **Data** asset, so the numbers lead back to the raw output. Importing the same file twice does not add a second asset.
 
-A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no such limit — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
+A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no row limit (importing, viewing, editing the note and reopening have been tried with 230,000 rows, 188 MB, in the web version and the desktop app; see the [record of the measurement](/evaluations/large-data-tables)) — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
 
 A file does not have to become a table to be plotted — a chart can read a data asset directly (see [charts](#the-time-series-table-and-charts) above), which keeps a note free of tables that exist only to be drawn.
 
@@ -533,6 +537,8 @@ A file does not have to become a table to be plotted — a chart can read a data
 ## Data tables <Badge type="tip" text="Added in v0.62.0 (2026-09-08)" /> {#data-tables}
 
 A measurement file with thousands of rows does not belong in the body of a note as an ordinary table: every edit would re-serialize all of it, and the editor stalls. A **data table** keeps the file where it is — as a **Data** asset — and shows it in the note through a reference. The note stores only which asset, how to read it, and the table's name. The rows are read from the asset when the note opens, and only the rows on screen are drawn, so a 2,000-row log scrolls as lightly as a short one.
+
+For a large file, the import screen estimates the delimiter and header row from the first 5,000 lines, and the preview shows only the beginning. A large file takes a while before the table appears (about 4 seconds for 230,000 rows); the screen does not stall in the meantime. The measurement is written up in the [record of the measurement](/evaluations/large-data-tables).
 
 The import screen asks how to insert the data: **Data table** (the default) or **Table in the note**. A note table can be edited cell by cell but gets heavy as it grows, so the screen warns above 200 rows and refuses above 1,000. Pasting a large table from a spreadsheet opens the same screen instead of dropping the rows straight into the note.
 
@@ -546,6 +552,14 @@ What a data table can do:
 - **Switch forms** — press the **source** badge above the table to reopen the import screen and choose the other form. A note table that came from a file can become a data table the same way.
 
 A data table is read-only by design: the numbers are the instrument's, and editing them by hand is exactly what a lab record should not do. To correct the data, correct the file and re-import.
+
+### Bringing in only part of a file <Badge type="tip" text="Added in v0.144.0 (2026-11-18)" /> {#bringing-in-part-of-a-file}
+
+Open **Filter** on the import screen to choose the columns to keep and the conditions rows must meet. Only rows that satisfy every condition stay, and the preview and the row count on the right already show the result after filtering. The filtered result is saved as a new, small **Data** asset, and the table refers to that asset; the original file stays in your library as it was. Under the table's name, one line says how it was filtered (the number of rows and the conditions). The badge shows the original file's name, and for a table in the note the conditions are in its tooltip. Columns such as dates, version numbers or times are treated as text, so filter them with equals or contains (a date range is not available yet). Press the **from …** badge and the same screen opens with those conditions in place, so you can change them. The row warning and the limits (200 rows and 1,000 rows) count the rows after filtering, so even a large file can become a table in the note once it is filtered down. For a large file, opening **Filter** reads the whole file, so it takes a moment.
+
+![The import screen with the Filter section open: columns to keep, two conditions, and the filtered preview with its row count](/screenshots/data-import-filter.png)
+
+![A data table brought in through a filter. The line under its name says how many rows were kept and by which conditions](/screenshots/data-table-filtered.png)
 
 ### Moving between the two forms <Badge type="tip" text="Added in v0.64.0 (2026-09-08)" /> {#moving-between-the-two-forms}
 

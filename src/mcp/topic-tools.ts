@@ -60,12 +60,14 @@ import {
 } from "./knowledge-tasks";
 import { INLINE_SOURCE_MAX_CHARS } from "./procedure-tools";
 import { resolveFullSourceText } from "./source-text";
+import { CONVERSATION_SOURCE_PREFIX } from "../lib/conversation/types";
 import type { ToolContext } from "./tools";
 import { agentLabelFor, buildActor, stampGeneratedBy } from "./upkeep/actor";
 import { appRunningMessage, detectRunningApp } from "./upkeep/guard";
 import { createMcpMaintenanceHost } from "./upkeep/host";
 import { getFlags, readIndexStrict } from "./upkeep/index-store";
 import { discardNewWikiFile } from "./upkeep/save";
+import { withPassageContexts } from "../features/wiki/passage-context";
 import {
   errMsg,
   failureMessage,
@@ -190,6 +192,11 @@ export async function startTopicTask(input: StartTopicTaskInput, ctx: ToolContex
 
   const sourceId = input.sourceId?.trim();
   if (!sourceId) return "INVALID_INPUT: sourceId を指定してください（ノート id、pdf:<fileId>、document:<fileId>、url:<URL>）。";
+  // AI との会話の素材は、読むこと（get_source_text）だけに対応している。知見の課題
+  // （start_claim_task）と同じく、ナレッジ化の入口はまだ開けていない
+  if (sourceId.startsWith(CONVERSATION_SOURCE_PREFIX)) {
+    return `NOT_SUPPORTED: AI との会話の素材からのトピック作成には、まだ対応していません: ${sourceId}`;
+  }
   // ナレッジのページ自身からトピックは作らない（アプリの取り込みもノートと素材だけ）
   if (readWikiDoc(root, sourceId)) {
     return `NOT_SUPPORTED: ナレッジのページは対象外です（ノートか素材を指定してください）: ${sourceId}`;
@@ -628,9 +635,15 @@ export async function submitTopicPage(input: SubmitTopicPageInput, ctx: ToolCont
         // 改訂: 前の資料＋今回の資料で References を作り直す（アプリの runSourceTopicStage と同じ）
         const priorIds = (existing.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
         const refs = [...resolveLenient(priorIds, root), { id: source.id, title: source.title }];
-        doc = applyTopicType(
-          rebuildSourceBackedWikiDocument(existing, checked.body, refs, model, noteIndex, existing.wikiMeta!.kind, language),
-          item.type,
+        // 前後の文の控え: 今回読んだ資料の分は捨て、ほかの資料の分だけ持ち越す（MCP はノートの文字の
+        // 取り出し方がアプリと違うので控えを作らない — 開いたときの照合で誤って「変わった」と出さない）
+        doc = withPassageContexts(
+          applyTopicType(
+            rebuildSourceBackedWikiDocument(existing, checked.body, refs, model, noteIndex, existing.wikiMeta!.kind, language),
+            item.type,
+          ),
+          [],
+          (existing.wikiMeta?.passageContexts ?? []).filter((c) => c.sourceId !== source.id),
         );
         doc = stampGeneratedBy(doc, stampInfo);
         savedId = item.topicId!;
@@ -715,6 +728,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
           .optional()
           .describe("トピックを書く言語（ja / en / ko。既定 ja）"),
       },
+      // 課題の台帳に記録するだけ。資料が登録済みの URL なら取りに行く
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => wrap(() => startTopicTask(input, ctx, root())),
   );
@@ -730,7 +745,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         taskId: z.string().describe("start_topic_task が返した taskId"),
         output: z.string().describe("振り分けの答えの JSON（文字列のまま）"),
       },
-      annotations: { readOnlyHint: false },
+      // 課題の台帳に振り分けを記録するだけ
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (input) => wrap(() => submitTopicRoutes(input, root())),
   );
@@ -746,7 +762,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         taskId: z.string().describe("start_topic_task が返した taskId"),
         ref: z.string().describe("書く件の番号（w1 など）"),
       },
-      annotations: { readOnlyHint: true },
+      // 登録済みの URL 資料はネットワークから取り直して読む
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (input) => wrap(() => getTopicWriteTask(input, root())),
   );
@@ -767,6 +784,8 @@ export function registerTopicTools(server: McpServer, ctx: ToolContext = {}): vo
         model: z.string().optional().describe("本文を書いた LLM のモデル ID（例: claude-opus-5）。来歴に記録される"),
         sessionId: z.string().optional().describe("呼び出し側のセッション識別子"),
       },
+      // 既存のトピックを改訂する。URL 資料は照合のため取り直す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     async (input) => wrap(() => submitTopicPage(input, ctx, root())),
   );

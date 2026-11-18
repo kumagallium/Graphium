@@ -144,7 +144,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       inputSchema: {
         noteId: z.string().describe("ノート ID（search_notes の結果に含まれる）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: NOTE_PREVIEW_TOOL_META,
     },
     async ({ noteId }) => {
@@ -199,7 +199,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
         "手順ノートを作った直後（submit_procedure のあと）に、つながりを確かめてもらうときにも使う。" +
         "中身を文字で読みたいだけなら get_note_steps を使う。",
       inputSchema: { noteId: z.string().describe("ノート ID") },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: GRAPH_VIEW_TOOL_META,
     },
     async ({ noteId }) => {
@@ -231,7 +231,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
         direction: z.enum(["upstream", "downstream", "both"]).optional().describe("辿る向き（既定 both）"),
         depth: z.number().int().min(1).max(5).optional().describe("何段辿るか（既定 2）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: GRAPH_VIEW_TOOL_META,
     },
     async ({ noteId, direction, depth }) => {
@@ -266,7 +266,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       inputSchema: {
         folder: z.string().optional().describe("範囲にするフォルダ（\"親\" または \"親/子\"）。外は薄く描く"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: GRAPH_VIEW_TOOL_META,
     },
     async ({ folder }) => {
@@ -294,7 +294,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       inputSchema: {
         since: z.number().int().min(0).optional().describe("最後に受け取った番号（既定 0）"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: { ui: { resourceUri: GRAPH_VIEW_URI, visibility: ["app"] } },
     },
     async ({ since }) => {

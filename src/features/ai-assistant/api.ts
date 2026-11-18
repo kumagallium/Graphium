@@ -6,6 +6,7 @@ import { toAsciiJson } from "../../lib/ascii-json";
 import type { GroundingScope } from "../../lib/grounding-scope";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getEnabledMcpServers, getDefaultLLMModel, getSelectedModel, getChatSynthesisLLMModel, getAgenticSearchLLMModel, getAgenticSearchModelName, setMcpServerSkipApproval } from "../settings/store";
+import { buildChatMcpHeaderValue } from "../settings/mcp-servers-header";
 import { requestToolApproval, type ToolApprovalAnswer, type ToolApprovalRequest } from "./tool-approval";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { migrateToLatest } from "../../lib/document-migration";
@@ -13,24 +14,12 @@ import { loadKnowledgeSchemaPrompt } from "../skill/skill-service";
 
 /**
  * 直接登録した MCP サーバー（stdio / remote）を X-MCP-Servers ヘッダーの値にする。無ければ null。
- * AI チャット専用（世界照合はこのヘッダーを送らない）。
+ * AI チャット専用（世界照合は厳選の検索サーバーだけを別に送る: settings/mcp-servers-header.ts）。
  */
 function mcpServersHeaderValue(): string | null {
-  const mcpServers = getEnabledMcpServers();
-  if (mcpServers.length === 0) return null;
   // レジストリから選んだサーバーも具体 URL を持つ remote としてここに含まれる。
   // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
-  return toAsciiJson(
-    mcpServers.map((s) =>
-      ({
-        ...(s.type === "stdio"
-          ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
-          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}), ...(s.headers ? { headers: s.headers } : {}) }),
-        ...(s.skipApproval ? { skipApproval: true } : {}),
-        ...(s.approvalFreeTools?.length ? { approvalFreeTools: s.approvalFreeTools } : {}),
-      }),
-    ),
-  );
+  return buildChatMcpHeaderValue(getEnabledMcpServers());
 }
 
 /**

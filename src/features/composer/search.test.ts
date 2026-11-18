@@ -182,6 +182,7 @@ function media(
     uploadedAt: partial.uploadedAt ?? "2026-04-20T00:00:00.000Z",
     usedIn: partial.usedIn ?? [],
     ocrText: partial.ocrText,
+    ...(partial.ocrAltText ? { ocrAltText: partial.ocrAltText } : {}),
     archivedAt: partial.archivedAt,
     ...(partial.sourceInfo ? { sourceInfo: partial.sourceInfo } : {}),
   };
@@ -232,6 +233,18 @@ describe("searchMedia()", () => {
     expect(hits.map((h) => h.entry.fileId)).toEqual(["img-1"]);
     expect(hits[0].reasons).toContain("ocr");
     expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+  });
+
+  it("finds images by the alternative reading (search only) and reports it as an ocr hit", () => {
+    const withAlt = [
+      media({ fileId: "hand-1", name: "memo.jpg", ocrText: "焼給 800", ocrAltText: "焼結温度を 800℃ に上げた" }),
+    ];
+    const hits = searchMedia("焼結温度", withAlt);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["hand-1"]);
+    expect(hits[0].reasons).toContain("ocr");
+    // 当たった理由として抜粋は出るが、表示用の ocrText は変わらない
+    expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+    expect(hits[0].entry.ocrText).toBe("焼給 800");
   });
 
   it("finds PDFs by source info (author + year) when the name does not match", () => {
@@ -286,6 +299,16 @@ describe("searchMedia()", () => {
       media({ fileId: "m", name: "焼結メモ", type: "memo", mimeType: "text/plain" }),
     ]);
     expect(hits).toEqual([]);
+  });
+
+  it("lists a recording or a video when its transcript matched (assetHits), not by name alone", () => {
+    const audio = media({ fileId: "a", name: "会議.m4a", type: "audio", mimeType: "audio/mp4" });
+    const video = media({ fileId: "v", name: "会議.mp4", type: "video", mimeType: "video/mp4" });
+    expect(searchMedia("会議", [audio, video])).toEqual([]);
+    const assetHits = new Map([["a", { score: 3, snippet: { text: "…発酵の温度を…", ranges: [{ start: 4, end: 6 }] } }]]);
+    const hits = searchMedia("温度", [audio, video], { assetHits });
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["a"]);
+    expect(hits[0].reasons).toContain("text");
   });
 
   it("finds assets by indexed text (assetHits) and carries the snippet", () => {

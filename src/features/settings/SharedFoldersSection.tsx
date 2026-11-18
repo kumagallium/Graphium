@@ -204,6 +204,7 @@ export function SharedFoldersSection({ onChange, __test }: SharedFoldersSectionP
             onStartRename={() => setNamingId(folder.id)}
             onChangeRoot={(root) => update(folder.id, { root, remote: null })}
             onChangeBlobRoot={(blobRoot) => update(folder.id, { blobRoot })}
+            onChangeReadableCopies={(readableCopies) => update(folder.id, { readableCopies })}
             onMakeDefault={() => makeDefault(folder.id)}
             onRemove={() => remove(folder.id)}
             onReachChecked={(ok) =>
@@ -246,6 +247,7 @@ type RowProps = {
   onStartRename: () => void;
   onChangeRoot: (root: string) => void;
   onChangeBlobRoot: (blobRoot: string | null) => void;
+  onChangeReadableCopies: (on: boolean) => void;
   onMakeDefault: () => void;
   onRemove: () => void;
   onReachChecked: (ok: boolean) => void;
@@ -265,6 +267,7 @@ function SharedFolderRow({
   onStartRename,
   onChangeRoot,
   onChangeBlobRoot,
+  onChangeReadableCopies,
   onMakeDefault,
   onRemove,
   onReachChecked,
@@ -533,6 +536,22 @@ function SharedFolderRow({
             <p className="text-[11px] text-muted-foreground -mt-1.5">{t("settings.sharedFolders.blobAutoHint")}</p>
           )}
           {blobTestResult && <TestResultLine result={blobTestResult} />}
+
+          {/* 読める写し（端末ごとの設定。既定は切）。設定画面の既存のチェック行と同じ作り */}
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={folder.readableCopies === true}
+              onChange={(e) => onChangeReadableCopies(e.target.checked)}
+              className="mt-0.5 accent-primary"
+            />
+            <span className="text-xs text-foreground">
+              <span>{t("settings.sharedFolders.readableCopies")}</span>
+              <span className="block text-[11px] text-muted-foreground mt-0.5">
+                {t("settings.sharedFolders.readableCopiesHint")}
+              </span>
+            </span>
+          </label>
         </div>
       )}
     </div>

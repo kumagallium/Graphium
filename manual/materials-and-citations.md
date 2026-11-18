@@ -32,7 +32,7 @@ In **Data**, each file shows what it holds without being opened. The thumbnail d
 
 ![The Data list with line thumbnails and column names](/screenshots/material-data-list.png)
 
-Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
+Open a data file to see it in the side peek. **Table** shows it as Graphium reads it automatically, the same way [importing it into a note](/notes-and-editor#importing-measurement-data) starts out. A very large table shows its first 1,000 rows and 200 columns, and says how many rows and columns the whole table has. <Badge type="tip" text="Added in v0.141.1 (2026-11-18)" /> Sorting works on every row, and the first 1,000 rows of the result are shown. **Raw text** shows the file itself, the first 500 lines with line numbers, so you can check whether the automatic reading split it the right way. The line numbers are the ones the import dialog asks for as its start and end rows. If no table comes out at all, the side peek opens on **Raw text**.
 
 ![The Raw text tab of a data file's side peek](/screenshots/material-data-raw-text.png)
 
@@ -251,7 +251,9 @@ How much this aligns is in the [evaluation record](/evaluations/papers-to-proced
 
 ## Reading text from images (OCR) <Badge type="tip" text="Added in v0.21.0 (2026-07-26)" />
 
-Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device using Tesseract. No LLM is involved and no AI setup is needed; the image never leaves your machine (only the OCR engine and its language data are fetched from the web).
+Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device. No LLM is involved and no AI setup is needed; the image never leaves your machine.
+
+<Badge type="tip" text="Changed in v0.142.0 (2026-11-18)" /> The desktop app reads images with PP-OCRv6 small, an on-device model (about 31 MB). It is downloaded automatically in the background the first time an image is read, from the model's official Hugging Face repository, with no prompt. Until the download finishes, if the download or a read fails, and in the browser version, Graphium reads with the same Tesseract engine as before. Photos of paper or screens, tables and vertical text are read more accurately than before, and vertical text is read from the right-hand column first. Handwriting is still hard: dates and numbers are sometimes picked up, but sentences often are not. Images that were already read are not read again; run **Read text from image** once more to re-read one with the newer engine. To turn it off, or to download or delete the model yourself, open Settings → AI → **Model for reading text in images** (desktop app only). Turn off **Read with an on-device model** and Graphium reads with Tesseract only and never downloads the model; the switch is on by default. The row shows whether the model is downloaded (about 31 MB) and has **Download**, **Cancel** and **Delete** buttons. If you delete the model while the switch is on, it is downloaded again the next time an image is read. On macOS, the desktop app also keeps a second reading from the operating system's own text recognition, only for search; what is shown, copied and exported does not change. The measurements are in [OCR engines compared](/evaluations/ocr-engines).
 
 Three ways in:
 

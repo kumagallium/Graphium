@@ -15,6 +15,7 @@
 import { loadAssetText, primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
 // 取り込みダイアログ本体（React）を巻き込まないよう、純関数のモジュールを直接読む
 import { parseDelimited } from "../../features/data-import/parse";
+import { loadDelimitedAsset } from "../data-table/data";
 import type { DelimitedImportOptions } from "../../features/data-import/types";
 import type { ChartAssetSource } from "./chart-config";
 import type { TableData } from "./chart-data";
@@ -22,14 +23,21 @@ import type { TableData } from "./chart-data";
 // 既存の呼び出し元（view / stories / tests）は従来どおりここから読める
 export { loadAssetText, primeAssetText, clearAssetTextCache };
 
-/** 本文 + 読み方 → チャートが読む表 */
+/**
+ * 本文 + 読み方 → チャートが読む表（同期・全行を一息に変換する）。
+ * 小さい本文・テスト用。素材の本文は大きいことがあるので、素材から読む経路は
+ * loadAssetTable（大きな本文は小分けで変換）を使うこと
+ */
 export function tableFromAssetText(text: string, options: DelimitedImportOptions): TableData {
   const parsed = parseDelimited(text, options);
   return { headers: parsed.headers, rows: parsed.rows };
 }
 
-/** 素材ソース → 表。読めなければ reject（呼び出し側は参照切れとして扱う） */
-export async function loadAssetTable(source: ChartAssetSource): Promise<TableData> {
-  const text = await loadAssetText(source.fileId);
-  return tableFromAssetText(text, source.options);
+/**
+ * 素材ソース → 表。読めなければ reject（呼び出し側は参照切れとして扱う）。
+ * 変換はデータ表ブロックと共用する（大きな本文は小分けの非同期変換。同じ素材・
+ * 同じ読み方なら結果の配列も共有するので、行の配列が 2 組メモリに載らない）
+ */
+export function loadAssetTable(source: ChartAssetSource): Promise<TableData> {
+  return loadDelimitedAsset(source.fileId, source.options);
 }

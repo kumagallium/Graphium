@@ -153,6 +153,11 @@ describe("start_topic_task / submit_topic_routes", () => {
   it("ナレッジのページ自身は資料にしない", async () => {
     expect(await startTopicTask({ sourceId: "t1" }, ctx, root)).toMatch(/^NOT_SUPPORTED/);
   });
+
+  it("AI との会話の素材（conversation:）からはまだ作らず、NOT_SUPPORTED で断る", async () => {
+    const id = "conversation:conv-claude-code-11111111-2222-4333-8444-555555555555";
+    expect(await startTopicTask({ sourceId: id }, ctx, root)).toMatch(/^NOT_SUPPORTED/);
+  });
 });
 
 describe("get_topic_write_task / submit_topic_page", () => {

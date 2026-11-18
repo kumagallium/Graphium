@@ -1142,6 +1142,8 @@ export function AssetGalleryView({
     data: DELIMITED_FILE_ACCEPT,
     // memo は transient なピーク専用タイプ（アップロード経路には現れない）
     memo: "",
+    // AI との会話はファイルのアップロードでは入らない（取り込みの入口から入る）
+    conversation: "",
     other: "",
   };
 
@@ -1164,7 +1166,7 @@ export function AssetGalleryView({
           // 直接行う（保存先 URL の解決を待たずに済む）。
           try {
             const result = await runOcrForImage(file);
-            await persistOcrTextPatch(fileId, result.text);
+            await persistOcrTextPatch(fileId, result.text, result.altText ?? "");
           } catch (err) {
             // 読めなくてもアップロード自体は成功しているので流す
             console.warn("[asset-gallery] アップロード時の OCR に失敗:", file.name, err);

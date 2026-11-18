@@ -39,7 +39,7 @@ export const MAX_HASH_BYTES = 128 * 1024 * 1024;
 
 /** 実体を持たない（= ハッシュで比べようがない）素材タイプ */
 function hasNoBytes(entry: Pick<MediaIndexEntry, "type">): boolean {
-  return entry.type === "url" || entry.type === "memo";
+  return entry.type === "url" || entry.type === "memo" || entry.type === "conversation";
 }
 
 /**

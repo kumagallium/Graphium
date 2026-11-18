@@ -31,6 +31,7 @@ import {
   type TopicRouteResult,
   type NoteIndex,
 } from "./wiki-service";
+import { withPassageContexts } from "./passage-context";
 import { splitIntoWindows } from "./source-windows";
 import { findSameTitleTopic, sameTopicTitle } from "../../lib/topic-title-key";
 import { mapWithConcurrency } from "../../lib/map-with-concurrency";
@@ -323,7 +324,11 @@ export async function applyTopicMerges(
               wikiMeta: metaWithoutType,
             };
           }
-          const rewritten = rebuildSourceTopicDocument(baseDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex, deps.locale);
+          const rewritten = withPassageContexts(
+            rebuildSourceTopicDocument(baseDoc, mergedBody, sourceRefs, deps.model ?? null, deps.noteIndex, deps.locale),
+            [],
+            [targetDoc, ...sourceDocs.map(({ doc }) => doc)].flatMap((d) => d.wikiMeta?.passageContexts ?? []),
+          );
           await groupDeps.handleSaveWikiFile(targetId, rewritten, {
             activityType: "wiki_cross_update",
             sources: sourceRefs.map((r) => r.id),
@@ -806,7 +811,7 @@ export async function runSourceTopicStage(
             const priorIds = (topicDoc.wikiMeta.derivedFromNotes ?? []).filter((id) => id !== source.id);
             const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
             // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-            const rewritten = applyTopicType(rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, generatedByModel, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale), route.types[topicId]);
+            const rewritten = withPassageContexts(applyTopicType(rebuildSourceBackedWikiDocument(topicDoc, revisedBody, sourceRefs, generatedByModel, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale), route.types[topicId]), [source]);
             await deps.handleSaveWikiFile(topicId, rewritten, {
               activityType: "wiki_cross_update",
               sources: sourceRefs.map((r) => r.id),
@@ -885,14 +890,14 @@ export async function runSourceTopicStage(
             result.failed++;
             return;
           }
-          const newDoc = buildSourceTopicDocument(
+          const newDoc = withPassageContexts(buildSourceTopicDocument(
             name,
             revisedBody,
             [{ id: source.id, title: source.title }],
             generatedByModel,
             deps.noteIndex,
             deps.locale,
-          );
+          ), [source]);
           applyTopicType(newDoc, route.createTypes[name]);
           const topicId = await deps.handleCreateWikiFile(newDoc, {
             activityType: "wiki_ingest",
@@ -1134,14 +1139,14 @@ export async function runSourceTopicStage(
             result.failed++;
             return;
           }
-          const newDoc = buildSourceTopicDocument(
+          const newDoc = withPassageContexts(buildSourceTopicDocument(
             name,
             revisedBody,
             [{ id: source.id, title: source.title }],
             generatedByModel,
             deps.noteIndex,
             deps.locale,
-          );
+          ), [source]);
           applyTopicType(newDoc, route.createTypes[name]);
           const topicId = await deps.handleCreateWikiFile(newDoc, {
             activityType: "wiki_ingest",
@@ -1172,7 +1177,7 @@ export async function runSourceTopicStage(
         const priorIds = (state.priorDoc.wikiMeta?.derivedFromNotes ?? []).filter((id) => id !== source.id);
         const sourceRefs = await collectSourceRefs([...priorIds, source.id], deps, source);
         // kind は既存ドキュメントのものを維持する（answer を改訂しても topic に化けない）。
-        const rewritten = applyTopicType(rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, generatedByModel, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic", deps.locale), typeById.get(topicId));
+        const rewritten = withPassageContexts(applyTopicType(rebuildSourceBackedWikiDocument(state.priorDoc, state.body, sourceRefs, generatedByModel, deps.noteIndex, state.priorDoc.wikiMeta?.kind ?? "topic", deps.locale), typeById.get(topicId)), [source]);
         await deps.handleSaveWikiFile(topicId, rewritten, {
           activityType: "wiki_cross_update",
           sources: sourceRefs.map((r) => r.id),
@@ -1281,6 +1286,8 @@ export async function rebuildTopicFromSources(
   let stoppedByAbort = false;
   // 中断されずに最後まで処理し終えた資料の件数（取り消した分の数え方に使う）
   let finishedSources = 0;
+  // 読んだ資料の文字（前後の文の控えを取り直す）
+  const readTexts: Array<{ id: string; text: string }> = [];
   const failure: { failureError?: unknown } = {};
   const noteFailure = failureRecorder(failure);
 
@@ -1331,6 +1338,7 @@ export async function rebuildTopicFromSources(
     }
     if (usedThisSource) {
       usedRefs.push({ id: sourceId, title: resolved.title });
+      readTexts.push({ id: sourceId, text: resolved.text });
     } else {
       skipped++;
     }
@@ -1348,7 +1356,7 @@ export async function rebuildTopicFromSources(
   }
 
   // kind は既存ドキュメントのものを維持する（answer を組み直しても topic に化けない）。
-  const rewritten = rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.generatedByModel ?? deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale);
+  const rewritten = withPassageContexts(rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.generatedByModel ?? deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale), readTexts);
   await deps.handleSaveWikiFile(topicId, rewritten, {
     activityType: "wiki_cross_update",
     sources: usedRefs.map((r) => r.id),

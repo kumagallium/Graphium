@@ -28,7 +28,7 @@ import {
 import { join, extname } from "node:path";
 import type { Context, Next } from "hono";
 import { getServerMode, writePrivateFileSync } from "../config/models.js";
-import { isRequestAuthorized } from "../auth-token.js";
+import { getAuthToken, isRequestAuthorized } from "../auth-token.js";
 import { isValidAppDataKey } from "../../lib/storage/app-data-key.js";
 import {
   appDataFileName,
@@ -167,7 +167,8 @@ app.get("/capabilities", (c) => {
   const serverStorage = getServerMode() !== "vercel";
   return c.json({
     serverStorage,
-    requiresAuth: !!process.env.GRAPHIUM_AUTH_TOKEN,
+    // デスクトップ版の合言葉はアプリが自動で付ける（画面に入力欄は出さない）ので「要る」と返さない
+    requiresAuth: !!getAuthToken() && process.env.GRAPHIUM_DESKTOP !== "1",
   });
 });
 

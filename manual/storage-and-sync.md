@@ -103,6 +103,19 @@ Organizations rarely have one folder everybody can read. More often there is a f
 
 If you only ever set up one shared folder, nothing changes: it simply becomes the default.
 
+### Readable copies for people and tools without Graphium <Badge type="tip" text="Added in v0.139.0 (2026-11-17)" /> {#readable-copies}
+
+What Graphium puts in a shared folder is in its own format, so it cannot be read as it is. When you want the notes to be readable by other people, or by an AI that can read that folder, you can have Graphium also place copies in a form anyone can open.
+
+- **Turn it on:** Settings → Sharing → click a shared folder's row to open its details → **Also keep readable copies**. It is off by default.
+- **Where they go:** inside the same shared folder, in `readable/notes/`. Each note gets two files, named after its title, for example `Sourdough starter log_3c2f1b8d6e70.md` and `Sourdough starter log_3c2f1b8d6e70.prov.jsonld`. The last 12 characters are part of the note's shared id, so two notes with the same title do not collide.
+- **What is in them:** the `.md` file is the same Markdown as the Markdown export, with a short header (title, note id, shared id, author name, shared time). Images are not included as files; only a reference to each one is. The `.prov.jsonld` file is the provenance, in the same form as the menu export. Links to other notes carry the other note's id and title. Sources you cited in the note are listed with their name and origin. AI chats, edit history and memos are never included, even if you share with the history turned on.
+- **When they are updated:** when you share or re-share a note. They do not follow your edits on their own. If you change the title and re-share, the files are replaced under the new name. If you stop sharing the note, they are removed.
+- **It is a setting for this device:** it applies to the notes you share. Copies of someone else's notes follow that person's setting. Notes you shared before turning it on get their copies the next time you re-share them. If you turn it off and re-share a note, its old copies are removed.
+- **Notes only.** Knowledge pages and other entries do not get copies.
+
+The shared copy is still the original; these files are extra copies for reading. Graphium does not read them back.
+
 ### Publish and unpublish
 
 Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in the shared folder. When you share a note containing media, the files are copied into the large files folder automatically — you never attach them by hand.
@@ -283,10 +296,17 @@ Per note, the **Export** section of the `⋯` menu offers:
 |---|---|
 | **Print / PDF** | The rendered note, including its provenance graph. Your system's print dialog opens, so you can preview the pages and then save them as a PDF — the text stays selectable and searchable |
 | **Markdown (.md)** | A portable `.md` file |
-| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials and tables (no AI chats) |
+| **Word (.docx)** | A Word file with the text, tables, images and charts |
+| **Provenance (PROV-JSON-LD)** | The note's provenance graph in W3C PROV format, plus the note's own record: text, folders, sources, memos, materials, tables and the other notes it points at (no AI chats) |
 | **Export plan provenance** | Plan notes only. The whole plan — steps, planned lines, and the operation notes' provenance — as one `.plan.jsonld` (see [Exporting a plan](/labels-and-provenance#plan-prov-export)) |
 
 Markdown is lossy by design: what a block *means* survives, how it *looks* does not. A formula exports as its LaTeX source, a calculation as its lines with the values they produced, and a chart as its caption and what it plots. The figure itself cannot travel, but the table behind it exports as an ordinary Markdown table.
+
+### Export to Word <Badge type="tip" text="Added in v0.140.0 (2026-11-17)" /> {#export-to-word}
+
+**Word (.docx)** in the note menu, and in the menu of a note opened in the side peek, saves the note as a Word file. Headings, spacing and tables are styled in the file itself.
+
+The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Formulas, both formula blocks and formulas inside a sentence, arrive as Word equations that you can go on editing in Word: fractions, superscripts and subscripts, roots, Greek letters, sums, integrals, brackets, function names and text. A formula that uses something outside that range, such as a matrix, several aligned lines, an equation number or a box, arrives as its LaTeX text instead. This is decided formula by formula, and a formula is never left half converted. Some things arrive as text: a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name (with its link when it points at a web address). Check and toggle items keep their mark as a character, and links to other notes arrive as plain text. The page is A4 portrait, with the note's title at the top. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.
 
 ### Export everything <Badge type="tip" text="Added in v0.16.10 (2026-07-03)" />
 
@@ -318,7 +338,7 @@ Your notes are saved on your own computer (or in your browser), and Graphium has
 |---|---|---|---|---|
 | **Update check** (desktop app only) | GitHub Pages (`kumagallium.github.io`), and GitHub Releases as a fallback | A plain request for a small version file. No notes, no account details | Automatically about 5 seconds after launch and every 24 hours, and when you press **Check for updates** | Turn off **Check for updates automatically** in Settings → **About**. See [Updating](/desktop-app#updating) |
 | **Search model download** (desktop app only) | Hugging Face (`huggingface.co`) | Only a request for the model files (about 587 MB for the default, bge-m3). None of your text is sent, and the files are not fetched again once saved | Once, automatically, the first time the default on-this-computer model is needed (until it is ready, matching text is used). Pressing **Download** in Settings does the same | Choose an embedding model from an AI provider in Settings → **AI** instead (that sends the text being embedded to that provider). See [Settings](/settings) |
-| **World grounding** (desktop app, only while **Use world grounding** is on) | Wikipedia and OpenAlex (`api.openalex.org`), through the Graphium backend on your computer | The text of the claim or insight being checked, as search words, plus the app's name in the User-Agent and (to OpenAlex) the project's shared contact address in the `mailto` parameter. On a self-hosted setup where the operator has configured an MCP Registry, the search words also go to that Registry's search tool. MCP servers you add yourself in Settings → AI are not used for this | When you press **Check world**, and in the background if you switched on **Auto-ground new knowledge** (off by default) | Switch off **Use world grounding** (and **Auto-ground new knowledge**) in Settings → **AI** → **Preview features**. See [World grounding](/ai-grounding) |
+| **World grounding** (desktop app, only while **Use world grounding** is on) | Wikipedia and OpenAlex (`api.openalex.org`), through the Graphium backend on your computer | The text of the claim or insight being checked, as search words, plus the app's name in the User-Agent and (to OpenAlex) the project's shared contact address in the `mailto` parameter. On a self-hosted setup where the operator has configured an MCP Registry, the search words also go to that Registry's search tool. If you have connected web search (Tavily) in Settings → AI, the search words (cut to 400 characters) also go to Tavily (only while it is connected). Other MCP servers you add yourself in Settings → AI are not used for this | When you press **Check world**, and in the background if you switched on **Auto-ground new knowledge** (off by default) | Switch off **Use world grounding** (and **Auto-ground new knowledge**) in Settings → **AI** → **Preview features**. See [World grounding](/ai-grounding) |
 | **Source lookup** | Crossref (`api.crossref.org`) | Only the DOI of the material | Only when you press the lookup button on a material, or the bulk **Fill in from DOI** button on the selected materials (one DOI at a time) | Don't press it |
 | **Phone capture to Google Drive** (the phone capture screen; sending only after you connect storage) | Google (the sign-in script from `accounts.google.com` and the Drive API) | The files you send from the phone queue, into a `Graphium/Inbox` folder of your own Drive. Graphium can reach only the files it creates | Opening the phone capture screen loads Google's sign-in script, even before you connect (nothing of yours is sent at that point). After you connect, files are sent automatically: right after you add them to the queue, when you come back to the screen, and when the phone is back online. Pressing **Send** does it at once | Don't connect storage on the phone. Once connected, choose **Disconnect** in the phone settings sheet. See [Mobile capture](/mobile) |
 

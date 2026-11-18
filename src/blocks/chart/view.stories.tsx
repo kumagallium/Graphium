@@ -858,6 +858,45 @@ export const AssetSourceStack: StoryObj = {
   },
 };
 
+// 点が多い素材: 1 系列あたり 4,000 点を超えるので、描画用に間引いて図の下に知らせる。
+// 折れ線は区間の最小・最大を残すので、鋭いピーク（日々の変動に乗った突発）も消えない
+const MANY_ASSET_ID = "story-asset-many-points";
+const MANY_ASSET_TEXT = (() => {
+  const lines = ["time_s,temp_c"];
+  for (let i = 0; i < 60_000; i++) {
+    const spike = i % 9_973 === 0 ? 12 : 0;
+    lines.push(`${i},${(20 + 5 * Math.sin(i / 3_000) + spike + (i % 7) * 0.05).toFixed(3)}`);
+  }
+  return lines.join("\n");
+})();
+export const AssetSourceManyPoints: StoryObj = {
+  name: "点が多い素材（間引いて描き、知らせる）",
+  render: () => {
+    primeAssetText(MANY_ASSET_ID, MANY_ASSET_TEXT);
+    return (
+      <ErrorBoundary>
+        <ChartDemo
+          baseTables={[]}
+          lead="60,000 点の素材。描画は 1 系列 4,000 点までに間引き、図の下に間引いて描いていることを出す。"
+          config={{
+            chartType: "line",
+            series: series([{ sourceBlockId: `asset:${MANY_ASSET_ID}`, xColumn: "time_s", yColumn: "temp_c" }]),
+            assetSources: [
+              {
+                fileId: MANY_ASSET_ID,
+                fileName: "long-run.csv",
+                options: { headerRow: 1, endRow: 60_001, delimiter: "comma" as const, collapseConsecutive: false },
+              },
+            ],
+            xAxisName: "time (s)",
+            yAxisName: "temp (°C)",
+          }}
+        />
+      </ErrorBoundary>
+    );
+  },
+};
+
 // 素材が消えた（読めない）: 素材だけを参照する図は「参照先の素材が見つかりません」
 export const AssetSourceGone: StoryObj = {
   name: "素材のデータが見つからない",

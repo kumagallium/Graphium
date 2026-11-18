@@ -103,12 +103,13 @@ export function ConfirmHost() {
         }
       }}
     >
-      <div className="bg-background border border-border rounded-lg shadow-2xl w-[90%] max-w-md p-5 space-y-4">
-        <p className="text-sm text-foreground flex items-start gap-2 whitespace-pre-wrap break-words">
+      <div className="bg-background border border-border rounded-lg shadow-2xl w-[90%] max-w-md max-h-[90dvh] flex flex-col p-5 gap-4">
+        {/* 本文が長いときは本文だけスクロールし、ボタンは常に見える位置に置く */}
+        <p className="text-sm text-foreground flex items-start gap-2 whitespace-pre-wrap break-words min-h-0 overflow-y-auto">
           {pending.destructive && <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />}
           <span className="min-w-0">{pending.message}</span>
         </p>
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 shrink-0">
           <button
             ref={cancelRef}
             type="button"

@@ -29,13 +29,16 @@ const EXA_CAMEL_RE = /(?<![A-Za-z])[eE]xa(?![a-z])/;
 const SEARCH_TOOL_RE =
   /(^search$|_search$|^search_|web[_\- ]?query|find[_\- ]?sources?|knowledge[_\- ]?search)/i;
 
+// URL を取りに行く・巡回する・調査を走らせる道具は、名前に tavily 等を含んでいても選ばない（検索専用）。
+const NON_SEARCH_RE = /(?<![a-z])(extract|crawl|map|research|scrape|fetch)(?![a-z])/i;
+
 /**
  * 世界照合が使ってよい道具か（確認なしで動かしてよいと分かっているものだけ）。
  * - 運用側 Registry（operatorServers）のサーバーの道具: readOnlyHint が無くても使う（main と同じ。
  *   注釈を付けていない検索サーバーでも Web 検索が黙って止まらないように）。
  *   ただし destructiveHint が明示的に true の道具は使わない
- * - 以下の 2 つは X-MCP-Servers 付きで呼ぶ別クライアント向けの枝。
- *   アプリは世界照合にこのヘッダーを付けない。ヘッダー付きで呼ぶクライアント用:
+ * - 以下の 2 つは X-MCP-Servers 付きの呼び出し向けの枝。
+ *   アプリは世界照合に、厳選の検索サーバー（approvalFreeTools を持つ remote）だけをこのヘッダーで送る:
  *   厳選一覧の「確認なしの道具」(freeTools)、「今後確認しない」サーバー(skipServers)の readOnlyHint 付きの道具
  */
 export function isTrustedGroundingTool(
@@ -65,7 +68,7 @@ export function findSearchTool(
   isTrusted: (name: string) => boolean,
 ): { name: string; tool: GroundingSearchTool } | null {
   const entries = Object.entries(tools).filter(
-    ([name, t]) => t && typeof (t as { execute?: unknown }).execute === "function" && isTrusted(name),
+    ([name, t]) => t && typeof (t as { execute?: unknown }).execute === "function" && isTrusted(name) && !NON_SEARCH_RE.test(name),
   );
   let hit = entries.find(([name]) => PREFER_SEARCH_RE.test(name) || EXA_CAMEL_RE.test(name));
   if (!hit) hit = entries.find(([name]) => SEARCH_TOOL_RE.test(name));
@@ -188,6 +191,8 @@ export function renderToolResultText(raw: unknown): string {
 
 /** 検索実行のタイムアウト（ms）。MCP ツールがハングしても世界照合を巻き込まない。 */
 const SEARCH_TIMEOUT_MS = 15_000;
+/** 検索語の最大文字数 */
+const SEARCH_QUERY_MAX_CHARS = 400;
 
 export type GroundingSearchOutcome = {
   /** 判定プロンプトに注入する証拠テキスト（切り詰め済み） */
@@ -201,6 +206,11 @@ export type GroundingSearchOutcome = {
  * 失敗・タイムアウト・空結果は { evidenceText: "", urls: [] } に倒す
  * （呼び出し側は parametric 判定にフォールバックする）。
  */
+/** 道具の結果が「失敗」を表しているか（MCP の CallToolResult の isError） */
+export function isErrorToolResult(raw: unknown): boolean {
+  return typeof raw === "object" && raw !== null && (raw as { isError?: unknown }).isError === true;
+}
+
 export async function runGroundingSearch(
   entry: { name: string; tool: GroundingSearchTool },
   query: string,
@@ -209,7 +219,8 @@ export async function runGroundingSearch(
   const maxChars = opts.maxChars ?? 4000;
   const maxUrls = opts.maxUrls ?? 12;
   const param = pickQueryParam(entry.tool);
-  const args: Record<string, unknown> = { [param]: query };
+  // 検索語は 1 行・先頭 400 文字に切り詰める（長い本文でも検索側の長さ上限で失敗しないように）
+  const args: Record<string, unknown> = { [param]: query.replace(/\s+/g, " ").trim().slice(0, SEARCH_QUERY_MAX_CHARS) };
 
   let raw: unknown;
   try {
@@ -227,6 +238,13 @@ export async function runGroundingSearch(
       `[world-grounding] search tool "${entry.name}" failed:`,
       err instanceof Error ? err.message : err,
     );
+    return { evidenceText: "", urls: [] };
+  }
+
+  // MCP の道具は、失敗を例外でなく isError: true の結果で返すことがある（キーが無効・枠切れなど）。
+  // その本文はエラー文（キーや説明ページの URL を含みうる）なので、根拠として扱わない
+  if (isErrorToolResult(raw)) {
+    console.warn(`[world-grounding] search tool "${entry.name}" returned an error result`);
     return { evidenceText: "", urls: [] };
   }
 

@@ -97,6 +97,10 @@ talks to LLM and embedding backends.
   content (entity / agent highlights) lives under
   `src/features/inline-label/`; inline math lives under
   `src/features/inline-math/`.
+- A note's editor is rebuilt per note by `fm.editorKey` (the outer `key` on
+  `NoteEditor`). It is not rebuilt when a new note gets its ID on first save,
+  so edits typed while that save is in flight are not lost; the editor itself
+  is recreated only on a language change.
 - `meetingTranscript` is the in-note face of a meeting recording (§4.2).
   It holds only a reference — the recording id, the media `fileId`, when
   it started, and a few display flags — never the words: the transcript
@@ -336,9 +340,6 @@ talks to LLM and embedding backends.
   editor; the import dialog therefore defaults to a data table for every
   delimited import (instrument data is read and plotted, not edited by hand)
   and lets the writer pick the note-table form instead, warning above
-  editor; the import dialog therefore defaults to a data table for every
-  delimited import (instrument data is read and plotted, not edited by hand)
-  and lets the writer pick the note-table form instead, warning above
   `DOC_TABLE_DEFAULT_MAX_ROWS` (200) rows and refusing above
   `DOC_TABLE_HARD_MAX_ROWS` (1,000), because a 2,000-row note table stalls
   the editor until it is force-quit. Re-importing from the source badge
@@ -352,7 +353,28 @@ talks to LLM and embedding backends.
   column. The reverse moves exist too: a note table can be turned into a
   data table (its rows leave the note as a CSV asset) and back again while it
   stays under the note-table row cap, and a data table can be written out with
-  its computed columns as a new, derived asset.
+  its computed columns as a new, derived asset. Large bodies (over 2 million
+  characters) are parsed asynchronously in small slices that yield through a
+  `MessageChannel` (`parseDelimitedLinesAsync`), and the column reading is
+  also done in slices before the block is told the rows are ready
+  (`registerLargeTablePreparer` / `warmDataTableColumns`). Columns are cached
+  by the identity of the row array, so the per-edit broadcast
+  (`publishTableColumns`) does not re-read them. The import dialog infers its
+  settings from a leading sample for files over 5,000 lines and, over 20,000
+  data rows, parses only the first 2,000 for the preview (constants in
+  `src/features/data-import/large-file.ts`).
+  The import dialog can also keep only some columns and rows (the *Filter*
+  section; conditions are ANDed). The result is not stored in the note: it is
+  written as a new small CSV asset registered with the original in
+  `derivedFromAssets`, and the data table (or note table) reads that copy. How it
+  was filtered lives in `tableMeta.source.derivation` / the block's
+  `props.source`, which also lets the source badge reopen the dialog on the
+  original asset with the same conditions. Row limits apply to the filtered row
+  count. Comparisons treat a cell as a number only when its whole text is one
+  (`strictNumeric`: units such as `12 g` or `35%` are fine, dates, version
+  numbers and times are not), so a date column is filtered as text. Code: `src/features/data-extract/` (`apply.ts` engine, `derive.ts` copy
+  and source building, `components/`), wired in `handleDataImportConfirm` /
+  `handleTableReimport` in `src/note-app.tsx`.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the
@@ -370,7 +392,22 @@ talks to LLM and embedding backends.
   and the series refers to it as `asset:<fileId>`; the file body is
   fetched through the storage provider and cached per asset. Those
   references count as the asset being *used* by the note (media index
-  v6), the same way an imported table's source file does. Series can
+  v6), the same way an imported table's source file does. An asset's
+  table is parsed through the data table's reader
+  (`loadDelimitedAsset` in `blocks/data-table/data.ts`): bodies over
+  `SYNC_PARSE_MAX_CHARS` are parsed in slices, and a chart and a data
+  table that read the same asset with the same import settings share one
+  parsed `rows` array. Only the drawn data is thinned: a series with more
+  than `CHART_MAX_DRAWN_POINTS` (4,000) points inside the visible x range
+  keeps the first / min / max / last of each run for lines and an even
+  stride for scatter and bars (`blocks/chart/decimate.ts`); histograms
+  are binned over all points. Normalisation, stacking and axis ranges
+  are computed on all points first; the thinning happens last, on the
+  data handed to ECharts (a series at or under the limit is passed
+  through unchanged), and a note under the figure says the chart draws a
+  thinned set. The numeric conversion and the thinning are memoized
+  on the table's `rows` identity and the config, so editing the note body
+  does not redraw the chart. Series can
   also be **offset into rows** — each normalised to its own maximum and lifted by
   a fixed gap — which is how spectra get compared (an XRD measurement
   against reference patterns). Stacked that way, the comparison keeps one
@@ -677,9 +714,15 @@ Beyond labelled blocks, images can have their text **read on-device**, with
 no label required. Newly pasted images are read automatically (progress is
 shown in a corner toast; images that were already in the note when it was
 opened are left alone), and the user can also trigger a read from the image
-block's drag-handle menu ("Read text from image"). Tesseract.js runs
-entirely in the browser — the wasm core and language data are bundled with
-the app, and the image itself never leaves the device. For a just-pasted
+block's drag-handle menu ("Read text from image"). Reading happens
+entirely on the device; the image itself never leaves it. The desktop app
+reads with PP-OCRv6 small (detection + recognition on ONNX Runtime, in Rust;
+see the on-device OCR row of the dependency table in §7). The model is
+fetched in the background the first time a read is needed; until it is on
+disk, when it fails, for an image format the Rust decoder does not support,
+and in the browser build, the read falls back to Tesseract.js (wasm core and
+language data bundled with the app, run in the WebView). Each entry records
+which engine read it (`MediaOcrEntry.engine`). For a just-pasted
 image the original `File` is handed straight to the recognizer instead of
 being read back from the storage provider, and recognition jobs wait for
 any in-progress drag gesture to finish before starting (on desktop, a large
@@ -700,6 +743,25 @@ The extracted text is instead mirrored into the note index (`ocrText`), so a
 note holding only a screenshot can be found by the words inside it; the note
 list marks such a hit with an "image text" badge, and the asset gallery shows
 the text on the image's detail panel.
+
+On macOS the desktop app adds a second, search-only reading of each image
+from the OS's Vision framework (`src-tauri/src/ocr_vision.rs`, run after
+PP-OCR inside the same serialised job, after PP-OCR; Vision runs on its own
+thread and is waited for at most 20 s or until the job's 90 s deadline, whichever
+is sooner. On a timeout the PP-OCR result is returned without it, and while an
+abandoned Vision thread is still running the next image skips Vision, so at
+most one runs at a time. If Vision fails three times in a row — for example an older macOS without
+the language — it is not called again until the app restarts; a success resets the count. A failure or panic
+is logged and ignored). PP-OCR is better on printed text and numbers and Vision on
+handwritten Japanese sentences, so the displayed text stays PP-OCR and the
+Vision reading is returned separately (`altText` / `altEngine`), stored as
+`MediaOcrEntry.altText`, and used only by the searching paths — the note
+index (`ocrAltText`), the media index (`ocrAltText`), the note list search,
+the `⌘K` image search, the MCP `search_media` index and the full-text index
+(as `alt<N>` chunks that the AI-context retriever and the read-page tool drop before applying any per-source limit). The image toolbar
+shows it in a small "Another reading (macOS)" box only when it exists; copy
+and export never include it. Turning off the on-device model switch skips the
+whole native path, Vision included.
 
 It is mirrored a second time onto the material itself
 (`MediaIndexEntry.ocrText`), so the image is findable as an image and not only
@@ -867,7 +929,7 @@ namespace `https://graphium.app/ns#` (a domain the project does not own); treat 
 | `p-plan` | `http://purl.org/net/p-plan#` | planned procedures: `Plan`, `Step`, `MultiStep`, `Variable`, `Activity`, `Entity` |
 | `oa` | `http://www.w3.org/ns/oa#` | memos as annotations |
 | `dc` | `http://purl.org/dc/elements/1.1/` | `dc:creator` / `dc:date` / `dc:publisher` / `dc:identifier` / `dc:format` |
-| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
+| `dcterms` | Dublin Core terms | `dcterms:isPartOf`, `dcterms:references`, `dcterms:created` / `modified` / `creator` / `conformsTo` |
 | `foaf`, `rdfs`, `rdf`, `xsd` | as usual | person names and mailbox hash, labels / comments / `seeAlso`, `rdf:value`, `xsd:dateTime` |
 | `graphium` | `https://kumagallium.github.io/Graphium/ns#` | notes the standard has no word for (see the tables below) |
 
@@ -904,7 +966,14 @@ table):
   → the note, template, shared note or intake path it was made from (derived
   note, `templateFrom`, `forkedFrom`, `importSource`). `prov:wasInfluencedBy`
   → materials cited with `@`, linked Knowledge entries, and memos inserted
-  into the note. `dcterms:isPartOf` → the plan note, when the note belongs to
+  into the note. `dcterms:references` → other notes the body points at (an
+  `@` mention, a pasted link, or an existing note attached to a table row).
+  It has no direction of its own: it says only that this note's text points at
+  that note, never that one was derived from or influenced by the other. A
+  child note made with "derive" is not listed here (it carries its own
+  `prov:wasDerivedFrom`), and neither are notes in the trash or notes missing
+  from the index. The target is a stub (`graphium:external: true`, label = its
+  title). `dcterms:isPartOf` → the plan note, when the note belongs to
   a paper plan (the plan side is a stub with no plan type). `graphium:provenanceBundle`
   → the edit-log Bundle. The referenced sources, templates and so on are
   declared as stubs (`graphium:external: true`, label = the raw id) unless
@@ -1225,6 +1294,7 @@ without knowing Graphium's internals.
 | A note, template or shared note it was derived from | `Entity` stub | `prov:wasDerivedFrom` from the note |
 | A material cited with `@`, a linked Knowledge entry | `Entity` | `prov:wasInfluencedBy` from the note |
 | A link to another note's output ("informed by") | `Usage` / `Derivation` relation and an external `Entity` stub | `activity`, `entity`, `label` = the line's name |
+| A note the body points at (`@`, pasted link, table-row link) | `Entity` stub (the real note `Entity` in a plan export) | `dcterms:references` from the note. It carries no derivation direction |
 | The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
 | A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
 | The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
@@ -1721,7 +1791,46 @@ Notes:
   source's date — a note's creation date, or a paper's year from its
   source info — added mechanically when the body is rendered
   (`setSourceDateLookup`, set by `note-app`), so a reader can tell which
-  figure came later. Claims are no
+  figure came later. A note can also change after the page was written,
+  and the page isn't revised until the note is read again. So when a
+  source-backed page is opened, `findSourceDrift`
+  (`src/features/wiki/source-drift.ts`) picks the cited notes modified
+  after the page last read them (note `modifiedAt` / `fileModifiedAt`
+  against the page's provenance), reads only those, and checks each
+  stored passage against the note's current text with the same string
+  match. Only a passage that is gone is reported — an unrelated edit to
+  the note is not — in `SourceDriftNotice` above the page (full view and
+  side peek), with **Re-read this note**, which ingests the note again.
+  A passage can also stay while the text around it changes what it
+  means. So when a page is written from a note, `withPassageContexts`
+  (`src/features/wiki/passage-context.ts`) stores the sentence right
+  before and right after each copied passage in
+  `wikiMeta.passageContexts`, taken from the text the page was written
+  from; passages of notes not read this time keep their stored
+  sentences. On open, a note that changed is also checked for these
+  sentences: the sentence now right next to the passage is compared
+  with the stored one, so a sentence inserted directly after a figure
+  counts as a change, as do a removed neighbour, different numbers, or
+  a difference of more than two characters otherwise (a fixed typo
+  doesn't count). Where the passage started the note, text added
+  before it is not checked. Where it ended the note, a sentence
+  appended right after it counts only when it shares a number or a
+  term with the passage (`sharesNumberOrTerm`: Latin words of four or
+  more letters, two-character runs of kanji, katakana words of three
+  or more characters, the first two syllables of a Hangul word, each
+  outside a short list of common diary words; numbers after NFKC,
+  leaving out dates, times and single digits), since
+  the first thing appended after a note's last sentence is often a
+  correction of it, while an unrelated new entry is the most common
+  edit of all. Such passages are reported separately and more
+  softly, with the old and the current sentence (an appended sentence
+  has no old one, so only the current sentence is shown). Stored sentences are
+  written by the app's ingest, regenerate and merge paths. Pages
+  written before this field, answer pages, and pages rewritten from
+  sources over MCP (which extracts note text differently, so the
+  sentences for the sources it read are dropped; an MCP merge keeps
+  them) get only the passage check for those passages.
+  No model call; PDFs, Word files and URLs are not checked this way. Claims are no
   longer Topic material at all — the ingester doesn't even propose topic
   names for them anymore — but they still feed the hourglass exactly as
   before (Topics never did). **Existing Claim-derived Topics** (no
@@ -2258,7 +2367,9 @@ Notes:
   notes or to `note-index.json`. It follows `noteIndex` (notes and Wiki
   pages, minus trash / archive) and `mediaIndex` (image OCR, PowerPoint slide
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
-  the background) through one
+  the background; in the desktop app only, the transcript of a recording or
+  video, read from its `transcript.json` and re-read when its transcription
+  job turns done) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
@@ -2609,10 +2720,22 @@ The LLM judge runs in one of two modes, picked per request in
     ignored on this path):
     one search tool (picked by name) from a Registry server is used, unless
     it is explicitly `destructiveHint: true`. Servers the user adds in
-    Settings → AI are not used (the app sends no `X-MCP-Servers` header for
-    world grounding; the header-based branches — curated `approvalFreeTools`,
-    readOnlyHint on a "don't ask again" server — serve other clients that do
-    send it). Optional.
+    Settings → AI are not used, except curated search servers: the app sends
+    `X-MCP-Servers` (`buildGroundingMcpHeaderValue`,
+    `features/settings/mcp-servers-header.ts`) with only enabled **remote**
+    servers whose URL matches the curated catalog and whose
+    `approvalFreeTools` overlap the catalog's list (only the overlapping
+    names are sent), never stdio and never `skipApproval`; no header when
+    none qualify. The server trusts a tool via `isTrustedGroundingTool` as
+    before (curated `approvalFreeTools` name, readOnlyHint on a "don't ask
+    again" server, or an operator Registry server), and `findSearchTool`
+    additionally refuses names containing extract / crawl / map / research /
+    scrape / fetch, so URL-fetching tools are never picked. One search per check, with the query flattened to one
+    line and cut to the first 400 characters. Tool discovery (connect +
+    `tools/list`) is capped at 12 seconds and the search at 15; a timeout, a
+    thrown error or a result marked `isError` adds no evidence, and the check
+    carries on with Wikipedia + OpenAlex.
+    Optional.
 
   The verdict is grounded in real results rather than the model's memory;
   `null` means "searched and found no direct prior art — not a proof of
@@ -3105,6 +3228,52 @@ its usage list in two. Materials registered before hashing existed get their
 hash filled in by a background pass after sign-in, one at a time, so an
 interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts`.
 
+**AI conversations as materials.** A conversation with an AI coding tool
+can be kept as a material of type `"conversation"` (DATA_MODEL.md §2.7).
+The pieces are in place below the UI; no screen calls them yet.
+
+```
+record files ──► reader ──► ConversationMaterial ──► importConversations ──► media index entry
+(tool-specific)  (per tool)  (common shape)          (one per conversation)   + stored text
+```
+
+- **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
+  is what every reader produces: provider, session id, working folder, time
+  range, and the turns — the user's lines verbatim, the AI's reply before
+  each line as an excerpt. Adding another tool means writing another reader;
+  nothing downstream changes.
+- **Reader for Claude Code** (`src/lib/conversation/claude-code-reader.ts`).
+  A pure function over the lines of a session record (JSONL). The record
+  format is not a published contract, so unknown or broken lines are skipped.
+  It is fed one line at a time because a single record can be tens of
+  megabytes. The rules for telling the user's own lines from inserted text
+  are in DATA_MODEL.md §2.7.
+- **Stored text and listing** (`src/lib/conversation/render.ts`).
+  `renderConversationBody` builds the text that is saved,
+  `summarizeWorkdirs` groups conversations by working folder (count, how
+  much the user wrote, time range, how many have no line from the user).
+- **Reading the record files** (`src/server/services/claude-code-sessions.ts`,
+  Node only). Read-only access to `~/.claude/projects` (or
+  `CLAUDE_CONFIG_DIR`): list the folders, list the session files, read one
+  session, summarise per working folder. See §6.1 for how names are checked.
+  It streams each file and skips lines over 32 MB. No route exposes it yet.
+- **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
+  `importConversations` saves each text with `saveMediaText` and then writes
+  the media index once. The material id is derived from provider and session
+  id, so a second run replaces instead of adding; an unchanged conversation is
+  not written again unless its stored text has gone missing. If the index
+  cannot be saved, the texts of conversations that were new in that run are
+  removed again, so no text is left on disk without an entry to delete it
+  from. **It never calls an AI.** Turning a conversation into Knowledge is a
+  separate step the user starts, and that entry point is not open yet:
+  `start_claim_task`, `start_topic_task` and `start_procedure_task` refuse a
+  `conversation:` id.
+- **Source id.** `conversation:<fileId>` (`external-source.ts`). Source
+  check, the MCP's `get_source_text` and the graph views resolve it to the
+  stored text and the material. It is a separate prefix from `chat:`, which
+  marks Knowledge made from an in-app AI chat and carries no way back to the
+  text.
+
 **App data listing and deletion.** Besides `readAppData` / `writeAppData`,
 providers can implement `listAppDataKeys(prefix)` and `deleteAppData(key)`
 (both optional), used to expire records such as the `maint-*` undo copies.
@@ -3446,6 +3615,30 @@ The same `src/` tree is built four different ways.
   old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
   once done and is skipped afterwards; it copies files as before except that
   it never overwrites an existing `models.json` in the new data folder
+- Readable copies (`shared_readable_sync`, and the cleanup `shared_delete`
+  runs) are written by Rust, not chosen by the frontend: the command takes
+  only the entry type, the shared id, the title and the contents, and
+  builds the file names itself from the sanitized title and the last 12
+  characters of the id. Order of checks: `validate_id`; entry type must be
+  `notes`; the shared root must be reachable; when writing, the source
+  entry `notes/<id>.json` must exist; if it exists, its author email must
+  equal the caller's; the
+  `readable` and `readable/notes` folders must not be symbolic links and
+  must sit under the root once canonicalized; each target file must not be
+  a link. Files are written to a temporary name and renamed into place, so
+  a hard link or FIFO planted at the target name is replaced, never written
+  through or opened. Because names carry only the last 12 characters of the
+  id, a file is treated as this note's copy only when the `.md` front matter
+  holds the full shared id (a `.prov.jsonld` only when its same-named `.md`
+  does); another note's copy with the same 12 characters is neither
+  overwritten nor removed (the write is refused). A removal with no copy
+  folder returns before reading the entry. The removal paths apply the same
+  link checks to the folders. Cleanup reads the folder once, skips
+  sub-folders, and keeps any name that is the same file as one just written
+  (case-insensitive file systems); the files it removes are only those
+  whose name ends with `_<id12>.md` or `_<id12>.prov.jsonld` and that pass
+  the id check above (links and special files with such names are just
+  unlinked, never read)
 - **Meeting recording** (`src-tauri/src/meeting_audio.rs`, desktop only).
   During an online meeting the desktop records two tracks side by side:
   what the machine is playing (the other participants, taken from the OS
@@ -3798,11 +3991,36 @@ The same `src/` tree is built four different ways.
   (`app.security.csp` in `tauri.conf.json`): `script-src 'self'` so
   injected scripts from note content / imported URLs / AI output cannot
   execute. `script-src` also carries `'wasm-unsafe-eval'`, which permits
-  compiling WebAssembly (the bundled Tesseract OCR core) but not `eval` of
-  JavaScript; without it the OCR worker aborts and image OCR never
-  finishes. `img-src`/`connect-src` allow `https:` for arbitrary
+  compiling WebAssembly (the bundled Tesseract OCR core, the fallback reader)
+  but not `eval` of JavaScript; without it the OCR worker aborts and the
+  fallback never finishes. `img-src`/`connect-src` allow `https:` for arbitrary
   bookmark images and user-pasted URL previews. `devCsp` additionally
   allows the Vite dev server (`localhost:5174` + its HMR websocket).
+- On-device OCR models come only from fixed, commit-pinned Hugging Face URLs
+  (`PaddlePaddle/PP-OCRv6_small_{det,rec}_onnx`) and are rejected unless
+  their SHA-256 matches; the character dictionary is embedded in the binary.
+  `ocr_recognize` receives the image's raw bytes over IPC, never a file path,
+  so it cannot be pointed at other files; decoding is bounded in dimensions
+  and memory. Images are processed on the device only.
+- Vision (macOS) is never handed the attacker-chosen bytes. The image goes
+  through the same bounded `decode_image`, is composited onto white, shrunk
+  to a long side of at most 3000 px and re-encoded as a PNG by Graphium
+  itself; only that PNG reaches Vision / ImageIO. The call runs inside an
+  autorelease pool with Objective-C exceptions caught, returns an error
+  rather than panicking, runs on a separate thread whose result is awaited for at
+  most 20 seconds (and never past the 90-second job deadline; one Vision run at
+  a time), and runs entirely on the device.
+- `ocr_recognize` assumes the image is attacker-chosen (web clips, shared
+  notes) and that scripts in the webview can call it directly and in
+  parallel. The body is capped at 64 MB (`OCR_INPUT_TOO_LARGE`); jobs run one
+  at a time in Rust from decode to inference, with at most 32 waiting
+  (`OCR_BUSY`); each job has a 90-second deadline checked after detection and
+  before every recognition batch (`OCR_TIMEOUT`), shorter than the 120-second
+  job timeout in `ocr.ts`, so a timed-out job never overlaps the next one.
+  The detection input is bounded whatever the image shape (long side ≤ 3200
+  and ≤ 1600 × 1600 pixels after rounding to a multiple of 32; images with a
+  side under 8 px are skipped), and a poisoned lock after a panic is recovered
+  rather than disabling OCR until restart.
 - Two Tauri commands that touch the host are deliberately narrowed:
   `kill_pid` refuses any PID that is not Graphium's own sidecar
   (`node .../sidecar/server.mjs`), and file export goes through
@@ -3842,10 +4060,12 @@ The same `src/` tree is built four different ways.
   app injects `GRAPHIUM_APP_VERSION` (its own build version) and
   `GRAPHIUM_PARENT_PID` (the app process id) when it spawns the sidecar, and
   `/api/health` echoes `version`, `pid` and `dataDir`. On startup
-  `src/lib/sidecar.ts` reuses an already-running sidecar only when both
-  `dataDir` and `version` match; a foreign `dataDir` (a stale worktree) or a
-  mismatched `version` (a sidecar left over from before an auto-update) is
-  sent `SIGTERM` and replaced. The sidecar additionally runs a watchdog that
+  `src/lib/sidecar.ts` reuses an already-running sidecar only when it proves
+  it knows this launch's secret (see the per-launch secret below); the secret
+  changes at every launch, so a sidecar left over from another launch (before
+  an auto-update, or an orphan) or any other program on port 3001 fails the
+  check and is sent `SIGTERM` and replaced. `dataDir` and `version` in the
+  reply are not trusted for this decision. The sidecar additionally runs a watchdog that
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
   old code and return 404 for routes added after that build. On Windows —
@@ -3860,10 +4080,54 @@ The same `src/` tree is built four different ways.
   own sidecar auto-restart) and then stops any leftover orphan sidecar
   processes before copying files.
 - The sidecar binds to loopback only (`127.0.0.1`; override with
-  `GRAPHIUM_BIND_HOST`). Most of the local API is unauthenticated, so the
-  server must never be reachable from other machines on the network. The
-  Docker image sets `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a
-  container the exposure boundary is the container port mapping.
+  `GRAPHIUM_BIND_HOST`). Outside the desktop app, most of the local API is
+  unauthenticated, so the server must never be reachable from other machines
+  on the network (plain dev and Docker without `GRAPHIUM_AUTH_TOKEN`). The Docker image sets
+  `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a container the exposure boundary is the container
+  port mapping.
+- **The desktop app's local API is guarded by a per-launch secret.** Other
+  programs on the same machine (and browser extensions) can reach
+  `127.0.0.1:3001`, so the app reuses the self-host token mechanism
+  (`GRAPHIUM_AUTH_TOKEN`, `src/server/auth-token.ts`) with a value nobody
+  types. Rust creates it once per launch (two uuid v4 values, 64 hex
+  characters, held in memory only, never written to a file or to
+  `sidecar-log`), hands it to the sidecar as `GRAPHIUM_AUTH_TOKEN` together
+  with `GRAPHIUM_DESKTOP=1`, and returns it from the `get_api_token` command,
+  which only the `main` and `viewer` windows may call. The webview wraps
+  `fetch` (`src/lib/api-auth-fetch.ts`) and adds `X-Graphium-Token` to
+  requests for the API origin only. Exceptions: the Web Clip endpoints used
+  by the Chrome extension (guarded by their own clip token and Origin check),
+  `GET /api/health` (a minimal reply with `pid` and `desktop: true` when
+  unauthenticated, so the app can recognize and replace a sidecar started
+  with a different secret), and — desktop only — `GET`/`HEAD`
+  `/api/url/image-proxy` and `/api/url/pdf-proxy`, because `<img>` cannot
+  attach headers or cookies to a cross-origin request. Both only fetch
+  a URL and return none of the user's notes; without the secret `image-proxy`
+  and `pdf-proxy` refuse loopback, LAN and private destinations (`strict`), and
+  only requests carrying the secret keep the narrower `pdf-proxy` rule. The
+  PDF viewer hands the secret to pdf.js (`httpHeaders`), so PDFs on the local
+  network still open; the `pdf-proxy` exemption is the fallback for a request
+  that arrives without it. The desktop sidecar sets no auth cookie. At boot it
+  moves the secret out of its environment (`captureDesktopAuthToken` in
+  `src/server/auth-token.ts`), so the programs it launches (Copilot CLI,
+  `claude` / `codex`, `security`, a login shell) do not inherit it. The
+  environment the process was started with can still be visible to a
+  process of the same OS user (for example with `ps eww`);
+  the guard is against other programs and browser extensions that only reach
+  the HTTP port, not against code running as the same user. `/api/storage/capabilities`
+  reports `requiresAuth: false` on the desktop so the UI never asks for a
+  token. Before the UI attaches the secret to anything, it checks that the
+  process on port 3001 is its own sidecar, without sending the secret: it
+  sends a random 32-byte challenge (`GET /api/health?challenge=<hex>`) and the
+  sidecar answers with `proof = HMAC-SHA256(secret, "graphium-sidecar-proof-v1:" + challenge)`
+  (desktop only; `desktopSidecarProof` in `src/server/auth-token.ts`,
+  `probeTauriSidecar` in `src/lib/api-auth-fetch.ts`). Until the proof
+  matches, the UI sends neither the secret nor any request that would carry
+  it, so a program that took port 3001 first (for example another user on a
+  shared computer) cannot collect the secret. The result is reused for five
+  seconds and dropped when the sidecar exits, a request fails to connect, or
+  one comes back `401`. Requests that never carry the secret (the image relay
+  loaded by `<img>`) are not gated by this check.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
   Syncthing — the desktop side of Graphium never talks to those services).
@@ -4029,6 +4293,23 @@ live in `extensions/chrome/store/`, and the extension's privacy policy is
 - Server: `src/server/index.ts`, a Hono app on `@hono/node-server`
 - Storage: `server-fs` provider; notes live on the host filesystem
 - AI: ships with LLM and embedding endpoints wired up
+- Process user: the image starts through `docker/entrypoint.sh`, which drops
+  root with `su-exec` before running the server (compose also sets
+  `no-new-privileges`). When unsure it falls back to starting as root, as
+  earlier versions did, rather than failing to start. In order: a container
+  started with `user:` is left alone; under rootless Docker / Podman (uid 0
+  maps to an unprivileged host uid in `/proc/self/uid_map`) nothing is
+  changed; if the user cannot be switched at all (`SETUID` / `SETGID`
+  dropped) it stays root; if `DATA_DIR` is owned by a non-root uid (a
+  bind-mounted host folder, or a volume already fixed) the server runs as
+  that uid:gid — unless root-owned files from an earlier version are left in
+  its top two levels, in which case it stays root (so existing notes remain
+  writable) and logs the `chown` that would let it switch; if it
+  looks root-owned but `node` can already write it, the server runs as `node`
+  without touching it; otherwise (data written by earlier root-running
+  versions) it is `chown`ed to `node` once. If that `chown` fails the server
+  starts as root with a warning. `GRAPHIUM_RUN_AS_ROOT=1` keeps the old root
+  behaviour.
 
 ### 4.4 MCP server (stdio)
 
@@ -4098,7 +4379,8 @@ Tools:
 | `export_prov` | a note's or a plan's PROV-DM as W3C PROV JSON-LD. `scope: "note"` → `buildNoteProvJsonLd` (procedure graph, note `Entity`, body text, memos from `readCaptureIndex`, materials from the media index, named tables), `scope: "plan"` → `buildPlanProvJsonLd` (the plan note and the operation notes it links to). The default is `plan` when the target is a plan note, else `note`. `includeBody` (default true) and `includeChats` (default false) switch the body text and AI chats. See "Note records, annotations and plan export in PROV-JSON-LD" in §3.2 |
 | `export_asterism_claims` | the knowledge layer's claims as a bundle of flat JSON files for Asterism (`buildAsterismBundle`, shared with the in-app export): one file per type plus `rule_terms.json` / `observation_terms.json`. Defaults to typed, non-`inferred` claims; `includeUntyped` / `includeInferred` / `ids` narrow or widen it; `includeTopics` adds `topics.json` (one row per topic: `topic_type`, `claim_iri` = `derivedFromClaims` as full IRIs, limited to exportable claims (judged before `ids` / `onlyUnsent`); no body text); `onlyUnsent` leaves out claims recorded by `mark_asterism_sent` (reported in `skipped` as `already-sent`). Every row has `source_url` (claims `<noteUrlBase>#knowledge/claim/<id>`, topics `<noteUrlBase>#knowledge/topic/<id>`; `asterism.noteUrlBase` defaults to the public app URL). The Asterism settings live in the app (localStorage) and cannot be read from Node, so they are passed as an `asterism` argument (`vocabBaseIri` / `claimBaseIri` (required, no setting default in Node) / `typeSlugs`, which decides each claim's file). Trashed and archived claims are skipped, as in the in-app export. Returns `{ files: { <name>: <JSON text> }, counts, skipped }`, or `{ error }` without `claimBaseIri` |
 | `mark_asterism_sent` | records claim ids that Asterism's `append_rows` accepted into `appdata/asterism-sent.json` (`{ ids, datasetId, exportedAt? }` → `{ marked, alreadySent, ledger }`). Takes the MCP write lock (`acquireWriteLock`) but not the app-running guard, since the app never touches the file; a broken ledger is reported and left as is |
-| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`) |
+| `export_asterism_knowledge` | every claim and topic as one `asterism-knowledge/1` bundle for Asterism (`buildKnowledgeBundle` in `features/wiki/asterism-knowledge.ts`, `splitTopicSubject` in `topic-subject.ts`; vault reading in `mcp/export-knowledge.ts`). Not filtered by type or review state; trashed/archived are skipped; titles and labels only (no body); the sent ledger is neither read nor written. Input is all optional: `claimBaseIri` / `sourceBaseIri` / `termBaseIri` / `noteUrlBase`. Returns `{ format, title, exported_at, bases, files, counts }` as the first text (six files, `[]` when empty: `claims` / `topics` / `sources` / `term_candidates` / `term_claims` / `term_relations`) followed by the "sources are data" notice as a second text (`jsonTextWithGuard`), or `{ error }` with `isError` on a bad base or a missing vault (a machine reads this tool, so failures are never plain prose) |
+| `get_source_text` | a source's text (`pdf:` / `document:` / `url:` / `conversation:` / note id) cut into windows (`splitIntoWindows`, default 4,000 characters, 400 overlap), through `resolveSourceText` with Node-side deps. PDF windows carry page ranges (`pdf-text-node.ts`, pdfjs legacy build); Word is `.docx` only (mammoth); a URL must be registered in the media index and is re-fetched over the network (`url-reader.ts`); an AI conversation must be in the media index as a `conversation` material and is read from its stored text (`conversationTextFile`: only ids of the form `conv-<provider>-<sessionId>` are looked up, because other materials' text files share the folder) |
 | `search_media` | media by name, OCR text, URL description / excerpt / domain, bibliographic info (authors / venue / year / DOI) (MiniSearch over `media-index.json`; archived media excluded) |
 | `check_knowledge` | the mechanical checks — `detectLocalIssues` / `detectMissingSourceIssues` / `detectAutoArchivable` over `WikiSnapshot[]` built on the MCP side. No LLM checks (stale, gap, semantic duplicate) |
 | `list_source_check` | pages whose source check verdict needs review (`isNeedsReviewVerdict` over `wikiMeta.sourceCheck`) |
@@ -4128,6 +4410,8 @@ Tools:
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
 | `show_knowledge_graph` | draw the global graph (`buildGlobalGraph`, the app's own builder, without media leaves), `folder` fading what is outside it (`collectFolderScopeIds`), at most 1,200 nodes (outside-the-folder nodes dropped first, then the least connected). While it is open it highlights what the client touches through this MCP (see below) |
 | `graph_activity` | app-only (`_meta.ui.visibility: ["app"]`, never shown to the model): the graph view polls it for the activity events after a cursor |
+
+**Tool annotations.** Every tool states `readOnlyHint` and `openWorldHint` explicitly, because MCP clients treat a missing hint as "may destroy, reaches outside". `readOnlyHint: true` means the tool does not change the user's notes, knowledge, materials or task ledgers (usage records such as `seen` / `read` do not count); tools that write also state `destructiveHint` — `true` when they can rewrite something that already exists, move it to the archive or trash, merge pages, or undo an operation, `false` when they only add new items or record in a task ledger — and `idempotentHint: true` only where repeating the call with the same arguments leaves the same state. `openWorldHint: true` is reserved for tools that may fetch a registered URL over the network (`get_source_text` and the task tools that read a source); tools that touch only the local vault say `false`. When unsure, a tool is marked `destructiveHint: true`. `e2e/mcp-smoke.mjs` checks that every tool states `readOnlyHint` and that every non-read-only tool states `destructiveHint`.
 
 **Graphs inside the conversation (MCP Apps).** A second UI resource,
 `ui://graphium/graph.html` (`src/mcp/apps/graph-view.ts`, built by
@@ -4206,7 +4490,7 @@ own AI usage record, which changes no page, index or setting); the registrations
 `src/mcp/media-tools.ts` (the three media tools; the file-naming rules there mirror
 `src-tauri/src/lib.rs` — `media_ext` / `find_media_data_file`).
 
-Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:`. The MCP server resolves PDF and Word names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
+Source ids follow the same prefixes as the in-app graph (`network-graph/graph-builder.ts`): `pdf:<fileId>` / `document:<fileId>` / `url:<URL>` / `chat:` / `memo:` / `conversation:<fileId>`. The MCP server resolves PDF, Word and conversation names from `appdata/media-index.json` (`src/mcp/sources.ts`) so an agent can name a source instead of quoting an opaque id. A note's own import source (`sourcePdfFileId` / `sourceDocumentFileId` / `sourceUrl`) is its PROV-layer upstream, except for AI-written notes (the same exclusion the app's graph applies; the MCP side additionally treats a Word source as upstream, which the in-app graph does not draw yet).
 
 The knowledge layer (topic / claim / insight) is not reachable from `NoteIndexEntry` alone — `topicIds` / `derivedFromClaims` / `conflictsWith` are not mirrored into the index, so these tools read `doc.wikiMeta` directly after narrowing the candidate set by `wikiKind` (never a blanket read of every wiki doc).
 
@@ -4560,6 +4844,20 @@ Key pieces:
   the remembered address is kept per shared folder (the `remote` field
   of the folder list, mirrored to `graphium-shared-root-remote` for the
   default folder) and is cleared whenever that folder's path changes
+- **Readable copies** — a per-folder, per-device switch
+  (`SharedFolder.readableCopies`). When it is on, `shareNote` calls
+  `syncReadableCopy` (`src/features/sharing/readable-copy.ts`) after the
+  shared entry is written; it builds a Markdown file (front matter plus
+  the Markdown-export body) and a PROV-JSON-LD file
+  (`buildNoteProvJsonLdText`, the same builder as the MCP and menu export)
+  from the shared-range document, and hands them to the Tauri command
+  `shared_readable_sync`, which names and writes them under
+  `<root>/readable/notes/`. When the switch is off, the same call asks Rust
+  to remove any older copy of that id. Unsharing removes the copy inside
+  `shared_delete`. A failure never fails the share: it is returned as
+  `ShareNoteResult.readableCopy` and surfaced in the UI. The app never
+  reads `readable/`; the source of truth stays `notes/<id>.json`
+  (DATA_MODEL.md §7.8; the path guards are listed in §4.2)
 - **`src/lib/storage/shared/`** — content-addressed blob layer (hashing in
   `hash.ts`, ID assignment in `id.ts`, local-folder backend in
   `local-folder.ts`)
@@ -4913,7 +5211,9 @@ header-authenticated request, for same-origin loads such as `<img>` that cannot
 carry a header). Both sides are hashed with SHA-256 and compared with
 `timingSafeEqual`. Not checked: `OPTIONS`, `GET /api/storage/capabilities`,
 `GET /api/health` (when a token is set, an unauthenticated caller gets only
-liveness — no `dataDir`, pid or model info), and the extension's endpoints
+liveness — no `dataDir`, pid or model info; on the desktop it also gets the
+pid and, for a `?challenge=`, the proof described under the per-launch
+secret), and the extension's endpoints
 (`POST /api/clip`, `GET /api/clip/ping`, `POST /api/clip/pair`,
 `POST /api/clip/pair/:id`), which are guarded by `X-Graphium-Clip-Token` and the
 `Origin` rule below. With no token set (desktop sidecar, dev) nothing is
@@ -5089,7 +5389,8 @@ load. World grounding is not gated, so it only picks a search tool from an
 operator-configured Registry server (unless `destructiveHint: true`), or, for
 clients sending `X-MCP-Servers`, one on a curated list or `readOnlyHint` on a
 "don't ask again" server (name-only matches elsewhere are ignored). The app
-itself does not use user-added servers for world grounding.
+sends only the curated search servers (remote with `approvalFreeTools`) for
+world grounding; other user-added servers are not used.
 
 Prompt-injection guards: the chat system prompt carries
 `MATERIAL_AS_DATA_GUARD` (notes, retrieved passages, imported documents,
@@ -5115,6 +5416,46 @@ auth, multi-tenant isolation, or audit log on the server today.
 Operators exposing the server to the public internet should put it
 behind their own auth proxy. A first-class auth model is on the roadmap
 once team-shared storage stabilizes.
+
+**Reading another tool's records.** `services/claude-code-sessions.ts` reads
+Claude Code's session records, which live outside the data folder. It is
+written so that the only things a caller can choose are two names:
+
+- The base folder is decided by the server's own code and environment
+  (`defaultClaudeProjectsDir`). **It must never come from a request** — a
+  caller-chosen base would turn the reader into a way to read any folder.
+- A folder name must match `^[A-Za-z0-9_-]{1,255}$` and a file name
+  `^[A-Za-z0-9_-]{1,100}\.jsonl$`: one path component each, no separators,
+  no dots in the folder name, so `..` cannot be expressed. Windows device
+  names (`CON`, `NUL`, `COM1` …) are refused as either.
+- Symbolic links are not followed: the folder and the file are checked with
+  `lstat`, the file is opened with `O_NOFOLLOW` where the platform has it
+  (not on Windows, where the `lstat` check is the only one), and the opened
+  handle is checked again to be a regular file.
+- Nothing is written to the records. Tool calls and tool output never reach
+  the result: a record that carries tool output is skipped before it is
+  parsed, and tool-call blocks inside a reply are dropped after parsing.
+- Only a line longer than 32 MB is skipped; there is no limit on the total
+  read. The route that calls this has to bound how often the full listing
+  runs (it reads every record).
+
+No HTTP route calls this service yet. The route that will (for the bring-in
+screen) has to pass the cross-site write guard and return only the common
+shape, never raw record lines.
+
+A record can hold text an attacker influenced (a reply written while working
+in someone else's repository, a paste). Two things keep it from passing as
+structure: an AI reply is collapsed to one line, and the later lines of the
+user's own message are indented in the stored text, so neither can add a
+line that reads as another turn or a date heading. A conversation's stored
+text is deleted, read and counted as "used" only under an id of the form
+`conv-<provider>-<sessionId>` — the media-text channel is shared with other
+materials' texts, and both the media index and source ids can come from
+someone else.
+
+What an imported conversation contains is **data**: the stored text goes
+through the same guards as any other source text (`READ_INJECTION_GUARD` on
+`get_source_text`, the "material is data" rule in the Knowledge prompts).
 
 ### Copilot CLI download and sign-in
 
@@ -5243,8 +5584,10 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |
 | Meeting transcription (desktop) | `whisper-rs` (Unlicense; builds whisper.cpp with cmake at compile time — about 40 s on an M-series Mac — Metal feature on macOS, plain CPU on Windows). Models are downloaded at first use with `reqwest` (already in the tree for the updater) and verified with `sha2`; nothing is bundled |
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
+| On-device OCR (desktop) | PP-OCRv6 small (Apache-2.0; text detection + recognition) run on ONNX Runtime from Rust through `ort` (pinned to `=2.0.0-rc.11`, the same ONNX Runtime 1.23.2 as `fastembed`), with `ndarray` for tensors and `anyhow` for errors; no new binary. `src-tauri/src/ocr_engine.rs` does the pre / post-processing and `src-tauri/src/ocr_models.rs` manages the models: one detector + recogniser pair is loaded lazily and unloaded after the same idle time as the embedding models. Images are shrunk to a long side of 1600 px before detection, and decoding has dimension and memory limits. The models are not shipped: `det.onnx` and `rec.onnx` (about 31 MB in total) are downloaded in the background at the first OCR from Hugging Face at commit-pinned URLs, verified with SHA-256 and stored in `appdata/models/ocr/pp-ocrv6-small/` through the same `.part` downloader as the other models (`src-tauri/src/model_download.rs`); the character dictionary is embedded in the binary. On macOS only, the same `ocr_recognize` also asks Apple's Vision framework (`VNRecognizeTextRequest`, accurate level, `ja-JP` / `en-US`) for a second reading through `objc2-vision` (0.3.2, the same `objc2` 0.6 / `objc2-foundation` 0.3 family wry already uses; macOS-only dependency; `src-tauri/src/ocr_vision.rs`), returned as `altText` / `altEngine`. Tauri commands: `ocr_model_status` / `ocr_model_download` / `ocr_model_cancel` / `ocr_model_delete` / `ocr_recognize` (raw image bytes in). Until the models are present, on failure, for unsupported image formats and in the browser build, `src/lib/ocr.ts` reads with the bundled Tesseract.js instead |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
+| Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. Formulas are written as Word equations (OMML): KaTeX, the renderer the editor already uses, parses the LaTeX and emits MathML, and `features/docx-export/mathml-to-omml.ts` maps that to OMML with our own code (the ready-made `mathml2omml` is LGPL-3.0, so it is not used). The decision is per formula and all-or-nothing: if any element has no mapping (matrices, aligned lines, equation numbers, boxes) or KaTeX cannot parse the source, the whole formula falls back to its LaTeX text, so a file never carries a half-converted equation. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 
 ## 8. Source map
@@ -5283,11 +5626,12 @@ people most often need to find.
 | Slash-template commands (Plan / Run) | `src/features/template/` |
 | Skill (prompt template) documents | `src/features/skill/` |
 | Reference table (related notes) | `src/features/index-table/` |
-| Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
+| Export (PROV-JSON-LD, PDF, Word, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-export/`, `src/features/docx-import/` |
 | PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| AI conversations as materials (reader, stored text, bring-in) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/features/conversation-import/` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |

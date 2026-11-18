@@ -1,5 +1,98 @@
 # Changelog
 
+## [v0.145.0](https://github.com/kumagallium/Graphium/compare/v0.144.0...v0.145.0) - 2026-11-18
+
+- [feat] Settings row for the on-device OCR model (switch, status, delete) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1754
+- [feat] Keep the macOS text-recognition reading of an image for finding by @kumagallium in https://github.com/kumagallium/Graphium/pull/1756
+
+## [v0.144.0](https://github.com/kumagallium/Graphium/compare/v0.143.0...v0.144.0) - 2026-11-18
+
+- [docs] Describe the on-device OCR model in the manual (v0.142.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1750
+- docs(manual): Home figures, v0.143.0 badges and roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1753
+- feat(data-extract): bring in only part of a delimited file, and keep the conditions on the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1747
+
+## [v0.143.0](https://github.com/kumagallium/Graphium/compare/v0.142.0...v0.143.0) - 2026-11-18
+
+- feat: filter Home by folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1739
+- feat(records): tag recordings, find a note by what was said in its recording, translate material info labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/1746
+
+## [v0.142.0](https://github.com/kumagallium/Graphium/compare/v0.141.2...v0.142.0) - 2026-11-18
+
+- [docs] Record the OCR engine comparison (handwriting and printed text) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1744
+- [feat] Read images with PP-OCRv6 small on the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1748
+
+## [v0.141.2](https://github.com/kumagallium/Graphium/compare/v0.141.1...v0.141.2) - 2026-11-18
+
+- feat(docx): write formulas as Word equations instead of LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1741
+
+## [v0.141.1](https://github.com/kumagallium/Graphium/compare/v0.141.0...v0.141.1) - 2026-11-18
+
+- fix(data-table): keep the app responsive with large delimited files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1726
+- fix(editor): keep the editor when a new note gets its id by @kumagallium in https://github.com/kumagallium/Graphium/pull/1730
+- perf(data-table): stop re-reading a data table with computed columns on every edit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1728
+- fix(chart): draw large series thinned and stop redrawing on every edit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1732
+- feat(landing): hero says readable by you and by AI, with a three-step picture by @kumagallium in https://github.com/kumagallium/Graphium/pull/1737
+
+## [v0.141.0](https://github.com/kumagallium/Graphium/compare/v0.140.1...v0.141.0) - 2026-11-18
+
+- feat(mcp): export the whole knowledge layer for Asterism (export_asterism_knowledge) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1731
+- fix: open notes from Home in the side peek first by @kumagallium in https://github.com/kumagallium/Graphium/pull/1736
+
+## [v0.140.1](https://github.com/kumagallium/Graphium/compare/v0.140.0...v0.140.1) - 2026-11-18
+
+- [docs] Manual: badges for the passage checks and a roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1727
+- feat(topics): report a sentence appended after a passage that ended its note when it shares a number or a term by @kumagallium in https://github.com/kumagallium/Graphium/pull/1729
+- feat(source-check): record a hash of the source text read for each check by @kumagallium in https://github.com/kumagallium/Graphium/pull/1733
+
+## [v0.140.0](https://github.com/kumagallium/Graphium/compare/v0.139.0...v0.140.0) - 2026-11-17
+
+- feat: export a note as a Word (.docx) file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1718
+
+## [v0.139.0](https://github.com/kumagallium/Graphium/compare/v0.138.1...v0.139.0) - 2026-11-17
+
+- feat(prov-export): export links between notes as dcterms:references by @kumagallium in https://github.com/kumagallium/Graphium/pull/1717
+- feat(sharing): keep readable copies of shared notes in the shared folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1719
+- feat(records): find records by body text, index transcripts, tag notes made from a recording by @kumagallium in https://github.com/kumagallium/Graphium/pull/1721
+
+## [v0.138.1](https://github.com/kumagallium/Graphium/compare/v0.138.0...v0.138.1) - 2026-11-17
+
+- feat: call the Records entry Home, pair it with Search, and add a month calendar by @kumagallium in https://github.com/kumagallium/Graphium/pull/1720
+
+## [v0.138.0](https://github.com/kumagallium/Graphium/compare/v0.137.5...v0.138.0) - 2026-11-17
+
+- docs(manual): make the Security page easier to find and correct it after an audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1713
+- feat: add the Records view (everything you kept, in order, with who and where) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1716
+- fix(security): check that the local server is ours before sending the per-launch secret by @kumagallium in https://github.com/kumagallium/Graphium/pull/1715
+
+## [v0.137.5](https://github.com/kumagallium/Graphium/compare/v0.137.4...v0.137.5) - 2026-11-17
+
+- [infra] One-off workflow to back up release secrets, encrypted by @kumagallium in https://github.com/kumagallium/Graphium/pull/1710
+- [infra] Remove the one-off secret backup workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/1712
+- [infra] Run release signing jobs in the release environment by @kumagallium in https://github.com/kumagallium/Graphium/pull/1701
+
+## [v0.137.4](https://github.com/kumagallium/Graphium/compare/v0.137.3...v0.137.4) - 2026-11-17
+
+- [docs] Add a Security page to the manual and link it from the README by @kumagallium in https://github.com/kumagallium/Graphium/pull/1706
+- docs(manual): list the other protections on the Security page by @kumagallium in https://github.com/kumagallium/Graphium/pull/1708
+- feat(topics): report when the sentence next to a cited passage has changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1709
+
+## [v0.137.3](https://github.com/kumagallium/Graphium/compare/v0.137.2...v0.137.3) - 2026-11-16
+
+- feat(topics): when a page opens, report passages that have since disappeared from their note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1704
+
+## [v0.137.2](https://github.com/kumagallium/Graphium/compare/v0.137.1...v0.137.2) - 2026-11-16
+
+- docs: lead with records in one place, AI later (landing page, README, CONCEPT) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1702
+
+## [v0.137.1](https://github.com/kumagallium/Graphium/compare/v0.137.0...v0.137.1) - 2026-11-15
+
+- fix: keep the phone screen on while recording a voice memo by @kumagallium in https://github.com/kumagallium/Graphium/pull/1699
+- fix(security): fixes from a full security review (API token on every route, content sanitizing, parser limits, Tauri path checks, AI tool approval, CI pinning) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1690
+- fix: world grounding uses the web search connected in Settings (Tavily) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1691
+- fix(security): guard the desktop app's local API with a per-launch secret by @kumagallium in https://github.com/kumagallium/Graphium/pull/1700
+- fix(security): confirm the command before adding a local MCP server; state hints on every bundled MCP tool by @kumagallium in https://github.com/kumagallium/Graphium/pull/1695
+- fix(security): run the self-host container as a non-root user; make the image build again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1696
+
 ## [v0.137.0](https://github.com/kumagallium/Graphium/compare/v0.136.1...v0.137.0) - 2026-11-15
 
 - feat: MCP server instructions ask the assistant to offer saving at a natural stopping point by @kumagallium in https://github.com/kumagallium/Graphium/pull/1693

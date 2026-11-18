@@ -12,10 +12,8 @@
 
 import { isTauri } from "./platform";
 import { t } from "../i18n";
+import { invalidateTauriSidecarVerification, probeTauriSidecar } from "./api-auth-fetch";
 
-// sidecar は 127.0.0.1 にのみバインドするため、localhost（::1 に解決されうる）
-// ではなく 127.0.0.1 で直接叩く
-const HEALTH_URL = "http://127.0.0.1:3001/api/health";
 const SIDECAR_PORT = 3001;
 const MAX_RETRIES = 20;
 const RETRY_INTERVAL_MS = 500;
@@ -58,6 +56,19 @@ export function reduceSidecarClosed(
     lastErrorAt: now,
     unexpectedExit: true,
   };
+}
+
+/**
+ * health の応答から pid を取り出す（取れなければ 0）。
+ *
+ * 確かめられなかった相手（別の起動の Graphium・ほかのプログラム）の応答は、pid だけを
+ * 「止める候補」として使う。dataDir・version は相手の言い値なので見ない（真似られて
+ * 「自分の sidecar」と判定しないため）。止めるのは Rust の kill_pid が「Graphium の sidecar の
+ * プロセス」と確かめた pid だけなので、でたらめな pid を返されても、ほかのプロセスは止まらない。
+ */
+export function healthPid(body: unknown): number {
+  const pid = (body as { pid?: unknown } | null | undefined)?.pid;
+  return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : 0;
 }
 
 let recentLogLines: string[] = [];
@@ -119,20 +130,37 @@ export function __setSidecarStateForStory(patch: Partial<SidecarState>, logLines
 /** sidecar サーバーのヘルスチェック */
 async function waitForHealth(): Promise<boolean> {
   for (let i = 0; i < MAX_RETRIES; i++) {
-    try {
-      const res = await fetch(HEALTH_URL);
-      if (res.ok) return true;
-    } catch {
-      // まだ起動していない
-    }
+    // 合言葉は送らずに、相手が自分の sidecar（起動ごとの合言葉を知っている）かを確かめる。
+    // 3001 を別のプログラムが握っていても、ここで合言葉は渡らない
+    if ((await probeTauriSidecar()).own) return true;
     await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
   }
   return false;
 }
 
-/** sidecar サーバーを起動する */
-export async function startSidecar(): Promise<boolean> {
-  if (!isTauri()) return false;
+// 進行中の起動。起動は必ず 1 本にまとめる
+let startInFlight: Promise<boolean> | null = null;
+
+/**
+ * sidecar サーバーを起動する。
+ *
+ * 同時に呼ばれても起動は 1 本だけ走らせ、後から来た呼び出しは同じ結果を待つ。
+ * 2 本走ると、後の start_native_sidecar が先に起動した子を止めてしまい、先の呼び出しは
+ * 「動いていた sidecar が勝手に終了した」と見て停止のバナーを出す。起動直後は、画面の
+ * 最初の API 呼び出し（モデル一覧）が失敗して ensureSidecar 経由でここへ来るので、実際に重なる。
+ */
+export function startSidecar(): Promise<boolean> {
+  if (!isTauri()) return Promise.resolve(false);
+  if (!startInFlight) {
+    const p = startSidecarOnce().finally(() => {
+      if (startInFlight === p) startInFlight = null;
+    });
+    startInFlight = p;
+  }
+  return startInFlight;
+}
+
+async function startSidecarOnce(): Promise<boolean> {
 
   setState({ status: "starting", lastError: null, lastErrorAt: null, unexpectedExit: false });
   recentLogLines = [];
@@ -148,43 +176,29 @@ export async function startSidecar(): Promise<boolean> {
   const appData = await appDataDir();
   const dataDir = await pathJoin(appData, "server-data");
 
-  // アプリ本体のバージョン。sidecar の /api/health が返す version と照合して
-  // 「自動更新前の古い自分」を検知する。取得に失敗した場合は version 照合を
-  // 諦め、従来どおり dataDir だけで判定する（誤って現行 sidecar を kill しない）。
-  let expectedVersion = "";
-  try {
-    const { getVersion } = await import("@tauri-apps/api/app");
-    expectedVersion = await getVersion();
-  } catch {
-    expectedVersion = "";
-  }
-
   // 既にサーバーが動いている場合の扱い:
-  //   - dataDir も version も一致 → 自分の現行 sidecar。再利用する。
-  //   - dataDir 不一致 → 他人 sidecar（消えた worktree の幽霊 / 別 dev サーバー）。
-  //   - version 不一致 → 自動更新前の「古い自分」。port 3001 を握ったままなので、
-  //     後から追加した API ルートが 404 になる（v0.15.0 の /api/translate）。
-  // 不一致はいずれも SIGTERM して自前を spawn し直す。
+  //   - 起動ごとの合言葉を知っている → この起動が spawn した自分の sidecar（画面の再読み込みなど）。
+  //     再利用する。合言葉はアプリの起動ごとに変わるので、合言葉が合う相手は必ず同じ版・同じ dataDir。
+  //   - 合言葉を知らない → 別の起動の Graphium（自動更新前の古い自分・孤児）か、ほかのプログラム。
+  //     port 3001 を握ったままだと自前が起動できないので、止めて spawn し直す。
+  //
+  // 相手が自分の sidecar かどうかは、合言葉を送らずに確かめる（probeTauriSidecar）。
+  // 確かめられない相手には、合言葉も、合言葉つきの要求も送らない。
   try {
-    const res = await fetch(HEALTH_URL);
-    if (res.ok) {
-      const body = await res.json().catch(() => ({}) as Record<string, unknown>);
-      const remoteDataDir = typeof body?.dataDir === "string" ? body.dataDir : "";
-      const remotePid = typeof body?.pid === "number" ? body.pid : 0;
-      const remoteVersion = typeof body?.version === "string" ? body.version : "";
-      const sameDataDir = remoteDataDir === dataDir;
-      const sameVersion = expectedVersion === "" || remoteVersion === expectedVersion;
-      if (sameDataDir && sameVersion) {
-        console.log("[sidecar] Backend already running (matching dataDir + version)");
+    const probe = await probeTauriSidecar();
+    if (probe.ok) {
+      const remotePid = healthPid(probe.body);
+      if (probe.own) {
+        console.log("[sidecar] Backend already running (verified own sidecar)");
         // 再利用する sidecar の PID を控える。これがないと終了時に kill 対象が
-        // 分からず孤児として残り、次回起動で再利用される（今回の 404 の一因）。
+        // 分からず孤児として残る。
         currentPid = remotePid > 0 ? remotePid : null;
         setState({ status: "ready", unexpectedExit: false });
         return true;
       }
-      const reason = !sameDataDir
-        ? `foreign dataDir=${remoteDataDir || "?"} (expected ${dataDir})`
-        : `stale version=${remoteVersion || "?"} (expected ${expectedVersion})`;
+      // 入れ替える。これから止める相手には、以後の要求で合言葉を付けない
+      invalidateTauriSidecarVerification();
+      const reason = "not verified as this launch's sidecar (another launch or a foreign program)";
       console.warn(
         `[sidecar] Replacing sidecar on 3001 (pid=${remotePid}, ${reason}). Killing.`,
       );
@@ -198,12 +212,8 @@ export async function startSidecar(): Promise<boolean> {
           // SIGTERM が反映されるまで最大 2 秒待つ
           for (let i = 0; i < 10; i++) {
             await new Promise((r) => setTimeout(r, 200));
-            try {
-              const probe = await fetch(HEALTH_URL);
-              if (!probe.ok) break;
-            } catch {
-              break; // port 3001 が応答しなくなった = kill 成功
-            }
+            // port 3001 が応答しなくなった = kill 成功（合言葉は送らない）
+            if (!(await probeTauriSidecar()).ok) break;
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -251,6 +261,8 @@ export async function startSidecar(): Promise<boolean> {
       const detail = typeof event.payload === "string" ? event.payload : String(event.payload);
       exitRef.info = detail;
       recordLog(`[lifecycle] process closed ${detail}`);
+      // 子が終わった。3001 の相手が替わりうるので、次の要求で確かめ直す
+      invalidateTauriSidecarVerification();
       // ready 中に届いた closed = 動いていた sidecar がこちらの操作なしに消えた。
       // 状態を failed に落として UI（バナー）に気づかせる。以前はここで記録するだけで
       // 状態を動かさなかったため、sidecar が死んでも「AI 接続済み」表示のまま、
@@ -306,14 +318,12 @@ export async function startSidecar(): Promise<boolean> {
 /** sidecar サーバーが生きているか確認し、死んでいたら再起動 */
 export async function ensureSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
-  try {
-    const res = await fetch(HEALTH_URL);
-    if (res.ok) {
-      setState({ status: "ready", unexpectedExit: false });
-      return true;
-    }
-  } catch {
-    // 応答なし → 再起動を試みる
+  // 起動の途中なら、その結果を待つ（途中の sidecar を「応答なし」と見て起動し直さない）
+  if (startInFlight) return startInFlight;
+  // 別の相手（合言葉を知らない）を ready にしない。合言葉は送らずに確かめる
+  if ((await probeTauriSidecar()).own) {
+    setState({ status: "ready", unexpectedExit: false });
+    return true;
   }
   console.warn("[sidecar] Backend not responding, attempting restart...");
   currentPid = null;
@@ -323,12 +333,16 @@ export async function ensureSidecar(): Promise<boolean> {
 /** sidecar を明示的に再起動する（UI からのトリガー用） */
 export async function restartSidecar(): Promise<boolean> {
   if (!isTauri()) return false;
+  // 起動の途中なら終わるのを待ってから止める（途中で止めると、進行中の起動が失敗として残る）
+  if (startInFlight) await startInFlight.catch(() => false);
   await stopSidecar();
   return startSidecar();
 }
 
 /** sidecar サーバーを停止する */
 export async function stopSidecar(): Promise<void> {
+  // これから止める。以後の要求は、相手を確かめ直してから合言葉を付ける
+  invalidateTauriSidecarVerification();
   if (currentPid != null) {
     const pid = currentPid;
     try {

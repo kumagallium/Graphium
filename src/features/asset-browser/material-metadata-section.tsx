@@ -33,6 +33,8 @@ const TYPE_HEX: Record<MediaType, string> = {
   document: "#6f5b8b",
   data: "#3f7c85",
   memo: MEMO_QUOTE_COLOR,
+  // AI との会話。色は取り込みの画面を作るときに決める（それまでは other と同じ）
+  conversation: "#7a7a7a",
   other: "#7a7a7a",
 };
 
@@ -332,7 +334,7 @@ export function MaterialMetadataSection({
     try {
       const result = await runOcrForImage(entry.url);
       setOcrText(result.text || null);
-      await persistOcrTextPatch(entry.fileId, result.text);
+      await persistOcrTextPatch(entry.fileId, result.text, result.altText ?? "");
     } catch (e) {
       console.warn("素材の OCR に失敗:", e);
     } finally {
@@ -424,7 +426,7 @@ export function MaterialMetadataSection({
       )}
       {showContent && (
         <div style={contentStyle}>
-          <MetaRow label="Name">
+          <MetaRow label={t("asset.metaName")}>
             {editing ? (
               <input
                 type="text"
@@ -455,17 +457,17 @@ export function MaterialMetadataSection({
               </span>
             )}
           </MetaRow>
-          <MetaRow label="Type">
-            <span style={{ color: TYPE_HEX[entry.type] }} className="text-xs font-medium uppercase">
-              {entry.type}
+          <MetaRow label={t("asset.metaType")}>
+            <span style={{ color: TYPE_HEX[entry.type] }} className="text-xs font-medium">
+              {t(`asset.type.${entry.type}`)}
             </span>
           </MetaRow>
-          <MetaRow label="Uploaded">
+          <MetaRow label={t("asset.metaUploaded")}>
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatDateTime(entry.uploadedAt)}
             </span>
           </MetaRow>
-          <MetaRow label={`Used in (${entry.usedIn.length})`}>
+          <MetaRow label={t("asset.metaUsedIn", { count: String(entry.usedIn.length) })}>
             {entry.usedIn.length === 0 ? (
               <span className="text-xs text-muted-foreground/60">—</span>
             ) : (
@@ -490,7 +492,7 @@ export function MaterialMetadataSection({
           </MetaRow>
           {SOURCE_INFO_TYPES.has(entry.type) && <SourceInfoRows entry={entry} />}
           {isImage && (
-            <MetaRow label="Text in image">
+            <MetaRow label={t("asset.metaTextInImage")}>
               {ocrText ? (
                 <>
                   {/* 全文を出す。高さを絞るとスクロールバーが自動で隠れる環境で
@@ -518,10 +520,10 @@ export function MaterialMetadataSection({
             </MetaRow>
           )}
           {derivedCount > 0 && (
-            <MetaRow label={`Derived from (${derivedCount})`}>
+            <MetaRow label={t("asset.metaDerivedFrom", { count: String(derivedCount) })}>
               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
                 <GitBranch size={11} />
-                {derivedCount} asset(s)
+                {t("asset.derivedFromCount", { count: String(derivedCount) })}
               </span>
             </MetaRow>
           )}

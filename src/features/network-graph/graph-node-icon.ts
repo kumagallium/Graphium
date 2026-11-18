@@ -28,7 +28,7 @@ export type GraphNodeIconKind =
 
 /** アイコン選択に必要な最小限のフィールド（NoteNode から渡せる） */
 export type GraphNodeIconInput = {
-  external?: "pdf" | "url" | "document" | "chat" | "memo" | "media";
+  external?: "pdf" | "url" | "document" | "conversation" | "chat" | "memo" | "media";
   mediaType?: string;
   isWiki?: boolean;
   sharedKind?: "shared" | "proposal";
@@ -47,6 +47,8 @@ export function graphNodeIconKind(n: GraphNodeIconInput): GraphNodeIconKind | un
       ? "file"
       : "image";
   }
+  // conversation の見た目は取り込みの画面を作るときに決める。それまでは document と同じ。
+  if (n.external === "conversation") return "document";
   if (n.external) return n.external;
   if (n.sharedKind) return n.sharedKind;
   if (n.isWiki) return "wiki";

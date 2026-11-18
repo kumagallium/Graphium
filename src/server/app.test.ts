@@ -6,7 +6,7 @@
 // このテストが唯一の自動検知点になる。
 
 import { describe, it, expect, afterEach } from "vitest";
-import { authCookieValue } from "./auth-token.js";
+import { authCookieValue, desktopSidecarProof } from "./auth-token.js";
 import { createApp, isAllowedWriteOrigin } from "./app.js";
 
 // apiHeaders（と認証系）が付けうるカスタムヘッダーの一覧。
@@ -261,5 +261,155 @@ describe("合言葉（GRAPHIUM_AUTH_TOKEN）は全 API に効く", () => {
     expect(((await ping.json()) as { error: string }).error).not.toBe("Authentication failed");
     const pr = await get(app, "/api/clip/pair-requests");
     expect(((await pr.json()) as { error: string }).error).toBe("Authentication failed");
+  });
+});
+
+describe("デスクトップ版（GRAPHIUM_DESKTOP=1）の合言葉", () => {
+  const prevToken = process.env.GRAPHIUM_AUTH_TOKEN;
+  const prevDesktop = process.env.GRAPHIUM_DESKTOP;
+  const restore = () => {
+    if (prevToken === undefined) delete process.env.GRAPHIUM_AUTH_TOKEN;
+    else process.env.GRAPHIUM_AUTH_TOKEN = prevToken;
+    if (prevDesktop === undefined) delete process.env.GRAPHIUM_DESKTOP;
+    else process.env.GRAPHIUM_DESKTOP = prevDesktop;
+  };
+  afterEach(restore);
+  const H = { Host: "127.0.0.1:3001" };
+  const get = (app: ReturnType<typeof createApp>, path: string, headers: Record<string, string> = {}) =>
+    app.request(`http://127.0.0.1:3001${path}`, { headers: { ...H, ...headers } });
+  const TOKEN = "desktop-test-token";
+
+  it("(a)(b) 合言葉なしは 401、合言葉つきは通る", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    expect((await get(app, "/api/models")).status).toBe(401);
+    expect((await get(app, "/api/models", { "X-Graphium-Token": TOKEN })).status).toBe(200);
+  });
+
+  it("(c) 画像・PDF の中継の GET / HEAD は合言葉なしで 401 にならない（ほかの url は 401）", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    // url を付けない（外へ出ない）。ハンドラまで届けば 401 以外が返る
+    expect((await get(app, "/api/url/image-proxy")).status).not.toBe(401);
+    expect((await get(app, "/api/url/pdf-proxy")).status).not.toBe(401);
+    expect((await app.request("/api/url/image-proxy", { method: "HEAD", headers: H })).status).not.toBe(401);
+    expect((await get(app, "/api/url/reader?url=http://example.com")).status).toBe(401);
+    expect((await get(app, "/api/storage/notes")).status).toBe(401);
+  });
+
+  it("合言葉なしの pdf-proxy はループバック・LAN 宛を 403 で止め、合言葉つきは止めない", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    const target = encodeURIComponent("http://127.0.0.1:1/secret");
+    expect((await get(app, `/api/url/pdf-proxy?url=${target}`)).status).toBe(403);
+    expect((await get(app, `/api/url/pdf-proxy?url=${encodeURIComponent("http://192.168.0.1/a.pdf")}`)).status).toBe(403);
+    // 合言葉つきは metadata-only のまま（403 にならず、接続できず 502）
+    expect((await get(app, `/api/url/pdf-proxy?url=${target}`, { "X-Graphium-Token": TOKEN })).status).toBe(502);
+  });
+
+  it("デスクトップ版はヘッダーで通っても Cookie を配らない（セルフホストは配る）", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const d = await get(createApp({ mode: "node" }), "/api/models", { "X-Graphium-Token": TOKEN });
+    expect(d.headers.get("set-cookie")).toBeNull();
+    delete process.env.GRAPHIUM_DESKTOP;
+    const s = await get(createApp({ mode: "node" }), "/api/models", { "X-Graphium-Token": TOKEN });
+    expect(s.headers.get("set-cookie")).toContain("graphium_auth=");
+  });
+
+  it("health は、合言葉なしの challenge に証明を返す（合言葉・dataDir は出さない）", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    const challenge = "0f".repeat(32);
+    const res = await get(app, `/api/health?challenge=${challenge}`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const body = JSON.parse(text) as Record<string, unknown>;
+    expect(body.proof).toBe(desktopSidecarProof(challenge));
+    expect(body.proof).toMatch(/^[0-9a-f]{64}$/);
+    expect(text).not.toContain(TOKEN);
+    expect(body).not.toHaveProperty("dataDir");
+    // challenge なし・形の違う challenge には証明を付けない
+    expect((await (await get(app, "/api/health")).json()) as object).not.toHaveProperty("proof");
+    expect((await (await get(app, "/api/health?challenge=abc")).json()) as object).not.toHaveProperty("proof");
+  });
+
+  it("セルフホストの health は challenge に証明を返さない", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    delete process.env.GRAPHIUM_DESKTOP;
+    const app = createApp({ mode: "node" });
+    const res = await get(app, `/api/health?challenge=${"0f".repeat(32)}`);
+    expect((await res.json()) as object).not.toHaveProperty("proof");
+    const authed = await get(app, `/api/health?challenge=${"0f".repeat(32)}`, { "X-Graphium-Token": TOKEN });
+    expect((await authed.json()) as object).not.toHaveProperty("proof");
+  });
+
+  it("(d) GRAPHIUM_DESKTOP なしでは中継も 401", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    delete process.env.GRAPHIUM_DESKTOP;
+    const app = createApp({ mode: "node" });
+    expect((await get(app, "/api/url/image-proxy")).status).toBe(401);
+    expect((await get(app, "/api/url/pdf-proxy")).status).toBe(401);
+  });
+
+  it("(e) 未認証の health は pid と desktop だけ返し、dataDir・version は返さない", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    const body = (await (await get(app, "/api/health")).json()) as Record<string, unknown>;
+    expect(typeof body.pid).toBe("number");
+    expect(body.desktop).toBe(true);
+    expect(body).not.toHaveProperty("dataDir");
+    expect(body).not.toHaveProperty("version");
+    expect(body).not.toHaveProperty("missingKeyModels");
+    // 認証済みは従来どおり dataDir を含む
+    const authed = (await (await get(app, "/api/health", { "X-Graphium-Token": TOKEN })).json()) as Record<string, unknown>;
+    expect(authed).toHaveProperty("dataDir");
+  });
+
+  it("デスクトップ版は capabilities で合言葉の入力を求めない", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const body = (await (await get(createApp({ mode: "node" }), "/api/storage/capabilities")).json()) as { requiresAuth: boolean };
+    expect(body.requiresAuth).toBe(false);
+    delete process.env.GRAPHIUM_DESKTOP;
+    const self = (await (await get(createApp({ mode: "node" }), "/api/storage/capabilities")).json()) as { requiresAuth: boolean };
+    expect(self.requiresAuth).toBe(true);
+  });
+
+  it("(f) 拡張機能の口は合言葉なしで届く", async () => {
+    process.env.GRAPHIUM_AUTH_TOKEN = TOKEN;
+    process.env.GRAPHIUM_DESKTOP = "1";
+    const app = createApp({ mode: "node" });
+    const ping = await get(app, "/api/clip/ping");
+    expect(((await ping.json()) as { error: string }).error).not.toBe("Authentication failed");
+    const post = await app.request("http://127.0.0.1:3001/api/clip", {
+      method: "POST",
+      headers: { ...H, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(((await post.json()) as { error: string }).error).not.toBe("Authentication failed");
+    const pair = await app.request("http://127.0.0.1:3001/api/clip/pair", {
+      method: "POST",
+      headers: { ...H, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(((await pair.json()) as { error?: string }).error ?? "").not.toBe("Authentication failed");
+  });
+
+  it("(g) preflight の応答に Access-Control-Max-Age がある", async () => {
+    const res = await createApp({ mode: "node" }).request("http://localhost/api/models", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "tauri://localhost",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "x-graphium-token",
+      },
+    });
+    expect(res.headers.get("access-control-max-age")).toBe("600");
   });
 });

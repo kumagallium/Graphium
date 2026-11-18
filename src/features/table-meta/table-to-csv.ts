@@ -13,8 +13,12 @@ export function csvEscape(value: string): string {
 /** 見出しと本文を CSV テキストに（末尾に改行なし） */
 export function rowsToCsv(headers: string[], rows: string[][]): string {
   const width = headers.length;
-  const line = (cells: string[]) =>
-    Array.from({ length: width }, (_, i) => csvEscape(cells[i] ?? "")).join(",");
+  // 1 列で値が空の行は、そのまま書くと空行になり、読み直すときに落とされる（行数がずれる）。
+  // 引用符 2 つで書けば「空のセル 1 つの行」として読み戻せる
+  const line = (cells: string[]) => {
+    const out = Array.from({ length: width }, (_, i) => csvEscape(cells[i] ?? "")).join(",");
+    return out === "" ? '""' : out;
+  };
   return [line(headers), ...rows.map(line)].join("\n");
 }
 

@@ -11,6 +11,12 @@ import {
   setSharedAiEnabled,
   getShareIncludesPrivateHistory,
   setShareIncludesPrivateHistory,
+  parseSharedFolders,
+  createSharedFolder,
+  setSharedFolders,
+  getSharedFolders,
+  findSharedFolderByRoot,
+  updateSharedFolder,
 } from "./config";
 
 beforeEach(() => {
@@ -61,5 +67,44 @@ describe("共有ライブラリを AI の対象に含めるか", () => {
     expect(getSharedAiEnabled()).toBe(false);
     setSharedAiEnabled(true);
     expect(getSharedAiEnabled()).toBe(true);
+  });
+});
+
+describe("共有フォルダごとの「読める写し」のスイッチ", () => {
+  it("parseSharedFolders: 真のときだけ保ち、真偽値でない値は捨てる", () => {
+    const list = parseSharedFolders(
+      JSON.stringify([
+        { id: "a", root: "/a", readableCopies: true },
+        { id: "b", root: "/b", readableCopies: false },
+        { id: "c", root: "/c", readableCopies: "true" },
+        { id: "d", root: "/d" },
+      ]),
+    )!;
+    expect(list[0].readableCopies).toBe(true);
+    expect(list[1].readableCopies).toBeUndefined();
+    expect(list[2].readableCopies).toBeUndefined();
+    expect(list[3].readableCopies).toBeUndefined();
+  });
+
+  it("既定は切で、updateSharedFolder で入り切りできる", () => {
+    const f = createSharedFolder("/Volumes/Lab");
+    setSharedFolders([f]);
+    expect(findSharedFolderByRoot("/Volumes/Lab")?.readableCopies).toBeUndefined();
+    updateSharedFolder(f.id, { readableCopies: true });
+    expect(findSharedFolderByRoot("/Volumes/Lab")?.readableCopies).toBe(true);
+    updateSharedFolder(f.id, { readableCopies: false });
+    expect(findSharedFolderByRoot("/Volumes/Lab")?.readableCopies).toBeUndefined();
+  });
+
+  it("旧キー（1 件目の写し）には書かない", () => {
+    const f = createSharedFolder("/Volumes/Lab");
+    setSharedFolders([{ ...f, readableCopies: true }]);
+    expect(localStorage.getItem("graphium-shared-root")).toBe("/Volumes/Lab");
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (k === "graphium-shared-folders") continue;
+      expect(localStorage.getItem(k)).not.toContain("readableCopies");
+    }
+    expect(getSharedFolders()[0].readableCopies).toBe(true);
   });
 });

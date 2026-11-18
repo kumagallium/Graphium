@@ -23,6 +23,7 @@ const enSidebar = [
     items: [
       { text: 'What is Graphium?', link: '/' },
       { text: 'Getting started', link: '/getting-started' },
+      { text: 'Security', link: '/security' },
     ],
   },
   {
@@ -76,6 +77,9 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Insights from AI conversations', link: '/evaluations/ai-conversation-claims' },
+      { text: 'Large data tables', link: '/evaluations/large-data-tables' },
+      { text: 'OCR engines', link: '/evaluations/ocr-engines' },
       { text: 'Source passages behind sentences', link: '/evaluations/sentence-passages' },
       { text: 'Cloud and local models by feature', link: '/evaluations/cloud-and-local-models-by-feature' },
       { text: 'Open models by feature', link: '/evaluations/open-models-by-feature' },
@@ -105,6 +109,7 @@ const jaSidebar = [
     items: [
       { text: 'Graphium とは', link: '/ja/' },
       { text: 'はじめる', link: '/ja/getting-started' },
+      { text: 'セキュリティのしくみ', link: '/ja/security' },
     ],
   },
   {
@@ -158,6 +163,9 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: 'AI との会話から知見を作る', link: '/ja/evaluations/ai-conversation-claims' },
+      { text: '大きなデータ表', link: '/ja/evaluations/large-data-tables' },
+      { text: 'OCR エンジンの比較', link: '/ja/evaluations/ocr-engines' },
       { text: '文ごとに元の一節を控える', link: '/ja/evaluations/sentence-passages' },
       { text: 'クラウド・手元のモデルと AI 機能', link: '/ja/evaluations/cloud-and-local-models-by-feature' },
       { text: '公開モデルと AI 機能', link: '/ja/evaluations/open-models-by-feature' },

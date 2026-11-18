@@ -12,6 +12,7 @@ import { setUsageDataDir, retentionSweep } from "./services/llm-usage.js";
 import { setSidecarIdentity } from "./routes/health.js";
 import { createApp } from "./app.js";
 import { installProcessLifecycleHandlers } from "./process-lifecycle.js";
+import { captureDesktopAuthToken, getAuthToken } from "./auth-token.js";
 
 // 起動段階を stderr に同期書きで残す（Tauri sidecar の Windows 経路で
 // stdout/stderr が無音のまま hang する症状を切り分けるため）。
@@ -33,6 +34,9 @@ function bootLog(msg: string): void {
     // ファイル書き出しエラーは無視（診断専用なので落とさない）
   }
 }
+
+// デスクトップ版の合言葉を環境変数から取り込んで消す（このあと起動する子プロセスに継がせない）
+captureDesktopAuthToken();
 
 bootLog("imports complete, resolving data dir");
 
@@ -176,7 +180,7 @@ bootLog(`calling serve() on host=${hostname} port=${port}`);
 // コマンドを起動する口を含む）を使える。止めはしないが目立つ警告を出す。
 {
   const loopback = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-  const nonLoopbackNoToken = !loopback.has(hostname.toLowerCase()) && !process.env.GRAPHIUM_AUTH_TOKEN;
+  const nonLoopbackNoToken = !loopback.has(hostname.toLowerCase()) && !getAuthToken();
   if (nonLoopbackNoToken && process.env.GRAPHIUM_CONTAINER === "1") {
     // 公式 Docker イメージは常に 0.0.0.0 に bind する。公開範囲はポートの公開設定で決まるので案内だけ出す
     const msg =

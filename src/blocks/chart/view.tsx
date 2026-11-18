@@ -36,6 +36,12 @@ import {
   type TableData,
   type XAxisKind,
 } from "./chart-data";
+import {
+  CHART_MAX_DRAWN_POINTS,
+  decimateSeriesPoints,
+  needsDecimation,
+  type SeriesDecimateSpec,
+} from "./decimate";
 import { loadECharts } from "./echarts-loader";
 import {
   CHART_ASPECT_RATIOS,
@@ -96,7 +102,9 @@ import {
   valueAxisTickLabels,
 } from "./chart-layout";
 import { legendItems, type LegendItemSeries } from "./legend-icon";
-import { loadAssetTable, primeAssetText, tableFromAssetText } from "./asset-source";
+import { loadAssetTable, primeAssetText } from "./asset-source";
+import { loadDelimitedAsset } from "../data-table/data";
+import { createPickQueue, shouldApplyAssetPick } from "./pick-guard";
 import {
   hasRichMarkup,
   isRich,
@@ -107,7 +115,7 @@ import {
   toEchartsRichText,
 } from "./rich-label";
 import { peekDataTableFromBlock, subscribeDataTableData } from "../data-table/data";
-import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
+import { linkedColumnsFor, mergeLinkedColumnsCached } from "../data-table/linked";
 import {
   canPickChartAssetSource,
   requestChartAssetSource,
@@ -249,6 +257,93 @@ function useAssetTables(sources: ChartAssetSource[]) {
   return { resolve, statusOf, prime, version };
 }
 
+type ChartSpec = { table: TableData | null; xColumn: string; yColumn: string };
+
+// 数値化（buildChartData）の入力が前回と同じか。表は行の配列の同一性で比べる
+// （素材の表は読み込み後に同じ配列が共有されるので、本文を編集しても変わらない）
+function sameChartInputs(
+  prev: { chartType: string; xAxisKind: string; specs: ChartSpec[] },
+  chartType: string,
+  xAxisKind: string,
+  specs: ChartSpec[]
+): boolean {
+  if (prev.chartType !== chartType || prev.xAxisKind !== xAxisKind) return false;
+  if (prev.specs.length !== specs.length) return false;
+  return specs.every((sp, i) => {
+    const p = prev.specs[i];
+    if (p.xColumn !== sp.xColumn || p.yColumn !== sp.yColumn) return false;
+    if (p.table === sp.table) return true;
+    return !!p.table && !!sp.table && p.table.headers === sp.table.headers && p.table.rows === sp.table.rows;
+  });
+}
+
+/**
+ * 系列の表 → 描画用のデータ。
+ *
+ * 本文を 1 文字編集するたびに、チャートのブロックは再描画される（文書の変更を購読していて、
+ * 表の編集に追従するため）。そのたびに数値化（数十万行で数秒）と ECharts の描き直し
+ * （数十秒）を走らせると、1 文字ごとに固まる。チャートの設定も参照先の表（行の配列）も
+ * 変わっていなければ前回の結果をそのまま返し、描き直しも起きないようにする。
+ * 数値化の結果は全点のまま返す（規格化・積み上げ・軸の範囲は全点から決まるため）。
+ * 間引きは ECharts に渡す直前（buildChart）で行う。ここでは知らせを出すかだけを決める。
+ */
+function useChartData(
+  config: ChartBlockConfig,
+  resolveTable: (key: string) => TableData | null
+): { specs: ChartSpec[]; result: ChartDataResult; decimated: boolean } {
+  const baseRef = useRef<{
+    chartType: string;
+    xAxisKind: string;
+    specs: ChartSpec[];
+    result: ChartDataResult;
+  } | null>(null);
+  const decimatedRef = useRef<{ base: ChartDataResult; sig: string; value: boolean } | null>(null);
+
+  const specs = config.series.map((s) => ({
+    table: resolveTable(s.sourceBlockId),
+    xColumn: s.xColumn,
+    yColumn: s.yColumn,
+  }));
+  let base = baseRef.current;
+  if (!base || !sameChartInputs(base, config.chartType, config.xAxisKind, specs)) {
+    base = {
+      chartType: config.chartType,
+      xAxisKind: config.xAxisKind,
+      specs,
+      result: buildChartData({
+        chartType: config.chartType,
+        series: specs,
+        ...(config.xAxisKind !== "auto" ? { xAxisKind: config.xAxisKind } : {}),
+      }),
+    };
+    baseRef.current = base;
+  }
+
+  // 見えている X の範囲（系列が属する枠の軸）で上限を超える系列があるか。
+  // 範囲・数値化の結果が同じ間は前回の判定を返す
+  let sig = "";
+  let perSeries: SeriesDecimateSpec[] = [];
+  if (base.result.kind === "ok" && base.result.xAxis !== "category") {
+    const parseX = base.result.xAxis === "time" ? parseDateTime : parseNumeric;
+    const count = panelCount(config);
+    perSeries = config.series.map((s) => {
+      const x = panelAxis(config, axisOwnerPanel(config.panels, seriesPanelIndex(s, count), "x"));
+      return { range: { min: parseX(x.xMin), max: parseX(x.xMax) } };
+    });
+    sig = config.chartType + JSON.stringify(perSeries);
+  }
+  let dec = decimatedRef.current;
+  if (!dec || dec.base !== base.result || dec.sig !== sig) {
+    dec = {
+      base: base.result,
+      sig,
+      value: base.result.kind === "ok" && needsDecimation(base.result, config.chartType, perSeries),
+    };
+    decimatedRef.current = dec;
+  }
+  return { specs, result: base.result, decimated: dec.value };
+}
+
 export const ChartBlock = createReactBlockSpec(
   {
     type: "chart" as const,
@@ -358,7 +453,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       if (!cache.has(key)) {
         const block = (editor as any).getBlock?.(key);
         // データ表は calc の計算列も含めて読む（表示と同じ列が描ける）
-        const dataTable = mergeLinkedColumns(
+        const dataTable = mergeLinkedColumnsCached(
           peekDataTableFromBlock(block),
           linkedColumnsFor(key, tableMetaStore?.calcWritebacks),
         );
@@ -368,6 +463,8 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, docVersion, assetTables.resolve, tableMetaStore?.calcWritebacks]);
+
+  const chartData = useChartData(config, resolveTable);
 
   const updateConfig = (patch: Partial<ChartBlockConfig>) => {
     (editor as any).updateBlock(block, {
@@ -403,47 +500,110 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     setShowSettings(false);
     requestChartAssetSource(editor, (result: ChartAssetSourceResult) => {
       if (reopenSettings) setShowSettings(true);
-      const source: ChartAssetSource = {
-        fileId: result.fileId,
-        fileName: result.fileName,
-        options: result.options,
-      };
-      const key = assetSourceKey(result.fileId);
-      const table = tableFromAssetText(result.text, result.options);
-      // 読んだ本文と表をそのまま載せる（描画のために素材を読み直さない）
-      primeAssetText(result.fileId, result.text);
-      assetTables.prime(source, table);
-      const assetSources = config.assetSources.some((a) => a.fileId === source.fileId)
-        ? config.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
-        : [...config.assetSources, source];
-      let series: ChartSeriesConfig[];
-      if (target.kind === "add") {
-        let added = seriesForNewSource(table, key);
-        // 既にこの素材がグループなら、そのキーで使われている Y 列は重ねて足さない
-        const usedY = new Set(
-          config.series.filter((s) => s.sourceBlockId === key).map((s) => s.yColumn)
-        );
-        if (usedY.size > 0) added = added.filter((s) => !usedY.has(s.yColumn));
-        series = [...config.series, ...added];
-      } else {
-        // 対象グループの系列だけをまとめて付け替え、元の位置に戻す
-        const idx: number[] = [];
-        config.series.forEach((s, i) => {
-          if (s.sourceBlockId === target.sourceKey) idx.push(i);
-        });
-        const moved = retargetSeriesGroup(
-          idx.map((i) => config.series[i]),
-          key,
-          table
-        );
-        const next = [...config.series];
-        idx.forEach((i, n) => {
-          next[i] = moved[n];
-        });
-        // 既存グループと同じ素材になった場合、同じ (参照先, X, Y) は先のものを残す
-        series = dedupeSeries(next);
-      }
-      updateConfig({ assetSources, series });
+      enqueuePick(result, target);
+    });
+  };
+
+  // 確定は順番に処理する（ブロックごとの Promise の列）。表の変換を待つ間に別の確定が
+  // 入っても、先の確定を捨てない。各確定は自分の番で最新の設定を読んで書くので、
+  // 後の確定は先の確定の結果の上に積まれる
+  // 1 件の失敗で列を止めない・未処理の reject にしない（createPickQueue が握りつぶす）
+  const pickQueueRef = useRef(
+    createPickQueue((err) => console.warn("[chart] failed to apply the picked data asset", err))
+  );
+  // 反映待ちの確定の数。待つ間はチャートに「読み込み中」を出す
+  const [picking, setPicking] = useState(0);
+
+  const enqueuePick = (
+    result: ChartAssetSourceResult,
+    target: { kind: "add" } | { kind: "retarget"; sourceKey: string }
+  ) => {
+    setPicking((n) => n + 1);
+    void pickQueueRef.current
+      .enqueue(() => applyPickedAsset(result, target))
+      .finally(() => setPicking((n) => Math.max(0, n - 1)));
+  };
+
+  const applyPickedAsset = async (
+    result: ChartAssetSourceResult,
+    target: { kind: "add" } | { kind: "retarget"; sourceKey: string }
+  ) => {
+    const source: ChartAssetSource = {
+      fileId: result.fileId,
+      fileName: result.fileName,
+      options: result.options,
+    };
+    const key = assetSourceKey(result.fileId);
+    // 読んだ本文を先に登録する（描画のために素材を読み直さない）
+    primeAssetText(result.fileId, result.text);
+    // 大きな本文は小分けで変換される（固まらない）。データ表と結果を共有する
+    let table: TableData | null = null;
+    try {
+      table = await loadDelimitedAsset(result.fileId, result.options);
+    } catch {
+      // 読めなかった: 下で素材を設定に残し、参照切れとして描く（useAssetTables の失敗時と同じ）
+    }
+    // 待つ間にブロックが消えていたら書かない。待った後に確かめるのはこれだけ
+    // （設定は最新のものを読み直して書くので、待つ間の変更は失われない）
+    let latest: any = null;
+    try {
+      latest = (editor as any).getBlock?.(block.id) ?? null;
+    } catch {
+      latest = null;
+    }
+    if (!shouldApplyAssetPick({ blockExists: !!latest })) return;
+    // 読めなかったときも、列名は取り込みダイアログの結果（parsed.headers）から分かる。
+    // 系列は作って素材を設定に残す（描くときに読めず、参照切れの表示になる）
+    const seriesTable: TableData | null =
+      table ??
+      (result.parsed.headers.length > 0
+        ? { headers: result.parsed.headers, rows: result.parsed.rows }
+        : null);
+    if (!seriesTable) {
+      console.warn("[chart] the data asset could not be read and has no columns; nothing was written");
+      return;
+    }
+    const latestConfig = parseChartBlockConfig(
+      String(latest.props?.config ?? ""),
+      String(latest.props?.sourceBlockId ?? "")
+    );
+    if (table) assetTables.prime(source, table);
+    const assetSources = latestConfig.assetSources.some((a) => a.fileId === source.fileId)
+      ? latestConfig.assetSources.map((a) => (a.fileId === source.fileId ? source : a))
+      : [...latestConfig.assetSources, source];
+    let series: ChartSeriesConfig[];
+    if (target.kind === "add") {
+      let added = seriesForNewSource(seriesTable, key);
+      // 既にこの素材がグループなら、そのキーで使われている Y 列は重ねて足さない
+      const usedY = new Set(
+        latestConfig.series.filter((s) => s.sourceBlockId === key).map((s) => s.yColumn)
+      );
+      if (usedY.size > 0) added = added.filter((s) => !usedY.has(s.yColumn));
+      series = [...latestConfig.series, ...added];
+    } else {
+      // 対象グループの系列だけをまとめて付け替え、元の位置に戻す
+      const idx: number[] = [];
+      latestConfig.series.forEach((s, i) => {
+        if (s.sourceBlockId === target.sourceKey) idx.push(i);
+      });
+      const moved = retargetSeriesGroup(
+        idx.map((i) => latestConfig.series[i]),
+        key,
+        seriesTable
+      );
+      const next = [...latestConfig.series];
+      idx.forEach((i, n) => {
+        next[i] = moved[n];
+      });
+      // 既存グループと同じ素材になった場合、同じ (参照先, X, Y) は先のものを残す
+      series = dedupeSeries(next);
+    }
+    (editor as any).updateBlock(latest, {
+      props: {
+        ...latest.props,
+        // どの系列も指さなくなった素材は落とす（描いていない素材を来歴に残さない）
+        config: serializeChartBlockConfig(pruneAssetSources({ ...latestConfig, assetSources, series })),
+      },
     });
   };
 
@@ -469,12 +629,13 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
           <ChartSpline size={15} strokeWidth={2} />
           {t("chart.selectSource")}
         </div>
-        {tables.length === 0 && (
+        {picking > 0 && <div style={styles.placeholderEmpty}>{t("chart.loading")}</div>}
+        {tables.length === 0 && picking === 0 && (
           <div style={styles.placeholderEmpty}>
             {canPickAsset ? t("chart.noTablesYet") : t("chart.noTables")}
           </div>
         )}
-        {(tables.length > 0 || canPickAsset) && (
+        {picking === 0 && (tables.length > 0 || canPickAsset) && (
           <div style={styles.tableList}>
             {tables.map(({ id, label }) => (
               <button key={id} type="button" style={styles.tableButton} onClick={() => startWithTable(id)} disabled={!editable}>
@@ -488,16 +649,15 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
     );
   }
 
-  const specs = config.series.map((s) => ({
-    table: resolveTable(s.sourceBlockId),
-    xColumn: s.xColumn,
-    yColumn: s.yColumn,
-  }));
+  const { specs, result, decimated } = chartData;
 
   // 素材を読んでいる最中は「参照切れ」と区別する（読めるまでは何も描けないだけ）
-  const assetsPending = config.series.some(
-    (s) => isAssetSourceKey(s.sourceBlockId) && assetTables.statusOf(s.sourceBlockId) === "pending"
-  );
+  // 取り込みダイアログの確定を反映待ち（表の変換中）のときも読み込み中として扱う
+  const assetsPending =
+    picking > 0 ||
+    config.series.some(
+      (s) => isAssetSourceKey(s.sourceBlockId) && assetTables.statusOf(s.sourceBlockId) === "pending"
+    );
 
   // ── 全系列が参照切れ ──
   if (specs.every((s) => s.table === null) && !assetsPending) {
@@ -524,12 +684,6 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
       </div>
     );
   }
-
-  const result = buildChartData({
-    chartType: config.chartType,
-    series: specs,
-    ...(config.xAxisKind !== "auto" ? { xAxisKind: config.xAxisKind } : {}),
-  });
 
   return (
     <div data-test="chart-block" contentEditable={false} style={styles.shell}>
@@ -584,6 +738,7 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
         </div>
       )}
       {result.kind === "ok" ? (
+        <>
         <ChartResizeFrame
           widthRatio={config.widthRatio}
           editable={editable}
@@ -598,6 +753,14 @@ function ChartBlockView({ block, editor }: { block: any; editor: any }) {
             onButtonAboveChange={setButtonAbove}
           />
         </ChartResizeFrame>
+        {/* 点が多い系列は描画用に間引く。元のデータは変わらないので、そのことだけ控えめに知らせる */}
+        {decimated && (
+          <div data-test="chart-decimated-notice" style={styles.note}>
+            {t("chart.decimatedNotice", { max: CHART_MAX_DRAWN_POINTS.toLocaleString() })}
+          </div>
+        )}
+        {picking > 0 && <div style={styles.note}>{t("chart.loading")}</div>}
+        </>
       ) : (
         <div style={styles.emptyState}>
           {/* 素材を読んでいる最中は「データが無い」ではなく読み込み中と出す */}
@@ -1635,10 +1798,29 @@ export function buildChart(
       // 段オフセットを値に足しただけだと最下段以外の棒が枠の下端まで伸びてしまう。
       // 段の高さぶんの透明な棒を土台として敷き、その上に実データを積んで起点をずらす
       const stackBase = panel.stackActive && seriesType === "bar" ? (s.offset ?? 0) : 0;
+      // ECharts に渡す点だけを間引く。規格化・積み上げ・軸の範囲は、ここまでに全点で済んでいる。
+      // 上限以下の系列は同じ配列のまま（渡す内容は間引きの導入前と同じ）。
+      // 積み上げ棒は添字で積まれるので、系列の長さが違うと間引きで対応がずれる。
+      // 同じ長さなら同じ添字が残るので、長さが揃わないときだけ間引かない
+      const stackedBarLengths = new Set(
+        panel.view.series
+          .filter((_, k) => {
+            const cfg = config.series[panel.indices[k]];
+            return !isHistogram && (cfg?.type ?? config.chartType) === "bar" && resolveSeriesStyle(cfg, "bar").stacked;
+          })
+          .map((v) => v.points.length)
+      );
+      const skipDecimate =
+        isHistogram ||
+        result.xAxis === "category" ||
+        (seriesType === "bar" && style.stacked && stackedBarLengths.size > 1);
+      const drawnPoints = skipDecimate
+        ? points
+        : decimateSeriesPoints(points, seriesType, { min: xMin, max: xMax });
       const stackedData =
         stackBase !== 0
-          ? points.map(([x, y]) => [x, y - stackBase] as [number, number])
-          : s.points;
+          ? drawnPoints.map(([x, y]) => [x, y - stackBase] as [number, number])
+          : drawnPoints;
       const baseGroup = `stack-base-${i}`;
       // 枠ごとに軸の番号が違うので、系列にも割り当て先を書く
       const axisIndex = split
@@ -1652,7 +1834,7 @@ export function buildChart(
           type: "bar",
           stack: baseGroup,
           silent: true,
-          data: points.map(([x]) => [x, stackBase] as [number, number]),
+          data: drawnPoints.map(([x]) => [x, stackBase] as [number, number]),
           itemStyle: { opacity: 0 },
           ...axisIndex,
           ...(style.barWidth !== "auto" ? { barWidth: CHART_BAR_WIDTHS[style.barWidth] } : {}),
@@ -1903,6 +2085,14 @@ const INSIDE_LEGEND_STYLE = {
   borderRadius: 3,
 };
 
+/** 中身（JSON）が同じ間は同じ参照を返す */
+function useStableByJson<T>(value: T): T {
+  const ref = useRef<{ json: string; value: T } | null>(null);
+  const json = JSON.stringify(value);
+  if (!ref.current || ref.current.json !== json) ref.current = { json, value };
+  return ref.current.value;
+}
+
 function ChartCanvas({
   result,
   config,
@@ -2003,10 +2193,13 @@ function ChartCanvas({
   // 高さは余白の計算と一緒に決まる（狭い図や横長・多段の図は描画領域が潰れないよう
   // 縦に伸ばす）ので、option と同時に組む。fontEpoch はフォントが揃ったら文字幅を
   // 測り直すための依存（縦軸名の幅も枠の高さに効く）
+  // tables は文書が変わるたびに新しい配列で届く（中身は同じ）。中身が同じ間は同じ配列を使い、
+  // 本文の編集で図の組み立てと ECharts の描き直しが走らないようにする
+  const stableTables = useStableByJson(tables);
   const figure = useMemo(
-    () => buildChart(result, config, tables, { width, coverTopRight }),
+    () => buildChart(result, config, stableTables, { width, coverTopRight }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [result, config, tables, width, coverTopRight, fontEpoch]
+    [result, config, stableTables, width, coverTopRight, fontEpoch]
   );
 
   // ボタンの置き場所はブロック側（ChartBlockView）が持つ。描画前に知らせて、
@@ -2031,7 +2224,8 @@ function ChartCanvas({
     // 最大幅 720px・中央寄せ。狭い場所（SidePeek 等）では幅なりに縮む
     <div ref={wrapperRef} style={{ position: "relative", width: "100%", maxWidth: 720, margin: "0 auto" }}>
       {!chart && <div style={styles.loading}>{t("chart.loading")}</div>}
-      <div ref={chartElRef} style={{ width: "100%", height: figure.height }} />
+      {/* data-chart-plot: Word 書き出しが図の svg を取るための目印（docx-export/capture-chart.ts） */}
+      <div ref={chartElRef} data-chart-plot style={{ width: "100%", height: figure.height }} />
     </div>
   );
 }
@@ -2167,6 +2361,12 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     minHeight: 120,
     fontSize: 13,
+    color: "var(--color-text-tertiary)",
+  },
+  // 図の下の控えめな 1 行（間引きの知らせ・読み込み中）。空の状態の文言と同じ色・大きさ
+  note: {
+    textAlign: "center",
+    fontSize: 12,
     color: "var(--color-text-tertiary)",
   },
   loading: {

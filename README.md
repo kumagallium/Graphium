@@ -3,11 +3,13 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>Your memory, for every AI.</b>
+  <sub>Graphium · Your records in one place, readable by you and by AI</sub>
 </p>
 <p align="center">
-  Stop re-explaining yourself to AI.<br />
-  Keep what you read, hear and jot down in one place on your own computer. Graphium's built-in AI and the Claude and ChatGPT desktop apps answer from your own records, with the source attached, and switching AIs doesn't erase the memory.
+  <b>Wake your sleeping records. Readable by you, and by AI.</b>
+</p>
+<p align="center">
+  Photos of paper documents, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
@@ -36,22 +38,22 @@
   <a href="https://kumagallium.github.io/Graphium/"><img src="public/landing/hero.png" alt="Graphium's graph view: notes, claims, and insights connected" width="880" /></a>
 </p>
 
-Graphium is a personal open-source project that combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The result is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
+Graphium is a personal open-source project that puts scattered records in one place, turns them into text, and makes them searchable. It combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The aim is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
 
-## How it works — keep, connect, trace
+## How it works — put in, find, connect to AI
 
-### 1. Keep
-Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos sent from your phone, and notes linked with `@` references. With that many ways in, whatever you come across can go straight in.
+### 1. Put in
+Web clips, transcribed recordings, text read from photos and PDFs, quick memos, photos and voice memos from your phone, and bulk import of old files. With that many ways in, old records and today's records land in the same place. Web clips, transcribing recordings, and receiving what you captured on your phone run in the desktop app.
 
 <p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
 
-### 2. Connect to your AIs
-Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics and lifts claims and insights out of them. The Claude and ChatGPT desktop apps, Codex and other MCP clients connect too: one button in the desktop app registers Graphium with them, and they can both read your notes and save what a conversation worked out.
+### 2. Find
+What you put in is already text, so you can search it by words. Link notes to each other with `@` and see the connections as a graph. Up to here, it works without AI.
 
-<p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge topic list built from the bread-baking notes" width="760" /></p>
+<p align="center"><img src="docs/screenshots/network-graph.png" alt="Network graph showing how notes connect to each other" width="760" /></p>
 
-### 3. Trace to the origin
-Any answer, and any line you wrote, walks back to its source note in one click. Notes an outside AI writes carry a mark saying so, so you can hand work to AI with confidence.
+### 3. Connect to AI
+When you start using AI, the same records are what the AI reads. Graphium's built-in AI (an API key, your GitHub Copilot subscription, or your ChatGPT Plus / Pro plan) gathers your records into topics and lifts claims and insights out of them. The Claude and ChatGPT desktop apps, Codex and other MCP clients connect with one button in Settings (desktop app). You don't have to explain yourself again each time, because the AI answers from the same records. Any answer walks back to its source note in one click, and notes an outside AI writes carry a mark saying so.
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="An insight page with its lineage panel showing the source claim and source notes" width="760" /></p>
 
@@ -71,6 +73,7 @@ Not needed to get started — these are for the curious and for contributors:
 - 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the thinking behind Graphium: why provenance matters, the two brains, the hourglass.
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md) — layers, distribution targets, the Wiki pipeline, known seams.
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md) — the on-disk JSON shapes, schemas, and compatibility rules.
+- 🔒 [**How Graphium keeps your notes safe**](https://kumagallium.github.io/Graphium/manual/security) ([日本語](https://kumagallium.github.io/Graphium/manual/ja/security)) — what protects your notes, what it cannot protect, and what you can do, with diagrams. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Label as much, or as little, as you want
 
@@ -134,7 +137,7 @@ The layer has four document kinds, each with a distinct role:
 
 Knowledge pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Knowledge edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
-The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI** to activate it. Without an LLM, you can still put records in, search them by words, and link them with `@`.
 
 ## Composer (⌘K)
 
@@ -259,6 +262,7 @@ No `.env` editing required — everything is configured from the browser.
 > **Self-hosting and storage**
 > When running under Docker (or any self-hosted Node.js backend), notes are saved to the server filesystem at `/app/data` by default — visit the same URL from any browser or device and you see the same notes. The frontend auto-detects this on first load.
 > - **Cloud backup**: mount a Google Drive / iCloud / Dropbox synced folder to `/app/data` (`volumes: - "~/Google Drive/Graphium:/app/data"`) and the OS handles replication.
+> - **Not running as root**: the container drops to a non-root user before starting the server. A named volume written by earlier versions (which ran as root) gets its owner fixed to the `node` user once, on the first start after updating. A host folder bind-mounted onto `/app/data` keeps its owner on your computer: on Linux the server runs as the folder's owner — unless files inside were created by an earlier (root) version, in which case it keeps starting as root so your notes stay writable, and the log tells you to run `chown -R <uid>:<gid> <folder>` once to switch; on Docker Desktop (macOS / Windows) ownership inside the container is virtual, so the first start marks the folder for `node` without changing the owner on your computer. With rootless Docker / Podman the container's root is already an unprivileged user on the host, so nothing is changed. If the owner cannot be fixed (read-only mount, NFS `root_squash`, ...) the server starts as root with a warning, as before. A `user:` set in compose is respected as is, and `GRAPHIUM_RUN_AS_ROOT=1` keeps the old behaviour. If you drop capabilities (`cap_drop: [ALL]`), keep `SETUID` and `SETGID` so the container can switch user, or set `user:` yourself.
 > - **Remote VPS**: use [rclone](https://rclone.org/) or similar to back up `/app/data` to S3 / B2 / etc.
 > - **Authentication**: set `GRAPHIUM_AUTH_TOKEN=<your-secret>` (a long random value, e.g. `openssl rand -hex 32`) to require an `X-Graphium-Token` header on **every `/api` request** — storage, models, tools, MCP, AI — not only storage. Only the health check, the "does this server need a token" probe, and the Chrome extension's own endpoints (guarded by their own token) are open. The first time you open the UI it asks for the token; you can change it later in **⚙ Settings → Storage**. Without it, anyone who can reach the URL can read/write notes **and run commands inside the container** (the MCP connection test starts a local command) — fine on `localhost`, never on a LAN. The server prints a warning at start-up when it listens beyond loopback without a token.
 > - **Reaching it from another device**: the compose files publish on `127.0.0.1` only, so by default nothing outside the host machine can connect. To open it up, drop the `127.0.0.1:` prefix from the `ports` entry **and** set both `GRAPHIUM_AUTH_TOKEN` (every API route then requires the token, so nothing is anonymous) and `GRAPHIUM_ALLOWED_HOSTS=<host or host:port>` (the server rejects any `Host` it does not recognise). Both are required on purpose: widening the bind address alone is not enough to open the door.

@@ -40,6 +40,18 @@ export type WikiKind = "summary" | "claim" | "atom" | "synthesis" | "topic" | "a
 // agent: 人・組織・プロジェクト / place: 場所・施設。固定の 5 つ（自由なタグにはしない —
 // 絞り込みの選択肢が増え続けないため）。
 export type TopicType = "concept" | "material" | "method" | "agent" | "place";
+
+/** 本文が引いたノートの一節と、書いたときのノートでの前後の文（WikiMeta.passageContexts） */
+export type PassageContext = {
+  /** 資料（ノート）の id */
+  sourceId: string;
+  /** 本文が控えた一節（[[source:<id>|<一節>]] と同じ文字） */
+  passage: string;
+  /** 一節の直前の文（ノートの先頭なら無し） */
+  before?: string;
+  /** 一節の直後の文（ノートの末尾なら無し） */
+  after?: string;
+};
 export const TOPIC_TYPES: readonly TopicType[] = ["concept", "material", "method", "agent", "place"];
 /** 文字列が TopicType か（LLM の出力・保存データの検証用） */
 export function isTopicType(v: unknown): v is TopicType {
@@ -464,6 +476,13 @@ export type WikiMeta = {
    */
   topicMarkdown?: string;
   /**
+   * 本文が引いたノートの一節ごとの「前後の文」（書いたときのノートの文字から取る）。
+   * ページを開いたとき、一節は残っていても前後の文が書き換わったノートを知らせるのに使う
+   * （source-drift.ts）。ノートの一節だけを対象にする（PDF・Word・URL は中身が差し替わらない）。
+   * 無いページ（この欄より前に書いたページ）は、前後の文を照らさない。
+   */
+  passageContexts?: PassageContext[];
+  /**
    * トピックの種類（topic のみ）。カーパシー LLM Wiki の entity page / concept page の区別を、
    * 別種別を増やさずタグで持つ（一覧・全体グラフの絞り込み用。本文の作り方は変えない）。
    * 取り込みの振り分け役が新規作成時に付け、既存の未分類トピックは改訂時か設定の
@@ -758,7 +777,8 @@ export type SourceMissingReason =
   | "ai-answer"
   | "not-recorded";
 
-/** "claim" は v1.1 で追加（トピックが引く知見を出典として扱う） */
+/** "claim" は v1.1 で追加（トピックが引く知見を出典として扱う）。
+ *  "conversation" は AI との会話の素材（"chat" はアプリの中の AI チャットで、原文を辿れない） */
 export type SourceCheckSourceKind =
   | "note"
   | "pdf"
@@ -766,6 +786,7 @@ export type SourceCheckSourceKind =
   | "url"
   | "memo"
   | "chat"
+  | "conversation"
   | "claim"
   | "unknown";
 
@@ -800,6 +821,12 @@ export type SourceCheckEntry = {
   /** verdict が "source-missing" のときの理由 */
   missingReason?: SourceMissingReason;
   sourceTextOrigin?: "stored" | "refetched" | "extracted";
+  /**
+   * 照合で読んだ出典の原文（判定に使った `text` そのまま）の指紋。"sha256:<hex>"。
+   * 原文を読めたときだけ付く（source-missing には付かない）。あとで出典が変わったかを
+   * 確かめる材料で、判定には使わない
+   */
+  sourceTextHash?: string;
   /**
    * 照合した文（v1.1, トピックのみ）。知見は知見全体が照合対象のため付けない。
    * トピック本文中の該当ブロックのプレーンテキスト（引用の "@タイトル" 部分は除く）。
@@ -1396,18 +1423,25 @@ export type MediaInlineLabel = {
 };
 
 /**
- * 画像ブロックの OCR 結果（端末内 Tesseract.js で抽出）。
+ * 画像ブロックの OCR 結果（端末内で抽出。Tesseract.js、またはデスクトップ版の PP-OCRv6 small）。
  *
  * - text: 抽出したテキスト本体。ノート横断検索の対象になる（index-file.ts が回収）
- * - confidence: Tesseract の信頼度（0-100）
- * - lang: 認識に使った言語（"jpn+eng" 等）
+ * - confidence: 信頼度（0-100）
+ * - lang: 認識に使った言語（"jpn+eng" 等）。PP-OCRv6 small では使わないが、依頼した言語として残す
+ * - engine: 読んだエンジン（"tesseract" / "pp-ocrv6-small"）。任意。無ければ（過去のデータ）Tesseract
  * - extractedAt: 抽出日時（ISO 文字列）。画像を差し替えたときの古さ判断に使う
+ * - altText / altEngine: 検索用の別の読み（macOS の Vision = "apple-vision"）。任意。
+ *   手書きの文など text（PP-OCR）が苦手な箇所を、探すときだけ補う。表示・コピー・書き出し・
+ *   AI への本文には使わない（表示する文字は text だけ）。無い既存データはそのまま読める
  */
 export type MediaOcrEntry = {
   text: string;
   confidence: number;
   lang: string;
   extractedAt: string;
+  engine?: string;
+  altText?: string;
+  altEngine?: string;
 };
 
 /**
@@ -1507,4 +1541,34 @@ export type TableSource = {
     collapseConsecutive: boolean;
   };
   meta?: { key: string; value: string }[];
+  /**
+   * 絞り込み（列と行を選んで取り出した小さな表）の来歴。任意なので既存のノートには影響しない。
+   * あるとき fileName / fileId は取り出した結果（写し）を指し、元のファイルは derivation 側が持つ
+   */
+  derivation?: TableDerivation;
+};
+
+export type ExtractOperator = "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty";
+
+/** 絞り込みの 1 つの条件。value が空（notEmpty 以外）の条件は「書きかけ」として無視される */
+export type ExtractCondition = { column: string; op: ExtractOperator; value?: string };
+
+/**
+ * 絞り込みの来歴。表の上の「条件の 1 行」と、条件を復元して取り込み画面を開き直すのに使う。
+ * 保存される形（TableSource）の一部なのでこちらに定義を置く
+ * （data-extract/types.ts からは re-export する）
+ */
+export type TableDerivation = {
+  kind: "filter";
+  fromFileId?: string;
+  fromFileName: string;
+  /** 元のファイルをどう読んだか（行範囲・区切り）。開き直すとき、元の画面を同じ読み方で開くのに使う。古い記録には無い */
+  fromOptions?: TableSource["options"];
+  columns: string[];
+  /** 元の列の数。columns と同じなら「全列」なので、条件の 1 行に列の句を出さない。古い記録には無い */
+  sourceColumns?: number;
+  conditions: ExtractCondition[];
+  sourceRows: number;
+  resultRows: number;
+  createdAt: string;
 };

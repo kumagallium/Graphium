@@ -7,6 +7,7 @@
 //
 // ここは React にも IndexedDB にも依存しない。テストしやすいよう純関数に留める。
 
+import { sanitizeAltText } from "../../lib/ocr-alt";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import { isWordDocxEntry, type MediaIndexEntry } from "../asset-browser/media-index";
 import type { DesiredSource } from "./service";
@@ -43,9 +44,11 @@ export function desiredNoteSources(entries: NoteIndexEntry[]): DesiredSource[] {
 
 /** 素材テキストの取り方（loader が使う） */
 export type AssetTextPlan =
-  | { mode: "inline"; text: string }
+  | { mode: "inline"; text: string; altText?: string }
   | { mode: "pdf" }
-  | { mode: "docx" };
+  | { mode: "docx" }
+  /** 録音・動画の文字起こし（素材のそばの transcript.json）。loader が読む */
+  | { mode: "transcript" };
 
 /**
  * 素材の望ましいソース一覧と、各素材のテキストの取り方。
@@ -55,9 +58,34 @@ export type AssetTextPlan =
  * - Word（.docx）: ocrText が無いものすべて（PDF と同じ考え方。旧形式 .doc は mammoth で読めないので除外）
  * アーカイブ済み素材は対象外。
  */
+/**
+ * 別の読み（macOS の Vision）から作った断片の chunkId の接頭辞。探すためだけに索引へ入れる断片で、
+ * AI への文脈（wiki/retriever.ts の passages）からは外す
+ */
+export const ALT_CHUNK_PREFIX = "alt";
+
+/** 別の読みの断片か（素材の断片だけ。ノートのチャンク id とは区別する） */
+export function isAltChunk(kind: string, chunkId: string): boolean {
+  return kind === "asset" && isAltChunkId(chunkId);
+}
+
+/** chunkId だけで見分ける版（断片の一覧から読むとき。素材の連番 `alt0`, `alt1`, … の形だけ） */
+export function isAltChunkId(chunkId: string): boolean {
+  return new RegExp(`^${ALT_CHUNK_PREFIX}\\d+$`).test(chunkId);
+}
+
 export function desiredAssetSources(
   media: MediaIndexEntry[],
-  options: { includePdf?: boolean; includeDocx?: boolean } = {},
+  options: {
+    includePdf?: boolean;
+    includeDocx?: boolean;
+    /**
+     * 録音・動画の文字起こしを載せる。渡したときだけ対象にする（文字起こしを読めるのはデスクトップ版だけ）。
+     * 返す値は印に混ぜる（文字起こしが終わるたびに値を変えると、その素材だけ読み直される）。
+     * null を返した素材は載せない（この起動で読んで、文字起こしがまだ無いと分かっている素材）
+     */
+    transcriptEpoch?: (fileId: string) => number | null;
+  } = {},
 ): { desired: DesiredSource[]; plans: Map<string, AssetTextPlan>; names: Map<string, string> } {
   const desired: DesiredSource[] = [];
   const plans = new Map<string, AssetTextPlan>();
@@ -69,8 +97,10 @@ export function desiredAssetSources(
     if (m.type === "image" || m.type === "document") {
       // document の ocrText は PowerPoint のスライド文字（pptx.ts + persistOcrTextPatch）。
       // 画像の OCR テキストと同じ場所に書かれるので、同じ経路で索引に載せる
-      const text = m.ocrText?.trim();
-      if (!text) {
+      const primary = m.ocrText?.trim();
+      // 検索用の別の読み（macOS の Vision）は、探す経路である全文の索引にだけ足す（画像のみ）
+      const alt = m.type === "image" ? sanitizeAltText(m.ocrAltText) : undefined;
+      if (!primary && !alt) {
         // Word の本文は ocrText に載らないので、loader が mammoth で抽出する（PDF と同じ経路）
         if (includeDocx && m.type === "document" && isWordDocxEntry(m)) {
           desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `docx:${m.uploadedAt ?? ""}` });
@@ -79,8 +109,9 @@ export function desiredAssetSources(
         }
         continue;
       }
-      desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `ocr:${fnv1a(text)}` });
-      plans.set(m.fileId, { mode: "inline", text });
+      // 別の読みがあるときだけ印に混ぜる（無いときは従来と同じ印のまま＝既存の索引を読み直さない）
+      desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: alt ? `ocr:${fnv1a(primary ?? "")}:alt:${fnv1a(alt)}` : `ocr:${fnv1a(primary ?? "")}` });
+      plans.set(m.fileId, alt ? { mode: "inline", text: primary ?? "", altText: alt } : { mode: "inline", text: primary ?? "" });
       names.set(m.fileId, m.name);
     } else if (m.type === "url") {
       // 抜粋に加えて OGP の説明文も索引に含める（抜粋が無くても説明文だけで当たる）
@@ -93,6 +124,13 @@ export function desiredAssetSources(
     } else if (m.type === "pdf" && includePdf) {
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `pdf:${m.uploadedAt ?? ""}` });
       plans.set(m.fileId, { mode: "pdf" });
+      names.set(m.fileId, m.name);
+    } else if ((m.type === "audio" || m.type === "video") && options.transcriptEpoch) {
+      // 文字起こしがあるかどうかは素材の索引に無いので、loader が読んでみて決める
+      const epoch = options.transcriptEpoch(m.fileId);
+      if (epoch === null) continue;
+      desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `transcript:${m.uploadedAt ?? ""}:${epoch}` });
+      plans.set(m.fileId, { mode: "transcript" });
       names.set(m.fileId, m.name);
     }
   }

@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -101,6 +101,7 @@ import {
 import {
   DataImportModal,
   buildTableSource,
+  extractHeaderMeta,
   toTableBlock,
   defaultCaption,
   isDelimitedDataFile,
@@ -111,6 +112,8 @@ import {
   type DelimitedImportOptions,
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
+import { keepDerivationFor, registerDerivedSource, reimportTargetOf } from "./features/data-extract/derive";
+import type { ExtractSpec, TableDerivation } from "./features/data-extract/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
 import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
 import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
@@ -135,6 +138,7 @@ import {
 import { ToolApprovalHost } from "./features/ai-assistant/ToolApprovalDialog";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
+import { decideInitialDocAction } from "./lib/initial-doc-restore";
 import {
   csvFileNameFor,
   noteTableToRows,
@@ -331,6 +335,7 @@ import {
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
 import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
+import { RecordsView } from "./features/record-dashboard/RecordsView";
 import { selectInboxOcrTargets } from "./features/mobile-capture/inbox/ocr-targets";
 import { selectInboxTranscribeTargets } from "./features/mobile-capture/inbox/transcribe-targets";
 import { enqueueInboxTranscribe } from "./features/meeting-recorder/inbox-auto-transcribe";
@@ -432,6 +437,8 @@ import { attachSourceCheck } from "./features/source-check/attach";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./features/wiki/auto-upkeep";
 import type { ReconcileConflict, ReconcileDisagreement, ReconcileUnbacked } from "./features/wiki/reconcile-types";
 import { extractSectionsFromBlocks, buildRewrittenPage, reconcileWikiPage, setSourceDateLookup } from "./features/wiki/wiki-service";
+import { findSourceDrift, type SourceDrift } from "./features/wiki/source-drift";
+import { SourceDriftNotice } from "./features/wiki/SourceDriftNotice";
 import { relinkTopicMentions } from "./features/wiki/topic-mention-links";
 import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
@@ -576,6 +583,8 @@ import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
 import { printNote, PrintToast } from "./features/pdf-export";
 import { setCurrentNoteTitle } from "./features/meeting-recorder/store";
+import { useTranscribeJobs } from "./features/meeting-recorder/use-meeting-recorder";
+import { loadTranscriptText } from "./features/meeting-recorder/transcript-text";
 import { setMeetingNoteActions } from "./features/meeting-recorder/note-actions";
 import { getOpenNoteEditor } from "./lib/open-note-editors";
 import { newId } from "./lib/id";
@@ -883,6 +892,7 @@ function NoteHeaderMenu({
   onExportPdf,
   pdfExporting,
   onExportMarkdown,
+  onExportDocx,
   onExportProvJsonLd,
   provExportDisabled,
   onExportPlanProv,
@@ -932,6 +942,8 @@ function NoteHeaderMenu({
   pdfExporting: boolean;
   /** ノートを Markdown ファイルとしてエクスポートする */
   onExportMarkdown: () => void;
+  /** ノートを Word（.docx）ファイルとして書き出す */
+  onExportDocx: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
   /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
@@ -1130,6 +1142,14 @@ function NoteHeaderMenu({
           >
             <FileText size={14} />
             {t("markdown.export")}
+          </button>
+          <button
+            className={itemClass}
+            data-tooltip={t("docx.exportHint")}
+            onClick={() => { onExportDocx(); setOpen(false); }}
+          >
+            <FileType size={14} />
+            {t("docx.export")}
           </button>
           <button
             className={itemClass}
@@ -2185,11 +2205,14 @@ function NoteEditorInner({
   }, [chatStorageId]);
   const editorRef = useRef<any>(null);
   // 「いま画面にあるエディタ」だけを持つ ref。SandboxEditor がコミット中
-  // （useLayoutEffect）に差し替えるので、上の editorRef と違って、下の
-  // key={fileId || "new"} で作り直された直後でも捨てられた前のインスタンスを指さない
+  // （useLayoutEffect）に差し替えるので、上の editorRef と違って、言語の切り替えで
+  // エディタが作り直された直後でも捨てられた前のインスタンスを指さない
   // （editorRef は onEditorReady = passive effect 待ちで、その一瞬だけ古いままになる）。
   // 非同期の結果を本文へ書き戻す処理の行き先に使う（いまは外部画像の取り込みだけ）。
   const liveEditorRef = useRef<any>(null);
+  // 開いているノート。素材の登録を待つあいだにノートが切り替わったかを見るのに使う
+  const openFileIdRef = useRef(fileId);
+  openFileIdRef.current = fileId;
   // picker callbacks をエディタ単位で登録するために、エディタ実体を state でも持つ。
   // editorRef.current は ref なので useEffect の依存に乗せられない。
   const [mainEditor, setMainEditor] = useState<any>(null);
@@ -2514,6 +2537,13 @@ function NoteEditorInner({
       initialOptions?: DelimitedImportOptions;
       /** 挿入形式の初期値（再取り込み時に元のブロック種別を渡す） */
       initialTarget?: ImportTarget;
+      /** 絞り込みの開き直しで復元する列と条件 */
+      initialExtract?: ExtractSpec;
+      /**
+       * 絞り込みの元の素材が読めず、写しを開いたときの来歴。絞り込み無しで確定しても
+       * 表の出所に残す（写しを読み直しただけで、どう絞ったかの記録を失わない）
+       */
+      keepDerivation?: TableDerivation;
     } | null
   >(null);
 
@@ -2712,6 +2742,13 @@ function NoteEditorInner({
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
+  // 確定のときに開いていたノートが、まだ開いているか。新規ノート（fileId が null）は保存で
+  // ID が付くので、null → 値は同じノートとみなす（別のノートへ移ったときだけ false）
+  const sameNoteStillOpen = useCallback(
+    (startFileId: string | null) => startFileId === null || openFileIdRef.current === startFileId,
+    []
+  );
+
   // データ表として取り込む → 素材を正として、ノートには参照（dataTable ブロック）だけを置く。
   //
   // 文書の表と違い、行の実体は素材にある。素材未登録のファイル（スラッシュ・ドロップ
@@ -2725,11 +2762,48 @@ function NoteEditorInner({
         replaceBlockId?: string;
         file?: File;
         text?: string;
+        keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
       },
       result: DataImportResult
     ) => {
+      // 確定したときのノート。絞り込みは素材の登録を待つので、その間に別のノートへ移ったら挿さない
+      const startFileId = openFileIdRef.current;
+      // カーソルのあったブロックは、待つ前に ID で覚えておく。素材の登録を待つ間に
+      // 言語の切り替えでエディタが作り直されても、同じ ID のブロックを引き直せる
+      const anchorId: string | undefined =
+        liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
+      let derivedSource: TableSource | undefined;
       let fileId = file.fileId;
-      if (!fileId) {
+      if (result.extract) {
+        // 絞り込み: 絞った結果を新しい小さな素材にして、表はその素材を読む。
+        // 元の素材は残し、どう絞ったかは出所（derivation）に持つ
+        if (!uploadAsset) {
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
+        try {
+          derivedSource = await registerDerivedSource(
+            { uploadAsset, primeAssetText },
+            {
+              file,
+              fromOptions: result.options,
+              extract: result.extract,
+              meta: extractHeaderMeta(result.parsed.headerLines),
+            }
+          );
+        } catch (err) {
+          console.warn("絞り込んだデータの素材登録に失敗:", err);
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
+        // 登録を待つ間にノートを切り替えていたら、別のノートには挿さない
+        if (!sameNoteStillOpen(startFileId)) {
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
+        fileId = derivedSource?.fileId;
+      } else if (!fileId) {
         const rawFile = file.file;
         if (!rawFile || !uploadAsset) return;
         try {
@@ -2740,17 +2814,26 @@ function NoteEditorInner({
         }
       }
       if (!fileId) return;
-      // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）
-      if (file.text !== undefined) primeAssetText(fileId, file.text);
-      // 登録を待つ間にノートを切り替えていることがあるので、挿す先は今生きているエディタ
-      const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
+      // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）。
+      // 絞り込みのときは写しの本文を registerDerivedSource が覚えさせている
+      if (!derivedSource && file.text !== undefined) primeAssetText(fileId, file.text);
+      // 登録を待つ間にエディタが作り直される（言語の切り替え・ノートの切り替え）ことがあるので、
+      // 挿す先は今生きているエディタ。作り直された直後は editorRef が一瞬だけ前の
+      // インスタンスを指すので liveEditorRef を先に見る
+      const editor =
+        liveEditor(pickerEditorRef.current) ?? liveEditor(liveEditorRef.current) ?? editorRef.current;
       if (!editor) return;
-      const source = buildTableSource({
-        fileName: file.fileName,
-        fileId,
-        options: result.options,
-        parsed: result.parsed,
-      });
+      const source =
+        derivedSource ??
+        buildTableSource({
+          fileName: file.fileName,
+          fileId,
+          options: result.options,
+          parsed: result.parsed,
+        });
+      // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
+      const keep = derivedSource ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
+      if (keep) source.derivation = keep;
       const props = {
         source: serializeDataTableSource(source),
         caption: defaultCaption(file.fileName),
@@ -2768,7 +2851,8 @@ function NoteEditorInner({
         tableMetaStore.setSource(existing.id, undefined);
         editor.replaceBlocks([existing], [{ type: "dataTable", props: { ...props, caption } }]);
       } else {
-        const currentBlock = editor.getTextCursorPosition()?.block;
+        const currentBlock =
+          (anchorId ? editor.getBlock(anchorId) : undefined) ?? editor.getTextCursorPosition()?.block;
         const anchor = currentBlock ?? editor.document[editor.document.length - 1];
         if (!anchor) return;
         editor.insertBlocks([{ type: "dataTable", props }], anchor, "after");
@@ -2781,7 +2865,7 @@ function NoteEditorInner({
       markDirtyRef.current();
       setTimeout(() => saveNowRef.current?.(), 0);
     },
-    [uploadAsset, tableMetaStore, isSlashOnlyBlock, removeBlockMetadata]
+    [uploadAsset, tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, sameNoteStillOpen]
   );
 
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
@@ -2790,31 +2874,37 @@ function NoteEditorInner({
   // 「どのファイルの何行目を、どう区切って読んだか」と前置きの測定条件は
   // tableMeta.source に置く。ここを通さずに表だけ作ると、あとから
   // 「この数字はどの生データから来たのか」を辿る手段が無くなる。
-  const handleDataImportConfirm = useCallback(
+  // 文書の表として挿す／差し替える本体。derived があるときは、その出所（写しの素材を読む・
+  // derivation つき）を注釈に置く。無いときは今までどおり
+  const applyNoteTable = useCallback(
     (
       file: {
         fileName: string;
         fileId?: string;
         replaceBlockId?: string;
-        /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
         file?: File;
-        /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
         text?: string;
+        keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
       },
-      result: DataImportResult
+      result: DataImportResult,
+      derived?: TableSource,
+      anchorId?: string
     ) => {
-      setDataImportFile(null);
-      if (result.target === "dataTable") {
-        void insertDataTable(file, result);
-        return;
-      }
       // ダイアログを開いてから確定するまでの間にノートを切り替えると、
       // pickerEditorRef はアンマウント済みのエディタを指したままになる。そこへ
       // 挿入すると「取り込んだのに何も出ない」（ブロックは死んだエディタに入り、
       // 注釈だけが共有ストアに残る）。DOM が繋がっている方を選ぶ。
       const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
       if (!editor) return;
-      const block = toTableBlock(result.parsed);
+      // 文書の表は DOC_TABLE_HARD_MAX_ROWS で止まるので通常は常に全行。標本だけの結果で表を作らない（防御）
+      if (!derived && !result.rowsComplete) return;
+      const block = toTableBlock(
+        // 絞り込みの結果は絞った後の全行（大きなファイルでも標本ではない）
+        derived && result.extract
+          ? { headers: result.extract.result.headers, rows: result.extract.result.rows, headerLines: [], footerLines: [] }
+          : result.parsed
+      );
       if (!block) return;
 
       // 再取り込みは中身だけ差し替える（ブロック ID を保つので、そのテーブルを
@@ -2833,7 +2923,7 @@ function NoteEditorInner({
         editor.updateBlock(file.replaceBlockId, { content: block.content });
         blockId = file.replaceBlockId;
       } else {
-        currentBlock = editor.getTextCursorPosition()?.block;
+        currentBlock = (anchorId ? editor.getBlock(anchorId) : undefined) ?? editor.getTextCursorPosition()?.block;
         // カーソルが取れない（ドロップ直後など）ときは末尾に足す
         const anchor = currentBlock ?? editor.document[editor.document.length - 1];
         if (!anchor) return;
@@ -2847,15 +2937,18 @@ function NoteEditorInner({
         if (!tableMetaStore.getCaption(blockId)) {
           tableMetaStore.setCaption(blockId, defaultCaption(file.fileName));
         }
-        tableMetaStore.setSource(
-          blockId,
+        const builtSource =
+          derived ??
           buildTableSource({
             fileName: file.fileName,
             fileId: file.fileId,
             options: result.options,
             parsed: result.parsed,
-          })
-        );
+          });
+        // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
+        const keep = derived ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
+        if (keep) builtSource.derivation = keep;
+        tableMetaStore.setSource(blockId, builtSource);
       }
 
       if (currentBlock && isSlashOnlyBlock(currentBlock)) {
@@ -2884,7 +2977,7 @@ function NoteEditorInner({
       // 数秒かかりうるので、表の挿入を待たせず後から source に fileId を足す
       // （URL 素材登録と同じ流儀）。
       const rawFile = file.file;
-      if (blockId && !file.fileId && rawFile && uploadAsset) {
+      if (!derived && blockId && !file.fileId && rawFile && uploadAsset) {
         const targetBlockId = blockId;
         void (async () => {
           try {
@@ -2902,7 +2995,69 @@ function NoteEditorInner({
         })();
       }
     },
-    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset, insertDataTable]
+    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset]
+  );
+
+  // データ取り込みダイアログの確定。行き先ごとに、データ表は insertDataTable、文書の表は
+  // applyNoteTable へ振り分ける。絞り込み（result.extract）があるときは、絞った結果を新しい素材に
+  // 登録してから挿す。
+  const handleDataImportConfirm = useCallback(
+    (
+      file: {
+        fileName: string;
+        fileId?: string;
+        replaceBlockId?: string;
+        /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
+        file?: File;
+        /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
+        text?: string;
+        keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
+      },
+      result: DataImportResult
+    ) => {
+      setDataImportFile(null);
+      if (result.target === "dataTable") {
+        void insertDataTable(file, result);
+        return;
+      }
+      if (result.extract) {
+        // 絞り込み（文書の表）: 素材の登録を待つあいだにカーソルが動いても、挿す先は
+        // 確定したときのブロックにする。登録が済んでから本体（applyNoteTable）へ渡す
+        const anchorId: string | undefined =
+          liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
+        const startFileId = openFileIdRef.current;
+        if (!uploadAsset) {
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
+        void (async () => {
+          try {
+            const derived = await registerDerivedSource(
+              { uploadAsset, primeAssetText },
+              {
+                file,
+                fromOptions: result.options,
+                extract: result.extract!,
+                meta: extractHeaderMeta(result.parsed.headerLines),
+              }
+            );
+            // 登録を待つ間にノートを切り替えていたら、別のノートには挿さない
+            if (!sameNoteStillOpen(startFileId)) {
+              alert(tStatic("dataExtract.insertFailed"));
+              return;
+            }
+            applyNoteTable(file, result, derived, anchorId);
+          } catch (err) {
+            console.warn("絞り込んだデータの素材登録に失敗:", err);
+            alert(tStatic("dataExtract.insertFailed"));
+          }
+        })();
+        return;
+      }
+      applyNoteTable(file, result);
+    },
+    [uploadAsset, insertDataTable, applyNoteTable, sameNoteStillOpen]
   );
 
   // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
@@ -2912,11 +3067,36 @@ function NoteEditorInner({
     (blockId: string, source: TableSource, target: ImportTarget = "table") => {
       if (!source.fileId) return;
       void (async () => {
-        try {
+        const readAsset = async (fileId: string) => {
           const provider = getActiveProvider();
-          const blobUrl = await provider.getMediaBlobUrl(source.fileId!);
+          const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
-          const text = await readDataFileText(blob);
+          return readDataFileText(blob);
+        };
+        // 絞り込みの表は、元の素材を条件つきで開く（条件を直せるように）。
+        // 元が読めない（消された）ときは、写しをふつうに開く
+        const back = reimportTargetOf(source);
+        if (back) {
+          try {
+            const text = await readAsset(back.fileId);
+            setDataImportFile({
+              fileName: back.fileName,
+              text,
+              fileId: back.fileId,
+              replaceBlockId: blockId,
+              initialOptions: back.initialOptions
+                ? { ...back.initialOptions, customDelimiter: back.initialOptions.customDelimiter }
+                : undefined,
+              initialExtract: back.initialExtract,
+              initialTarget: target,
+            });
+            return;
+          } catch {
+            // 元の素材が読めない → 下で写しを開く
+          }
+        }
+        try {
+          const text = await readAsset(source.fileId!);
           setDataImportFile({
             fileName: source.fileName,
             text,
@@ -2928,6 +3108,8 @@ function NoteEditorInner({
             },
             // 既定は元のブロック種別。ダイアログで切り替えれば相互に変換できる
             initialTarget: target,
+            // 写しを開き直しただけでは、どう絞ったかの記録を失わない
+            keepDerivation: source.derivation,
           });
         } catch {
           alert(tStatic("dataImport.readError"));
@@ -3031,7 +3213,7 @@ function NoteEditorInner({
             });
           }
           // 登録を待つ間にノートを切り替えていることがあるので、差し替え先は今生きているエディタ
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "table") return;
           removeBlockMetadata([blockId]);
@@ -3072,7 +3254,7 @@ function NoteEditorInner({
           if (data.rows.length > DOC_TABLE_HARD_MAX_ROWS) return;
           const spec = toTableBlock({ headers: data.headers, rows: data.rows, headerLines: [], footerLines: [] });
           if (!spec) return;
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "dataTable") return;
           const { insertedBlocks } = live.replaceBlocks([current], [spec]);
@@ -3322,7 +3504,7 @@ function NoteEditorInner({
   // 開いた時点で固定しているので、切り替え先のノートへ書くことはない（saveTargetRef）。
   const markDirtyRef = useRef<() => void>(() => {});
   // 取り込みのような「まとまった量が一度に入る」編集は、3 秒の自動保存待ちに
-  // 賭けずその場で保存する（待っている間に何かがエディタを作り直すと丸ごと消える）。
+  // 賭けずその場で保存する（待っている間にノートを閉じたり切り替えたりしても失わない）。
   // markDirtyRef と同じく useAutoSave がこの位置より後で宣言されるため ref 経由。
   const saveNowRef = useRef<(() => void) | null>(null);
 
@@ -4197,6 +4379,18 @@ function NoteEditorInner({
     : t("share.privateHistoryExcludedHint");
   // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
   const [shareFolderDialogOpen, setShareFolderDialogOpen] = useState(false);
+  // 共有のたびに置く「読める写し」の材料（Wiki ページには置かない）。noteId は PROV 書き出しと同じ規則
+  const readableCopyContext = useMemo(
+    () =>
+      !isWikiDoc && fileId
+        ? {
+            noteId: fileId.replace(/^(wiki|skill):/, ""),
+            noteIndex: rawNoteIndex ?? noteIndex ?? null,
+            mediaIndex: mediaIndex?.media ?? null,
+          }
+        : undefined,
+    [isWikiDoc, fileId, rawNoteIndex, noteIndex, mediaIndex],
+  );
   const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
     if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
@@ -4231,6 +4425,7 @@ function NoteEditorInner({
         blobRoot: shareTarget.blobRoot ?? undefined,
         // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4249,15 +4444,17 @@ function NoteEditorInner({
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
       setShareFolderDialogOpen(false);
+      const successMessage = result.isUpdate ? t("share.successReshare") : t("share.successFirst");
+      // 読める写しだけ置けなかったときは、共有の成功に 1 行足して知らせる（共有は成功している）
       window.alert(
-        result.isUpdate
-          ? t("share.successReshare")
-          : t("share.successFirst"),
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? successMessage + "\n" + t("share.readableCopyFailed")
+          : successMessage,
       );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4288,6 +4485,7 @@ function NoteEditorInner({
         author: sharedAuthor,
         blobRoot: getBlobRoot(toRoot) ?? undefined,
         includePrivateHistory: getShareIncludesPrivateHistory(),
+        readable: readableCopyContext,
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4303,11 +4501,17 @@ function NoteEditorInner({
       });
       notifySharedLibraryChanged();
       setMoveFolderDialogOpen(false);
-      window.alert(removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error }));
+      const moveMessage = removed.ok ? t("share.move.success") : t("share.move.oldRemains", { error: removed.error });
+      // 移した先に読める写しだけ置けなかったときは、共有のときと同じ 1 行を足して知らせる
+      window.alert(
+        "readableCopy" in result && result.readableCopy === "failed"
+          ? moveMessage + "\n" + t("share.readableCopyFailed")
+          : moveMessage,
+      );
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4616,6 +4820,8 @@ function NoteEditorInner({
       mediaIndex: mediaIndex?.media ?? null,
       wikiEntities: provWikiEntities,
       identity: loadAuthorIdentity() ?? undefined,
+      // ノート間のつながり（dcterms:references）の相手の種類・題を引く（アーカイブ込み）
+      noteIndex: rawNoteIndex ?? noteIndex ?? null,
     });
     const jsonLd = buildNoteProvJsonLd({
       provDoc: exportProvDoc,
@@ -4631,7 +4837,7 @@ function NoteEditorInner({
     const blob = new Blob([JSON.stringify(jsonLd, null, 2)], { type: "application/ld+json" });
     // タイトルが空なら noteId をファイル名・label に使う（'.jsonld' の隠しファイル化を避ける）
     void downloadBlob(blob, `${(title || noteId).replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`);
-  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links]);
+  }, [fileId, title, initialDoc, captureDocument, captureIndexProp, mediaIndex, provWikiEntities, linkStore.links, rawNoteIndex, noteIndex]);
 
   // ラベル・リンク・テーブル注釈・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -5317,7 +5523,7 @@ function NoteEditorInner({
 
   // 会議の録音開始時に文字起こしブロックを差し込む命令口を登録する。
   // 非同期（start 応答の後）に呼ばれるので editorRef ではなく liveEditorRef を使う
-  // （key で作り直された直後に、捨てられた前のエディタへ書かないため）。
+  // （言語の切り替えで作り直された直後に、捨てられた前のエディタへ書かないため）。
   useEffect(() => {
     if (!insertMeetingBlockRef) return;
     insertMeetingBlockRef.current = (props) => insertMeetingTranscriptBlock(liveEditorRef.current, props);
@@ -5805,9 +6011,28 @@ function NoteEditorInner({
 
   // ── 初期データの復元 ──
   const initializedRef = useRef(false);
+  // 白紙の新規ノートとして開いた（開いた時点で復元するものが無い）。このときに後から届く
+  // initialDoc は、このエディタ自身が最初の保存で書いた本文（fm.activeDoc）。ストアの
+  // 中身は保存した時点より新しいことがある（保存の最中に付けた表の注釈・ラベルなど）ので、
+  // 保存した内容で置き換えない。エディタを作り直さなくなったので、本文だけ残って注釈が
+  // 巻き戻る、という食い違いをここで防ぐ
+  const openedBlankRef = useRef(initialDoc == null);
   useEffect(() => {
-    if (initializedRef.current || !initialDoc) return;
+    const action = decideInitialDocAction({
+      initialized: initializedRef.current,
+      hasInitialDoc: !!initialDoc,
+      openedBlank: openedBlankRef.current,
+    });
+    if (action === "skip" || !initialDoc) return;
     initializedRef.current = true;
+    if (action === "notify-only") {
+      // 復元はしないが、「準備ができた」ことは今までと同じ時点で伝える。リンクはストアの
+      // 生きている中身を使う（引数を渡さない）
+      if (editorRef.current) {
+        mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r));
+      }
+      return;
+    }
     // mention-live: flush 時に restoreLinks 前後どちらの呼び出しでも使えるよう、
     // if ブロックの外まで持ち出す（本文が空のドキュメントなら空のまま）
     let restoredLinksForRename: BlockLink[] = [];
@@ -6175,8 +6400,8 @@ function NoteEditorInner({
 
   // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
   // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
-  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
-  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // エディタが作り直されるたびに取り直す — 言語の切り替えでエディタだけが作り直されるが、
+  // 表の注釈（tableMetaStore）は残るため。
   // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
   // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
   useEffect(() => {
@@ -6382,6 +6607,33 @@ function NoteEditorInner({
       }
     }
   }, [markDirty, showAiTitleToast]);
+  // ── Word（.docx）エクスポートハンドラー ──
+  // Markdown と同じく今のエディタ内容（未保存の編集含む）が対象。docx は書き出すときに読み込む
+  // （最初の読み込みに入れない）。失敗は題のトーストと同じ見え方で知らせる
+  const docxExportingRef = useRef(false);
+  const handleExportDocx = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (docxExportingRef.current) return;
+    docxExportingRef.current = true;
+    try {
+      const { exportNoteToDocx, captureChartImage } = await import("./features/docx-export");
+      await exportNoteToDocx({
+        title,
+        blocks: editor.document,
+        tableMeta: tableMetaStoreRef.current.getSnapshot(),
+        captureBlockImage: async (blockId) => {
+          const root = document.querySelector("[data-label-wrapper] .bn-editor");
+          return root ? captureChartImage(root, blockId) : null;
+        },
+      });
+    } catch (e) {
+      console.error("[docx-export] export failed:", e);
+      showAiTitleToast({ kind: "error", message: t("docx.exportFailed") });
+    } finally {
+      docxExportingRef.current = false;
+    }
+  }, [title, showAiTitleToast, t]);
   const undoAiTitle = useCallback(() => {
     if (aiTitleToast?.kind !== "done") return;
     // 付けたあとに手で直していたら、その直しを消さない
@@ -6814,9 +7066,9 @@ function NoteEditorInner({
 
   // 本文に入ったばかりの外部画像を、その場でローカルへ取り込む。
   // 自分で貼った画像は取り込み後ローカル参照になるので、外部メディアのバーは出ない。
-  // 書き戻し先は liveEditorRef（editorRef ではない）: 取り込みの最中に自動保存で
-  // fileId が付くと下の key={fileId || "new"} でエディタだけが作り直され、editorRef が
-  // 追いつく前に取り込みが解決すると、捨てられたインスタンスへ書いて消えるため。
+  // 書き戻し先は liveEditorRef（editorRef ではない）: 取り込みの最中に言語の切り替えで
+  // エディタが作り直され、editorRef が追いつく前に取り込みが解決すると、
+  // 捨てられたインスタンスへ書いて消えるため。
   const remoteImport = useRemoteImageImport({
     editorRef: liveEditorRef,
     scope: remoteScope,
@@ -7040,6 +7292,7 @@ function NoteEditorInner({
           text={dataImportFile.text}
           initialOptions={dataImportFile.initialOptions}
           initialTarget={dataImportFile.initialTarget}
+          initialExtract={dataImportFile.initialExtract}
           onCancel={() => setDataImportFile(null)}
           onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />
@@ -7260,6 +7513,7 @@ function NoteEditorInner({
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
           onExportMarkdown={handleExportMarkdown}
+          onExportDocx={handleExportDocx}
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!fileId}
           onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
@@ -7605,11 +7859,11 @@ function NoteEditorInner({
             {/* 外部画像のローカル取り込みの進行トースト（OCR の 1 段上） */}
             <RemoteImportToast state={remoteImport.toast} />
             <SandboxEditor
-              key={fileId || "new"}
+              // 鍵は付けない。fileId 由来の鍵だと、最初の保存で作り直されて保存の最中の編集が
+              // 消える。ノートの切り替えは、外側の key={fm.editorKey} が NoteEditor ごと作り直す
               editable={!archived && !trashed}
-              // 外部メディアの読み込み同意の単位。key とは別の値にする: 新規ノートは
-              // 自動保存で fileId が付いた時点でこの key が変わりエディタが作り直されるが、
-              // 開いている本文は同じなので、同意まで作り直されては困る。
+              // 外部メディアの読み込み同意の単位。fileId 由来にしない: 新規ノートは最初の
+              // 保存で fileId が付くが、開いている本文は同じなので、同意の単位は変えない。
               remoteContentScope={remoteScope}
               blocks={customBlockEntries}
               initialContent={initialContent}
@@ -7619,7 +7873,7 @@ function NoteEditorInner({
               slashMenuGroupOrder={getSlashMenuGroupOrder}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
-              // 作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
+              // 言語の切り替えによる作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
               // 取り込み中の外部画像の書き戻し先（useRemoteImageImport）に使う。
               liveEditorRef={liveEditorRef}
               onChange={handleContentChange}
@@ -8601,6 +8855,10 @@ export function NoteApp() {
   // モバイル受信箱ビュー（同期フォルダ <root>/Inbox/ の「まだ取り込んでいない」ファイル一覧）。
   // 取り込むと素材ライブラリへ振り分けられ、この一覧からは消える（_imported/ 退避）。
   const [showMobile, setShowMobile] = useState(false);
+  // 記録の画面（ノート・素材・メモ・AI のページを残した順に並べる）。recordsQuery は
+  // Cmd+K の「記録で見る」から来たときに入れておく探す言葉
+  const [showRecords, setShowRecords] = useState(false);
+  const [recordsQuery, setRecordsQuery] = useState("");
   // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
   // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
   //
@@ -9232,12 +9490,19 @@ export function NoteApp() {
   // 語彙インデックス（BM25）をノート / Wiki / 素材に追従させる。
   // Cmd-K の本文・素材検索と、AI チャットの横断検索（埋め込みと RRF で併用）の共通コア。
   // 索引は端末ローカルの再構築可能なキャッシュで、ノートデータには何も書かない。
+  // 録音・動画の文字起こしも全文の索引に載せる（文字起こしを読めるのはデスクトップ版だけ）
+  const transcribeJobs = useTranscribeJobs();
+  const lexicalTranscripts = useMemo(
+    () => (isTauri() ? { load: loadTranscriptText, jobs: transcribeJobs } : undefined),
+    [transcribeJobs],
+  );
   useLexicalIndexSync({
     authenticated,
     noteIndex: fm.noteIndex ?? null,
     mediaIndex: fm.mediaIndex ?? null,
     getCachedDoc: fm.getCachedDoc,
     loadDoc: fm.loadDoc,
+    transcripts: lexicalTranscripts,
   });
 
   // 共有ライブラリ（共有ルートに置いたままのエントリ）を語彙索引の第 3 レーンに追従させる。
@@ -9905,7 +10170,7 @@ export function NoteApp() {
   }, [fmGetCachedDocStable, fmReindexNoteFromDocStable, listSidePeekNoteId, assetSidePeekNoteId]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
-  // activeLabel → showNoteList → showMemos → showMobile → activeWikiView → activeWikiKind →
+  // activeLabel → showNoteList → showMemos → showRecords → showMobile → activeWikiView → activeWikiKind →
   // sharedEntryViewId → showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
   // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
   // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
@@ -9923,6 +10188,7 @@ export function NoteApp() {
     fm.setShowProcessGallery(false);
     fm.setActiveWikiKind(null);
     setShowMemos(false);
+    setShowRecords(false);
     setShowMobile(false);
     setShowTrash(false);
     setShowSharedLibrary(false);
@@ -10472,6 +10738,7 @@ export function NoteApp() {
     openMaterialFull: (fileId: string) => setFocusedMaterial({ fileId, fullMode: true }),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
+    setShowRecords: (show: boolean) => setShowRecords(show),
     // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない
     //（サイドバーにも出さない）。
     setShowMobile: (show: boolean) => setShowMobile(show && isTauri()),
@@ -11608,6 +11875,7 @@ export function NoteApp() {
           captureIndex: capture.captureIndex ?? null,
           mediaIndex: fm.mediaIndex?.media ?? null,
           identity,
+          noteIndex: fm.rawNoteIndex ?? index,
           planContext: { index, planDocs: docs },
         });
         notes.set(noteId, { provDoc, title: doc.title || noteId, page, extras });
@@ -11621,7 +11889,7 @@ export function NoteApp() {
     } finally {
       planExportingRef.current = false;
     }
-  }, [fm.activeFileId, fm.noteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
+  }, [fm.activeFileId, fm.noteIndex, fm.rawNoteIndex, fm.loadDoc, fm.mediaIndex, capture.captureIndex, showSharedNotice]);
 
   const handleAdoptProposalInNote = useCallback(
     (input: { proposalId: string; targetId: string }) => {
@@ -12051,6 +12319,15 @@ export function NoteApp() {
   // 照合・消去の保存は fm.handleSaveWikiFile が doc キャッシュと wikiMetas を更新し、
   // ピークはキャッシュ側の wikiMeta を読むので、開いたまま結果が反映される。
   const renderPeekWikiContext = ({ wikiId, wikiMeta, sourceCheckStale, openNote }: PeekWikiContextArgs) => (
+    <>
+    {typeof wikiMeta.topicMarkdown === "string" && (
+      <SourceDriftNotice
+        pageKey={`${wikiId}:${wikiMeta.lastIngestedAt ?? ""}`}
+        loadSourceDrift={() => loadSourceDriftFor(wikiId)}
+        titleOf={sourceDriftTitleOf}
+        onReread={(sourceId) => { void ingestNoteIds([sourceId]); }}
+      />
+    )}
     <WikiContextDrawer
       wikiMeta={wikiMeta}
       noteIndex={fm.noteIndex}
@@ -12082,6 +12359,7 @@ export function NoteApp() {
       onWriteRationale={openRationalePromptForWiki}
       onUpdateWikiMeta={(patch) => void updateWikiMetaPatch(wikiId, patch)}
     />
+    </>
   );
 
   // 食い違いの節で引用に添える資料の日付（ノートは作成日、論文は出どころ情報の年）。
@@ -12133,6 +12411,25 @@ export function NoteApp() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fm, capture.captureIndex]);
+
+  // 書いたあとで資料（ノート）から消えた一節を、ページを開いたときに確かめる（AI は使わない）。
+  // 書いたあとで更新されたノートだけ本文を読み、引用した一節がまだあるかを照らす（source-drift.ts）
+  const loadSourceDriftFor = useCallback(async (wikiId: string): Promise<SourceDrift[]> => {
+    const doc = fm.getCachedDoc(`wiki:${wikiId}`) ?? (await fm.loadDoc(`wiki:${wikiId}`));
+    if (!doc) return [];
+    const modified = new Map<string, string>();
+    for (const n of fm.noteIndex?.notes ?? []) {
+      // アプリの外での編集（ファイルの更新日時）も拾う。どちらか新しい方
+      const a = n.modifiedAt;
+      const b = n.fileModifiedAt;
+      modified.set(n.noteId, b && (!a || b > a) ? b : a);
+    }
+    const { resolveSource } = buildTopicSourceResolvers();
+    return findSourceDrift(doc, (id) => modified.get(id), async (id) => (await resolveSource(id))?.text);
+  }, [fm, buildTopicSourceResolvers]);
+  const sourceDriftTitleOf = (sourceId: string) =>
+    fm.noteIndex?.notes.find((n) => n.noteId === sourceId)?.title ?? sourceId;
+
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
   // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
@@ -16095,6 +16392,8 @@ export function NoteApp() {
     memoCount: capture.captureIndex?.captures.length ?? 0,
     onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
+    onShowRecords: () => { closeAllViews(); setRecordsQuery(""); setShowRecords(true); setSidebarOpen(false); router.navigate({ view: "records" }); },
+    recordsActive: showRecords,
     // モバイル（受信箱）: **未処理**件数。取り込み済み素材の数ではない。
     // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）— web では
     // onShowMobile を渡さない＝サイドバーの「モバイル」見出し自体が出ない。
@@ -16981,6 +17280,30 @@ export function NoteApp() {
               }
             } : undefined}
           />
+        ) : showRecords ? (
+          // 記録: ノートの索引・素材の索引・メモの一覧を読むだけ（どれも書き換えない）。
+          // ノート・AI のページはまず横のピークで開く（ホームを離れない。全画面へはピークの中から）。
+          // 素材は素材の一覧のピーク、メモはメモのピーク
+          <RecordsView
+            noteIndex={fm.noteIndex}
+            mediaIndex={fm.mediaIndex}
+            captureIndex={capture.captureIndex}
+            trashedNotes={fm.trashedNotes}
+            archivedNotes={fm.archivedNotes}
+            loading={fm.filesLoading}
+            initialQuery={recordsQuery}
+            onOpenNote={(noteId, wiki) => {
+              // ノートのピークと素材・メモのピークを同時に開かない
+              setListMaterialPeekEntry(null);
+              openListPeek(wiki ? `wiki:${noteId}` : noteId);
+            }}
+            openNoteId={listSidePeekNoteId}
+            onOpenMedia={(fileId) => {
+              const entry = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+              if (entry) handleComposerMediaSelect(entry);
+            }}
+            onOpenMemo={handleOpenMemoSource}
+          />
         ) : showMobile ? (
           // モバイル受信箱: 同期フォルダ <root>/Inbox/ の **まだ取り込んでいない** ファイル一覧。
           // 素材ライブラリ（AssetGalleryView / MediaIndexEntry）とは表示対象の型が違うので
@@ -17437,6 +17760,7 @@ export function NoteApp() {
             // 同じ資料を引いているページ（機械的な相互参照）。索引のメタだけで引けるので毎描画で計算してよい
             const relatedPages = wikiIdForBanner ? findRelatedBySharedSources(wikiIdForBanner, fm.wikiFiles, fm.wikiMetas) : [];
             return (
+              <>
               <WikiBanner
                 wikiMeta={fm.activeDoc.wikiMeta}
                 loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
@@ -17508,6 +17832,15 @@ export function NoteApp() {
                 sourceCheckLlmCalls={sourceCheckLlmCallsFor(wikiIdForBanner ?? "", fm.activeDoc)}
                 sourceCheckStale={activeDocSourceCheckStale}
               />
+              {wikiIdForBanner && typeof fm.activeDoc.wikiMeta.topicMarkdown === "string" && (
+                <SourceDriftNotice
+                  pageKey={`${wikiIdForBanner}:${fm.activeDoc.modifiedAt ?? ""}`}
+                  loadSourceDrift={() => loadSourceDriftFor(wikiIdForBanner)}
+                  titleOf={sourceDriftTitleOf}
+                  onReread={(sourceId) => { void ingestNoteIds([sourceId]); }}
+                />
+              )}
+              </>
             );
           })()}
           <NoteEditor
@@ -18054,6 +18387,9 @@ export function NoteApp() {
               // 単体共有（MaterialActionsMenu）と同じ書き戻し関数・同じフォルダ導出表を使う
               saveMediaSharedRef: fm.handleUpdateMediaSharedRef,
               noteFolderLookup,
+              // 読める写しの来歴に使う索引（単発の共有と同じもの）
+              noteIndex: fm.rawNoteIndex ?? fm.noteIndex ?? null,
+              mediaIndex: fm.mediaIndex?.media ?? null,
             }}
             onClose={(didShareAny) => {
               if (didShareAny) notifySharedLibraryChanged();
@@ -18280,6 +18616,15 @@ export function NoteApp() {
         canOpenNoteInPeek={canOpenComposerNoteInPeek}
         citationCount={composerCitationCount}
         canAskAi={composerCanAskAi}
+        onSeeInRecords={(query) => {
+          setComposerPrompt("");
+          composer.closeComposer();
+          closeAllViews();
+          setRecordsQuery(query);
+          setShowRecords(true);
+          setSidebarOpen(false);
+          router.navigate({ view: "records" });
+        }}
       />
       {showNewSkillDialog && (
         <SkillDialog

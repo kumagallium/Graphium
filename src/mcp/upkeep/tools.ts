@@ -5,6 +5,7 @@
 // ハンドラ本体は「文字列を返す関数」として export し、単体テストは McpServer なしで呼ぶ。
 
 import { existsSync, readFileSync } from "node:fs";
+import { withPassageContexts } from "../../features/wiki/passage-context";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -246,13 +247,19 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
         note = "起動を検知して中止";
         return stopped;
       }
+      // 前後の文の控えは捨てる（資料を読み直して書いたので古い控えは使えない。MCP はノートの文字の
+      // 取り出し方がアプリと違うので、ここでは取り直さない）
       const rebuilt = stampGeneratedBy(
-        rebuildSourceBackedWikiDocument(
-          existing,
-          body,
-          refs,
-          input.model ?? null,
-          buildNoteIndex(readNoteIndex(root)),
+        withPassageContexts(
+          rebuildSourceBackedWikiDocument(
+            existing,
+            body,
+            refs,
+            input.model ?? null,
+            buildNoteIndex(readNoteIndex(root)),
+          ),
+          [],
+          [],
         ),
         { client, sessionId: input.sessionId, model: input.model },
       );
@@ -363,8 +370,13 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
         note = "起動を検知して中止";
         return stopped;
       }
+      // 統合は資料を読まないので、統合したページすべての前後の文の控えを持ち越す
       const rebuilt = stampGeneratedBy(
-        rebuildSourceBackedWikiDocument(keep, body, refs, input.model ?? null, buildNoteIndex(readNoteIndex(root))),
+        withPassageContexts(
+          rebuildSourceBackedWikiDocument(keep, body, refs, input.model ?? null, buildNoteIndex(readNoteIndex(root))),
+          [],
+          [keep, ...absorbIds.map((id) => docs.get(id)!)].flatMap((d) => d.wikiMeta?.passageContexts ?? []),
+        ),
         { client, sessionId: input.sessionId, model: input.model },
       );
       await lock.refresh();
@@ -733,6 +745,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         sources: z.array(z.string()).optional().describe("資料の id の一覧。省略時は今の資料の一覧"),
         ...common,
       },
+      // 既存のページの本文を書き直す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await reviseTopic(input, ctx, root())),
   );
@@ -750,6 +764,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         body: z.string().describe("統合後の本文（Markdown）。文末に [[source:<id>]] を付ける"),
         ...common,
       },
+      // トピックをまとめ、吸収した側をゴミ箱へ移す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await mergeTopics(input, ctx, root())),
   );
@@ -764,6 +780,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
       inputSchema: {
         pageIds: z.array(z.string()).min(1).describe("アーカイブするページの id"),
       },
+      // アーカイブへ移す
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async (input) => text(await archivePage(input, ctx, root())),
   );
@@ -778,6 +796,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
       inputSchema: {
         pageId: z.string().describe("戻すページの id"),
       },
+      // 既存ページの状態を書き換える（統合で吸収されゴミ箱へ移ったページも戻せ、記録に残らず undo も効かない）ので安全側
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async (input) => text(await restorePage(input, ctx, root())),
   );
@@ -793,7 +813,7 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         limit: z.number().int().min(1).max(100).optional().describe("最大件数（既定 20）"),
         pageId: z.string().optional().describe("このページに関わる操作だけに絞る"),
       },
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (input) => text(await listOperations(input, ctx, root())),
   );
@@ -812,6 +832,8 @@ export function registerUpkeepTools(server: McpServer, ctx: ToolContext = {}): v
         confirm: z.boolean().optional().describe("影響を確認したうえで実行するとき true"),
         ...common,
       },
+      // 手入れの操作を取り消す
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async (input) => text(await undoOperation(input, ctx, root())),
   );

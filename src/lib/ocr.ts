@@ -2,14 +2,28 @@
 //
 // - LLM を一切使わず、画像から文字を抽出する。
 // - 画像（File/Blob）はブラウザ内だけで処理され、外部サーバーへ送信されない。
-//   （wasm と言語データのみ CDN から取得する。完全オフライン運用時は self-host も可能）
+//   （wasm と言語データはアプリに同梱したものを使う）
+// - デスクトップ版は、端末内の PP-OCRv6 small（Rust 側・ocr-native.ts）でモデル取得済みならそちらで読む。
+//   未取得なら取得を裏で始め、今回は Tesseract で読む。端末内の読み取りが失敗した回も Tesseract に落とす。
+//   設定で「端末内のモデルで読む」をオフにすると、この経路も自動取得も使わない。
 // - Tesseract ワーカーは 1 つを使い回し、認識ジョブは直列化する
 //   （ワーカーは同時に 1 ジョブしか処理できず、logger も共有のため）。
 
+import { sanitizeAltText } from "./ocr-alt";
 import type { Worker, LoggerMessage } from "tesseract.js";
+import { isTauri } from "./platform";
 
 export type OcrProgress = { status: string; progress: number };
-export type OcrResult = { text: string; confidence: number };
+/** 読んだエンジン。tesseract = Tesseract.js、pp-ocrv6-small = 端末内の PP-OCRv6 small（デスクトップ版） */
+export type OcrEngineName = "tesseract" | "pp-ocrv6-small";
+export type OcrResult = {
+  text: string;
+  confidence: number;
+  engine?: OcrEngineName;
+  /** 検索用の別の読み（macOS の Vision。デスクトップ版のみ）。表示・コピー・書き出しには使わない */
+  altText?: string;
+  altEngine?: string;
+};
 
 /** 既定の認識言語（日本語＋英語）。日本語ノート向け。 */
 export const DEFAULT_OCR_LANG = "jpn+eng";
@@ -23,6 +37,11 @@ export type OcrLang = (typeof OCR_LANGS)[number];
  * ため長めに取る。超えたら宙吊りとみなしてジョブを失敗させ、パイプラインを
  * 作り直す（デスクトップの WKWebView では worker 起動や画像の読み戻しが
  * まれに永久 pending になり、直列化チェーンごと後続が全部止まる）。
+ *
+ * 端末内 OCR（Rust の ocr_recognize）は 1 件 90 秒（ocr_models.rs の OCR_DEADLINE_SECS）で自分で
+ * 打ち切る。この 120 秒より短いので、ここがタイムアウトして次のジョブを始める時には Rust 側の
+ * 前のジョブはすでに止まっている（タイムアウト後に前のジョブと次のジョブが並走しない）。
+ * この関係を保つため、Rust 側の持ち時間をこの値以上に伸ばさないこと。
  */
 export const OCR_JOB_TIMEOUT_MS = 120_000;
 
@@ -152,6 +171,100 @@ async function getWorker(langs: string): Promise<Worker> {
   return workerPromise;
 }
 
+// ── 端末内 OCR（デスクトップ版） ──
+
+/** Tesseract が認識中に出す status と同じ文字列 */
+const NATIVE_PROGRESS_STATUS = "recognizing text";
+
+type NativeApi = typeof import("./ocr-native");
+
+// 端末内モデルを使うかの読み取り関数。設定の層（features/settings）には依存せず、
+// アプリの起動時に main.tsx が注入する（既定は常にオン）
+let nativeEnabledReader: () => boolean = () => true;
+export function setOcrNativeEnabledReader(reader: () => boolean): void {
+  nativeEnabledReader = reader;
+}
+
+/** 自動取得が失敗してから次に試すまでの待ち（一括 OCR で画像ごとに取得を始めない） */
+export const OCR_DOWNLOAD_RETRY_MS = 10 * 60 * 1000;
+
+// 裏でのモデル取得が走っている間 true（多重に始めない）
+let nativeDownloading = false;
+// 直近の取得失敗の時刻。OCR_DOWNLOAD_RETRY_MS の間は再試行しない（成功で消す）
+let nativeDownloadFailedAt: number | null = null;
+
+function startNativeDownload(native: NativeApi): void {
+  if (nativeDownloading) return;
+  if (nativeDownloadFailedAt !== null && Date.now() - nativeDownloadFailedAt < OCR_DOWNLOAD_RETRY_MS) return;
+  nativeDownloading = true;
+  native
+    .downloadOcrModel()
+    .then(() => {
+      nativeDownloadFailedAt = null;
+    })
+    .catch(() => {
+      nativeDownloadFailedAt = Date.now();
+    })
+    .finally(() => {
+      nativeDownloading = false;
+    });
+}
+
+async function imageToBytes(image: File | Blob | string): Promise<Uint8Array> {
+  let blob: Blob;
+  if (typeof image === "string") {
+    const res = await fetch(image);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    blob = await res.blob();
+  } else {
+    blob = image;
+  }
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * 端末内 OCR で読む。使えない（ブラウザ版・モデル未取得・失敗）ときは null を返し、
+ * 呼び出し側が Tesseract で読む。opts.langs は使わない（PP-OCR は 1 つのモデルで多言語）。
+ */
+async function recognizeNativeOrNull(
+  image: File | Blob | string,
+  onProgress?: (p: OcrProgress) => void,
+): Promise<OcrResult | null> {
+  if (!isTauri()) return null;
+  // 設定でオフなら、端末内の経路にも自動取得にも触れず Tesseract で読む
+  if (!nativeEnabledReader()) return null;
+  let native: NativeApi;
+  try {
+    native = await import("./ocr-native");
+  } catch (e) {
+    console.warn("[ocr] 端末内 OCR を読み込めません。Tesseract で読みます", e);
+    return null;
+  }
+  try {
+    const status = await native.getOcrModelStatus();
+    if (!status.present) {
+      startNativeDownload(native);
+      return null;
+    }
+    const bytes = await imageToBytes(image);
+    // Rust 側は途中経過を返さないので、開始（0）と終了（1）だけ知らせる。
+    // status は Tesseract の認識中と同じ文字列（既存の表示がそのまま「認識中」を出せる）
+    onProgress?.({ status: NATIVE_PROGRESS_STATUS, progress: 0 });
+    const r = await native.recognizeNative(bytes);
+    onProgress?.({ status: NATIVE_PROGRESS_STATUS, progress: 1 });
+    return {
+      text: (r.text ?? "").trim(),
+      confidence: Math.round(r.confidence ?? 0),
+      engine: "pp-ocrv6-small",
+      ...(sanitizeAltText(r.altText) ? { altText: sanitizeAltText(r.altText), altEngine: r.altEngine ?? "apple-vision" } : {}),
+    };
+  } catch (e) {
+    console.warn("[ocr] 端末内 OCR に失敗。Tesseract で読みます", e);
+    if (String(e).includes(native.OCR_MODEL_NOT_DOWNLOADED)) startNativeDownload(native);
+    return null;
+  }
+}
+
 /**
  * 画像からテキストを抽出する。
  *
@@ -173,7 +286,9 @@ export function recognizeImage(
   const langs = opts.langs || DEFAULT_OCR_LANG;
 
   const run = async (): Promise<OcrResult> => {
-    const job = (async () => {
+    const job = (async (): Promise<OcrResult> => {
+      const nativeResult = await recognizeNativeOrNull(image, opts.onProgress);
+      if (nativeResult) return nativeResult;
       const worker = await getWorker(langs);
       activeProgress = opts.onProgress ?? null;
       try {
@@ -181,6 +296,7 @@ export function recognizeImage(
         return {
           text: (data.text ?? "").trim(),
           confidence: Math.round(data.confidence ?? 0),
+          engine: "tesseract",
         };
       } finally {
         activeProgress = null;

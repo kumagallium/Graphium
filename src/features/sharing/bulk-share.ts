@@ -12,6 +12,7 @@
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
+import type { GraphiumIndex } from "../navigation/index-file";
 import type {
   MediaIndexEntry,
   MediaSharedRef,
@@ -60,6 +61,8 @@ export type BulkShareItemResult = {
   ok: boolean;
   /** ok のとき: 既存共有の更新だったか */
   isUpdate?: boolean;
+  /** ok のとき: 読める写しだけ置けなかった（共有そのものは成功） */
+  readableCopyFailed?: boolean;
   error?: string;
 };
 
@@ -68,6 +71,8 @@ export type BulkShareSummary = {
   shared: number;
   updated: number;
   failed: number;
+  /** 共有はできたが、読める写しだけ置けなかった件数 */
+  readableCopyFailed?: number;
   /** キャンセルで打ち切った場合 true（results は処理済み分のみ） */
   cancelled: boolean;
 };
@@ -81,6 +86,10 @@ export type BulkShareDeps = {
    * ノート / Knowledge にのみ効く（素材は元から本文を持たない）。
    */
   includePrivateHistory?: boolean;
+  /** 読める写しの来歴で、つながりの相手の種類と題を引くためのノートの索引（無ければ相手は出ない） */
+  noteIndex?: GraphiumIndex | null;
+  /** 読める写しの来歴で、素材の名前を引くための素材の索引 */
+  mediaIndex?: MediaIndexEntry[] | null;
   /** 保存済みノートを読む（見つからなければ null） */
   loadNote: (id: string) => Promise<GraphiumDocument | null>;
   /** sharedRef 付き doc の書き戻し（docCache / activeDoc 追従込み） */
@@ -241,6 +250,10 @@ export async function bulkShare(
         author: deps.author,
         blobRoot: dest.blobRoot,
         includePrivateHistory: deps.includePrivateHistory,
+        // 読める写し（ノートだけ。スイッチが切の共有フォルダでは古い写しが消えるだけ）
+        readable: isKnowledge
+          ? undefined
+          : { noteId: target.id, noteIndex: deps.noteIndex ?? null, mediaIndex: deps.mediaIndex ?? null },
       });
       if (!result.ok) {
         results.push({ ...target, title, ok: false, error: result.error });
@@ -267,7 +280,13 @@ export async function bulkShare(
         continue;
       }
 
-      results.push({ ...target, title, ok: true, isUpdate: result.isUpdate });
+      results.push({
+        ...target,
+        title,
+        ok: true,
+        isUpdate: result.isUpdate,
+        ...(result.readableCopy === "failed" ? { readableCopyFailed: true } : {}),
+      });
     } catch (e) {
       results.push({
         ...target,
@@ -281,5 +300,6 @@ export async function bulkShare(
   const shared = results.filter((r) => r.ok && !r.isUpdate).length;
   const updated = results.filter((r) => r.ok && r.isUpdate).length;
   const failed = results.filter((r) => !r.ok).length;
-  return { results, shared, updated, failed, cancelled };
+  const readableCopyFailed = results.filter((r) => r.ok && r.readableCopyFailed).length;
+  return { results, shared, updated, failed, readableCopyFailed, cancelled };
 }

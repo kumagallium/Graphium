@@ -20,8 +20,8 @@ export type NoteNode = {
   isWiki?: boolean;
   /** Knowledge の kind（kind 別に色分けする） */
   wikiKind?: WikiKind;
-  /** 外部ソース種別（pdf:/url:/document:/chat: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
-  external?: "pdf" | "url" | "document" | "chat" | "memo" | "media";
+  /** 外部ソース種別（pdf:/url:/document:/conversation:/chat: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
+  external?: "pdf" | "url" | "document" | "conversation" | "chat" | "memo" | "media";
   /** 外部リンク先 URL（PDF は CDN URL、URL は元 URL）。クリックで新規タブで開く。 */
   externalUrl?: string;
   /** external === "media" のときの MediaIndex の fileId（サムネイル解決やクリック時の参照に使う） */
@@ -276,6 +276,9 @@ export function buildNoteGraph(
         // Word(.docx) 等の document 素材。埋め込み（file ブロック）・@リンク引用とも
         // usedIn 経由で document: ノードとして近接グラフに出す。
         addEdge(`document:${m.fileId}`, currentNoteId, "used");
+      } else if (m.type === "conversation") {
+        // AI との会話の素材。document と同じ形で conversation: ノードとして近接グラフに出す。
+        addEdge(`conversation:${m.fileId}`, currentNoteId, "used");
       }
     }
   }
@@ -345,6 +348,22 @@ export function buildNoteGraph(
         isCurrent: false,
         hop,
         external: "document",
+        externalUrl: m?.url,
+        mediaFileId: fileId,
+        mediaType: m?.type,
+      });
+      continue;
+    }
+    if (id.startsWith("conversation:")) {
+      // AI との会話の素材。document: と同じく素材として開けるよう fileId / 名前 / URL を解決する。
+      const fileId = id.slice("conversation:".length);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({
+        id,
+        title: m?.name ?? "AI conversation",
+        isCurrent: false,
+        hop,
+        external: "conversation",
         externalUrl: m?.url,
         mediaFileId: fileId,
         mediaType: m?.type,
@@ -580,6 +599,10 @@ export function buildGlobalGraph(
       const fileId = id.slice("document:".length);
       const m = mediaByFileId.get(fileId);
       nodes.push({ id, title: m?.name ?? `Document ${fileId.slice(0, 8)}`, isCurrent: false, hop: 0, external: "document", externalUrl: m?.url, mediaFileId: fileId });
+    } else if (kind === "conversation") {
+      const fileId = id.slice("conversation:".length);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({ id, title: m?.name ?? "AI conversation", isCurrent: false, hop: 0, external: "conversation", externalUrl: m?.url, mediaFileId: fileId });
     } else if (kind === "url") {
       const url = id.slice("url:".length);
       nodes.push({ id, title: mediaByUrl.get(url) ?? url, isCurrent: false, hop: 0, external: "url", externalUrl: url });
