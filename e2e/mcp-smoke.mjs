@@ -77,8 +77,8 @@ const EXPECTED_TOOLS = [
   "start_topic_task", "submit_topic_routes", "get_topic_write_task", "submit_topic_page",
   // 読む側
   "export_prov", "get_source_text", "search_media", "check_knowledge", "list_source_check", "list_todos",
-  // Asterism 連携（知見を型ごとの JSON に書き出す）
-  "export_asterism_claims", "mark_asterism_sent",
+  // Asterism 連携（知見を型ごとの JSON に書き出す・知識の全部を 1 本の束で書き出す）
+  "export_asterism_claims", "mark_asterism_sent", "export_asterism_knowledge",
   // 素材（外部アプリの取り込み元。JSON を返す）
   "list_media", "get_media_file", "add_material",
   // 会話の中に画面を描く（MCP Apps）
@@ -466,6 +466,35 @@ try {
   check("export_asterism_claims が files と counts を返す", asterism.includes('"files"') && asterism.includes('"counts"'), asterism.slice(0, 300));
   const asterismNoBase = await call("export_asterism_claims", { asterism: { claimBaseIri: "" } });
   check("export_asterism_claims が知見の基底 IRI 無しで書き出せない旨を返す", !asterismNoBase.includes('"files"'), asterismNoBase.slice(0, 300));
+
+  // 知識の全部の書き出し: 引数なしで束（format / files / counts）を返す。機械（Asterism）が読むので、
+  // 1 件目の text はそのまま JSON として読め、失敗は isError と { error } で返る
+  const knowledgeRes = await client.callTool({ name: "export_asterism_knowledge", arguments: {} });
+  const knowledgeText = knowledgeRes.content?.[0]?.text ?? "";
+  let knowledgeBundle = null;
+  try {
+    knowledgeBundle = JSON.parse(knowledgeText);
+  } catch {
+    knowledgeBundle = null;
+  }
+  check(
+    "export_asterism_knowledge が format・files・counts を持つ束を返す",
+    knowledgeRes.isError !== true &&
+      knowledgeBundle?.format === "asterism-knowledge/1" &&
+      Array.isArray(knowledgeBundle?.files?.["claims.json"]) &&
+      Array.isArray(knowledgeBundle?.files?.["term_candidates.json"]) &&
+      typeof knowledgeBundle?.counts?.["claims.json"] === "number",
+    knowledgeText.slice(0, 300),
+  );
+  for (const [label, bad] of [["空白入り", "https://example.test/cl aim/"], ["http(s) でない", "ftp://example.test/claim/"]]) {
+    const badRes = await client.callTool({ name: "export_asterism_knowledge", arguments: { claimBaseIri: bad } });
+    const badText = badRes.content?.[0]?.text ?? "";
+    check(
+      `export_asterism_knowledge が不正な基底 IRI（${label}）を isError と { error } で断る`,
+      badRes.isError === true && badText.includes('"error"') && !badText.includes('"files"'),
+      JSON.stringify(badRes).slice(0, 300),
+    );
+  }
 
   const topicWithPdf = await call("get_topic", { topicId: TOPIC_1 });
   check("get_topic が素材の資料名を引ける", topicWithPdf.includes(PDF_NAME), topicWithPdf);

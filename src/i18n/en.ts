@@ -4391,6 +4391,7 @@ export const en: Record<string, string> = {
   "sourceDrift.contextSummary": "{count} passage(s) this page cites are still in their note, but the sentence before or after them has changed. Check that the page still reads right.",
   "sourceDrift.contextBefore": "The sentence before the passage changed:",
   "sourceDrift.contextAfter": "The sentence after the passage changed:",
+  "sourceDrift.contextAppended": "The passage was at the end of the note. A sentence that shares a number or a term with it was added after it:",
   "sourceDrift.was": "Was:",
   "sourceDrift.now": "Now:",
   "sourceDrift.removed": "(removed)",

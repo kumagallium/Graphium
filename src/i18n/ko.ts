@@ -4352,6 +4352,7 @@ export const ko: Record<string, string> = {
   "sourceDrift.contextSummary": "이 페이지가 인용한 구절 중 {count}건은 노트에 남아 있지만, 앞이나 뒤의 문장이 바뀌었습니다. 페이지의 문장이 여전히 맞는지 확인해 주세요.",
   "sourceDrift.contextBefore": "구절 앞의 문장이 바뀌었습니다:",
   "sourceDrift.contextAfter": "구절 뒤의 문장이 바뀌었습니다:",
+  "sourceDrift.contextAppended": "이 구절은 노트의 끝에 있었습니다. 그 뒤에 같은 숫자나 같은 단어가 들어간 문장이 추가되었습니다:",
   "sourceDrift.was": "작성 당시:",
   "sourceDrift.now": "지금:",
   "sourceDrift.removed": "(삭제됨)",

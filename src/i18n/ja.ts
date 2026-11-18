@@ -4393,6 +4393,7 @@ export const ja: Record<string, string> = {
   "sourceDrift.contextSummary": "このページが引いた一節のうち {count} 件は、ノートに残っていますが、前か後ろの文が書き換わっています。ページの文がまだ合っているか確かめてください。",
   "sourceDrift.contextBefore": "一節の前の文が変わりました:",
   "sourceDrift.contextAfter": "一節の後ろの文が変わりました:",
+  "sourceDrift.contextAppended": "一節はノートの最後にありました。そのあとに、同じ数字か同じ語を含む文が書き足されました:",
   "sourceDrift.was": "書いたとき:",
   "sourceDrift.now": "いま:",
   "sourceDrift.removed": "（消えました）",
