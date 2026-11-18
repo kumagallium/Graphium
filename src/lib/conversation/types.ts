@@ -106,3 +106,17 @@ export function parseConversationFileId(
 export function conversationSourceId(fileId: string): string {
   return `${CONVERSATION_SOURCE_PREFIX}${fileId}`;
 }
+
+/**
+ * ナレッジ化の費用の見込み: 会話 1 本の知見の作成に、測定でおよそ 7〜9 万トークンかかった
+ * （2026-11-18）。トピックの作成は含まない。
+ */
+export const CONVERSATION_INGEST_TOKENS_PER_SESSION = { low: 70_000, high: 90_000 } as const;
+
+/** 候補の本数から、知見の作成にかかるトークン数の幅を見積もる（掛けるだけ） */
+export function estimateConversationIngestTokens(candidates: number): { low: number; high: number } {
+  return {
+    low: candidates * CONVERSATION_INGEST_TOKENS_PER_SESSION.low,
+    high: candidates * CONVERSATION_INGEST_TOKENS_PER_SESSION.high,
+  };
+}

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   conversationFileId,
   conversationSourceId,
+  estimateConversationIngestTokens,
   isValidConversationSessionId,
   parseConversationFileId,
 } from "./types";
@@ -44,5 +45,15 @@ describe("conversationFileId / parseConversationFileId", () => {
 describe("conversationSourceId", () => {
   it("conversation: を前に付ける", () => {
     expect(conversationSourceId(`conv-claude-code-${SID}`)).toBe(`conversation:conv-claude-code-${SID}`);
+  });
+});
+
+describe("estimateConversationIngestTokens", () => {
+  it("候補の本数に 1 本あたりの幅を掛ける", () => {
+    expect(estimateConversationIngestTokens(4)).toEqual({ low: 280_000, high: 360_000 });
+  });
+
+  it("0 本なら 0〜0", () => {
+    expect(estimateConversationIngestTokens(0)).toEqual({ low: 0, high: 0 });
   });
 });
