@@ -244,14 +244,15 @@ describe("DataImportModal / 絞り込む", () => {
     expect((onConfirm.mock.calls[0][0] as DataImportResult).extract).toBeDefined();
   });
 
-  it("大きなファイルは、段を開くまで全行を読まず、開くと読み終わるまで確定できない", async () => {
+  it("大きなファイルは、段を開くまで全行を読まない。開いただけなら読み終わるまでも確定できる", async () => {
     const total = SYNC_PARSE_MAX_ROWS + 1_000;
     const { onConfirm, confirm } = renderModal({}, csv(total));
     // 閉じたままなら今までどおり標本だけ・確定できる
     expect(confirm().disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: /絞り込む/ }));
     expect(screen.getByText("全体を読んでいます…")).toBeTruthy();
-    expect(confirm().disabled).toBe(true);
+    // 列・条件が未指定なら、読んでいる間も確定を止めない（全体をそのまま取り込む形のまま）
+    expect(confirm().disabled).toBe(false);
     await waitFor(() => expect(screen.queryByText("全体を読んでいます…")).toBeNull(), {
       timeout: 15_000,
     });
@@ -266,6 +267,93 @@ describe("DataImportModal / 絞り込む", () => {
     expect(r.extract!.result.rows).toHaveLength(expected);
     expect(r.extract!.sourceRows).toBe(total);
   }, 30_000);
+});
+
+describe("DataImportModal / 大きなファイルで条件が入っているとき", () => {
+  beforeEach(() => syncLocale("ja"));
+
+  it("条件つきで開くと、全体を読み終わるまで確定できない", async () => {
+    const total = SYNC_PARSE_MAX_ROWS + 1_000;
+    const onConfirm = vi.fn();
+    render(
+      <DataImportModal
+        fileName="big.csv"
+        text={csv(total)}
+        initialTarget="dataTable"
+        rowLimit={null}
+        initialExtract={{ columns: [], conditions: [{ column: "value", op: "eq", value: "96" }] }}
+        confirmLabel="確定する"
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />
+    );
+    const confirm = () => screen.getByRole("button", { name: "確定する" }) as HTMLButtonElement;
+    expect(confirm().disabled).toBe(true);
+    await waitFor(() => expect(confirm().disabled).toBe(false), { timeout: 15_000 });
+  }, 30_000);
+});
+
+describe("DataImportModal / 見出しに無い列・空や重複の見出し", () => {
+  beforeEach(() => syncLocale("ja"));
+
+  function open(initialExtract: React.ComponentProps<typeof DataImportModal>["initialExtract"], text = csv(120)) {
+    const onConfirm = vi.fn();
+    render(
+      <DataImportModal
+        fileName="oven-curves.csv"
+        text={text}
+        initialTarget="dataTable"
+        rowLimit={null}
+        initialExtract={initialExtract}
+        confirmLabel="確定する"
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />
+    );
+    return onConfirm;
+  }
+  const confirm = () => screen.getByRole("button", { name: "確定する" });
+
+  it("見出しに無い列を指す条件は spec に入らず、注記が出る", () => {
+    const onConfirm = open({
+      columns: [],
+      conditions: [
+        { column: "value", op: "ge", value: "50" },
+        { column: "ghost", op: "eq", value: "x" },
+      ],
+    });
+    expect(screen.getByText("この列は今の読み方では見つかりません")).toBeTruthy();
+    fireEvent.click(confirm());
+    const r = onConfirm.mock.calls[0][0] as DataImportResult;
+    expect(r.extract!.spec.conditions).toEqual([{ column: "value", op: "ge", value: "50" }]);
+  });
+
+  it("見出しに無い列だけを指す条件なら、絞り込みなしと同じ（extract が付かない）", () => {
+    const onConfirm = open({ columns: [], conditions: [{ column: "ghost", op: "eq", value: "x" }] });
+    fireEvent.click(confirm());
+    expect("extract" in (onConfirm.mock.calls[0][0] as DataImportResult)).toBe(false);
+  });
+
+  it("見出しに無い列だけを選んでいたら、全列として扱う", () => {
+    const onConfirm = open({ columns: ["ghost"], conditions: [] });
+    fireEvent.click(confirm());
+    expect("extract" in (onConfirm.mock.calls[0][0] as DataImportResult)).toBe(false);
+  });
+
+  it("空の見出し・重複した見出しがあっても、名前のある見出し全部を選んでいれば全列", () => {
+    const text = ["time,value,,time", "1,2,3,4", "5,6,7,8"].join("\n");
+    const onConfirm = open({ columns: ["time", "value"], conditions: [] }, text);
+    fireEvent.click(confirm());
+    expect("extract" in (onConfirm.mock.calls[0][0] as DataImportResult)).toBe(false);
+  });
+
+  it("一部の列だけを選んでいれば extract が付き、columns はその列", () => {
+    const onConfirm = open({ columns: ["time"], conditions: [] });
+    fireEvent.click(confirm());
+    const r = onConfirm.mock.calls[0][0] as DataImportResult;
+    expect(r.extract!.spec.columns).toEqual(["time"]);
+    expect(r.extract!.sourceColumns).toBe(2);
+  });
 });
 
 describe("DataImportModal / showExtract", () => {

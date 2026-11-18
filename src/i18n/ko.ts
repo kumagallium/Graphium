@@ -4636,4 +4636,6 @@ export const ko: Record<string, string> = {
   "dataExtract.sectionTitle": "걸러내기",
   "dataExtract.sectionHint": "열과 행을 골라 작은 표로 가져올 수 있습니다",
   "dataExtract.loading": "전체를 읽는 중…",
+  "dataExtract.columnMissing": "지금 읽는 방식에서는 이 열을 찾을 수 없습니다",
+  "dataExtract.insertFailed": "가져오지 못했습니다. 다시 시도해 주세요.",
 };

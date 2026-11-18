@@ -45,7 +45,11 @@ export function ConditionRow({
     onChange(op === "notEmpty" ? { column: condition.column, op } : { ...condition, op });
   };
 
+  // 見出しに無い列を指している（読み方を変えた・古い来歴）。効いていないことを控えめに知らせる
+  const missing = condition.column.trim() !== "" && columns.length > 0 && !profile;
+
   return (
+    <div>
     <div className="flex items-center gap-1.5">
       <select
         value={condition.column}
@@ -54,6 +58,7 @@ export function ConditionRow({
         className={`${FIELD} min-w-0 max-w-[40%]`}
       >
         {condition.column === "" && <option value="">{t("dataExtract.column")}</option>}
+        {missing && <option value={condition.column}>{condition.column}</option>}
         {columns.map((c) => (
           <option key={c.name} value={c.name}>
             {c.name}
@@ -100,6 +105,12 @@ export function ConditionRow({
       >
         ✕
       </button>
+    </div>
+    {missing && (
+      <p role="note" className="mt-0.5 text-[10px] text-muted-foreground">
+        {t("dataExtract.columnMissing")}
+      </p>
+    )}
     </div>
   );
 }

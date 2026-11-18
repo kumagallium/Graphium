@@ -33,6 +33,7 @@ export function ExtractSection({
   onToggle,
   collapsedSummary,
   loading,
+  error = false,
   columns,
   selectedColumns,
   onColumnsChange,
@@ -48,6 +49,8 @@ export function ExtractSection({
   collapsedSummary: string | null;
   /** 全体を読んでいる最中か。true の間は列・条件・要約の代わりに「読んでいます」を出す */
   loading: boolean;
+  /** 全体を読むのに失敗した。「読んでいます」のまま止めず、読めなかったことを控えめに出す */
+  error?: boolean;
   columns: ColumnProfile[];
   /** 選んだ列（表の列の順）。「すべて」のときも全列の名前を渡す */
   selectedColumns: string[];
@@ -60,13 +63,15 @@ export function ExtractSection({
   const addCondition = () =>
     onConditionsChange([...conditions, { column: columns[0]?.name ?? "", op: "eq", value: "" }]);
 
+  // 短いウィンドウでは、この段が縮んで中がスクロールする（変換プレビューの表を潰さないため）。
+  // 縮む下限は見出しの 1 行ぶん
   return (
-    <div className="px-4 py-2 border-b border-border shrink-0">
+    <div className="px-4 py-2 border-b border-border min-h-0 flex flex-col">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-1.5 text-left"
+        className="w-full flex items-center gap-1.5 text-left shrink-0"
       >
         <Chevron size={12} strokeWidth={2} className="shrink-0 text-muted-foreground" />
         <span className="text-[11px] font-medium text-foreground shrink-0">
@@ -84,8 +89,12 @@ export function ExtractSection({
       </button>
 
       {open && (
-        <div className="mt-2 flex flex-col gap-2">
-          {loading ? (
+        <div className="mt-2 flex flex-col gap-2 min-h-0 overflow-y-auto max-h-[45vh]">
+          {error ? (
+            <p role="note" className="text-[11px] text-muted-foreground">
+              {t("dataImport.readError")}
+            </p>
+          ) : loading ? (
             <ExtractLoading />
           ) : (
             <>
@@ -104,8 +113,7 @@ export function ExtractSection({
                     {t("dataExtract.addCondition")}
                   </button>
                 </div>
-                {/* スクロールするのは条件の行だけ */}
-                <div className="flex flex-col gap-1.5 max-h-16 overflow-y-auto">
+                <div className="flex flex-col gap-1.5">
                   {conditions.map((c, i) => (
                     <ConditionRow
                       key={i}

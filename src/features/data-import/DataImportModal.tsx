@@ -75,6 +75,8 @@ export type DataImportResult = {
     spec: ExtractSpec;
     result: { headers: string[]; rows: string[][] };
     sourceRows: number;
+    /** 元の列の数（全列のままかを来歴で判定するため） */
+    sourceColumns: number;
   };
 };
 
@@ -200,14 +202,16 @@ export function DataImportModal({
   const [extractConditions, setExtractConditions] = useState<ExtractCondition[]>(
     () => initialExtract?.conditions ?? []
   );
-  const activeConditions = useMemo(
+  // 書きかけでない条件。列が実在するかは、表を読んでから（下の activeConditions）で絞る
+  const writtenConditions = useMemo(
     () => extractConditions.filter(isActiveCondition),
     [extractConditions]
   );
-  const hasExtractSpec = activeConditions.length > 0 || extractColumns !== null;
+  // 表を読む前の「何か指定がある」判定。読み終わるまでは列の実在を確かめられない
+  const hasRawSpec = writtenConditions.length > 0 || extractColumns !== null;
   // 畳んでも条件や列の選択が残っているあいだは絞り込みを効かせる（畳んだ途端に
   // 黙って全部取り込む形に戻らないように）。表が要るのはそのあいだと開いているあいだ
-  const needExtractTable = extractOpen || hasExtractSpec;
+  const needExtractTable = extractOpen || hasRawSpec;
 
   // 大きなファイルは、段を開いたとき（か条件が入っているとき）にだけ全行を読む。
   // 先頭の標本では、絞った結果の行数も列の種類も当たらないため
@@ -218,23 +222,35 @@ export function DataImportModal({
     rows: string[][];
     profiles: ColumnProfile[];
   } | null>(null);
+  // 全体を読むのに失敗した設定（失敗のまま「読んでいます」で止まらないように）
+  const [fullFailed, setFullFailed] = useState<{ lines: string[]; options: DelimitedImportOptions } | null>(
+    null
+  );
   useEffect(() => {
     if (!needExtractTable || !isLarge) {
       setFullTable((cur) => (cur === null ? cur : null));
       return;
     }
     let cancelled = false;
+    // 設定を変えた・段を閉じた・ダイアログを閉じたら、前の読み込みは途中で止める
+    // （cleanup で cancelled が立ち、譲るたびに見て抜ける）
+    const shouldStop = () => cancelled;
     void (async () => {
-      const full = await parseDelimitedLinesAsync(lines, options);
-      if (cancelled) return;
-      const profiles = await profileColumnsAsync(full.headers, full.rows);
-      if (cancelled) return;
-      setFullTable({ lines, options, headers: full.headers, rows: full.rows, profiles });
+      try {
+        const full = await parseDelimitedLinesAsync(lines, options, { shouldStop });
+        if (!full || cancelled) return;
+        const profiles = await profileColumnsAsync(full.headers, full.rows, { shouldStop });
+        if (!profiles || cancelled) return;
+        setFullTable({ lines, options, headers: full.headers, rows: full.rows, profiles });
+      } catch {
+        if (!cancelled) setFullFailed({ lines, options });
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [needExtractTable, isLarge, lines, options]);
+  const extractError = isLarge && fullFailed !== null && fullFailed.lines === lines && fullFailed.options === options;
 
   const extractTable = useMemo(() => {
     if (!needExtractTable || !canImport) return null;
@@ -250,35 +266,36 @@ export function DataImportModal({
       profiles: profileColumns(parsed.headers, parsed.rows),
     };
   }, [needExtractTable, canImport, isLarge, fullTable, lines, options, parsed]);
-  const extractLoading = needExtractTable && canImport && extractTable === null;
+  const extractLoading = needExtractTable && canImport && extractTable === null && !extractError;
 
   const extractProfiles = extractTable?.profiles ?? [];
   const extractAllNames = extractProfiles.map((p) => p.name);
-  // 設定を変えて無くなった列は選択から外す
-  const chosenColumns =
-    extractColumns === null ? extractAllNames : extractColumns.filter((n) => extractAllNames.includes(n));
-  const noColumns = extractColumns !== null && chosenColumns.length === 0;
-
-  // 開き直しで渡された列が見出し全部だったときは「全列（null）」に戻す。見出しの一覧は
-  // 列の種類の読み込みが終わるまで分からないので、読み終わった時点で正規化する。
-  // 戻さないと、条件をすべて外しても「全列を選んだ絞り込み」が残り、
-  // 元の素材を参照するふつうの表に戻れない（列・条件を手で変えたときは onColumnsChange が同じ正規化をする）
-  useEffect(() => {
-    if (
-      extractColumns !== null &&
-      extractAllNames.length > 0 &&
-      extractColumns.length === extractAllNames.length &&
-      extractAllNames.every((n) => extractColumns.includes(n))
-    ) {
-      setExtractColumns(null);
-    }
-  }, [extractColumns, extractAllNames.join("\u0000")]);
+  // 見出しに無い列を指す条件は「効いていない」。有無の判定・確定の spec・条件の文から外す
+  // （読み終わるまでは実在を確かめられないのでそのまま）
+  const activeConditions = useMemo(
+    () =>
+      extractTable
+        ? writtenConditions.filter((c) => extractAllNames.includes(c.column.trim()))
+        : writtenConditions,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [writtenConditions, extractTable]
+  );
+  // 選んだ列。見出しに無い名前は外す。残りが無ければ全列、見出し全部（名前があり重複しない
+  // 見出しの集合）と一致しても全列として扱う。空の配列は「0 列を選んだ」ので全列にしない
+  const effectiveColumns = useMemo(() => {
+    if (extractColumns === null || extractColumns.length === 0 || !extractTable) return extractColumns;
+    const known = [...new Set(extractColumns)].filter((n) => extractAllNames.includes(n));
+    if (known.length === 0 || known.length === extractAllNames.length) return null;
+    return known;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extractColumns, extractTable]);
+  const hasExtractSpec = activeConditions.length > 0 || effectiveColumns !== null;
+  const chosenColumns = effectiveColumns === null ? extractAllNames : effectiveColumns;
+  const noColumns = effectiveColumns !== null && chosenColumns.length === 0;
 
   const extractView = useMemo(() => {
     if (!extractTable || !hasExtractSpec) return null;
-    const names = extractTable.profiles.map((p) => p.name);
-    const picked =
-      extractColumns === null ? [] : extractColumns.filter((n) => names.includes(n));
+    const picked = effectiveColumns === null ? [] : chosenColumns;
     const r = applyExtract(
       extractTable.headers,
       extractTable.rows,
@@ -286,21 +303,23 @@ export function DataImportModal({
       extractTable.profiles
     );
     // 0 列は「全列」と区別する。行の数だけ残し、中身は持たない
-    if (extractColumns !== null && picked.length === 0) {
-      return { headers: [] as string[], rows: [] as string[][], rowCount: r.rows.length, sourceRows: r.sourceRows };
+    if (effectiveColumns !== null && picked.length === 0) {
+      return { headers: [] as string[], rows: [] as string[][], rowCount: r.rows.length, sourceRows: r.sourceRows, sourceColumns: extractTable.headers.length };
     }
-    return { headers: r.headers, rows: r.rows, rowCount: r.rows.length, sourceRows: r.sourceRows };
-  }, [extractTable, hasExtractSpec, extractColumns, activeConditions]);
+    return { headers: r.headers, rows: r.rows, rowCount: r.rows.length, sourceRows: r.sourceRows, sourceColumns: extractTable.headers.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extractTable, hasExtractSpec, effectiveColumns, activeConditions]);
 
   // 行数の判定・要約・プレビューは、絞った後の表で行う（絞れば文書の表にもできる）
   const effectiveRowCount = extractView ? extractView.rowCount : rowCount;
   const shownHeaders = extractView ? extractView.headers : parsed.headers;
   const shownRows = extractView ? extractView.rows : parsed.rows;
   // 絞った結果が 0 列・0 行、または全体を読んでいる最中は確定できない
+  // 段を開いただけ（列・条件が未指定）なら、読んでいる間も確定を止めない（全体を取り込む形のまま）
   const extractBlocked =
     needExtractTable &&
     canImport &&
-    (extractLoading ||
+    (((extractLoading || extractError) && hasRawSpec) ||
       (extractView !== null && (extractView.headers.length === 0 || extractView.rowCount === 0)));
 
   const collapsedSummary = !hasExtractSpec
@@ -310,13 +329,15 @@ export function DataImportModal({
           spec: noColumns
             ? t("dataExtract.zeroColumns")
             : describeSpec(
-                { columns: extractColumns === null ? [] : chosenColumns, conditions: activeConditions },
+                { columns: effectiveColumns === null ? [] : chosenColumns, conditions: activeConditions },
                 t
               ),
           rows: extractView.rowCount.toLocaleString(),
           total: extractView.sourceRows.toLocaleString(),
         })
-      : t("dataExtract.loading");
+      : extractError
+        ? t("dataImport.readError")
+        : t("dataExtract.loading");
 
   // データ表は本文に表を作らないので行数の上限は要らない
   const effectiveRowLimit = target === "dataTable" ? null : rowLimit;
@@ -524,7 +545,9 @@ export function DataImportModal({
         </div>
 
         {/* プレビュー（左: 生テキスト / 右: 変換結果） */}
-        <div className="flex-1 min-h-min grid grid-cols-2 gap-0 divide-x divide-border">
+        {/* 下限は、右の列が「段の見出し + 変換プレビューの見出し + 表 2 行」を入れられる高さ。
+            それより短いウィンドウでだけ、外側（ヘッダーとフッターの間）がスクロールする */}
+        <div className="flex-1 min-h-[12rem] grid grid-cols-2 grid-rows-[minmax(0,1fr)] gap-0 divide-x divide-border">
           <section className="flex flex-col min-h-0">
             <div className="px-4 py-1.5 text-[11px] text-muted-foreground border-b border-border">
               {t("dataImport.filePreview")}
@@ -560,7 +583,7 @@ export function DataImportModal({
             </div>
           </section>
 
-          <section className="flex flex-col min-h-min overflow-hidden">
+          <section className="flex flex-col min-h-0 overflow-hidden">
             {/* 絞り込み。変換プレビューの上（右の列の中）。畳んだ状態が既定で、絞らなければ今までと変わらない */}
             {canImport && showExtract && (
               <ExtractSection
@@ -568,6 +591,7 @@ export function DataImportModal({
                 onToggle={() => setExtractOpen((v) => !v)}
                 collapsedSummary={collapsedSummary}
                 loading={extractLoading}
+                error={extractError}
                 columns={extractProfiles}
                 selectedColumns={chosenColumns}
                 onColumnsChange={(next) =>
@@ -593,7 +617,7 @@ export function DataImportModal({
                 </span>
               )}
             </div>
-            <div className="flex-1 min-h-[6rem] overflow-auto p-3">
+            <div className="flex-1 min-h-[7rem] overflow-auto p-3">
               {canImport && shownHeaders.length > 0 ? (
                 <table className="text-[11px] border-collapse">
                   <thead>
@@ -683,11 +707,12 @@ export function DataImportModal({
                   ? {
                       extract: {
                         spec: {
-                          columns: extractColumns === null ? [] : chosenColumns,
+                          columns: effectiveColumns === null ? [] : chosenColumns,
                           conditions: activeConditions,
                         },
                         result: { headers: extractView.headers, rows: extractView.rows },
                         sourceRows: extractView.sourceRows,
+                        sourceColumns: extractView.sourceColumns,
                       },
                     }
                   : {}),

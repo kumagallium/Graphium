@@ -4677,4 +4677,6 @@ export const ja: Record<string, string> = {
   "dataExtract.sectionTitle": "絞り込む",
   "dataExtract.sectionHint": "列と行を選んで、小さな表として取り込めます",
   "dataExtract.loading": "全体を読んでいます…",
+  "dataExtract.columnMissing": "この列は今の読み方では見つかりません",
+  "dataExtract.insertFailed": "取り込めませんでした。もう一度お試しください。",
 };

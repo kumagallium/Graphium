@@ -72,6 +72,32 @@ describe("describeDerivation", () => {
     ).toBe("120 行のうち 30 行: temp_c ≥ 200 かつ dough = baguette");
   });
 
+  it("全列のまま（columns の数が sourceColumns と同じ）なら、列の句は出さない", () => {
+    expect(
+      describeDerivation(
+        {
+          ...base,
+          columns: ["time", "temp_c", "dough"],
+          sourceColumns: 3,
+          conditions: [{ column: "temp_c", op: "ge", value: "200" }],
+        },
+        t
+      )
+    ).toBe("120 行のうち 30 行: temp_c ≥ 200");
+  });
+
+  it("sourceColumns が無い古い来歴は、従来どおり列の句を出す", () => {
+    expect(describeDerivation({ ...base, columns: ["time", "temp_c", "dough"], resultRows: 120 }, t)).toBe(
+      "120 行のうち 120 行: 3 列を選択"
+    );
+  });
+
+  it("列を減らしたときは列の句も出す", () => {
+    expect(
+      describeDerivation({ ...base, columns: ["time"], sourceColumns: 3, resultRows: 120 }, t)
+    ).toBe("120 行のうち 120 行: 1 列を選択");
+  });
+
   it("列だけ選んだときは列の個数で言う", () => {
     expect(
       describeDerivation({ ...base, columns: ["time", "temp_c", "dough"], resultRows: 120 }, t)

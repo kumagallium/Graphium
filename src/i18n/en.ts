@@ -4675,4 +4675,6 @@ export const en: Record<string, string> = {
   "dataExtract.sectionTitle": "Filter",
   "dataExtract.sectionHint": "Pick columns and rows to bring in as a smaller table",
   "dataExtract.loading": "Reading the whole file…",
+  "dataExtract.columnMissing": "This column is not in the file as it is read now",
+  "dataExtract.insertFailed": "Could not import. Please try again.",
 };

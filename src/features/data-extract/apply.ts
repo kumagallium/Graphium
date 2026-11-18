@@ -3,7 +3,7 @@
 // 画面を持たない純粋な処理。結果は新しい小さな素材（CSV）として書き出す前提なので、
 // 行の順序は元のまま保つ。
 
-import { parseNumeric } from "../../blocks/chart/chart-data";
+import { strictNumeric } from "./numeric";
 import { columnKindOf } from "./profile";
 import type {
   ColumnKind,
@@ -36,20 +36,25 @@ function compile(c: ExtractCondition, kind: ColumnKind): Compiled {
     }
     case "eq":
     case "ne": {
-      const want = parseNumeric(raw);
-      // 数値の列で値も数値なら数値として比べる（1.0 と 1 は等しい）。それ以外は文字列
+      const want = strictNumeric(raw);
+      // 数値の列で、セルも値も厳密な数値のときだけ数値として比べる（1.0 と 1 は等しい）。
+      // それ以外は文字列（日付 2024-01-05 を 2024 として比べない）
+      const asText = (cell: string) => cell.trim() === raw;
       const eq: Compiled =
         kind === "number" && want !== null
-          ? (cell) => parseNumeric(cell) === want
-          : (cell) => cell.trim() === raw;
+          ? (cell) => {
+              const n = strictNumeric(cell);
+              return n !== null ? n === want : asText(cell);
+            }
+          : asText;
       return c.op === "eq" ? eq : (cell) => !eq(cell);
     }
     default: {
-      // gt / ge / lt / le。どちらかが数値として読めなければ満たさない
-      const want = parseNumeric(raw);
+      // gt / ge / lt / le。セルと値の両方が厳密な数値のときだけ成り立つ
+      const want = strictNumeric(raw);
       if (want === null) return () => false;
       return (cell) => {
-        const n = parseNumeric(cell);
+        const n = strictNumeric(cell);
         if (n === null) return false;
         if (c.op === "gt") return n > want;
         if (c.op === "ge") return n >= want;

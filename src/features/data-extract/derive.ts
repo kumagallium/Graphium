@@ -53,6 +53,8 @@ export type DerivedExtract = {
   spec: ExtractSpec;
   result: { headers: string[]; rows: string[][] };
   sourceRows: number;
+  /** 元の列の数（全列かどうかの判定に来歴へ残す） */
+  sourceColumns?: number;
 };
 
 /**
@@ -81,6 +83,7 @@ export function buildDerivedSource(params: {
     columns: extract.spec.columns.length > 0 ? [...extract.spec.columns] : [...extract.result.headers],
     conditions: extract.spec.conditions.map((c): ExtractCondition => ({ ...c })),
     sourceRows: extract.sourceRows,
+    ...(extract.sourceColumns !== undefined ? { sourceColumns: extract.sourceColumns } : {}),
     resultRows: extract.result.rows.length,
     createdAt: now,
   };
@@ -156,4 +159,31 @@ export function reimportTargetOf(source: TableSource): ReimportTarget | null {
     initialOptions: d.fromOptions ? cloneOptions(d.fromOptions) : undefined,
     initialExtract: { columns: [...d.columns], conditions: d.conditions.map((c) => ({ ...c })) },
   };
+}
+
+type ReadOptions = TableSource["options"];
+
+function sameReadOptions(a: ReadOptions, b: ReadOptions): boolean {
+  return (
+    a.headerRow === b.headerRow &&
+    a.endRow === b.endRow &&
+    a.delimiter === b.delimiter &&
+    (a.customDelimiter ?? "") === (b.customDelimiter ?? "") &&
+    a.collapseConsecutive === b.collapseConsecutive
+  );
+}
+
+/**
+ * 元の素材が読めず写しを開き直したとき、確定した表に古い来歴を残すか。
+ * 残すのは、読み方が開いたときと同じで、絞り込みも入っていないときだけ（写しをそのまま
+ * 読み直しただけ）。読み方を変えた・絞り込みを入れたなら、表と食い違う来歴は捨てる
+ */
+export function keepDerivationFor(
+  kept: TableDerivation | undefined,
+  openedOptions: ReadOptions | undefined,
+  result: { options: ReadOptions; extract?: unknown }
+): TableDerivation | undefined {
+  if (!kept || result.extract) return undefined;
+  if (!openedOptions || !sameReadOptions(openedOptions, result.options)) return undefined;
+  return kept;
 }

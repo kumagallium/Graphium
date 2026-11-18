@@ -370,7 +370,9 @@ talks to LLM and embedding backends.
   was filtered lives in `tableMeta.source.derivation` / the block's
   `props.source`, which also lets the source badge reopen the dialog on the
   original asset with the same conditions. Row limits apply to the filtered row
-  count. Code: `src/features/data-extract/` (`apply.ts` engine, `derive.ts` copy
+  count. Comparisons treat a cell as a number only when its whole text is one
+  (`strictNumeric`: units such as `12 g` or `35%` are fine, dates, version
+  numbers and times are not), so a date column is filtered as text. Code: `src/features/data-extract/` (`apply.ts` engine, `derive.ts` copy
   and source building, `components/`), wired in `handleDataImportConfirm` /
   `handleTableReimport` in `src/note-app.tsx`.
 - `chart` renders a table from the same note as a line / bar / scatter /

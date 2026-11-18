@@ -59,3 +59,17 @@ describe("profileColumns", () => {
     );
   });
 });
+
+describe("profileColumnsAsync の shouldStop", () => {
+  const rows = Array.from({ length: 5000 }, (_, i) => [String(i)]);
+
+  it("譲ったあとで true なら、結果を返さず（null）抜ける", async () => {
+    expect(await profileColumnsAsync(["x"], rows, { sliceMs: 0, shouldStop: () => true })).toBeNull();
+  });
+
+  it("false のままなら同期版と同じ結果", async () => {
+    expect(await profileColumnsAsync(["x"], rows, { sliceMs: 0, shouldStop: () => false })).toEqual(
+      profileColumns(["x"], rows)
+    );
+  });
+});

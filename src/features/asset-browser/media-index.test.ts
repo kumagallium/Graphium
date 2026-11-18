@@ -402,6 +402,35 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
     expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["dat-1", "dat-2"]));
   });
 
+  it("絞り込んだ表の元の素材（derivation.fromFileId）も集める。データ表ブロックも同じ", () => {
+    const derivation = { kind: "filter", fromFileId: "orig-1", fromFileName: "m.csv" };
+    const doc = {
+      pages: [
+        {
+          tableMeta: { "table-1": { source: { fileId: "copy-1", derivation } } },
+          blocks: [
+            {
+              type: "dataTable",
+              props: {
+                source: JSON.stringify({
+                  kind: "delimited-file",
+                  fileName: "m-filtered.csv",
+                  fileId: "copy-2",
+                  importedAt: "2026-11-18T00:00:00.000Z",
+                  options: { headerRow: 1, endRow: 3, delimiter: "comma", collapseConsecutive: false },
+                  derivation: { ...derivation, fromFileId: "orig-2" },
+                }),
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc as never)).toEqual(
+      new Set(["copy-1", "orig-1", "copy-2", "orig-2"]),
+    );
+  });
+
   it("素材として登録していない取り込み（fileId 無し）は何も足さない", () => {
     const doc = { pages: [{ tableMeta: { "table-1": { source: {} } } }] };
     expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set());

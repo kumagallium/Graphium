@@ -1556,6 +1556,8 @@ export type TableDerivation = {
   /** 元のファイルをどう読んだか（行範囲・区切り）。開き直すとき、元の画面を同じ読み方で開くのに使う。古い記録には無い */
   fromOptions?: TableSource["options"];
   columns: string[];
+  /** 元の列の数。columns と同じなら「全列」なので、条件の 1 行に列の句を出さない。古い記録には無い */
+  sourceColumns?: number;
   conditions: ExtractCondition[];
   sourceRows: number;
   resultRows: number;

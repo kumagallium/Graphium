@@ -3,6 +3,7 @@ import {
   buildDerivedCsvFile,
   buildDerivedSource,
   derivedFileName,
+  keepDerivationFor,
   registerDerivedSource,
   reimportTargetOf,
 } from "./derive";
@@ -142,5 +143,44 @@ describe("reimportTargetOf", () => {
   it("来歴が無い・元の ID が無いなら null", () => {
     expect(reimportTargetOf({ ...derived, derivation: undefined })).toBeNull();
     expect(reimportTargetOf({ ...derived, derivation: { ...derived.derivation!, fromFileId: undefined } })).toBeNull();
+  });
+});
+
+describe("sourceColumns", () => {
+  it("元の列の数を来歴に残す（無ければ項目ごと無い）", () => {
+    const base = {
+      derivedFileId: "c",
+      derivedFileName: "m-filtered.csv",
+      fromFileName: "m.csv",
+      fromOptions,
+    };
+    expect(buildDerivedSource({ ...base, extract: { ...extract, sourceColumns: 2 } }).derivation!.sourceColumns).toBe(2);
+    expect("sourceColumns" in buildDerivedSource({ ...base, extract }).derivation!).toBe(false);
+  });
+});
+
+describe("keepDerivationFor", () => {
+  const kept = buildDerivedSource({
+    derivedFileId: "c",
+    derivedFileName: "m-filtered.csv",
+    fromFileName: "m.csv",
+    fromOptions,
+    extract,
+  }).derivation!;
+  const opened = { headerRow: 1, endRow: 3, delimiter: "comma" as const, collapseConsecutive: false };
+
+  it("読み方が同じで絞り込みも無いときだけ残す", () => {
+    expect(keepDerivationFor(kept, opened, { options: { ...opened } })).toBe(kept);
+  });
+  it("読み方を変えたら捨てる", () => {
+    expect(keepDerivationFor(kept, opened, { options: { ...opened, endRow: 2 } })).toBeUndefined();
+    expect(keepDerivationFor(kept, opened, { options: { ...opened, delimiter: "tab" } })).toBeUndefined();
+  });
+  it("絞り込みを入れたら捨てる", () => {
+    expect(keepDerivationFor(kept, opened, { options: { ...opened }, extract: {} })).toBeUndefined();
+  });
+  it("来歴が無い・開いたときの読み方が分からないなら残さない", () => {
+    expect(keepDerivationFor(undefined, opened, { options: opened })).toBeUndefined();
+    expect(keepDerivationFor(kept, undefined, { options: opened })).toBeUndefined();
   });
 });

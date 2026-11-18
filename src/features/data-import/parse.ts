@@ -204,12 +204,25 @@ const ASYNC_CHECK_EVERY = 500;
  *
  * 数十万行を一息で変換すると、その間アプリが固まる。一定行数ごとに経過時間を見て、
  * sliceMs を超えていたら譲る。結果は同期版と完全に同じ。
+ *
+ * shouldStop を渡すと、譲るたびに見て、true なら結果を返さず（null）抜ける。
+ * 設定を変えた・ダイアログを閉じたなど、結果がもう要らない読み込みを途中で止めるため
  */
 export async function parseDelimitedLinesAsync(
   lines: string[],
   options: DelimitedImportOptions,
   opts?: { sliceMs?: number }
-): Promise<ParsedDelimited> {
+): Promise<ParsedDelimited>;
+export async function parseDelimitedLinesAsync(
+  lines: string[],
+  options: DelimitedImportOptions,
+  opts: { sliceMs?: number; shouldStop: () => boolean }
+): Promise<ParsedDelimited | null>;
+export async function parseDelimitedLinesAsync(
+  lines: string[],
+  options: DelimitedImportOptions,
+  opts?: { sliceMs?: number; shouldStop?: () => boolean }
+): Promise<ParsedDelimited | null> {
   const sliceMs = opts?.sliceMs ?? 24;
   const plan = planParse(lines, options);
   if (!plan.body) return emptyParsed(plan);
@@ -225,6 +238,7 @@ export async function parseDelimitedLinesAsync(
     }
     if ((i - headerIdx) % ASYNC_CHECK_EVERY === 0 && performance.now() - sliceStart > sliceMs) {
       await yieldToEventLoop();
+      if (opts?.shouldStop?.()) return null;
       sliceStart = performance.now();
     }
   }

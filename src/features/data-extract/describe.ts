@@ -38,7 +38,10 @@ export function describeDerivation(derivation: TableDerivation, t: T): string {
   const parts: string[] = [];
   const conds = derivation.conditions.filter(isActiveCondition).map((c) => describeCondition(c, t));
   if (conds.length > 0) parts.push(conds.join(t("dataExtract.describe.and")));
-  if (derivation.columns.length > 0) {
+  // 全列のまま（元の列の数と同じ）なら、列のことは書かない。古い来歴（sourceColumns なし）は従来どおり
+  const allColumns =
+    derivation.sourceColumns !== undefined && derivation.columns.length === derivation.sourceColumns;
+  if (derivation.columns.length > 0 && !allColumns) {
     parts.push(t("dataExtract.describe.columnCount", { count: String(derivation.columns.length) }));
   }
   const spec = parts.length > 0 ? parts.join(" / ") : t("dataExtract.describe.all");

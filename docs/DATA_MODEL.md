@@ -476,6 +476,7 @@ type TableDerivation = {                   // how a filtered copy was made
   fromFileName: string;                    // name of the original file
   fromOptions?: TableSource["options"];    // how the original was read (absent in older records)
   columns: string[];                       // columns kept (every header when all were kept)
+  sourceColumns?: number;                  // columns in the original; equal to columns.length means "all"
   conditions: { column: string; op: "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty"; value?: string }[];
                                            // a row stays only when all of them hold
   sourceRows: number;                      // data rows in the original, before filtering
@@ -533,7 +534,8 @@ type TableDerivation = {                   // how a filtered copy was made
   keeps a 2,000-row measurement from inflating every save, revision and index
   pass. The block is read-only; editing means re-importing (the source badge)
   or switching it back to a note table through the same dialog. The media
-  index counts `source.fileId` in `usedIn` (media index version 8), so the
+  index counts `source.fileId` in `usedIn` (media index version 8; the original
+  asset of a filtered table, `source.derivation.fromFileId`, since version 11), so the
   asset is protected from deletion while a data table refers to it. Without
   the asset the block renders a placeholder naming the source file. Calc
   blocks and charts resolve a data table by its caption, the same way they

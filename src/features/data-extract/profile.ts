@@ -3,11 +3,11 @@
 // 条件の入力欄を列に合わせて出し分けるための下調べ。演算子の候補（数値だけ大小比較）と、
 // 種類が少ない列の値の候補（datalist）に使う。
 
-import { parseNumeric } from "../../blocks/chart/chart-data";
+import { strictNumeric } from "./numeric";
 import { yieldToEventLoop } from "../data-import/large-file";
 import type { ColumnKind, ColumnProfile } from "./types";
 
-/** 空でないセルのうち、これ以上が数値として読めれば数値列（単位つき "12 g" も数値） */
+/** 空でないセルのうち、これ以上が厳密な数値（numeric.ts）なら数値列。単位つき "12 g" は数値、日付・版番号は文字 */
 const NUMBER_RATIO = 0.9;
 /** 値の候補を出す種類数の上限 */
 export const DISTINCT_LIMIT = 50;
@@ -41,7 +41,7 @@ function feed(accs: Acc[], rows: string[][], from: number, to: number): void {
       const cell = (row[acc.index] ?? "").trim();
       if (cell === "") continue;
       acc.nonEmpty++;
-      if (parseNumeric(cell) !== null) acc.numeric++;
+      if (strictNumeric(cell) !== null) acc.numeric++;
       if (acc.counts) {
         acc.counts.set(cell, (acc.counts.get(cell) ?? 0) + 1);
         if (acc.counts.size > DISTINCT_LIMIT) acc.counts = null;
@@ -78,7 +78,7 @@ export function columnKindOf(rows: string[][], index: number): ColumnKind {
     const cell = (row[index] ?? "").trim();
     if (cell === "") continue;
     nonEmpty++;
-    if (parseNumeric(cell) !== null) numeric++;
+    if (strictNumeric(cell) !== null) numeric++;
   }
   return nonEmpty > 0 && numeric >= nonEmpty * NUMBER_RATIO ? "number" : "text";
 }
@@ -91,7 +91,18 @@ export async function profileColumnsAsync(
   headers: string[],
   rows: string[][],
   opts?: { sliceMs?: number }
-): Promise<ColumnProfile[]> {
+): Promise<ColumnProfile[]>;
+/** shouldStop を渡すと、譲るたびに見て、true なら結果を返さず（null）抜ける */
+export async function profileColumnsAsync(
+  headers: string[],
+  rows: string[][],
+  opts: { sliceMs?: number; shouldStop: () => boolean }
+): Promise<ColumnProfile[] | null>;
+export async function profileColumnsAsync(
+  headers: string[],
+  rows: string[][],
+  opts?: { sliceMs?: number; shouldStop?: () => boolean }
+): Promise<ColumnProfile[] | null> {
   const sliceMs = opts?.sliceMs ?? 12;
   const accs = newAccs(headers);
   const CHUNK = 2000;
@@ -100,6 +111,7 @@ export async function profileColumnsAsync(
     feed(accs, rows, from, Math.min(rows.length, from + CHUNK));
     if (Date.now() - sliceStart >= sliceMs) {
       await yieldToEventLoop();
+      if (opts?.shouldStop?.()) return null;
       sliceStart = Date.now();
     }
   }

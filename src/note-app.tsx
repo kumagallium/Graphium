@@ -112,7 +112,7 @@ import {
   type DelimitedImportOptions,
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
-import { registerDerivedSource, reimportTargetOf } from "./features/data-extract/derive";
+import { keepDerivationFor, registerDerivedSource, reimportTargetOf } from "./features/data-extract/derive";
 import type { ExtractSpec, TableDerivation } from "./features/data-extract/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
 import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
@@ -2210,6 +2210,9 @@ function NoteEditorInner({
   // （editorRef は onEditorReady = passive effect 待ちで、その一瞬だけ古いままになる）。
   // 非同期の結果を本文へ書き戻す処理の行き先に使う（いまは外部画像の取り込みだけ）。
   const liveEditorRef = useRef<any>(null);
+  // 開いているノート。素材の登録を待つあいだにノートが切り替わったかを見るのに使う
+  const openFileIdRef = useRef(fileId);
+  openFileIdRef.current = fileId;
   // picker callbacks をエディタ単位で登録するために、エディタ実体を state でも持つ。
   // editorRef.current は ref なので useEffect の依存に乗せられない。
   const [mainEditor, setMainEditor] = useState<any>(null);
@@ -2739,6 +2742,13 @@ function NoteEditorInner({
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
+  // 確定のときに開いていたノートが、まだ開いているか。新規ノート（fileId が null）は保存で
+  // ID が付くので、null → 値は同じノートとみなす（別のノートへ移ったときだけ false）
+  const sameNoteStillOpen = useCallback(
+    (startFileId: string | null) => startFileId === null || openFileIdRef.current === startFileId,
+    []
+  );
+
   // データ表として取り込む → 素材を正として、ノートには参照（dataTable ブロック）だけを置く。
   //
   // 文書の表と違い、行の実体は素材にある。素材未登録のファイル（スラッシュ・ドロップ
@@ -2753,9 +2763,12 @@ function NoteEditorInner({
         file?: File;
         text?: string;
         keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
       },
       result: DataImportResult
     ) => {
+      // 確定したときのノート。絞り込みは素材の登録を待つので、その間に別のノートへ移ったら挿さない
+      const startFileId = openFileIdRef.current;
       // カーソルのあったブロックは、待つ前に ID で覚えておく。素材の登録を待つ間に
       // 言語の切り替えでエディタが作り直されても、同じ ID のブロックを引き直せる
       const anchorId: string | undefined =
@@ -2765,7 +2778,10 @@ function NoteEditorInner({
       if (result.extract) {
         // 絞り込み: 絞った結果を新しい小さな素材にして、表はその素材を読む。
         // 元の素材は残し、どう絞ったかは出所（derivation）に持つ
-        if (!uploadAsset) return;
+        if (!uploadAsset) {
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
         try {
           derivedSource = await registerDerivedSource(
             { uploadAsset, primeAssetText },
@@ -2778,6 +2794,12 @@ function NoteEditorInner({
           );
         } catch (err) {
           console.warn("絞り込んだデータの素材登録に失敗:", err);
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
+        // 登録を待つ間にノートを切り替えていたら、別のノートには挿さない
+        if (!sameNoteStillOpen(startFileId)) {
+          alert(tStatic("dataExtract.insertFailed"));
           return;
         }
         fileId = derivedSource?.fileId;
@@ -2809,8 +2831,9 @@ function NoteEditorInner({
           options: result.options,
           parsed: result.parsed,
         });
-      // 元の素材が読めず写しを開いたとき、絞り込まずに確定しても来歴は残す
-      if (!derivedSource && file.keepDerivation) source.derivation = file.keepDerivation;
+      // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
+      const keep = derivedSource ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
+      if (keep) source.derivation = keep;
       const props = {
         source: serializeDataTableSource(source),
         caption: defaultCaption(file.fileName),
@@ -2842,7 +2865,7 @@ function NoteEditorInner({
       markDirtyRef.current();
       setTimeout(() => saveNowRef.current?.(), 0);
     },
-    [uploadAsset, tableMetaStore, isSlashOnlyBlock, removeBlockMetadata]
+    [uploadAsset, tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, sameNoteStillOpen]
   );
 
   // データ取り込みダイアログの確定 → テーブルブロックを挿入し、出所を注釈に残す。
@@ -2862,6 +2885,7 @@ function NoteEditorInner({
         file?: File;
         text?: string;
         keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
       },
       result: DataImportResult,
       derived?: TableSource,
@@ -2921,8 +2945,9 @@ function NoteEditorInner({
             options: result.options,
             parsed: result.parsed,
           });
-        // 元の素材が読めず写しを開いたとき、絞り込まずに確定しても来歴は残す
-        if (!derived && file.keepDerivation) builtSource.derivation = file.keepDerivation;
+        // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
+        const keep = derived ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
+        if (keep) builtSource.derivation = keep;
         tableMetaStore.setSource(blockId, builtSource);
       }
 
@@ -2987,6 +3012,7 @@ function NoteEditorInner({
         /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
         text?: string;
         keepDerivation?: TableDerivation;
+        initialOptions?: DelimitedImportOptions;
       },
       result: DataImportResult
     ) => {
@@ -3000,7 +3026,11 @@ function NoteEditorInner({
         // 確定したときのブロックにする。登録が済んでから本体（applyNoteTable）へ渡す
         const anchorId: string | undefined =
           liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
-        if (!uploadAsset) return;
+        const startFileId = openFileIdRef.current;
+        if (!uploadAsset) {
+          alert(tStatic("dataExtract.insertFailed"));
+          return;
+        }
         void (async () => {
           try {
             const derived = await registerDerivedSource(
@@ -3012,16 +3042,22 @@ function NoteEditorInner({
                 meta: extractHeaderMeta(result.parsed.headerLines),
               }
             );
+            // 登録を待つ間にノートを切り替えていたら、別のノートには挿さない
+            if (!sameNoteStillOpen(startFileId)) {
+              alert(tStatic("dataExtract.insertFailed"));
+              return;
+            }
             applyNoteTable(file, result, derived, anchorId);
           } catch (err) {
             console.warn("絞り込んだデータの素材登録に失敗:", err);
+            alert(tStatic("dataExtract.insertFailed"));
           }
         })();
         return;
       }
       applyNoteTable(file, result);
     },
-    [uploadAsset, insertDataTable, applyNoteTable]
+    [uploadAsset, insertDataTable, applyNoteTable, sameNoteStillOpen]
   );
 
   // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
