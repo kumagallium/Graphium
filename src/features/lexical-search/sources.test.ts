@@ -43,6 +43,43 @@ describe("desiredAssetSources の文字起こし", () => {
   });
 });
 
+describe("desiredAssetSources の AI との会話", () => {
+  const conversation = (over: Partial<MediaIndexEntry> = {}) =>
+    media({
+      fileId: "conv-claude-code-s1",
+      name: "全粒粉の配合",
+      type: "conversation",
+      mimeType: "text/plain",
+      conversation: {
+        provider: "claude-code",
+        sessionId: "s1",
+        workdir: "/Users/example/bakery-notes",
+        startedAt: "2026-10-05T00:00:00.000Z",
+        endedAt: "2026-10-06T00:00:00.000Z",
+        ownTurns: 2,
+        ownChars: 40,
+        bodyChars: 300,
+        importedAt: "2026-11-01T00:00:00.000Z",
+      },
+      ...over,
+    });
+
+  it("会話は本文を読む計画で載り、アーカイブ済みは載らない", () => {
+    const { desired, plans, names } = desiredAssetSources([conversation(), conversation({ fileId: "conv-claude-code-s2", archivedAt: "x" })]);
+    expect(desired.map((d) => d.sourceId)).toEqual(["conv-claude-code-s1"]);
+    expect(plans.get("conv-claude-code-s1")).toEqual({ mode: "conversation" });
+    expect(names.get("conv-claude-code-s1")).toBe("全粒粉の配合");
+  });
+
+  it("題か本文が変わると印が変わり、同じなら変わらない", () => {
+    const fp = (e: MediaIndexEntry) => desiredAssetSources([e]).desired[0].fingerprint;
+    const base = conversation();
+    expect(fp(conversation())).toBe(fp(base));
+    expect(fp(conversation({ name: "別の題" }))).not.toBe(fp(base));
+    expect(fp(conversation({ conversation: { ...base.conversation!, bodyChars: 301 } }))).not.toBe(fp(base));
+  });
+});
+
 describe("desiredNoteSources", () => {
   it("ゴミ箱・アーカイブ・skill を除外し、ai は wiki になる", () => {
     const out = desiredNoteSources([

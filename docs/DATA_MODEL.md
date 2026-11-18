@@ -1791,16 +1791,26 @@ type ConversationMeta = {
   hasBrief?: boolean;             // the conversation opens with a long text of unknown authorship
   bodyChars: number;              // length of the stored text
   importedAt: string;             // last time it was brought in or replaced
+  autoName?: string;              // the name bringing in gave it; absent on materials from v0.147
 };
 ```
 
 - **Identity.** `fileId` is `conv-<provider>-<sessionId>`
   (`conversationFileId`), so bringing the same conversation in again never
   makes a second material: the stored text and `conversation` are replaced
-  (a conversation keeps growing), while the name, folders (`noteContexts`),
+  (a conversation keeps growing), while folders (`noteContexts`),
   `uploadedAt`, `usedIn` and `archivedAt` are kept. `sessionId` is limited to
   letters, digits, `-` and `_` (it becomes part of a file name). `url` holds
   the source id (`conversation:<fileId>`) and `mimeType` is `text/plain`.
+- **Name.** The title the record carries (the last `custom-title` line of a
+  Claude Code record), otherwise the first line the user wrote. Bringing a
+  conversation in again follows a new title only while `name` still equals
+  `autoName` (on a material from v0.147, which has no `autoName`: the first
+  line the user wrote). A name the user changed is never replaced. A change of
+  name alone counts as **unchanged** in the report.
+- **Date in lists.** Material lists show and sort by when the conversation
+  happened (`materialListDate`: `endedAt`, then `startedAt`), not by
+  `uploadedAt`.
 - **Stored text.** What the user typed is kept **verbatim** — no rewording, no
   summarising, line breaks and inner whitespace untouched. Two things are
   removed around it: text the tool inserted into the message (see the next

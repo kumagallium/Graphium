@@ -354,7 +354,7 @@ const ASSET_TEXT_BASE_SCORE = 25;
 const ASSET_TEXT_RELATIVE_SCORE_MAX = 10;
 
 /** Cmd+K の素材検索で対象にする種類。memo は transient（メモは searchMemos が別に探す）。video/audio は下の別扱い */
-const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document"]);
+const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document", "conversation"]);
 /** 録音・動画は、文字起こしで当たったとき（assetHits にある）だけ出す。名前だけでは出さない（従来どおり） */
 const TRANSCRIPT_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["audio", "video"]);
 

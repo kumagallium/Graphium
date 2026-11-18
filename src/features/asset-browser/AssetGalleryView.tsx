@@ -26,7 +26,8 @@ import { useDataPreview } from "../../blocks/chart/data-preview-store";
 import { DataSummary, Sparkline } from "../../blocks/chart/data-preview-parts";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
-import type { DocumentKind, EditMediaContexts, MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
+import { phraseHitsBySource, type BestHit } from "../lexical-search";
+import { materialListDate, type DocumentKind, type EditMediaContexts, type MediaIndex, type MediaIndexEntry, type MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry, isFilelessMediaEntry } from "./media-index";
@@ -951,6 +952,11 @@ export function AssetGalleryView({
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
+  // AI との会話は本文の言葉でも探す（全文の索引。入れた言葉がそのまま入っている会話だけ）
+  const conversationBodyHits = useMemo(
+    () => (mediaType === "conversation" && searchQuery.trim() ? phraseHitsBySource(searchQuery, ["asset"]) : new Map<string, BestHit>()),
+    [mediaType, searchQuery],
+  );
   const [sortKey, setSortKey] = useState<SortKey>("uploadedAt");
   const [sortAsc, setSortAsc] = useState(false);
   // Documents タブのサブフィルタ（All / PDF / Word / Excel / PowerPoint）
@@ -1317,6 +1323,7 @@ export function AssetGalleryView({
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
         (m) =>
+          conversationBodyHits.has(m.fileId) ||
           m.name.toLowerCase().includes(q) ||
           m.usedIn.some((u) => u.noteTitle.toLowerCase().includes(q)) ||
           m.urlMeta?.domain?.toLowerCase().includes(q) ||
@@ -1343,7 +1350,7 @@ export function AssetGalleryView({
       }
       let cmp = 0;
       if (sortKey === "uploadedAt") {
-        cmp = new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+        cmp = new Date(materialListDate(a)).getTime() - new Date(materialListDate(b)).getTime();
       } else if (sortKey === "usedIn") {
         cmp = a.usedIn.length - b.usedIn.length;
       } else {
@@ -1351,7 +1358,7 @@ export function AssetGalleryView({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter, folderFilter, noteFolderLookup, emptyLookup]);
+  }, [mediaIndex, mediaType, searchQuery, conversationBodyHits, sortKey, sortAsc, docFilter, folderFilter, noteFolderLookup, emptyLookup]);
 
   // リンクした素材の状態（表示中の分を 1 回でまとめて見る。デスクトップ版でなければ呼ばない）
   const linkStates = useLinkStates(filtered);
@@ -2434,6 +2441,11 @@ export function AssetGalleryView({
                               ))}
                             </div>
                           ))}
+                        {conversationBodyHits.get(entry.fileId) && (
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                            {conversationBodyHits.get(entry.fileId)?.snippet.text}
+                          </p>
+                        )}
                         {entry.type === "url" && entry.urlMeta?.domain && (
                           <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                             {entry.urlMeta.domain}
@@ -2466,7 +2478,7 @@ export function AssetGalleryView({
                         {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                        {formatDateTime(entry.uploadedAt)}
+                        {formatDateTime(materialListDate(entry))}
                       </td>
                       <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                         <button

@@ -179,8 +179,9 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
     {
       title: "素材を探す",
       description:
-        "Graphium の素材（画像・PDF・Word・Web ページなど）を、名前・画像から読み取った文字（OCR）・" +
-        "Web ページの説明やドメインで探す。「あの図はどのファイルだったか」「このテーマの PDF はあるか」のようなときに使う。" +
+        "Graphium の素材（画像・PDF・Word・Web ページ・AI との会話など）を、名前・画像から読み取った文字（OCR）・" +
+        "Web ページの説明やドメイン・AI との会話の本文で探す。「あの図はどのファイルだったか」「このテーマの PDF はあるか」" +
+        "「前にこれをどう決めたか」（type: conversation で会話だけに絞れる）のようなときに使う。" +
         "結果の id はそのまま get_source_text に渡せる。アーカイブした素材は出ない。",
       inputSchema: {
         query: z.string().describe("検索語。自然文でも単語でもよい"),

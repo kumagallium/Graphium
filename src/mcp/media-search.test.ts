@@ -101,4 +101,57 @@ describe("searchMedia", () => {
     expect(mediaSourceId({ type: "url", fileId: "x", url: "https://a/b" })).toBe("url:https://a/b");
     expect(mediaSourceId({ type: "memo", fileId: "x", url: "" })).toBe("memo:x");
   });
+
+  describe("AI との会話の本文", () => {
+    const FILE = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+    const conversationEntry = (over: Record<string, unknown> = {}) =>
+      entry({
+        fileId: FILE,
+        name: "全粒粉の配合",
+        type: "conversation",
+        uploadedAt: "2026-11-10T00:00:00Z",
+        conversation: { provider: "claude-code", sessionId: "s", workdir: "", startedAt: "2026-10-05T00:00:00Z", endedAt: "2026-10-06T00:00:00Z", ownTurns: 1, ownChars: 10, bodyChars: 10, importedAt: "2026-11-10T00:00:00Z" },
+        ...over,
+      });
+    const BODY = "この資料は会話の記録である。\n\n## 2026-10-05\n\n- 私（09:12）: 酸味は控えめにしたいので、発酵は 6 時間で止めます\n";
+
+    beforeEach(() => {
+      mkdirSync(join(root, "media"), { recursive: true });
+      writeFileSync(join(root, "media", `${FILE}.txt`), BODY);
+    });
+
+    it("本文の言葉で見つかり、抜粋と会話の日付が付く", () => {
+      writeMedia([conversationEntry()]);
+      const hits = searchMedia("酸味 発酵", {}, root);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].id).toBe(`conversation:${FILE}`);
+      expect(hits[0].name).toBe("全粒粉の配合");
+      expect(hits[0].snippet).toContain("酸味は控えめ");
+      expect(hits[0].conversationDate).toBe("2026-10-06T00:00:00Z");
+    });
+
+    it("同じ会話の断片がいくつ当たっても 1 件にまとまる", () => {
+      const many = Array.from({ length: 6 }, (_, i) => `- 私（09:1${i}）: ${"酸味の話を続けます。".repeat(70)}`).join("\n");
+      writeFileSync(join(root, "media", `${FILE}.txt`), `## 2026-10-05\n\n${many}\n`);
+      writeMedia([conversationEntry()]);
+      expect(searchMedia("酸味", {}, root)).toHaveLength(1);
+    });
+
+    it("冒頭の説明の語では当たらない", () => {
+      writeMedia([conversationEntry()]);
+      expect(searchMedia("資料", {}, root)).toEqual([]);
+    });
+
+    it("アーカイブ済みの会話は本文でも出ない", () => {
+      writeMedia([conversationEntry({ archivedAt: "2026-11-11T00:00:00Z" })]);
+      expect(searchMedia("酸味", {}, root)).toEqual([]);
+    });
+
+    it("種類で絞れて、本文が無い会話は名前でだけ当たる", () => {
+      rmSync(join(root, "media", `${FILE}.txt`));
+      writeMedia([conversationEntry()]);
+      expect(searchMedia("酸味", { type: "conversation" }, root)).toEqual([]);
+      expect(searchMedia("全粒粉", { type: "conversation" }, root)).toHaveLength(1);
+    });
+  });
 });

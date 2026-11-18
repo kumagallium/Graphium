@@ -457,7 +457,17 @@ export type ConversationMeta = {
   bodyChars: number;
   /** 最後に取り込んだ（差し替えた）時刻（ISO 8601） */
   importedAt: string;
+  /**
+   * 取り込みが付けた題。素材の名前がこれと同じあいだは、取り込み直しで新しい題に差し替える。
+   * 違っていれば利用者が付け直した名前なので触らない（v0.147 までの素材には無い）
+   */
+  autoName?: string;
 };
+
+/** 一覧に出す日付。AI との会話は取り込んだ日時でなく、会話をした日時 */
+export function materialListDate(entry: Pick<MediaIndexEntry, "uploadedAt" | "conversation">): string {
+  return entry.conversation?.endedAt || entry.conversation?.startedAt || entry.uploadedAt;
+}
 
 /** 素材の出どころ情報（MediaIndexEntry.sourceInfo） */
 export type SourceInfo = {

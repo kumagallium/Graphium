@@ -2369,7 +2369,7 @@ Notes:
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
   the background; in the desktop app only, the transcript of a recording or
   video, read from its `transcript.json` and re-read when its transcription
-  job turns done) through one
+  job turns done; the stored text of an AI conversation) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
@@ -3283,6 +3283,18 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   turns, and renders them as plain React text (never as HTML or Markdown),
   with the AI's lines in a muted colour. A conversation material has no file,
   so download and sharing are not offered for it.
+- **Finding one** (`src/features/lexical-search/conversation-chunks.ts`). The
+  turns of the stored text go into the lexical index, without the lead and the
+  speaker labels, which every conversation shares. `⌘K`, the search box of
+  the AI conversations list and the MCP `search_media` tool find a conversation
+  by what was said. The chunks use the `alt` chunk id prefix, so the in-app AI
+  chat does not receive them as context: a conversation reaches a model only
+  when the user asks for it. To keep the restored index small, only the newest
+  conversations up to `CONVERSATION_SEARCH_MAX_BODY_CHARS` (10 million
+  characters of stored text) are indexed; older ones are still found by name.
+  Measured on JavaScriptCore on 2026-11-19, 1.95 million characters
+  (353 conversations) added about 66 MB of live memory to a restored index
+  and took the median search from 0.3 ms to 0.9 ms.
 - **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
   `importConversations` saves each text with `saveMediaText` and then writes
   the media index once. The material id is derived from provider and session

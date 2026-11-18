@@ -146,16 +146,17 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 
 ![The report after bringing in: 21 brought in, 3 updated, 8 unchanged, 0 failed](/screenshots/intake-conversations-report.png)
 
-**Where to read them.** Brought-in conversations are listed under **Materials → AI conversations** in the left nav, in the folder `AI chats/<name of the working folder>`. Open one to read it by day: your messages, and the AI's replies in lighter text. As materials, they can be renamed, put in or taken out of folders, archived or deleted. Deleting one also deletes the text that was saved.
+**Where to read them.** Brought-in conversations are listed under **Materials → AI conversations** in the left nav, in the folder `AI chats/<name of the working folder>`. The name is the title Claude Code gave the conversation, or your first line when it has none. The date is when the conversation happened, not when you brought it in. Bringing a conversation in again updates its name, unless you renamed it yourself. Open one to read it by day: your messages, and the AI's replies in lighter text. As materials, they can be renamed, put in or taken out of folders, archived or deleted. Deleting one also deletes the text that was saved.
 
 ![A brought-in conversation opened: a Brief, the AI's reply in lighter text, and two lines of your own](/screenshots/conversation-material.png)
+
+**Finding one by what was said.** `⌘K` (`Ctrl+K` on Windows/Linux), the search box of the **AI conversations** list and the `search_media` tool of the [MCP server](/mcp-server) look through the text of your conversations as well as their names. This covers the newest conversations up to 10 million characters of saved text; older ones are found by name. The AI chat inside Graphium does not read conversations on its own.
 
 **In the browser.** The **AI conversations** tab only says that bringing in AI conversations is available in the desktop app. The records are files on this PC, and a browser cannot read them.
 
 **Not possible yet.**
 
 - Making knowledge (insights and topics) from a brought-in conversation
-- Finding a conversation by what it says; searching the material list looks at titles only
 - Sharing a conversation material, or downloading it as a file
 - Conversations from AI tools other than Claude Code
 
