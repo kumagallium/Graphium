@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.147.0](https://github.com/kumagallium/Graphium/compare/v0.146.0...v0.147.0) - 2026-11-18
+
+- feat(intake): bring in AI conversations from the bring-in sheet (desktop) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1760
+
 ## [v0.146.0](https://github.com/kumagallium/Graphium/compare/v0.145.0...v0.146.0) - 2026-11-18
 
 - feat(conversation): keep AI conversations as materials — reader, material type and source id (no screen yet) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1757
