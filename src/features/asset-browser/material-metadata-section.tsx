@@ -456,8 +456,8 @@ export function MaterialMetadataSection({
             )}
           </MetaRow>
           <MetaRow label={t("asset.metaType")}>
-            <span style={{ color: TYPE_HEX[entry.type] }} className="text-xs font-medium uppercase">
-              {entry.type}
+            <span style={{ color: TYPE_HEX[entry.type] }} className="text-xs font-medium">
+              {t(`asset.type.${entry.type}`)}
             </span>
           </MetaRow>
           <MetaRow label={t("asset.metaUploaded")}>
@@ -521,7 +521,7 @@ export function MaterialMetadataSection({
             <MetaRow label={t("asset.metaDerivedFrom", { count: String(derivedCount) })}>
               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
                 <GitBranch size={11} />
-                {derivedCount} asset(s)
+                {t("asset.derivedFromCount", { count: String(derivedCount) })}
               </span>
             </MetaRow>
           )}

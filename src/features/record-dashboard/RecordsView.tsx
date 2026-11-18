@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MediaIndex } from "../asset-browser/media-index";
 import type { CaptureIndex } from "../mobile-capture/capture-store";
-import type { GraphiumIndex } from "../navigation/index-file";
+import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import { lexicalSearch, phraseHitsBySource } from "../lexical-search";
 import "./record-dashboard.css";
 import { useRecordCopy } from "./copy";
@@ -17,6 +17,12 @@ export type RecordsViewProps = {
   noteIndex: GraphiumIndex | null | undefined;
   mediaIndex: MediaIndex | null | undefined;
   captureIndex: CaptureIndex | null | undefined;
+  /**
+   * ごみ箱とアーカイブのノート。一覧には出さず、録音の素材の札を決めるのにだけ使う
+   * （noteIndex はごみ箱・アーカイブを除いた形で渡ってくる）
+   */
+  trashedNotes?: readonly NoteIndexEntry[];
+  archivedNotes?: readonly NoteIndexEntry[];
   /** 索引をまだ読んでいる途中か */
   loading?: boolean;
   /** 開いたときに入れておく探す言葉（⌘K の「記録で見る」から来たとき） */
@@ -51,6 +57,8 @@ export function RecordsView({
   noteIndex,
   mediaIndex,
   captureIndex,
+  trashedNotes,
+  archivedNotes,
   loading,
   initialQuery = "",
   onOpenNote,
@@ -62,8 +70,14 @@ export function RecordsView({
   // 今日・昨日の判定に使う「いま」。開いた時点で固定する（開いている間に日付が変わっても、並びは動かさない）
   const [now] = useState(() => new Date().toISOString());
   const records = useMemo(
-    () => buildRecords({ notes: noteIndex?.notes ?? [], media: mediaIndex?.media ?? [], captures: captureIndex?.captures ?? [] }),
-    [noteIndex, mediaIndex, captureIndex],
+    () =>
+      buildRecords({
+        notes: noteIndex?.notes ?? [],
+        media: mediaIndex?.media ?? [],
+        captures: captureIndex?.captures ?? [],
+        hiddenNotes: [...(trashedNotes ?? []), ...(archivedNotes ?? [])],
+      }),
+    [noteIndex, mediaIndex, captureIndex, trashedNotes, archivedNotes],
   );
 
   // 本文でも探す: 全文の索引（ノート・AI のページの本文、素材の本文）を引き、記録の id に直して返す。

@@ -18,6 +18,12 @@ export type RecordSources = {
   notes: readonly NoteIndexEntry[];
   media: readonly MediaIndexEntry[];
   captures: readonly CaptureEntry[];
+  /**
+   * ごみ箱・アーカイブにあるノート。一覧には出さない。録音の素材の出どころを決めるのにだけ使う
+   * （録音を置いたノートを捨てても、その録音は録音のまま）。
+   * アプリは notes からごみ箱・アーカイブを除いて渡すので、別に受け取る
+   */
+  hiddenNotes?: readonly NoteIndexEntry[];
 };
 
 /** 題の下の 1 行に並べる見出しの数 */
@@ -182,7 +188,7 @@ export function memoToRecord(entry: CaptureEntry): RecordItem {
  */
 export function buildRecords(sources: RecordSources): RecordItem[] {
   const webClipNoteIds = collectWebClipNoteIds(sources.media);
-  const recordingNoteIds = collectRecordingNoteIds(sources.notes);
+  const recordingNoteIds = collectRecordingNoteIds([...sources.notes, ...(sources.hiddenNotes ?? [])]);
   const items: RecordItem[] = [];
   for (const n of sources.notes) {
     if (n.deletedAt || n.archivedAt || n.source === "skill") continue;

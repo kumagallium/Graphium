@@ -283,6 +283,24 @@ describe("録音の素材と、録音を持つノート", () => {
     expect(records.find((r) => r.id === "note:n1")?.origin).toBe("recording");
   });
 
+  it("録音を置いたノートがごみ箱・アーカイブにあっても、録音の素材は「録音から」のまま。ノートは出さない", () => {
+    const records = buildRecords({
+      notes: [],
+      hiddenNotes: [
+        note({ noteId: "n1", hasRecording: true, deletedAt: "2026-11-18T00:00:00.000Z" }),
+        note({ noteId: "n2", hasRecording: true, archivedAt: "2026-11-18T00:00:00.000Z" }),
+      ],
+      media: [
+        media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") }),
+        media({ fileId: "a2", type: "audio", usedIn: usedIn("n2") }),
+      ],
+      captures: [],
+    });
+    expect(records.find((r) => r.id === "media:a1")?.origin).toBe("recording");
+    expect(records.find((r) => r.id === "media:a2")?.origin).toBe("recording");
+    expect(records.some((r) => r.kind === "note")).toBe(false);
+  });
+
   it("文字起こしで当たった録音から、その録音を持つノートにも当たりを広げる", () => {
     const m = [media({ fileId: "a1", type: "audio", usedIn: usedIn("n1") })];
     const hits = spreadRecordingHits(new Map([["media:a1", "抜粋"]]), m, recNotes);

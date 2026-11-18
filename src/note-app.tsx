@@ -17132,6 +17132,8 @@ export function NoteApp() {
             noteIndex={fm.noteIndex}
             mediaIndex={fm.mediaIndex}
             captureIndex={capture.captureIndex}
+            trashedNotes={fm.trashedNotes}
+            archivedNotes={fm.archivedNotes}
             loading={fm.filesLoading}
             initialQuery={recordsQuery}
             onOpenNote={(noteId, wiki) => {
