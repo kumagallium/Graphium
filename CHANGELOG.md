@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.141.2](https://github.com/kumagallium/Graphium/compare/v0.141.1...v0.141.2) - 2026-11-18
+
+- feat(docx): write formulas as Word equations instead of LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1741
+
 ## [v0.141.1](https://github.com/kumagallium/Graphium/compare/v0.141.0...v0.141.1) - 2026-11-18
 
 - fix(data-table): keep the app responsive with large delimited files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1726
