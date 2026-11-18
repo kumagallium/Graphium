@@ -80,3 +80,8 @@ Before the fix, four things froze the screen.
 ## What I decided
 
 - No row limit for data tables. In the web version (Chromium), importing 233,000 rows (188 MB) stalls the screen for about 0.5 seconds at most, so the manual states that range. Checking the desktop app is still to do.
+
+## Fixed afterwards
+
+- **The same cause also erased typed text when a new note's first save was slow.** With the save delayed by 3 seconds, text typed during that save disappeared too. I stopped rebuilding the editor when a new note gets its ID, which fixes it at the root. Text typed and a data table inserted during the save stayed on screen and after a reload.
+- **The wait for the first save before inserting a data table is gone.** It is no longer needed.

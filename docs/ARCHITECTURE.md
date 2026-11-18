@@ -97,6 +97,10 @@ talks to LLM and embedding backends.
   content (entity / agent highlights) lives under
   `src/features/inline-label/`; inline math lives under
   `src/features/inline-math/`.
+- A note's editor is rebuilt per note by `fm.editorKey` (the outer `key` on
+  `NoteEditor`). It is not rebuilt when a new note gets its ID on first save,
+  so edits typed while that save is in flight are not lost; the editor itself
+  is recreated only on a language change.
 - `meetingTranscript` is the in-note face of a meeting recording (§4.2).
   It holds only a reference — the recording id, the media `fileId`, when
   it started, and a few display flags — never the words: the transcript
@@ -358,9 +362,7 @@ talks to LLM and embedding backends.
   (`publishTableColumns`) does not re-read them. The import dialog infers its
   settings from a leading sample for files over 5,000 lines and, over 20,000
   data rows, parses only the first 2,000 for the preview (constants in
-  `src/features/data-import/large-file.ts`). A new note's editor is rebuilt by
-  its first save, so an asynchronous insert first waits for that save and
-  rebuild with `settleFirstSave` (`src/lib/settle-first-save.ts`).
+  `src/features/data-import/large-file.ts`).
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

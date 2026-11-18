@@ -95,8 +95,8 @@ export function useRemoteImageImport({
   /**
    * 走査と書き戻しの相手。**いま画面にあるインスタンスを指していること**。
    *
-   * 呼び出し側でエディタだけが作り直され得るなら（note-app.tsx の
-   * key={fileId || "new"}）、SandboxEditor の liveEditorRef prop に渡した ref を
+   * 呼び出し側でエディタだけが作り直され得るなら（note-app.tsx では言語の切り替え）、
+   * SandboxEditor の liveEditorRef prop に渡した ref を
    * そのまま使うこと。onEditorReady で埋める ref は passive effect 待ちなので、
    * 作り直しのコミット直後の一瞬だけ捨てられた前のインスタンスを指し、
    * そこへ書いた取り込みは誰にも見えないまま消える。
@@ -155,9 +155,8 @@ export function useRemoteImageImport({
 
       // 書き戻し先は「取り込みを始めたときのインスタンス」ではなく「いま画面にある
       // インスタンス」。取り込みの最中にエディタだけが作り直されることがあるため
-      // （未採番のノートに自動保存で id が付くと note-app の key={fileId || "new"} が
-      // 変わる）。作り直された側は、保存された本文から組み直されるので同じ block id が
-      // 同じ外部 URL のまま入っている＝この書き戻しの行き先として正しい。
+      // （note-app では言語の切り替え）。作り直された側は、前の本文を引き継ぐので
+      // 同じ block id が同じ外部 URL のまま入っている＝この書き戻しの行き先として正しい。
       //
       // 前のインスタンスは捨てられても getBlock / updateBlock は成功してしまうので、
       // 「まだ画面にあるか」を hook の生死だけで判定すると、誰も見ていない document へ
