@@ -4642,5 +4642,8 @@ export const ja: Record<string, string> = {
   "records.calMore": "多い",
   "records.showingFrom": "{date} から表示しています",
   "records.backToLatest": "最新に戻る",
+  "records.folder": "フォルダ",
+  "records.allFolders": "すべてのフォルダ",
+  "records.noFolder": "フォルダなし",
   "records.seeInRecords": "「{query}」をホームで見る",
 };

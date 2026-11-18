@@ -4601,5 +4601,8 @@ export const ko: Record<string, string> = {
   "records.calMore": "많음",
   "records.showingFrom": "{date}부터 표시 중",
   "records.backToLatest": "최신으로 돌아가기",
+  "records.folder": "폴더",
+  "records.allFolders": "모든 폴더",
+  "records.noFolder": "폴더 없음",
   "records.seeInRecords": "\"{query}\"을(를) 홈에서 보기",
 };

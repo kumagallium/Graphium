@@ -245,3 +245,13 @@ describe("buildRecords", () => {
     expect(() => buildRecords({ notes, media: mediaList, captures: [] })).not.toThrow();
   });
 });
+
+describe("フォルダ", () => {
+  it("ノート・素材・メモのフォルダを写す", () => {
+    expect(noteToRecord(note({ noteContexts: ["食パンの試作"] }), new Set()).folders).toEqual(["食パンの試作"]);
+  });
+
+  it("フォルダの無いノートは項目を持たない", () => {
+    expect("folders" in noteToRecord(note(), new Set())).toBe(false);
+  });
+});
