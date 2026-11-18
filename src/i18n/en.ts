@@ -4647,5 +4647,8 @@ export const en: Record<string, string> = {
   "records.calMore": "More",
   "records.showingFrom": "Showing from {date}",
   "records.backToLatest": "Back to the latest",
+  "records.folder": "Folder",
+  "records.allFolders": "All folders",
+  "records.noFolder": "Not in a folder",
   "records.seeInRecords": "See \"{query}\" in Home",
 };

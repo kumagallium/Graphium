@@ -81,6 +81,8 @@ export type RecordItem = {
   domain?: string;
   mediaType?: RecordMediaType;
   trace?: RecordTrace;
+  /** 入っているフォルダ — ノート・素材・メモの noteContexts（1 つの記録が複数のフォルダに入ることがある） */
+  folders?: readonly string[];
 };
 
 /** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */

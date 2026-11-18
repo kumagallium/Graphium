@@ -343,3 +343,55 @@ export function longHistoryRecords(locale: SampleLocale): RecordItem[] {
   );
   return [...SAMPLE_RECORDS[locale], ...extra];
 }
+
+/** 仮データのフォルダの名前 */
+export const SAMPLE_FOLDERS: Record<SampleLocale, { loaf: string; classroom: string; curry: string; copies: string }> = {
+  ja: { loaf: "食パンの試作", classroom: "パン教室", curry: "カレーの研究", copies: "レシピの写し" },
+  en: { loaf: "Sandwich loaf trials", classroom: "Baking class", curry: "Curry study", copies: "Recipe copies" },
+};
+
+/**
+ * フォルダに入れた仮データ。3 か月分の記録に、フォルダを足す。
+ * 「今週の振り返り」と 11 月の覚え書きは、どのフォルダにも入れていない。
+ */
+export function folderRecords(locale: SampleLocale): RecordItem[] {
+  const f = SAMPLE_FOLDERS[locale];
+  const byId: Record<string, readonly string[]> = {
+    r01: [f.loaf], r03: [f.loaf], r04: [f.loaf], r05: [f.loaf], r06: [f.loaf], r07: [f.loaf], r09: [f.loaf], r10: [f.loaf], r14: [f.loaf],
+    // 1 つの記録が 2 つのフォルダに入っている例
+    r02: [f.classroom, f.loaf], r08: [f.classroom],
+    r11: [f.curry], r13: [f.curry],
+  };
+  return longHistoryRecords(locale).map((item): RecordItem => {
+    const long = /^long-(\d+)-(\d+)-/.exec(item.id);
+    const folders = long
+      ? long[1] === "9"
+        ? [f.curry]
+        : long[1] === "10"
+          ? [item.kind === "media" ? f.copies : f.loaf]
+          : undefined
+      : byId[item.id];
+    return { ...item, ...(folders ? { folders } : {}) };
+  });
+}
+
+/** フォルダの多い仮データ。メニューが長くなったときの見え方を確かめるのに使う */
+export function manyFolderRecords(locale: SampleLocale): RecordItem[] {
+  const ja = locale === "ja";
+  const names = ja
+    ? ["ピザ生地", "ベーグル", "あんパン", "クロワッサン", "スコーン"]
+    : ["Pizza dough", "Bagels", "Sweet bean buns", "Croissants", "Scones"];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const extra: RecordItem[] = names.flatMap((name, i) =>
+    Array.from({ length: 2 + i }, (_, j): RecordItem => ({
+      id: `many-${i}-${j}`,
+      kind: "memo",
+      at: `2026-11-${pad(12 - i)}T${pad(10 + j)}:00:00`,
+      origin: "memo",
+      who: { type: "self" },
+      text: ja ? `${name}の覚え書き ${j + 1}` : `${name} note ${j + 1}`,
+      folders: [name],
+    })),
+  );
+  return [...folderRecords(locale), ...extra];
+}
