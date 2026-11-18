@@ -20,7 +20,7 @@ const entry = (fileId: string, name: string, uploadedAt: string): MediaIndexEntr
 });
 
 const mediaIndex: MediaIndex = {
-  version: 10,
+  version: 11,
   updatedAt: "2026-10-20T00:00:00Z",
   media: [
     entry("fermentation", "発酵温度ログ.csv", "2026-10-20T09:00:00Z"),

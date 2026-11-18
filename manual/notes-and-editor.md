@@ -553,6 +553,14 @@ What a data table can do:
 
 A data table is read-only by design: the numbers are the instrument's, and editing them by hand is exactly what a lab record should not do. To correct the data, correct the file and re-import.
 
+### Bringing in only part of a file {#bringing-in-part-of-a-file}
+
+Open **Filter** on the import screen to choose the columns to keep and the conditions rows must meet. Only rows that satisfy every condition stay, and the preview and the row count on the right already show the result after filtering. The filtered result is saved as a new, small **Data** asset, and the table refers to that asset; the original file stays in your library as it was. Under the table's name, one line says how it was filtered (the number of rows and the conditions). The badge shows the original file's name, and for a table in the note the conditions are in its tooltip. Columns such as dates, version numbers or times are treated as text, so filter them with equals or contains (a date range is not available yet). Press the **from …** badge and the same screen opens with those conditions in place, so you can change them. The row warning and the limits (200 rows and 1,000 rows) count the rows after filtering, so even a large file can become a table in the note once it is filtered down. For a large file, opening **Filter** reads the whole file, so it takes a moment.
+
+![The import screen with the Filter section open: columns to keep, two conditions, and the filtered preview with its row count](/screenshots/data-import-filter.png)
+
+![A data table brought in through a filter. The line under its name says how many rows were kept and by which conditions](/screenshots/data-table-filtered.png)
+
 ### Moving between the two forms <Badge type="tip" text="Added in v0.64.0 (2026-09-08)" /> {#moving-between-the-two-forms}
 
 A table can change form after it is already in the note, in both directions. Open the ⠿ menu beside the block and choose:

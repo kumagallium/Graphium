@@ -31,6 +31,7 @@ import { calcWrittenCells, type CalcCellWrite } from "./calc-cells";
 import { useTableMetaStore } from "./store";
 import { findColumnNameByType, hasColumnType, type TableSource } from "./types";
 import { DOC_TABLE_DEFAULT_MAX_ROWS } from "../data-import/target";
+import { describeDerivation } from "../data-extract/describe";
 
 type CaptionPos = {
   blockId: string;
@@ -89,7 +90,9 @@ function sourceTooltip(source: TableSource, clickable: boolean): string {
   });
   const meta = (source.meta ?? []).map((m) => `${m.key}: ${m.value}`);
   const hint = clickable ? [t("dataImport.sourceClickHint")] : [];
-  return [head, ...meta, ...hint].join("\n");
+  // 絞り込んだ表は、どう絞ったか（行数と条件）を先頭に出す。データ表の「名前の下の 1 行」と同じ文
+  const derived = source.derivation ? [describeDerivation(source.derivation, t)] : [];
+  return [...derived, head, ...meta, ...hint].join("\n");
 }
 
 export function TableCaptionLayer({
@@ -747,7 +750,10 @@ export function TableCaptionLayer({
           })()}
           {source && (() => {
             const clickable = Boolean(onReimport && source.fileId);
-            const label = t("dataImport.sourceBadge", { fileName: source.fileName });
+            // 絞り込んだ表が読むのは写し（-filtered.csv）。見せるのは元のファイル名（データ表と同じ）
+            const label = t("dataImport.sourceBadge", {
+              fileName: source.derivation?.fromFileName ?? source.fileName,
+            });
             const badgeStyle = {
               display: "flex",
               alignItems: "center",

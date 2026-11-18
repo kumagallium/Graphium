@@ -1,6 +1,11 @@
 // データ表ブロックの表示名（キャプション / 元ファイル名フォールバック）
 import { describe, expect, it } from "vitest";
-import { dataTableDisplayName, dataTableDisplayNameOf, serializeDataTableSource } from "./source";
+import {
+  dataTableDisplayName,
+  dataTableDisplayNameOf,
+  parseDataTableSource,
+  serializeDataTableSource,
+} from "./source";
 import type { TableSource } from "../../lib/document-types";
 
 const baseSource: TableSource = {
@@ -80,5 +85,37 @@ describe("dataTableDisplayNameOf", () => {
       children: [],
     };
     expect(dataTableDisplayNameOf(block)).toBe("");
+  });
+});
+
+describe("parseDataTableSource / serializeDataTableSource の derivation", () => {
+  const derived: TableSource = {
+    ...baseSource,
+    fileName: "oven-curves-extract.csv",
+    derivation: {
+      kind: "filter",
+      fromFileId: "asset-0",
+      fromFileName: "oven-curves.csv",
+      columns: ["time", "temp_c"],
+      conditions: [
+        { column: "temp_c", op: "ge", value: "200" },
+        { column: "note", op: "notEmpty" },
+      ],
+      sourceRows: 120,
+      resultRows: 30,
+      createdAt: "2026-11-18T09:00:00.000Z",
+    },
+  };
+
+  it("derivation を落とさずに往復できる", () => {
+    const back = parseDataTableSource(serializeDataTableSource(derived));
+    expect(back).toEqual(derived);
+    expect(back?.derivation?.fromFileName).toBe("oven-curves.csv");
+  });
+
+  it("derivation の無い source は項目が増えない（既存のノートは変わらない）", () => {
+    const back = parseDataTableSource(serializeDataTableSource(baseSource));
+    expect(back).toEqual(baseSource);
+    expect(back && "derivation" in back).toBe(false);
   });
 });
