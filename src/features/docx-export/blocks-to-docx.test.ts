@@ -243,6 +243,125 @@ describe("体裁", () => {
   });
 });
 
+describe("数式", () => {
+  const mathBlock = (latex: string, children: unknown[] = []) => ({ type: "math", props: { latex }, children });
+  const inlineMath = (latex: string) => ({ type: "inlineMath", props: { latex } });
+  /** document.xml の中の、数式を含む段落（w:p）だけを取り出す */
+  const mathParagraphs = (xml: string) => (xml.match(/<w:p>(?:(?!<\/w:p>).)*<m:oMath>.*?<\/w:p>/gs) ?? []);
+
+  it("数式ブロックは中央寄せの段落に Word の数式（m:oMathPara）として入る", async () => {
+    const { xml, buf } = await build([mathBlock("\\frac{a}{b} + \\sqrt{x}")]);
+    expect(xml).toContain('xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"');
+    const paragraphs = mathParagraphs(xml);
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0]).toContain('<w:jc w:val="center"/>');
+    expect(paragraphs[0]).toContain('<m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr><m:oMath>');
+    expect(paragraphs[0]).toContain("<m:f><m:num>");
+    expect(paragraphs[0]).toContain("<m:rad>");
+    // LaTeX の文字は残らない
+    expect(xml).not.toContain("$$");
+    expect(xml).not.toContain("\\frac");
+    await html(buf);
+  });
+
+  it("代表的な式がそれぞれの要素になる", async () => {
+    const { xml } = await build([
+      mathBlock("x^2 + y_i"),
+      mathBlock("\\alpha + \\Gamma"),
+      mathBlock("\\sum_{i=1}^{n} x_i"),
+      mathBlock("\\int_0^1 f(x)\\,dx"),
+      mathBlock("\\left( \\frac{a}{b} \\right)"),
+    ]);
+    expect(mathParagraphs(xml)).toHaveLength(5);
+    expect(xml).toContain("<m:sSup>");
+    expect(xml).toContain("<m:sSub>");
+    expect(xml).toContain("α");
+    expect(xml).toContain('<m:nary><m:naryPr><m:chr m:val="∑"/><m:limLoc m:val="undOvr"/>');
+    expect(xml).toContain('<m:chr m:val="∫"/>');
+    expect(xml).toContain('<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/>');
+    // 空の要素（隠した次数）も消えずに出る
+    const { xml: rad } = await build([mathBlock("\\sqrt{x}")]);
+    expect(rad).toContain('<m:degHide m:val="1"/></m:radPr><m:deg/><m:e>');
+  });
+
+  it("文中の数式は文の流れの中に入る（段落・見出し・表・リンク）", async () => {
+    const cell = (content: unknown[]) => ({ type: "tableCell", props: {}, content });
+    const { xml, buf } = await build([
+      { type: "paragraph", props: {}, content: [text("前 "), inlineMath("E = mc^2"), text(" 後")], children: [] },
+      { type: "heading", props: { level: 2 }, content: [text("見出し "), inlineMath("\\alpha")], children: [] },
+      { type: "table", props: {}, children: [], content: { type: "tableContent", rows: [{ cells: [cell([inlineMath("\\sqrt{2}")])] }] } },
+      { type: "paragraph", props: {}, content: [{ type: "link", href: "https://example.com", content: [inlineMath("x_1")] }], children: [] },
+    ]);
+    // 前後の文字と同じ段落に、m:oMathPara ではなく m:oMath で入る
+    expect(xml).toMatch(/前 <\/w:t><\/w:r><m:oMath>.*?<\/m:oMath><w:r>/s);
+    expect(xml).not.toContain("<m:oMathPara>");
+    expect(xml.match(/<m:oMath>/g)).toHaveLength(4);
+    expect(xml).toMatch(/<w:tc>.*<m:rad>.*<\/w:tc>/s);
+    expect(xml).toMatch(/<w:hyperlink [^>]*>(?:(?!<\/w:hyperlink>).)*<m:sSub>/s);
+    expect(xml).not.toContain("$");
+    const h = await html(buf);
+    expect(h).toContain("前");
+    expect(h).toContain("後");
+  });
+
+  it("Word の数式にできない式は、これまでどおり LaTeX の文字で出る", async () => {
+    const matrix = "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}";
+    const { xml, buf } = await build([
+      mathBlock(matrix),
+      { type: "paragraph", props: {}, content: [text("文中 "), inlineMath("\\boxed{y}")], children: [] },
+    ]);
+    expect(xml).not.toContain("<m:oMath");
+    const h = await html(buf);
+    expect(h).toContain("$$ \\begin{pmatrix} a &amp; b \\\\ c &amp; d \\end{pmatrix} $$");
+    expect(h).toContain("$\\boxed{y}$");
+  });
+
+  it("数式にできる式とできない式が同じノートにあれば、式ごとに決まる", async () => {
+    const { xml, buf } = await build([
+      mathBlock("\\frac{a}{b}"),
+      mathBlock("a = b \\tag{1}"),
+      { type: "paragraph", props: {}, content: [inlineMath("x^2"), text(" と "), inlineMath("\\foo")], children: [] },
+    ]);
+    expect(xml.match(/<m:oMath>/g)).toHaveLength(2);
+    const h = await html(buf);
+    expect(h).toContain("$$ a = b \\tag{1} $$");
+    expect(h).toContain("$\\foo$");
+    expect(h).not.toContain("$x^2$");
+  });
+
+  it("数式ブロックの子ブロックは、数式でも文字でも残る", async () => {
+    const child = para("子の段落");
+    for (const latex of ["x^2", "\\boxed{x}"]) {
+      const { buf } = await build([mathBlock(latex, [child])]);
+      expect(await html(buf)).toContain("子の段落");
+    }
+  });
+
+  it("壊れた LaTeX・空の式・制御文字でも書き出しは落ちない", async () => {
+    const broken = ["\\frac{a}{", "}", "\\left(", "", "   ", "\u0001x\u0008", "\ud800", "x".repeat(5000), "\\sqrt{".repeat(200) + "x" + "}".repeat(200)];
+    const { xml, buf } = await build([
+      ...broken.map((latex) => mathBlock(latex)),
+      { type: "paragraph", props: {}, content: broken.map(inlineMath), children: [] },
+      { type: "math", props: {}, children: [] },
+      { type: "math", props: { latex: 5 }, children: [] },
+      { type: "math", children: [] },
+      { type: "paragraph", props: {}, content: [{ type: "inlineMath" }, { type: "inlineMath", props: { latex: null } }], children: [] },
+    ]);
+    await html(buf);
+    // 読めない式は LaTeX の文字のまま
+    expect(xml).toContain("\\frac{a}{");
+    // 数字だけの latex（5）は数式になる
+    expect(xml).toContain("<m:oMath>");
+  });
+
+  it("数式の中の < > & は XML として壊れない", async () => {
+    const { xml, buf } = await build([mathBlock("a < b \\& c > d \\text{<tag>}")]);
+    expect(xml).toContain("a&lt;b");
+    expect(xml).toContain("&lt;tag&gt;");
+    await html(buf);
+  });
+});
+
 describe("標準ブロックの取りこぼし", () => {
   it("BlockNote の標準ブロックすべてに描画側の対応がある", () => {
     for (const type of Object.keys(defaultBlockSpecs)) {

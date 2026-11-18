@@ -2974,7 +2974,7 @@ export const en: Record<string, string> = {
   "markdown.export": "Markdown (.md)",
   "markdown.exportHint": "Saves the note as a .md file you can open in other editors.",
   "docx.export": "Word (.docx)",
-  "docx.exportHint": "Save the text, tables, images and charts as a Word file. Math is written as LaTeX text.",
+  "docx.exportHint": "Save the text, tables, images and charts as a Word file. Formulas become Word equations (a few, such as matrices, stay as LaTeX text).",
   "docx.exportFailed": "Could not create the Word file.",
   "docx.placeholder.image": "[Image: {name}]",
   "docx.placeholder.video": "[Video: {name}]",

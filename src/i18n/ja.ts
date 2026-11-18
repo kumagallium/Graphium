@@ -2972,7 +2972,7 @@ export const ja: Record<string, string> = {
   "markdown.export": "Markdown（.md）",
   "markdown.exportHint": "本文を、ほかのエディタでも開ける .md ファイルとして保存します",
   "docx.export": "Word（.docx）",
-  "docx.exportHint": "本文・表・画像・グラフを Word のファイルにします。数式は文字（LaTeX）で入ります",
+  "docx.exportHint": "本文・表・画像・グラフを Word のファイルにします。数式は Word の数式で入ります（行列など一部の式は LaTeX の文字）",
   "docx.exportFailed": "Word のファイルを作れませんでした",
   "docx.placeholder.image": "[画像: {name}]",
   "docx.placeholder.video": "[動画: {name}]",

@@ -14,6 +14,10 @@
 //   - 画像 inline はそのまま残す（描画側で読み込む）
 // chart だけは画像で出せる可能性があるので、落とし込み結果を fallback に持たせた
 // 内部ノード { type: "docxChart" } にして描画側へ渡す。
+// 数式も同じ: Word の数式にできる式とできない式があるので、LaTeX を持たせた内部ノードで渡す。
+//   - ブロックの数式 → { type: "docxMath", latex, fallback }（fallback は $$ … $$ の段落）
+//   - 文中の数式 → inline の { type: "docxInlineMath", latex, text }（text は $…$）
+// 数式にできるかどうかは描画側（blocks-to-docx.ts）が式ごとに決め、できなければ fallback / text を出す。
 
 import { defaultBlockSpecs } from "@blocknote/core";
 import { blockMarkdownConverters } from "../../blocks/markdown";
@@ -63,8 +67,14 @@ export function normalizeInlinesForDocx(content: unknown): InlineItem[] {
         content: normalizeInlinesForDocx(item.content),
       });
     } else if (item.type === "inlineMath") {
-      const md = inlineMathToMarkdown(String(item.props?.latex ?? ""));
-      if (md) out.push({ type: "text", text: md, styles: {} });
+      // text に $…$ を持たせておく。inline を文字に潰す経路（コードの本文など）でも式が消えない
+      const latex = String(item.props?.latex ?? "").trim();
+      if (latex) out.push({ type: "docxInlineMath", latex, text: inlineMathToMarkdown(latex) });
+    } else if (item.type === "docxInlineMath") {
+      // 正規化済みの配列をもう一度通しても形が変わらないようにする
+      if (typeof item.latex === "string" && typeof item.text === "string") {
+        out.push({ type: "docxInlineMath", latex: item.latex, text: item.text });
+      }
     } else if (item.type === "inlineImage") {
       out.push({
         type: "inlineImage",
@@ -113,7 +123,7 @@ function chartCaption(b: NormalizedBlock): string {
 }
 
 /**
- * 保存形のブロック配列を「標準ブロック（＋ docxChart）だけ」の配列にする。
+ * 保存形のブロック配列を「標準ブロック（＋ docxChart・docxMath）だけ」の配列にする。
  * 配列でなければ空配列。null や object でない要素は飛ばす。
  */
 export function normalizeBlocksForDocx(
@@ -148,6 +158,14 @@ export function normalizeBlocksForDocx(
           fallback: lowered,
           caption: chartCaption(b),
           chartChildren: children,
+        });
+      } else if (b.type === "math") {
+        // Word の数式にできなかったときのために、$$ … $$ の段落（子ブロック込み）を持たせる
+        out.push({
+          type: "docxMath",
+          latex: String(b.props?.latex ?? ""),
+          fallback: lowered,
+          mathChildren: children,
         });
       } else {
         out.push(...lowered);
