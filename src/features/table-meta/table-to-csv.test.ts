@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseDelimitedLines, splitLines } from "../data-import/parse";
 import {
   csvEscape,
   csvFileNameFor,
@@ -75,5 +76,35 @@ describe("sameTableContent", () => {
   it("片方が無ければ false", () => {
     expect(sameTableContent(base, null)).toBe(false);
     expect(sameTableContent(undefined, base)).toBe(false);
+  });
+});
+
+describe("rowsToCsv の往復（書いて読み直しても行数が変わらない）", () => {
+  const roundTrip = (headers: string[], rows: string[][]) => {
+    const csv = rowsToCsv(headers, rows);
+    return parseDelimitedLines(splitLines(csv), {
+      headerRow: 1,
+      endRow: rows.length + 1,
+      delimiter: "comma",
+      collapseConsecutive: false,
+    });
+  };
+
+  it("1 列で空のセルが途中・末尾にあっても行が落ちない", () => {
+    const rows = [["a"], [""], ["b"], [""]];
+    const parsed = roundTrip(["x"], rows);
+    expect(parsed.rows).toEqual(rows);
+  });
+
+  it("複数列で全セルが空の行も残る", () => {
+    const rows = [["1", "2"], ["", ""], ["3", ""]];
+    expect(roundTrip(["x", "y"], rows).rows).toEqual(rows);
+  });
+
+  it("カンマ・引用符・先頭が # や ; のセルも同じ", () => {
+    const rows = [["a,b", "say \"hi\""], ["#note", ";semi"], ["", "#"]];
+    const parsed = roundTrip(["x", "y"], rows);
+    expect(parsed.rows).toEqual(rows);
+    expect(parsed.rows).toHaveLength(rows.length);
   });
 });

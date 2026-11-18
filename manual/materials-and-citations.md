@@ -251,7 +251,9 @@ How much this aligns is in the [evaluation record](/evaluations/papers-to-proced
 
 ## Reading text from images (OCR) <Badge type="tip" text="Added in v0.21.0 (2026-07-26)" />
 
-Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device using Tesseract. No LLM is involved and no AI setup is needed; the image never leaves your machine (only the OCR engine and its language data are fetched from the web).
+Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device. No LLM is involved and no AI setup is needed; the image never leaves your machine.
+
+<Badge type="tip" text="Changed in v0.142.0 (2026-11-18)" /> The desktop app reads images with PP-OCRv6 small, an on-device model (about 31 MB). It is downloaded automatically in the background the first time an image is read, from the model's official Hugging Face repository, with no prompt. Until the download finishes, if the download or a read fails, and in the browser version, Graphium reads with the same Tesseract engine as before. Photos of paper or screens, tables and vertical text are read more accurately than before, and vertical text is read from the right-hand column first. Handwriting is still hard: dates and numbers are sometimes picked up, but sentences often are not. Images that were already read are not read again; run **Read text from image** once more to re-read one with the newer engine. There is no setting for this model yet. The measurements are in [OCR engines compared](/evaluations/ocr-engines).
 
 Three ways in:
 

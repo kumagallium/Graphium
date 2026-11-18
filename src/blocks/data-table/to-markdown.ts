@@ -9,6 +9,7 @@
 import { t } from "../../i18n";
 import { textParagraph, type BlockToMarkdown, type MarkdownBlock } from "../markdown-block";
 import { defaultCaption } from "../../features/data-import/to-table-block";
+import { describeDerivation } from "../../features/data-extract/describe";
 import { peekDataTable } from "./data";
 import { parseDataTableSource } from "./model";
 
@@ -47,6 +48,15 @@ export const dataTableToMarkdown: BlockToMarkdown = (block, ctx) => {
       { italic: true },
     ),
   ];
+  // 絞り込みの来歴は表の前に 1 行。AI が読む本文でも「どう絞った表か」が分かるように
+  if (source.derivation) {
+    out.push(
+      textParagraph(
+        t("dataTable.exportDerivation", { spec: describeDerivation(source.derivation, t) }),
+        { italic: true },
+      ),
+    );
+  }
   if (data && data.headers.length > 0) {
     out.push(tableBlock(data.headers, data.rows.slice(0, DATA_TABLE_EXPORT_ROW_LIMIT)));
     if (data.rows.length > DATA_TABLE_EXPORT_ROW_LIMIT) {
