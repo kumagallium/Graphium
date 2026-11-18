@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.141.0](https://github.com/kumagallium/Graphium/compare/v0.140.1...v0.141.0) - 2026-11-18
+
+- feat(mcp): export the whole knowledge layer for Asterism (export_asterism_knowledge) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1731
+- fix: open notes from Home in the side peek first by @kumagallium in https://github.com/kumagallium/Graphium/pull/1736
+
 ## [v0.140.1](https://github.com/kumagallium/Graphium/compare/v0.140.0...v0.140.1) - 2026-11-18
 
 - [docs] Manual: badges for the passage checks and a roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1727

@@ -4000,6 +4000,8 @@ export const ko: Record<string, string> = {
   "dataImport.tablePreview": "표 미리 보기",
   "dataImport.truncated": "…외 {count}줄",
   "dataImport.moreRows": "…외 {count}행을 가져옵니다",
+  "dataImport.sampledNotice": "큰 파일이라 설정은 처음 {lines}행으로 추정하고, 미리보기는 처음 부분만 표시합니다",
+  "dataImport.sampledPreviewNotice": "큰 파일이라 미리보기는 처음 부분만 표시합니다",
   "dataImport.noTable": "가져올 표가 없습니다",
   "assetData.tabsLabel": "데이터 보기",
   "assetData.tabTable": "표",

@@ -23,6 +23,8 @@ export type RecordsViewProps = {
   initialQuery?: string;
   /** ノート・AI のページを開く。AI のページは wiki が true */
   onOpenNote: (noteId: string, wiki: boolean) => void;
+  /** いま横で開いているノート・AI のページの id（"wiki:" の前置きは付いていてもよい） */
+  openNoteId?: string | null;
   /** 素材を開く */
   onOpenMedia: (fileId: string) => void;
   /** メモを開く */
@@ -52,6 +54,7 @@ export function RecordsView({
   loading,
   initialQuery = "",
   onOpenNote,
+  openNoteId,
   onOpenMedia,
   onOpenMemo,
 }: RecordsViewProps) {
@@ -85,6 +88,9 @@ export function RecordsView({
     else onOpenNote(id, item.kind === "wiki");
   };
 
+  // 横で開いているノートを、一覧の行の id（"note:abc"）に直す
+  const openId = openNoteId ? `note:${openNoteId.replace(/^(wiki|skill):/, "")}` : null;
+
   return (
     <div className="rd-view">
       <div className="rd-view-inner">
@@ -92,7 +98,7 @@ export function RecordsView({
           <p className="rd-view-loading">{copy.loading}</p>
         ) : (
           // 探す言葉が変わったら（⌘K から別の言葉で来たら）、中の状態ごと作り直す
-          <RecordDashboard key={initialQuery} items={records} now={now} layout="find" initialQuery={initialQuery} onOpen={open} findInBody={findInBody} />
+          <RecordDashboard key={initialQuery} items={records} now={now} layout="find" initialQuery={initialQuery} onOpen={open} openId={openId} findInBody={findInBody} />
         )}
       </div>
     </div>

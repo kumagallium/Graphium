@@ -23,8 +23,10 @@
 
 import { matchNumericPrefix, normalizeNumericText, parseNumeric } from "../chart/chart-data";
 import { readCellText } from "../../features/table-meta/table-cells";
-import { peekDataTableFromBlock } from "../data-table/data";
-import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
+import { peekDataTableFromBlock, registerLargeTablePreparer } from "../data-table/data";
+import { yieldToEventLoop } from "../../features/data-import/large-file";
+import { linkedColumnsFor, mergeLinkedColumns, type LinkedColumn } from "../data-table/linked";
+import type { DataTableData } from "../data-table/data";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import type {
   TableColumnData,
@@ -91,28 +93,108 @@ export function columnsFromText(headers: string[], body: string[][]): Map<string
   headers.forEach((header: string, col: number) => {
     const name = header.trim();
     if (!name || columns.has(name)) return;
-    const values: (number | null)[] = [];
-    const units: string[] = [];
-    let unit: string | undefined;
-    let unitConsistent = true;
-    for (const row of rows) {
-      const raw = row[col] ?? "";
-      const value = parseNumeric(raw);
-      values.push(value);
-      const u = value === null ? "" : unitTextOf(raw);
-      units.push(u);
-      if (value === null) continue;
-      if (unit === undefined) unit = u;
-      else if (unit !== u) unitConsistent = false;
-    }
-    const data: TableColumnData = { values };
-    // 数値の読めた全セルで単位表記が一致したときだけ単位として扱う。
-    // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので列としては素の数値に落とす。
-    // 1 セルだけを読む cell() にはセルごとの単位を残す（試薬表の「量」列は g と mL が混ざる）
-    if (unitConsistent && unit) data.unit = unit;
-    else if (units.some((u) => u !== "")) data.cellUnits = units;
-    columns.set(name, data);
+    const acc = newColumnAcc();
+    for (const row of rows) addCell(acc, row[col] ?? "");
+    columns.set(name, finishColumn(acc));
   });
+  return columns;
+}
+
+/** 1 列ぶんの読み取りの途中経過（同期版と小分け版で同じ規則を使うための共通部分） */
+type ColumnAcc = {
+  values: (number | null)[];
+  units: string[];
+  unit: string | undefined;
+  unitConsistent: boolean;
+};
+
+function newColumnAcc(): ColumnAcc {
+  return { values: [], units: [], unit: undefined, unitConsistent: true };
+}
+
+function addCell(acc: ColumnAcc, raw: string): void {
+  const value = parseNumeric(raw);
+  acc.values.push(value);
+  const u = value === null ? "" : unitTextOf(raw);
+  acc.units.push(u);
+  if (value === null) return;
+  if (acc.unit === undefined) acc.unit = u;
+  else if (acc.unit !== u) acc.unitConsistent = false;
+}
+
+function finishColumn(acc: ColumnAcc): TableColumnData {
+  const data: TableColumnData = { values: acc.values };
+  // 数値の読めた全セルで単位表記が一致したときだけ単位として扱う。
+  // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので列としては素の数値に落とす。
+  // 1 セルだけを読む cell() にはセルごとの単位を残す（試薬表の「量」列は g と mL が混ざる）
+  if (acc.unitConsistent && acc.unit) data.unit = acc.unit;
+  else if (acc.units.some((u) => u !== "")) data.cellUnits = acc.units;
+  return data;
+}
+
+/** 小分け版で、時間を見に行く間隔（行数） */
+const WARM_CHECK_EVERY = 2000;
+
+/**
+ * 大きなデータ表の列と行の名前を、描画に順番を譲りながら先に読んでおく。
+ *
+ * 列の読み取りは 23 万行 × 16 列で 1.4 秒かかる。データ表が読めた直後の列の配布
+ * （publishTableColumns）でこれが同期に走ると、取り込みの直後とノートを開くたびに
+ * 固まる。data-table/data.ts が大きな素材を変換し終えたところでこれを呼び、結果を
+ * 下のキャッシュ（columnsFromTextCached / rowNamesFromTextCached と同じもの）に
+ * 入れてから「読めた」と知らせる。結果は columnsFromText / rowNamesFromText と同じ
+ */
+export async function warmDataTableColumns(
+  headers: string[],
+  body: string[][],
+  opts?: { sliceMs?: number },
+): Promise<void> {
+  const columns = await columnsFromTextAsync(headers, body, opts);
+  columnsCache.set(body, { headers, columns });
+  rowNamesCache.set(body, rowNamesFromText(body));
+}
+
+/** columnsFromText と同じ結果を、描画に順番を譲りながら返す */
+export async function columnsFromTextAsync(
+  headers: string[],
+  body: string[][],
+  opts?: { sliceMs?: number },
+): Promise<Map<string, TableColumnData>> {
+  const sliceMs = opts?.sliceMs ?? 24;
+  const columns = new Map<string, TableColumnData>();
+  const rows = dataRows(body);
+  let sliceStart = performance.now();
+  for (let col = 0; col < headers.length; col++) {
+    const name = headers[col].trim();
+    if (!name || columns.has(name)) continue;
+    const acc = newColumnAcc();
+    for (let r = 0; r < rows.length; r++) {
+      addCell(acc, rows[r][col] ?? "");
+      if (r % WARM_CHECK_EVERY === WARM_CHECK_EVERY - 1 && performance.now() - sliceStart > sliceMs) {
+        await yieldToEventLoop();
+        sliceStart = performance.now();
+      }
+    }
+    columns.set(name, finishColumn(acc));
+  }
+  return columns;
+}
+
+/**
+ * columnsFromText の結果を、行配列（rows）の同一性で覚えておく版。
+ *
+ * データ表の rows は data-table/data.ts のキャッシュが同じ配列を返し続ける。数十万行の
+ * 列の読み取りは 1.6 秒かかり、publishTableColumns は本文を編集するたび（250ms 後）に
+ * 走るので、素材が変わらないかぎり読み直さない。headers の参照も一致するときだけ使う。
+ * 返す Map（と中の列データ）も同じ参照になるので、setTableColumns の比較が参照一致で済む
+ */
+const columnsCache = new WeakMap<string[][], { headers: string[]; columns: Map<string, TableColumnData> }>();
+
+function columnsFromTextCached(headers: string[], body: string[][]): Map<string, TableColumnData> {
+  const hit = columnsCache.get(body);
+  if (hit && hit.headers === headers) return hit.columns;
+  const columns = columnsFromText(headers, body);
+  columnsCache.set(body, { headers, columns });
   return columns;
 }
 
@@ -127,8 +209,9 @@ export function collectTableColumns(
   calcWritebacks?: Record<string, unknown[]> | null,
 ): TableColumns {
   const tables: TableColumns = new Map();
-  forEachTableText(blocks, displayNames, calcWritebacks, (name, headers, body) => {
-    tables.set(name, columnsFromText(headers, body));
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, headers, body, cacheable, fast) => {
+    if (fast) tables.set(name, columnsWithLinked(fast.raw, fast.fresh, fast.dataRowCount));
+    else tables.set(name, cacheable ? columnsFromTextCached(headers, body) : columnsFromText(headers, body));
   });
   return tables;
 }
@@ -143,10 +226,99 @@ export function collectTableRowNames(
   calcWritebacks?: Record<string, unknown[]> | null,
 ): TableRowNamesIndex {
   const index: TableRowNamesIndex = {};
-  forEachTableText(blocks, displayNames, calcWritebacks, (name, _headers, body) => {
-    index[name] = rowNamesFromText(body);
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, _headers, body, cacheable, fast) => {
+    // 計算列は右に足されるだけで 1 列目は素材のまま。行数も揃っている（fast の条件）ので素材の名前を使う
+    if (fast) index[name] = rowNamesFromTextCached(fast.raw.rows);
+    else index[name] = cacheable ? rowNamesFromTextCached(body) : rowNamesFromText(body);
   });
   return index;
+}
+
+// 行の名前も、列と同じ理由で行配列の同一性で覚える（数十万行を編集のたびに
+// 読み直さない。同じ配列を返すので setTableRowNames の比較も参照一致で済む）
+const rowNamesCache = new WeakMap<string[][], string[]>();
+
+function rowNamesFromTextCached(body: string[][]): string[] {
+  const hit = rowNamesCache.get(body);
+  if (hit) return hit;
+  const names = rowNamesFromText(body);
+  rowNamesCache.set(body, names);
+  return names;
+}
+
+/** 素材の形（計算列を足す近道が使えるかの判定用）。rows と headers の同一性で覚える */
+const shapeCache = new WeakMap<string[][], { headers: string[]; ok: boolean; dataRowCount: number }>();
+
+function baseShape(raw: DataTableData): { ok: boolean; dataRowCount: number } {
+  const hit = shapeCache.get(raw.rows);
+  if (hit && hit.headers === raw.headers) return hit;
+  // mergeLinkedColumns は行の末尾へ計算列のセルを足す。行が見出しより短いと、足したセルが
+  // 見出しの位置からずれる（読み方が変わる）ので、全行が見出し以上の長さのときだけ近道を使う
+  const width = raw.headers.length;
+  let ok = width > 0;
+  for (let i = 0; ok && i < raw.rows.length; i++) if (raw.rows[i].length < width) ok = false;
+  const shape = { headers: raw.headers, ok, dataRowCount: dataRows(raw.rows).length };
+  shapeCache.set(raw.rows, shape);
+  return shape;
+}
+
+/**
+ * 計算列を足したあとの dataRows の行数が、素材だけのときと同じか。
+ * 素材の末尾（dataRows が落とす全部空の行）に、計算列の値がある行が無ければ同じ。
+ * 違うときは、まとめて読む（mergeLinkedColumns → columnsFromText）と行数が食い違うので近道を使わない
+ */
+function sameDataRowCount(raw: DataTableData, fresh: LinkedColumn[], dataRowCount: number): boolean {
+  for (let i = raw.rows.length - 1; i >= dataRowCount; i--) {
+    for (const l of fresh) if ((l.texts[i] ?? "").trim() !== "") return false;
+  }
+  return true;
+}
+
+/** 計算列ごとの読み取り結果。rows（素材）と列名で覚える。rows が消えれば一緒に消える */
+const linkedColumnCache = new WeakMap<
+  string[][],
+  Map<string, { texts: string[]; dataRowCount: number; data: TableColumnData }>
+>();
+
+function sameTexts(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** 計算列 1 本を読む。texts の中身が前回と同じなら同じオブジェクトを返す（参照比較で済ませるため） */
+function linkedColumnData(rows: string[][], l: LinkedColumn, dataRowCount: number): TableColumnData {
+  let byName = linkedColumnCache.get(rows);
+  if (!byName) {
+    byName = new Map();
+    linkedColumnCache.set(rows, byName);
+  }
+  const hit = byName.get(l.name);
+  if (hit && hit.dataRowCount === dataRowCount && sameTexts(hit.texts, l.texts)) {
+    hit.texts = l.texts; // 次回は参照一致で済むよう新しい方を持つ
+    return hit.data;
+  }
+  const acc = newColumnAcc();
+  for (let i = 0; i < dataRowCount; i++) addCell(acc, l.texts[i] ?? "");
+  const data = finishColumn(acc);
+  byName.set(l.name, { texts: l.texts, dataRowCount, data });
+  return data;
+}
+
+/** 素材の列（キャッシュ）に、計算列（texts だけから読む）を右に足した列の集まり */
+function columnsWithLinked(
+  raw: DataTableData,
+  fresh: LinkedColumn[],
+  dataRowCount: number,
+): Map<string, TableColumnData> {
+  const columns = new Map(columnsFromTextCached(raw.headers, raw.rows));
+  for (const l of fresh) {
+    // 見出しを trim した名前が素材と被るときも足さない（columnsFromText の「先勝ち」と同じ）
+    if (columns.has(l.name)) continue;
+    columns.set(l.name, linkedColumnData(raw.rows, l, dataRowCount));
+  }
+  return columns;
 }
 
 /** 文書中の表を文書順に辿り、表示名と見出し・本文のテキストを渡す */
@@ -154,7 +326,15 @@ function forEachTableText(
   blocks: any[],
   displayNames: Map<string, string>,
   calcWritebacks: Record<string, unknown[]> | null | undefined,
-  onTable: (name: string, headers: string[], body: string[][]) => void,
+  /** cacheable: body が data-table のキャッシュ由来で、同一性で結果を覚えてよい */
+  onTable: (
+    name: string,
+    headers: string[],
+    body: string[][],
+    cacheable: boolean,
+    /** 計算列つきのデータ表: 素材の列は読み直さず、計算列だけを足せる（結果は merged を読んだのと同じ） */
+    fast?: { raw: DataTableData; fresh: LinkedColumn[]; dataRowCount: number },
+  ) => void,
 ): void {
   const seen = new Set<string>();
   const visit = (list: any[]) => {
@@ -165,18 +345,31 @@ function forEachTableText(
         if (name && !seen.has(name)) {
           seen.add(name);
           const { headers, body } = readTableText(b);
-          onTable(name, headers, body);
+          onTable(name, headers, body, false);
         }
       } else if (b?.type === "dataTable" && typeof b.id === "string") {
         // データ表は素材が読めてから配る（読めるまでは無いものとして扱う。
         // 届いたら subscribeDataTableData 経由でホストが配り直す）
         const name = displayNames.get(b.id);
         const raw = name && !seen.has(name) ? peekDataTableFromBlock(b) : null;
-        // calc が足した計算列も、他の calc やチャートからは普通の列に見える
-        const merged = raw ? mergeLinkedColumns(raw, linkedColumnsFor(b.id, calcWritebacks)) : null;
-        if (name && merged) {
+        if (name && raw) {
           seen.add(name);
-          onTable(name, merged.data.headers, merged.data.rows);
+          // calc が足した計算列も、他の calc やチャートからは普通の列に見える
+          const fresh = linkedColumnsFor(b.id, calcWritebacks).filter((l) => !raw.headers.includes(l.name));
+          if (fresh.length === 0) {
+            // 計算列が無ければ rows は素材のまま = 同一性で覚えられる
+            onTable(name, raw.headers, raw.rows, true);
+          } else {
+            const shape = baseShape(raw);
+            if (shape.ok && sameDataRowCount(raw, fresh, shape.dataRowCount)) {
+              // 計算列あり: 素材の列は覚えたものを使い、計算列だけ読む（毎回 行 × 列 を作らない）
+              onTable(name, raw.headers, raw.rows, true, { raw, fresh, dataRowCount: shape.dataRowCount });
+            } else {
+              // 近道の条件を満たさない形は、今までどおり足した表を作って読む
+              const merged = mergeLinkedColumns(raw, fresh)!;
+              onTable(name, merged.data.headers, merged.data.rows, false);
+            }
+          }
         }
       }
       if (Array.isArray(b?.children)) visit(b.children);
@@ -241,3 +434,7 @@ export function publishTableColumns(
   // 切り替えるため、どれがデータ表かをピッカーに教える
   store.setDataTableBlockIds?.([...collectDataTableBlockIds(doc)]);
 }
+
+// 大きな素材の変換が終わったら、知らせる前に列と行の名前を先に読んでおいてもらう
+// （data-table/data.ts は calc を知らないので、こちらから登録する）
+registerLargeTablePreparer((data) => warmDataTableColumns(data.headers, data.rows));

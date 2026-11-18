@@ -27,7 +27,7 @@ export type NewNoteSlashItemDeps = {
   createNote: (title: string) => Promise<string | null>;
   /**
    * @リンクを入れるエディタ。押されたときのエディタでなく、入れる時点のものを返す
-   * （メインは名前を入れている間の自動保存でエディタが作り直されることがある）
+   * （メインは名前を入れている間に言語の切り替えでエディタが作り直されることがある）
    */
   getEditor: () => any;
   /** reference リンクの記録先（そのエディタの linkStore） */
