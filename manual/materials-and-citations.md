@@ -175,7 +175,7 @@ Some files already have a home: an organization's synced folder, a lab NAS, a sh
 
 1. Open Settings → **Storage** and, under **Data places**, press **Register a folder**. Pick the folder (for example the synced folder). See [Data places](/settings#data-places).
 2. Open a gallery (images, documents, data, videos, audio or URLs) and press **Link a file from a data place**.
-3. Pick the file. It has to be inside a registered data place; if it is not, a message says so — register that folder first, or use the regular import.
+3. Pick one file, or several at once (up to 500). They have to be inside a registered data place; a file that is not is left out and a message says so — register that folder first, or use the regular import.
 4. The linked file is listed by its kind: a PDF or an Office file under documents, a CSV under data, a picture under images. A kind Graphium does not recognise is listed under URLs.
 
 The file appears in the gallery with a **Link** mark. Linking the same file again does not add a second material; it finds the one you already have.

@@ -16800,7 +16800,7 @@ export function NoteApp() {
                 : undefined
             }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
-            onLinkPlaceFile={fm.handleLinkPlaceFile}
+            onLinkPlaceFiles={fm.handleLinkPlaceFiles}
             onUploadMedia={fm.handleUploadMedia}
             onIntakeFiles={(files, _source, extra) => void intake.run(files, extra)}
             onExtractDocxImages={handleExtractDocxImages}

@@ -80,6 +80,41 @@ export function addLinkedEntry(
   return { index: addMediaEntry(index, entry), entry, added: true };
 }
 
+/** まとめてリンクした結果。outside はどの置き場の中でもなかった件数 */
+export type AddLinkedEntriesResult = {
+  index: MediaIndex;
+  linked: MediaIndexEntry[];
+  existing: MediaIndexEntry[];
+  outside: number;
+};
+
+/** 選んだファイルをまとめて索引に足す。同じ選択の中の重複も、リンク済みとして数える。 */
+export function addLinkedEntries(args: {
+  index: MediaIndex;
+  picked: PickedFile[];
+  places: Pick<PlaceInfo, "id" | "name">[];
+  now: string;
+  newFileId: () => string;
+}): AddLinkedEntriesResult {
+  const { picked, places, now, newFileId } = args;
+  let index = args.index;
+  const linked: MediaIndexEntry[] = [];
+  const existing: MediaIndexEntry[] = [];
+  let outside = 0;
+  for (const file of picked) {
+    const place = places.find((p) => p.id === file.placeId);
+    if (!place || file.relPath === null) {
+      outside += 1;
+      continue;
+    }
+    const built = buildLinkedEntry({ picked: file, place, now, fileId: newFileId() });
+    const result = addLinkedEntry(index, built);
+    index = result.index;
+    (result.added ? linked : existing).push(result.entry);
+  }
+  return { index, linked, existing, outside };
+}
+
 /** 置き場の名前が変わったときに、一覧に出る名前（urlMeta.domain）を合わせる。 */
 export function withPlaceName(entry: MediaIndexEntry, placeName: string): MediaIndexEntry {
   return {
