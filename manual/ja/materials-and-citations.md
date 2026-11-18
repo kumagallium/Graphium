@@ -318,6 +318,8 @@ v0.37.0 より前に登録した素材には、サインインしたあとに一
 
 リンクした素材を開くと、**データの置き場**、**置き場の中での場所**、**大きさ**、**更新日時**、**控えた日時**、**いまの状態** が見えます。状態は、控えた大きさ・更新日時と、いまの値を比べて決めます。ギャラリーでは、状態が **変わりなし** 以外のときだけ印が出ます。
 
+![リンクした素材「Dough hydration.xlsx」の詳細。Link の印があり、データの置き場 Whole bakery、場所 Recipes/Dough hydration.xlsx、大きさ、更新日時、控えた日時と、状態「The original has changed」が並ぶ。控えといまを比べる表は 47.1 KB と 50.7 KB を示し、その下に Record the current state、Open the original、Show in folder、Check again のボタンがある。](/screenshots/linked-file-details.png)
+
 | 状態 | 意味 | することは |
 |---|---|---|
 | **変わりなし** | 大きさと更新日時が、控えたときと同じです。 | 何もしなくて大丈夫です。 |
