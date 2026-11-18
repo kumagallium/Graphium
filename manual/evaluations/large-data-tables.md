@@ -2,7 +2,7 @@
 
 **Question.** Data tables were described as having no row limit, but the record of checking them stopped at 2,000 rows. How long does the screen freeze when a CSV of 233,000 rows and 188 MB is imported?
 
-**Short answer.** Before the fix, the screen froze for up to about 16 seconds between dropping the file and the import screen opening. After splitting the import and display work into small slices, the longest freeze under the same conditions was about 0.5 seconds. I am not adding a row limit this time either. In the web version (Chromium), importing 233,000 rows now stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app has not been measured.
+**Short answer.** Before the fix, the screen froze for up to about 16 seconds between dropping the file and the import screen opening. After splitting the import and display work into small slices, the longest freeze under the same conditions was about 0.5 seconds. I am not adding a row limit this time either. In the web version (Chromium), importing 233,000 rows now stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app was measured afterwards ([Measured in the desktop app](#measured-in-the-desktop-app)).
 
 - The longest single freeze got shorter in all four steps.
 - The time from confirming to the data table appearing got longer (2.3–2.6 seconds to 4.1–4.3 seconds), because parsing is split into slices and the columns are read first. The screen does not stall in the meantime (the longest gap between frames was about 0.2 seconds).
@@ -66,7 +66,7 @@ Before the fix, four things froze the screen.
 
 ## Limits
 
-- Not measured in the desktop app (its web view is WebKit). The desktop version passes the whole file as a base64 string when saving and reading back an asset. The time and memory of that path were not measured.
+- At this point the desktop app (its web view is WebKit) had not been measured. The later results are in [Measured in the desktop app](#measured-in-the-desktop-app).
 - Not measured on a production build (development server).
 - Memory use was not measured before and after. Keeping both the file's text and the parsed rows in memory is unchanged.
 - What was measured is importing, viewing, editing the note and reopening. Scrolling and sorting the table and drawing charts were not measured.
@@ -79,7 +79,7 @@ Before the fix, four things froze the screen.
 
 ## What I decided
 
-- No row limit for data tables. In the web version (Chromium), importing 233,000 rows (188 MB) stalls the screen for about 0.5 seconds at most, so the manual states that range. Checking the desktop app is still to do.
+- No row limit for data tables. In the web version (Chromium), importing 233,000 rows (188 MB) stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app was measured afterwards.
 
 ## Fixed afterwards
 
