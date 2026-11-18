@@ -432,16 +432,20 @@ export function isMobileCapture(entry: MediaIndexEntry): boolean {
  *       ブロックは録音素材を props.fileId で参照するだけで url も本文も持たないので、
  *       これを入れないと録音が未使用扱いになり、削除前の参照チェックをすり抜けて
  *       ブロックが参照切れになる。bump により既存ノートの参照を一度の再構築で回収する
- *    - 11: 検索用の別の読み（macOS の Vision。`ocrAltText`）を素材側にも集約する。
+ *  - 11: 絞り込んだ表（source.derivation）の元の素材（derivation.fromFileId）を usedIn に含める。
+ *       表が読むのは写しなので、source.fileId だけでは元の素材が未使用扱いになり、削除前の
+ *       参照チェックをすり抜けて来歴（と条件つきの開き直し）が切れる。bump により既存ノートの
+ *       参照を一度の再構築で回収する
+ *  - 12: 検索用の別の読み（macOS の Vision。`ocrAltText`）を素材側にも集約する。
  *       ノートの `page.mediaOcr[*].altText` を再構築で素材へ写す。bump により
  *       フィールド追加の慣例どおり既存索引を一度の再構築で揃える
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 11 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 12 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -927,7 +931,7 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   sourceTextFileId?: string | null | undefined;
   pages?:
     | Array<{
-        tableMeta?: Record<string, { source?: { fileId?: string } }> | null;
+        tableMeta?: Record<string, { source?: { fileId?: string; derivation?: { fromFileId?: string } } }> | null;
         blocks?: any[] | null;
       }>
     | null
@@ -964,6 +968,10 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
     for (const meta of Object.values(page?.tableMeta ?? {})) {
       const fileId = meta?.source?.fileId;
       if (fileId) ids.add(fileId);
+      // 絞り込んだ表の「元の素材」。表が読むのは写しなので source.fileId には出てこないが、
+      // 元を消すと、どう絞ったかの来歴（と開き直し）が切れる
+      const fromFileId = meta?.source?.derivation?.fromFileId;
+      if (fromFileId) ids.add(fromFileId);
     }
     // チャートが素材のデータを直接描いている場合（config.assetSources）。表を経由しない
     // ので tableMeta には出てこない。これを入れないと、別のノートの図に重ねただけの
@@ -1020,8 +1028,10 @@ export function collectDataTableAssetFileIdsFromBlocks(blocks: any[]): Set<strin
     for (const b of list ?? []) {
       if (!b || typeof b !== "object") continue;
       if (b.type === "dataTable") {
-        const fileId = parseDataTableSource(b.props?.source)?.fileId;
-        if (fileId) ids.add(fileId);
+        const source = parseDataTableSource(b.props?.source);
+        if (source?.fileId) ids.add(source.fileId);
+        // 絞り込んだ表の元の素材（写しを読むので source.fileId には出てこない）
+        if (source?.derivation?.fromFileId) ids.add(source.derivation.fromFileId);
       }
       if (Array.isArray(b.children)) visit(b.children);
     }

@@ -1539,4 +1539,34 @@ export type TableSource = {
     collapseConsecutive: boolean;
   };
   meta?: { key: string; value: string }[];
+  /**
+   * 絞り込み（列と行を選んで取り出した小さな表）の来歴。任意なので既存のノートには影響しない。
+   * あるとき fileName / fileId は取り出した結果（写し）を指し、元のファイルは derivation 側が持つ
+   */
+  derivation?: TableDerivation;
+};
+
+export type ExtractOperator = "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty";
+
+/** 絞り込みの 1 つの条件。value が空（notEmpty 以外）の条件は「書きかけ」として無視される */
+export type ExtractCondition = { column: string; op: ExtractOperator; value?: string };
+
+/**
+ * 絞り込みの来歴。表の上の「条件の 1 行」と、条件を復元して取り込み画面を開き直すのに使う。
+ * 保存される形（TableSource）の一部なのでこちらに定義を置く
+ * （data-extract/types.ts からは re-export する）
+ */
+export type TableDerivation = {
+  kind: "filter";
+  fromFileId?: string;
+  fromFileName: string;
+  /** 元のファイルをどう読んだか（行範囲・区切り）。開き直すとき、元の画面を同じ読み方で開くのに使う。古い記録には無い */
+  fromOptions?: TableSource["options"];
+  columns: string[];
+  /** 元の列の数。columns と同じなら「全列」なので、条件の 1 行に列の句を出さない。古い記録には無い */
+  sourceColumns?: number;
+  conditions: ExtractCondition[];
+  sourceRows: number;
+  resultRows: number;
+  createdAt: string;
 };

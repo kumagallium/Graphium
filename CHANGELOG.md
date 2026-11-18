@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.144.0](https://github.com/kumagallium/Graphium/compare/v0.143.0...v0.144.0) - 2026-11-18
+
+- [docs] Describe the on-device OCR model in the manual (v0.142.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1750
+- docs(manual): Home figures, v0.143.0 badges and roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1753
+- feat(data-extract): bring in only part of a delimited file, and keep the conditions on the table by @kumagallium in https://github.com/kumagallium/Graphium/pull/1747
+
 ## [v0.143.0](https://github.com/kumagallium/Graphium/compare/v0.142.0...v0.143.0) - 2026-11-18
 
 - feat: filter Home by folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1739

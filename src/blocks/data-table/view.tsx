@@ -31,7 +31,7 @@ import {
 import { Database, Download, Maximize2, TriangleAlert } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
-import type { TableSource } from "../../lib/document-types";
+import type { TableDerivation, TableSource } from "../../lib/document-types";
 import {
   hasDataTableExportCallback,
   hasDataTableReimportCallback,
@@ -43,6 +43,7 @@ import { loadDataTable, peekDataTable, type DataTableData } from "./data";
 import { DataTableExpandModal } from "./expand-modal";
 import { DataGrid } from "./grid";
 import { dataTableDisplayName, parseDataTableSource } from "./source";
+import { describeDerivation } from "../../features/data-extract/describe";
 import { linkedColumnsFor, mergeLinkedColumns } from "./linked";
 // calc の書き戻し宣言（計算列）を読む。Provider が無い場所（Storybook 等）でも動く optional 版
 import { useTableMetaStoreOptional } from "../../features/table-meta/store";
@@ -172,6 +173,7 @@ function DataTableBlockView({ block, editor }: { block: any; editor: any }) {
         }
         exportedName={exportedName}
       />
+      {source?.derivation && <DerivationLine derivation={source.derivation} />}
       {merged ? (
         <DataGrid data={merged.data} linked={merged.linked} />
       ) : (
@@ -253,7 +255,10 @@ function CaptionRow({
           style={{ ...styles.badge, cursor: canReimport ? "pointer" : "default" }}
         >
           <Database size={10} strokeWidth={2} style={{ flexShrink: 0 }} />
-          <span style={styles.ellipsis}>{t("dataImport.sourceBadge", { fileName: source.fileName })}</span>
+          <span style={styles.ellipsis}>
+            {/* 絞り込んだ表は、写しの名前ではなく利用者が選んだ元のファイル名を出す */}
+            {t("dataImport.sourceBadge", { fileName: source.derivation?.fromFileName ?? source.fileName })}
+          </span>
         </button>
       )}
       {data && (
@@ -289,6 +294,20 @@ function CaptionRow({
       {exportedName && (
         <span style={styles.exported}>{t("dataTable.exported", { name: exportedName })}</span>
       )}
+    </div>
+  );
+}
+
+/**
+ * 名前の行のすぐ下の、条件の 1 行（絞り込んだ表だけ）。
+ * 表の上のバッジと同じ控えめな色で、長いときは末尾を省略して全文はツールチップに出す。
+ */
+function DerivationLine({ derivation }: { derivation: TableDerivation }) {
+  useLocaleSubscription();
+  const text = describeDerivation(derivation, t);
+  return (
+    <div style={styles.derivation} data-tooltip={text}>
+      {text}
     </div>
   );
 }
@@ -369,6 +388,17 @@ const styles: Record<string, CSSProperties> = {
   iconBadge: {
     padding: "0 5px",
     cursor: "pointer",
+  },
+  // 名前の行の次の 1 行。バッジと同じ三次テキスト色で、本文より目立たせない
+  derivation: {
+    fontSize: 11,
+    lineHeight: "16px",
+    color: "var(--color-text-tertiary)",
+    padding: "0 2px",
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   exported: {
     fontSize: 10,

@@ -22,6 +22,8 @@ import { primeAssetText } from "../../features/data-import/asset-text";
 import { DataGrid } from "./grid";
 import { mergeLinkedColumns } from "./linked";
 import { peekDataTable } from "./data";
+import { applyExtract, isActiveCondition } from "../../features/data-extract/apply";
+import type { ExtractSpec } from "../../features/data-extract/types";
 import type { TableSource } from "../../lib/document-types";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -198,6 +200,97 @@ export const MissingAsset: StoryObj = {
     return (
       <ErrorBoundary>
         <DataTableDemo content={dataTableContent(source, "オーブン温度ログ（削除済みの素材）")} />
+      </ErrorBoundary>
+    );
+  },
+};
+
+/**
+ * 絞り込んだ表。取り込み画面で条件を選んで取り出した小さな表（元ファイルの写し）を作る。
+ * 素材には絞った後の CSV を入れ、source.derivation に元のファイル名と条件を残す。
+ */
+function derivedSource(fileId: string, spec: ExtractSpec): TableSource {
+  const [headerLine, ...lines] = ovenLogCsv(120).split("\n");
+  const result = applyExtract(
+    headerLine.split(","),
+    lines.map((l) => l.split(",")),
+    spec,
+  );
+  primeAssetText(
+    fileId,
+    [result.headers.join(","), ...result.rows.map((r) => r.join(","))].join("\n"),
+  );
+  return {
+    kind: "delimited-file",
+    fileName: "oven-log-extract.csv",
+    fileId,
+    importedAt: IMPORTED_AT,
+    options: { ...BASE_OPTIONS, endRow: result.rows.length + 1 },
+    derivation: {
+      kind: "filter",
+      fromFileName: "oven-log.csv",
+      columns: spec.columns,
+      conditions: spec.conditions.filter(isActiveCondition),
+      sourceRows: result.sourceRows,
+      resultRows: result.rows.length,
+      createdAt: IMPORTED_AT,
+    },
+  };
+}
+
+// 条件 2 つ: 名前の行の下に「条件の文（N 行のうち M 行）」が 1 行出る。「元」のバッジは元のファイル名
+export const Filtered: StoryObj = {
+  name: "絞り込んだ表（条件 2 つ）",
+  render: () => {
+    const source = derivedSource("story-oven-log-filtered", {
+      columns: [],
+      conditions: [
+        { column: "temp_c", op: "ge", value: "225" },
+        { column: "humidity", op: "le", value: "36" },
+      ],
+    });
+    return (
+      <ErrorBoundary>
+        <DataTableDemo content={dataTableContent(source, "高温のときの湿度")} />
+      </ErrorBoundary>
+    );
+  },
+};
+
+// 列だけ選んだ表: 条件が無いので列の個数で言う
+export const FilteredColumnsOnly: StoryObj = {
+  name: "絞り込んだ表（列だけ選択）",
+  render: () => {
+    const source = derivedSource("story-oven-log-columns", {
+      columns: ["time", "temp_c"],
+      conditions: [],
+    });
+    return (
+      <ErrorBoundary>
+        <DataTableDemo content={dataTableContent(source, "温度だけ")} />
+      </ErrorBoundary>
+    );
+  },
+};
+
+// 条件が長い表: 1 行に収まらない分は末尾を省略し、全文はカーソルを載せると出る
+export const FilteredLongConditions: StoryObj = {
+  name: "絞り込んだ表（条件が長い）",
+  render: () => {
+    const source = derivedSource("story-oven-log-long", {
+      columns: [],
+      conditions: [
+        { column: "temp_c", op: "ge", value: "215" },
+        { column: "temp_c", op: "le", value: "235" },
+        { column: "humidity", op: "gt", value: "31" },
+        { column: "humidity", op: "lt", value: "39" },
+        { column: "time", op: "ne", value: "01:30" },
+        { column: "time", op: "notEmpty" },
+      ],
+    });
+    return (
+      <ErrorBoundary>
+        <DataTableDemo content={dataTableContent(source, "窯の安定した時間帯")} />
       </ErrorBoundary>
     );
   },

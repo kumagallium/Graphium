@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 18 more in November
+::: details 19 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -378,6 +378,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.139.0** | 2026-11-17 | [Readable copies of shared notes](/storage-and-sync#readable-copies) — a shared folder can also hold each shared note as a Markdown file with its provenance, so people and tools without Graphium can read it. The copies leave out AI chats, edit history and memos. The provenance export now also lists [the other notes a note points at](/storage-and-sync#exports) <!--chip: Readable copies in the shared folder--> |
 | **v0.140.0** | 2026-11-17 | [Export a note to Word](/storage-and-sync#export-to-word) — **Word (.docx)** in the note menu saves the note as a Word file with its headings, lists, tables, stored images and charts. Images at an external URL are not fetched; only their link goes in <!--chip: Export to Word--> |
 | **v0.142.0** | 2026-11-18 | [Images are read by an on-device model](/materials-and-citations#reading-text-from-images-ocr) — the desktop app now reads the text in images with PP-OCRv6 small, fetched in the background the first time and kept on your device. Tesseract still reads until it arrives and in the browser version |
+| **v0.143.0** | 2026-11-18 | [Narrow Home to one folder](/notes-and-editor#the-notes-list) — the **Folder** button on Home narrows the list, the calendar and the search to one folder. In the desktop app, a note that holds a recording is also [found by words spoken in that recording](/how-search-works), and the recording itself is marked **From a recording** |
 
 :::
 
