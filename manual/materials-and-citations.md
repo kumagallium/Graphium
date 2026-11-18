@@ -129,7 +129,7 @@ Two cases are left as they were. An archived material is never reused: if you re
 
 Materials registered before v0.37.0 are read once in the background after you sign in, to give them the mark the check relies on. Until that pass reaches a given material, bringing it in again still adds a copy. A large library takes a while, and closing the app is safe — the next launch picks up where it left off.
 
-## Link a file without copying it {#linked-files}
+## Link a file without copying it <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#linked-files}
 
 Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied, and Graphium never reads what is inside. This is for the desktop app only.
 

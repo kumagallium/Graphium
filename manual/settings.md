@@ -45,7 +45,7 @@ Where your notes live and how they move between devices. Full details in [Storag
 Changing **Where your notes are saved** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
 :::
 
-### Data places {#data-places}
+### Data places <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#data-places}
 
 Desktop app only. A data place is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is; it does not copy the file or read what is inside.
 
