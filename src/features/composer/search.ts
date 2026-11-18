@@ -18,7 +18,7 @@
 
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import type { NoteIndexEntry } from "../navigation/index-file";
-import type { MediaIndexEntry } from "../asset-browser/media-index";
+import { materialListDate, type MediaIndexEntry } from "../asset-browser/media-index";
 import { matchesAllTokens, sourceInfoSearchText } from "../asset-browser/source-info-text";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
@@ -440,7 +440,7 @@ export function searchMedia(
 
     if (reasons.length === 0) continue;
 
-    score += entry.uploadedAt ? daysAgoBoost(entry.uploadedAt) : 0;
+    score += entry.uploadedAt ? daysAgoBoost(materialListDate(entry)) : 0;
     hits.push({ entry, nameMatches, ocrSnippet, ...(textSnippet ? { textSnippet } : {}), reasons, score });
   }
 

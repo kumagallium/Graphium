@@ -400,6 +400,10 @@ describe("会話の題（custom-title の行）", () => {
     expect(read([titleLine("中辛の\n配合‮​メモ"), userLine()])?.customTitle).toBe("中辛の 配合メモ");
   });
 
+  it("画面に出ないタグ文字・異体字セレクタも落とす", () => {
+    expect(read([titleLine("中辛\u{e0041}\u{e0042}の\ufe0f配合"), userLine()])?.customTitle).toBe("中辛の配合");
+  });
+
   it("題の行だけの記録は会話にならない", () => {
     expect(read([titleLine("題だけ")])).toBeNull();
   });

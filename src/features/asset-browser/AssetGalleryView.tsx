@@ -26,7 +26,7 @@ import { useDataPreview } from "../../blocks/chart/data-preview-store";
 import { DataSummary, Sparkline } from "../../blocks/chart/data-preview-parts";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
-import { phraseHitsBySource, type BestHit } from "../lexical-search";
+import { phraseHitsBySource, useLexicalStatus, type BestHit } from "../lexical-search";
 import { materialListDate, type DocumentKind, type EditMediaContexts, type MediaIndex, type MediaIndexEntry, type MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
@@ -953,9 +953,13 @@ export function AssetGalleryView({
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   // AI との会話は本文の言葉でも探す（全文の索引。入れた言葉がそのまま入っている会話だけ）
+  const lexicalStatus = useLexicalStatus();
+  const lexicalRevision = `${lexicalStatus.generation}:${lexicalStatus.documents}:${lexicalStatus.state}`;
   const conversationBodyHits = useMemo(
     () => (mediaType === "conversation" && searchQuery.trim() ? phraseHitsBySource(searchQuery, ["asset"]) : new Map<string, BestHit>()),
-    [mediaType, searchQuery],
+    // lexicalRevision は索引の変化を拾うための依存
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mediaType, searchQuery, lexicalRevision],
   );
   const [sortKey, setSortKey] = useState<SortKey>("uploadedAt");
   const [sortAsc, setSortAsc] = useState(false);

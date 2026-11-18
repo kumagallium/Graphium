@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { resetSearchIndex } from "./search";
 import { resetMediaIndexCache } from "./sources";
-import { mediaSourceId, resetMediaSearchIndex, searchMedia } from "./media-search";
+import { formatMediaHit, mediaSourceId, resetMediaSearchIndex, searchMedia } from "./media-search";
 
 function entry(over: Record<string, unknown>) {
   return { url: "", thumbnailUrl: "", uploadedAt: "2026-10-01T00:00:00Z", usedIn: [], mimeType: "", ...over };
@@ -128,6 +128,22 @@ describe("searchMedia", () => {
       expect(hits[0].name).toBe("全粒粉の配合");
       expect(hits[0].snippet).toContain("酸味は控えめ");
       expect(hits[0].conversationDate).toBe("2026-10-06T00:00:00Z");
+    });
+
+    it("結果の文には、話した日と当たった箇所が出る", () => {
+      writeMedia([conversationEntry()]);
+      const line = formatMediaHit(searchMedia("酸味 発酵", {}, root)[0], 0);
+      expect(line).toContain("会話 2026-10-06");
+      expect(line).not.toContain("取り込み 2026-11-10");
+      expect(line).toContain("当たった箇所: ");
+      expect(line).toContain("酸味は控えめ");
+    });
+
+    it("ほかの素材の結果の文は、これまでどおり取り込みの日", () => {
+      writeMedia([entry({ fileId: "a1", name: "熱電変換の総説.pdf", type: "pdf" })]);
+      const line = formatMediaHit(searchMedia("熱電変換", {}, root)[0], 0);
+      expect(line).toContain("取り込み 2026-10-01");
+      expect(line).not.toContain("当たった箇所");
     });
 
     it("同じ会話の断片がいくつ当たっても 1 件にまとまる", () => {

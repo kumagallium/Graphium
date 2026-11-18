@@ -10,7 +10,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { exportAsterismClaims } from "./export-asterism";
 import { buildProvJsonLdText, resolveExportScope } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
-import { MEDIA_TYPES, searchMedia } from "./media-search";
+import { MEDIA_TYPES, formatMediaHit, searchMedia } from "./media-search";
 import { jsonTextWithGuard, textWithGuard } from "./injection-guard";
 import { getSourceText } from "./source-text";
 import { DEFAULT_LIMIT, listTodos } from "./list-todos";
@@ -194,13 +194,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
       if (!vaultExists()) return vaultMissing();
       const hits = searchMedia(query, { type, limit });
       if (hits.length === 0) return text(`「${query}」に一致する素材はありませんでした。`);
-      const lines = hits.map((h, i) => {
-        const used =
-          h.usedIn.length > 0
-            ? `   使っているノート: ${h.usedIn.map((u) => `${u.title}  [noteId: ${u.noteId}]`).join(" / ")}`
-            : "   使っているノート: なし（または Graphium の次回保存後に反映）";
-        return `${i + 1}. ${h.name}\n   id: ${h.id}  (${h.type}, 取り込み ${h.uploadedAt.slice(0, 10) || "不明"})\n${used}`;
-      });
+      const lines = hits.map(formatMediaHit);
       return textWithGuard(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
     },
   );

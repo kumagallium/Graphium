@@ -10,7 +10,11 @@ import { join } from "node:path";
 import MiniSearch from "minisearch";
 
 import type { MediaIndexEntry, MediaType } from "../features/asset-browser/media-index";
-import { conversationSearchChunks, conversationsInSearchBudget } from "../features/lexical-search/conversation-chunks";
+import {
+  CONVERSATION_SEARCH_MAX_BODY_CHARS,
+  conversationSearchChunks,
+  conversationsInSearchBudget,
+} from "../features/lexical-search/conversation-chunks";
 import { buildSnippet } from "../features/lexical-search/snippet";
 import { tokenize } from "../features/lexical-search/tokenizer";
 import { sourceInfoSearchText } from "../features/asset-browser/source-info-text";
@@ -48,6 +52,19 @@ export type MediaHit = {
   /** AI との会話: 会話の最後の日時（ISO 8601）。uploadedAt は取り込んだ日時 */
   conversationDate?: string;
 };
+
+/** search_media の 1 件を読む形にする（AI との会話は、話した日と当たった箇所を添える） */
+export function formatMediaHit(h: MediaHit, index: number): string {
+  const used =
+    h.usedIn.length > 0
+      ? `   使っているノート: ${h.usedIn.map((u) => `${u.title}  [noteId: ${u.noteId}]`).join(" / ")}`
+      : "   使っているノート: なし（または Graphium の次回保存後に反映）";
+  const when = h.conversationDate
+    ? `会話 ${h.conversationDate.slice(0, 10)}`
+    : `取り込み ${h.uploadedAt.slice(0, 10) || "不明"}`;
+  const snippet = h.snippet ? `\n   当たった箇所: ${h.snippet}` : "";
+  return `${index + 1}. ${h.name}\n   id: ${h.id}  (${h.type}, ${when})${snippet}\n${used}`;
+}
 
 /** 素材を資料 ID の形にする */
 export function mediaSourceId(m: Pick<MediaIndexEntry, "type" | "fileId" | "url">): string {
@@ -106,6 +123,7 @@ function getIndex(root: string): Cache {
   const chunks = new Map<string, ConversationChunk>();
   const docs: MediaDoc[] = [];
   const conversationBudget = conversationsInSearchBudget(readMediaIndex(root).values());
+  let conversationChars = 0;
   for (const m of readMediaIndex(root).values()) {
     // アーカイブ済みの素材はギャラリーと同じく探す対象から外す
     if (m.archivedAt) continue;
@@ -126,6 +144,9 @@ function getIndex(root: string): Cache {
     if (m.type !== "conversation" || !conversationBudget.has(m.fileId)) continue;
     const body = readConversationBody(m.fileId, root);
     if (body === null) continue;
+    // 一覧の字数と実物が違っていても、読み込む量は上限を超えない
+    conversationChars += body.length;
+    if (conversationChars > CONVERSATION_SEARCH_MAX_BODY_CHARS) continue;
     for (const c of conversationSearchChunks(body)) {
       const docId = `${id}#${c.chunkId}`;
       chunks.set(docId, { sourceId: id, text: c.text });

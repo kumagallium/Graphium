@@ -193,6 +193,8 @@ function cleanCustomTitle(value: unknown): string {
     .replace(/[\r\n\t]+/g, " ")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, "")
+    // タグ文字・異体字セレクタなど、画面に出ないまま AI には読める文字
+    .replace(/[\u034f\u180e\ufe00-\ufe0f\ufff9-\ufffb\u{e0000}-\u{e0fff}]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
