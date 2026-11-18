@@ -53,7 +53,7 @@ export type RecordWho =
   | { type: "other"; name: string };
 
 /** 素材の種類（media-index の type。メモを素材として見せる一時エントリの "memo" は除く） */
-export type RecordMediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "other";
+export type RecordMediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "data" | "conversation" | "other";
 
 /** この記録から辿れる先（来歴の入口） */
 export type RecordTrace =

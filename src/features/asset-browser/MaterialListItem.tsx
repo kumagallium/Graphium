@@ -3,7 +3,7 @@
 // 親テーブルから渡される列幅・ヘッダと合わせて使う。
 
 import { safeExternalHref } from "../../lib/safe-href";
-import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table } from "lucide-react";
+import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table, MessagesSquare } from "lucide-react";
 import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
@@ -53,6 +53,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
       return <Files size={size} />;
     case "data":
       return <Table size={size} />;
+    case "conversation":
+      return <MessagesSquare size={size} />;
     default:
       return <Paperclip size={size} />;
   }

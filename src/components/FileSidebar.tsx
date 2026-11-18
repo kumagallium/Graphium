@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House, MessagesSquare } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -290,6 +290,7 @@ const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "video", icon: <Video size={14} /> },
   { type: "audio", icon: <Volume2 size={14} /> },
   { type: "url", icon: <Link size={14} /> },
+  { type: "conversation", icon: <MessagesSquare size={14} /> },
 ];
 
 /** クイックメモのショートカット（判定は note-app.tsx の ⌘⇧M ハンドラ） */

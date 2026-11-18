@@ -488,15 +488,18 @@ export function MaterialActionsMenu({
             </>
           )}
           {(hasAiActions || canExtract || canDownload || canCopyLink) && <div className="my-1 border-t border-border" />}
-          <button
-            className={itemClass}
-            disabled={!!shareDisabledReason || shareBusy}
-            onClick={() => { void handleShare(); setOpen(false); }}
-            data-tooltip={shareDisabledReason}
-          >
-            {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
-            {shareBusy ? t("share.sharing") : isShared ? t("share.reshareToTeam") : t("share.shareToTeam")}
-          </button>
+          {/* AI との会話は共有の対象にしない（操作そのものを出さない） */}
+          {entry.type !== "conversation" && (
+            <button
+              className={itemClass}
+              disabled={!!shareDisabledReason || shareBusy}
+              onClick={() => { void handleShare(); setOpen(false); }}
+              data-tooltip={shareDisabledReason}
+            >
+              {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+              {shareBusy ? t("share.sharing") : isShared ? t("share.reshareToTeam") : t("share.shareToTeam")}
+            </button>
+          )}
           {onDelete && (
             <>
               <div className="my-1 border-t border-border" />
