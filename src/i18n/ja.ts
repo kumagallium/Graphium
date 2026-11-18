@@ -4510,6 +4510,13 @@ export const ja: Record<string, string> = {
   "asset.sourceYear": "年",
   "asset.sourceVenue": "発行元",
   "asset.sourceDoi": "DOI",
+  // 素材の情報欄の見出し（以前は英語の固定文字列だった）
+  "asset.metaName": "名前",
+  "asset.metaType": "種類",
+  "asset.metaUploaded": "追加した日時",
+  "asset.metaUsedIn": "使われているノート（{count}）",
+  "asset.metaTextInImage": "画像の文字",
+  "asset.metaDerivedFrom": "元になった素材（{count}）",
   "asset.sourceUnset": "未設定",
   "asset.sourceEtAl": "ほか",
   "asset.sourceEdit": "編集",
