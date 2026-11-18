@@ -74,6 +74,17 @@ describe("readSourceForTool", () => {
     expect(out).toBe('[#2 | "実験ノート"]\n## 手順\n前半\n\n後半');
   });
 
+  it("別の読み（alt）の断片は読み戻した本文に連結しない", () => {
+    setNoteTitleMap(new Map([["img1", "手書きメモ"]]));
+    listChunksMock.mockReturnValue([
+      { chunkId: "c0", text: "焼給 800", terms: [] },
+      { chunkId: "alt0", text: "焼結温度を上げた", terms: [] },
+    ]);
+    const out = readSourceForTool("手書きメモ", new Map(), () => 1);
+    expect(out).toBe('[#1 | "手書きメモ"]\n焼給 800');
+    expect(out).not.toContain("焼結温度");
+  });
+
   it("題名指定でノート id の逆引きができ、番号は採番器から受ける", () => {
     setNoteTitleMap(new Map([["n9", "別ノート"]]));
     listChunksMock.mockReturnValue([{ chunkId: "a", text: "本文", terms: [] }]);

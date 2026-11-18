@@ -73,4 +73,18 @@ For qwen3-vl:4b and deepseek-ocr, I did not tune the prompt or the handling of t
 
 ## What I decided
 
-- Nothing is changed yet. Graphium still uses tesseract.js. Which engine to add, and for which platform, is not decided.
+- At the time of the measurement nothing was changed: Graphium still used tesseract.js, and which engine to add, and for which platform, was not decided. What followed is in the next section.
+
+## What I changed afterwards
+
+- **v0.142.0: the desktop app reads images with PP-OCRv6 small.** The model is fetched in the background the first time an image is read; until then, on failure and in the browser version, tesseract.js reads as before. Rewritten in Rust on the ONNX Runtime the app already ships, the engine gave the same output as the Python runner on the 16 synthetic images except vertical writing, which it now reads from the right column (CER 0.780 → 0.049). Detection input is capped (long side 1600 px before detection), which kept the handwriting hit rate in the same range (42–46 %) while the peak memory fell from 4.75 GB to 1.13 GB.
+- **A thin, tall image could exhaust memory.** While reviewing the change from an attacker's point of view, I found that a 1×20000 px image made the detection input about 10 GB. The size of the detection input, the request size, the number of jobs running at once and the time are now bounded. It was fixed before the release.
+- **On macOS, the reading from the OS's own text recognition is kept as well, for finding only.** The two engines are strong at opposite things, so I measured what happens when a phrase counts as found if either reading has it. The text shown, copied, exported and given to an AI stays the PP-OCR reading; the second reading goes only into search. This is in the release after v0.142.0.
+
+| Reading used for finding (160 handwritten phrases, engines as built into the app) | All | Dates | Japanese phrases | Numbers and units |
+|---|---|---|---|---|
+| PP-OCRv6 small alone | 44 % | 90 % | 16 % | 71 % |
+| OS text recognition alone | 72 % | 93 % | 76 % | 48 % |
+| Either of the two | 82 % | 97 % | 80 % | 79 % |
+
+The limits above still apply: one person's handwriting, 7 photos, and an answer key the notebook's owner has not confirmed. Windows has no second reading.

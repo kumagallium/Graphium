@@ -68,8 +68,9 @@ libc = "0.2"
 # macOS: 取り込み等の長い処理の間、隠れたウィンドウでも WKWebView を止めさせない
 # （set_background_work_active）。wry が既に使っている版に揃え、依存を増やさない。
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSNotification", "NSProcessInfo", "NSString"] }
+objc2 = { version = "0.6", features = ["exception"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSNotification", "NSProcessInfo", "NSString"] }
+objc2-vision = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "VNRecognizeTextRequest", "VNObservation", "VNRequest", "VNRequestHandler", "VNTypes"] }
 
 # Windows: sidecar (node.exe) を Job Object で本体プロセスに連動終了させる。
 # 親を kill しても子が残る Windows の仕様への対策（詳細は lib.rs の sidecar_job）。

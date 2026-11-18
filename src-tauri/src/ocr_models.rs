@@ -86,7 +86,15 @@ pub struct OcrRecognizeResult {
     /// 行の信頼度の平均（0〜100 の整数）
     pub confidence: u32,
     pub engine: &'static str,
+    /// 検索用の別の読み（macOS の Vision）。表示には使わない。空・PP-OCR と同じなら付けない
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_engine: Option<&'static str>,
 }
+
+/// 別の読みの engine 名
+pub const ALT_ENGINE_VISION: &str = "apple-vision";
 
 #[derive(Default)]
 pub struct OcrState {
@@ -154,6 +162,36 @@ pub fn enter_queue(waiting: &Arc<AtomicUsize>, max: usize) -> Option<WaitSlot> {
         return None; // slot が Drop されて件数は戻る
     }
     Some(slot)
+}
+
+/// 別の読み（検索用）の最大文字数。TS 側（ocr-alt.ts の MAX_ALT_TEXT_CHARS）と同じ
+#[cfg(any(target_os = "macos", test))]
+const MAX_ALT_TEXT_CHARS: usize = 20_000;
+
+/// 別の読みの比較用に畳む: 全角の ASCII を半角にし、空白を除いて小文字にする
+/// （NFKC の代わりの軽い正規化。保存を増やさないための同一判定にだけ使う）
+#[cfg(any(target_os = "macos", test))]
+fn fold_for_compare(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            _ => c,
+        })
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// 別の読みを付けるか決める。空、または PP-OCR と（正規化後に）同じなら None
+#[cfg(any(target_os = "macos", test))]
+pub fn pick_alt_text(primary: &str, alt: &str) -> Option<String> {
+    // 長さは先に切る（巨大な文字列を畳む処理にかけない）
+    let alt: String = alt.chars().take(MAX_ALT_TEXT_CHARS).collect();
+    let folded = fold_for_compare(&alt);
+    if folded.is_empty() || folded == fold_for_compare(primary) {
+        return None;
+    }
+    Some(alt.trim().to_string())
 }
 
 /// 本文のバイト数の検査
@@ -367,6 +405,80 @@ fn engine_for(app: &tauri::AppHandle, state: &OcrState) -> Result<Arc<OcrEngine>
     Ok(engine)
 }
 
+/// Vision を待つ時間の上限（秒）。過ぎたら別の読み無しで PP-OCR の結果を返す
+#[cfg(target_os = "macos")]
+const VISION_TIMEOUT_SECS: u64 = 20;
+/// Vision のスレッドが走っている間 true。時間切れで置き去りにしたスレッドが終わるまで、
+/// 次の画像では Vision を飛ばす（同時に走る Vision は 1 本まで）
+#[cfg(target_os = "macos")]
+static VISION_BUSY: AtomicBool = AtomicBool::new(false);
+/// Vision が続けて失敗した回数。成功で 0 に戻す。VISION_MAX_FAILURES に達したら、このアプリ起動中は以後呼ばない
+/// （言語が未対応の古い macOS など）。画像は攻撃者が選べるので、1 枚の失敗だけでは止めない
+#[cfg(target_os = "macos")]
+static VISION_FAILURES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+#[cfg(target_os = "macos")]
+const VISION_MAX_FAILURES: u32 = 3;
+
+/// 別の読み（macOS の Vision）。macOS 以外は常に None。
+/// Vision は別スレッドで走らせ、結果を最大 20 秒（と 90 秒の期限の残り）だけ待つ
+#[cfg(target_os = "macos")]
+fn alt_reading(img: image::DynamicImage, primary: &str, deadline: Instant) -> Option<String> {
+    let now = Instant::now();
+    if now >= deadline || VISION_FAILURES.load(Ordering::SeqCst) >= VISION_MAX_FAILURES {
+        return None;
+    }
+    if VISION_BUSY.swap(true, Ordering::SeqCst) {
+        eprintln!("[ocr] vision skipped: previous run is still going");
+        return None;
+    }
+    let wait = Duration::from_secs(VISION_TIMEOUT_SECS).min(deadline - now);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let started = Instant::now();
+    let spawned = std::thread::Builder::new().name("ocr-vision".into()).spawn(move || {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let rgb = crate::ocr_engine::to_rgb_on_white(&img);
+            crate::ocr_vision::recognize(&rgb)
+        }));
+        // 終わってから戻す（時間切れで置き去りになっている間は次を走らせない）
+        VISION_BUSY.store(false, Ordering::SeqCst);
+        let _ = tx.send(r);
+    });
+    if spawned.is_err() {
+        VISION_BUSY.store(false, Ordering::SeqCst);
+        return None;
+    }
+    match rx.recv_timeout(wait) {
+        Ok(Ok(Ok(alt))) => {
+            VISION_FAILURES.store(0, Ordering::SeqCst);
+            eprintln!("[ocr] vision {} chars in {} ms", alt.chars().count(), started.elapsed().as_millis());
+            pick_alt_text(primary, &alt)
+        }
+        Ok(Ok(Err(e))) => {
+            // 続けて VISION_MAX_FAILURES 回失敗したら、以後は呼ばない
+            let n = VISION_FAILURES.fetch_add(1, Ordering::SeqCst) + 1;
+            if n == VISION_MAX_FAILURES {
+                eprintln!("[ocr] vision failed {n} times in a row, disabled until restart: {e}");
+            } else if n < VISION_MAX_FAILURES {
+                eprintln!("[ocr] vision failed ({n}): {e}");
+            }
+            None
+        }
+        Ok(Err(_)) => {
+            eprintln!("[ocr] vision panicked; skipped");
+            None
+        }
+        Err(_) => {
+            eprintln!("[ocr] vision timed out after {} ms; skipped", wait.as_millis());
+            None
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn alt_reading(_img: image::DynamicImage, _primary: &str, _deadline: Instant) -> Option<String> {
+    None
+}
+
 /// 本文は画像（PNG・JPEG など）の生バイト。
 /// - モデルが未取得なら `OCR_MODEL_NOT_DOWNLOADED`、本文が 64 MB 超なら `OCR_INPUT_TOO_LARGE`、
 ///   順番待ちが 32 件を超えたら `OCR_BUSY`、90 秒を過ぎたら `OCR_TIMEOUT` で失敗する
@@ -414,10 +526,23 @@ pub async fn ocr_recognize(
             lines.len(),
             started.elapsed().as_millis()
         );
+        let text = layout_text(&lines);
+        // macOS だけ: 検索用にもう 1 つの読み（Vision）を持つ。期限を過ぎていたら飛ばし、
+        // 失敗しても PP-OCR の結果だけ返す
+        // panic しても PP-OCR の結果は返す。img は Vision のスレッドへ move する（コピーしない）
+        let alt_text = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            alt_reading(img, &text, deadline)
+        }))
+        .unwrap_or_else(|_| {
+            eprintln!("[ocr] vision panicked; skipped");
+            None
+        });
         Ok(OcrRecognizeResult {
-            text: layout_text(&lines),
+            text,
             confidence: confidence_percent(&lines),
             engine: MODEL_NAME,
+            alt_engine: alt_text.as_ref().map(|_| ALT_ENGINE_VISION),
+            alt_text,
         })
     })
     .await
@@ -504,6 +629,24 @@ mod tests {
         *state.last_used.lock().unwrap() = Some(Instant::now() - Duration::from_secs(10_000));
         assert!(unload_idle(&state, Duration::from_secs(60)));
         assert!(lock_recover(&state.engine).is_none());
+    }
+
+    #[test]
+    fn alt_text_is_dropped_when_empty_or_same_after_folding() {
+        assert_eq!(pick_alt_text("abc 123", ""), None);
+        assert_eq!(pick_alt_text("abc 123", "  \n"), None);
+        // 空白・大文字小文字・全角 ASCII の違いだけなら同じ
+        assert_eq!(pick_alt_text("abc 123", "ＡＢＣ１２３"), None);
+        assert_eq!(pick_alt_text("abc 123", "abc\n123"), None);
+        // 違えば付く（前後の空白は落とす）
+        assert_eq!(pick_alt_text("てすと", " 手すと\n"), Some("手すと".to_string()));
+    }
+
+    #[test]
+    fn alt_text_is_capped_in_length() {
+        let long = "あ".repeat(MAX_ALT_TEXT_CHARS + 5_000);
+        let got = pick_alt_text("x", &long).unwrap();
+        assert_eq!(got.chars().count(), MAX_ALT_TEXT_CHARS);
     }
 
     #[test]

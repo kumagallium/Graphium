@@ -182,6 +182,7 @@ function media(
     uploadedAt: partial.uploadedAt ?? "2026-04-20T00:00:00.000Z",
     usedIn: partial.usedIn ?? [],
     ocrText: partial.ocrText,
+    ...(partial.ocrAltText ? { ocrAltText: partial.ocrAltText } : {}),
     archivedAt: partial.archivedAt,
     ...(partial.sourceInfo ? { sourceInfo: partial.sourceInfo } : {}),
   };
@@ -232,6 +233,18 @@ describe("searchMedia()", () => {
     expect(hits.map((h) => h.entry.fileId)).toEqual(["img-1"]);
     expect(hits[0].reasons).toContain("ocr");
     expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+  });
+
+  it("finds images by the alternative reading (search only) and reports it as an ocr hit", () => {
+    const withAlt = [
+      media({ fileId: "hand-1", name: "memo.jpg", ocrText: "焼給 800", ocrAltText: "焼結温度を 800℃ に上げた" }),
+    ];
+    const hits = searchMedia("焼結温度", withAlt);
+    expect(hits.map((h) => h.entry.fileId)).toEqual(["hand-1"]);
+    expect(hits[0].reasons).toContain("ocr");
+    // 当たった理由として抜粋は出るが、表示用の ocrText は変わらない
+    expect(hits[0].ocrSnippet?.text).toContain("焼結温度");
+    expect(hits[0].entry.ocrText).toBe("焼給 800");
   });
 
   it("finds PDFs by source info (author + year) when the name does not match", () => {

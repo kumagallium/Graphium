@@ -896,6 +896,25 @@ describe("persistOcrTextPatch", () => {
     expect(written(writeAppData).media[0].ocrText).toBe("焼結温度 800℃");
   });
 
+  it("別の読み（altText）は ocrAltText に保存し、ocrText とは別に持つ", async () => {
+    const writeAppData = setup(indexOf(image()));
+    await persistOcrTextPatch("img-1", "焼給 800", " 焼結温度 800℃ ");
+    const m = written(writeAppData).media[0];
+    expect(m.ocrText).toBe("焼給 800");
+    expect(m.ocrAltText).toBe("焼結温度 800℃");
+  });
+
+  it("altText を渡さなければ既存の別の読みには触らない／空文字なら消す", async () => {
+    const w1 = setup(indexOf(image({ ocrText: "a", ocrAltText: "古い別の読み" })));
+    await persistOcrTextPatch("img-1", "b");
+    expect(written(w1).media[0]).toMatchObject({ ocrText: "b", ocrAltText: "古い別の読み" });
+    vi.clearAllMocks();
+    const w2 = setup(indexOf(image({ ocrText: "a", ocrAltText: "古い別の読み" })));
+    await persistOcrTextPatch("img-1", "a", "");
+    expect(written(w2).media[0].ocrAltText).toBeUndefined();
+    expect(written(w2).media[0].ocrText).toBe("a");
+  });
+
   it("前後の空白は落として保存する", async () => {
     const writeAppData = setup(indexOf(image()));
     await persistOcrTextPatch("img-1", "  SEM XRD  ");

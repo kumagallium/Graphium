@@ -51,7 +51,7 @@ export async function runBulkOcr(
   for (const [i, target] of targets.entries()) {
     try {
       const result = await runOcrForImage(target.url);
-      await persistOcrTextPatch(target.fileId, result.text);
+      await persistOcrTextPatch(target.fileId, result.text, result.altText ?? "");
       consecutiveTimeouts = 0;
       if (result.text) chars += result.text.replace(/\s/g, "").length;
       else empty += 1;

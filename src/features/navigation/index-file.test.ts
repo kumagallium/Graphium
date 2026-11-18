@@ -684,7 +684,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(35);
+    expect(INDEX_SCHEMA_VERSION).toBe(36);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");

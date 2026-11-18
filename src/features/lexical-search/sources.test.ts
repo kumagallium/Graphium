@@ -81,6 +81,22 @@ describe("desiredAssetSources", () => {
     expect(names.get("pdf1")).toBe("paper.pdf");
     expect(desired.find((d) => d.sourceId === "pdf1")?.fingerprint).toBe("pdf:2026-02-02");
   });
+  it("画像の別の読み（macOS の Vision）は検索用に plan へ載り、印が変わる。無ければ従来と同じ", () => {
+    const { desired, plans } = desiredAssetSources([
+      media({ fileId: "a", ocrText: "温度" }),
+      media({ fileId: "b", ocrText: "温度", ocrAltText: "焼結温度" }),
+      media({ fileId: "c", ocrAltText: "手書きだけ" }),
+      // 画像以外の ocrAltText は使わない
+      media({ fileId: "d", type: "document", name: "x.pptx", ocrText: "slide", ocrAltText: "無視" }),
+    ]);
+    expect(plans.get("a")).toEqual({ mode: "inline", text: "温度" });
+    expect(plans.get("b")).toEqual({ mode: "inline", text: "温度", altText: "焼結温度" });
+    expect(plans.get("c")).toEqual({ mode: "inline", text: "", altText: "手書きだけ" });
+    expect(plans.get("d")).toEqual({ mode: "inline", text: "slide" });
+    const fp = (id: string) => desired.find((x) => x.sourceId === id)?.fingerprint;
+    expect(fp("a")).toBe(`ocr:${fnv1a("温度")}`);
+    expect(fp("b")).not.toBe(fp("a"));
+  });
   it("document（pptx のスライド文字）は OCR ありのものだけ索引に載る", () => {
     const { desired, plans } = desiredAssetSources([
       media({ fileId: "doc1", type: "document", name: "slides.pptx", ocrText: "--- slide 1 ---\nこんにちは" }),

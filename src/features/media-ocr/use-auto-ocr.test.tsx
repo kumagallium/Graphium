@@ -124,6 +124,29 @@ describe("useAutoImageOcr", () => {
     expect(takePendingOcrFile("file-media://new")).toBeUndefined();
   });
 
+  it("PP-OCR の text が空でも別の読み（altText）があればエントリを残す", async () => {
+    h.runOcrForImage.mockResolvedValue({
+      text: "",
+      confidence: 0,
+      lang: "jpn+eng",
+      extractedAt: "2026-01-01T00:00:00Z",
+      altText: "焼結温度を上げた",
+      altEngine: "apple-vision",
+    });
+    const editorRef = makeEditorRef([]);
+    const { result } = renderHook(() => useAutoImageOcr({ editorRef, noteKey: "note-1" }));
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    editorRef.current = makeEditorRef(["new"]).current;
+    await act(async () => {
+      result.current.scan();
+      await flush();
+    });
+    expect(h.setEntry).toHaveBeenCalledWith("new", expect.objectContaining({ altText: "焼結温度を上げた" }));
+  });
+
   it("File が預けられていない画像は従来どおり URL で OCR する", async () => {
     h.runOcrForImage.mockResolvedValue({
       text: "",
