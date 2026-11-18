@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.143.0](https://github.com/kumagallium/Graphium/compare/v0.142.0...v0.143.0) - 2026-11-18
+
+- feat: filter Home by folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1739
+- feat(records): tag recordings, find a note by what was said in its recording, translate material info labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/1746
+
 ## [v0.142.0](https://github.com/kumagallium/Graphium/compare/v0.141.2...v0.142.0) - 2026-11-18
 
 - [docs] Record the OCR engine comparison (handwriting and printed text) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1744
