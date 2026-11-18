@@ -44,7 +44,29 @@ describe("normalizeBlocksForDocx", () => {
     expect(out[0].content[1]).toEqual({ type: "text", text: "5", styles: { superscript: true } });
   });
 
-  it("link は中身を再帰し、inlineMath は $…$ の text になり、inlineImage は残る", () => {
+  it("数式ブロックは docxMath になり、LaTeX と $$ … $$ の fallback を持つ", () => {
+    const out = normalizeBlocksForDocx([
+      { id: "m1", type: "math", props: { latex: "\\frac{a}{b}" }, children: [{ type: "paragraph", content: [text("子")], children: [] }] },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].type).toBe("docxMath");
+    expect(out[0].latex).toBe("\\frac{a}{b}");
+    expect(out[0].fallback[0].content[0].text).toBe("$$ \\frac{a}{b} $$");
+    // 子ブロックは fallback の段落にも、数式で出すとき用にも残る
+    expect(out[0].fallback[0].children).toHaveLength(1);
+    expect(out[0].mathChildren).toHaveLength(1);
+  });
+
+  it("文中の数式は docxInlineMath になり、もう一度通しても形が変わらない", () => {
+    const once = normalizeBlocksForDocx([
+      { type: "paragraph", content: [{ type: "inlineMath", props: { latex: " x^2 " } }, { type: "inlineMath", props: { latex: "  " } }], children: [] },
+    ]);
+    expect(once[0].content).toEqual([{ type: "docxInlineMath", latex: "x^2", text: "$x^2$" }]);
+    const twice = normalizeBlocksForDocx(once);
+    expect(twice[0].content).toEqual(once[0].content);
+  });
+
+  it("link は中身を再帰し、inlineMath は LaTeX を持った docxInlineMath になり、inlineImage は残る", () => {
     const out = normalizeBlocksForDocx([
       {
         type: "paragraph",
@@ -61,7 +83,8 @@ describe("normalizeBlocksForDocx", () => {
     const c = out[0].content;
     expect(c[0].type).toBe("link");
     expect(c[0].content[0].styles).toEqual({ bold: true });
-    expect(c[1]).toEqual({ type: "text", text: "$x^2$", styles: {} });
+    // text に $…$ を持つので、inline を文字に潰す経路でも式が残る
+    expect(c[1]).toEqual({ type: "docxInlineMath", latex: "x^2", text: "$x^2$" });
     expect(c[2]).toEqual({ type: "inlineImage", props: { fileId: "f1", name: "n.png", width: 50 } });
     expect(c[3]).toEqual({ type: "text", text: "平文", styles: {} });
     expect(c).toHaveLength(4);

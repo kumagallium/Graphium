@@ -3,13 +3,13 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <sub>Graphium · Your records in one place, readable by AI</sub>
+  <sub>Graphium · Your records in one place, readable by you and by AI</sub>
 </p>
 <p align="center">
-  <b>Wake your sleeping records. Make them ready for AI.</b>
+  <b>Wake your sleeping records. Readable by you, and by AI.</b>
 </p>
 <p align="center">
-  Photos of paper notes, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
+  Photos of paper documents, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
