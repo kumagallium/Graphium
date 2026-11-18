@@ -1,96 +1,50 @@
-// LP のコンセプトの絵。
-// 「場面が違っても同じ場所に残り、あとから同じ言葉で見つかる」を 1 枚で伝える。
-// 左はアプリの「記録」の画面を小さく写したもの（札の言葉と色・残した人の印はアプリと同じ）、
-// 右は同じ記録が言葉で見つかる様子。画面に入ると、言葉が打たれて結果が順に現れる。
-// 絵に出すのは、いまの記録の画面で実際に起きることだけにする（札は records.origin.* の言葉、
-// 見つかるのは題・見出し・ノートの本文・メモの本文・URL の抜粋。v0.139.0 で確かめた）。
-// 「録音から」は、録音済みの文字起こしブロックを持つノートに付く札。絵の 1 文はそのノートに
-// 書いた本文で、文字起こしの中の言葉ではない（文字起こしの言葉で見つかるのは録音の素材のほう）。
-// 実装が変わったら、ここも合わせる。
-// ヒーローの中（ボタンの下、動画の上）に置く。文言は i18n.ts の moments.* にある。
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { en, useI18n } from "../i18n";
+// LP のコンセプトの絵（ヒーローの中、ボタンの下）。
+// 眠っている記録（開かないと中身が分からない形）→ Graphium に入れると文字になって 1 か所に並ぶ
+// → 人が言葉で探せ、AI も同じ記録を読んで出どころつきで答える、を 1 枚で伝える。
+//
+// 絵に出すのは、公開済みのアプリで実際に起きることだけにする。描く前にコードで確かめたこと（v0.140.0）:
+// - 写真の文字は端末の中で読む（Tesseract.js。手書きを読める根拠は無いので、印刷された紙にする）
+// - 録音の文字起こしは端末の中の whisper（デスクトップ版）。文字起こしは全文の索引に入る
+// - PDF は文字の層を読む（スキャンしただけの PDF は読めない）。Web クリップは抜粋が残る
+// - 記録の画面は、素材の中の文字でも当たり、当たった箇所を名前の下に出す
+// - AI の答えには出どころの一覧が付き、押すと開ける
+// 札の言葉はアプリの文言（src/i18n の records.origin.*）と同じにする。実装が変わったら、ここも合わせる。
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  AudioLines,
+  ChevronRight,
+  FileDown,
+  FileText,
   Globe,
   Image as ImageIcon,
-  MessagesSquare,
-  Mic,
   Search,
   Smartphone,
-  StickyNote,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
+import { type en, useI18n } from "../i18n";
 
+type Key = Extract<keyof typeof en, `moments.${string}`>;
 // 札の色。アプリの記録の画面（record-dashboard.css の data-tone）と同じ割り当て
-type Tone = "rose" | "amber" | "sky" | "forest" | "plain";
-// 残した人。印の形もアプリと同じ（自分 = 塗りの丸 / 自分と AI = 丸に輪）
-type Who = "self" | "selfWithAi";
+type Tone = "amber" | "forest" | "plain";
+type RowId = "photo" | "audio" | "web" | "pdf";
 
-type Moment = {
-  id: string;
+type Row = {
+  id: RowId;
   time: string;
+  // 眠っているときの形を表す印
+  beforeIcon: LucideIcon;
+  // 出どころの札の印と色
   icon: LucideIcon;
   tone: Tone;
-  // どこで残したか
-  where: string;
-  who: Who;
-  // 何を（題）。メモは題を持たない
-  title?: string;
-  // 何を（題の下の 1 行）。メモは本文、ノートは本文の中の 1 文、Web クリップは抜粋。写真は持たない。
-  // v0.139.0 から、記録の画面はノートの本文でも当たり、当たった 1 文を題の下に出す
-  text?: string;
-  // 写真などのファイル名
-  file?: string;
 };
 
-type Copy = {
-  moments: Moment[];
-  heading: string;
-  date: string;
-  count: string;
-  legend: [string, string, string, string];
-  who: Record<Who, string>;
-  query: string;
-  placeholder: string;
-  hits: string;
-  foot: string;
-  note: string;
-};
-
-// 記録の並び。言葉（どこで・題・題の下の 1 行・ファイル名）は i18n.ts の moments.<id>.* に置く
-const ROWS: Pick<Moment, "id" | "time" | "icon" | "tone" | "who">[] = [
-  { id: "memo", time: "09:05", icon: StickyNote, tone: "plain", who: "self" },
-  { id: "meeting", time: "10:12", icon: Mic, tone: "rose", who: "self" },
-  { id: "photo", time: "11:30", icon: Smartphone, tone: "forest", who: "self" },
-  { id: "web", time: "13:40", icon: Globe, tone: "amber", who: "self" },
-  { id: "ai", time: "16:05", icon: MessagesSquare, tone: "sky", who: "selfWithAi" },
+const ROWS: Row[] = [
+  { id: "photo", time: "09:05", beforeIcon: ImageIcon, icon: Smartphone, tone: "forest" },
+  { id: "audio", time: "10:12", beforeIcon: AudioLines, icon: FileDown, tone: "plain" },
+  { id: "web", time: "13:40", beforeIcon: Globe, icon: Globe, tone: "amber" },
+  { id: "pdf", time: "16:05", beforeIcon: FileText, icon: FileDown, tone: "plain" },
 ];
-
-type MomentsKey = Extract<keyof typeof en, `moments.${string}`>;
-
-function buildCopy(t: (key: keyof typeof en) => string): Copy {
-  // 行によって持たない項目（メモの題、写真の本文など）は、辞書に無ければ undefined にする
-  const opt = (key: string) => (key in en ? t(key as MomentsKey) : undefined);
-  return {
-    moments: ROWS.map((r) => ({
-      ...r,
-      where: t(`moments.${r.id}.where` as MomentsKey),
-      title: opt(`moments.${r.id}.title`),
-      text: opt(`moments.${r.id}.text`),
-      file: opt(`moments.${r.id}.file`),
-    })),
-    heading: t("moments.heading"),
-    date: t("moments.date"),
-    count: t("moments.count"),
-    legend: [t("moments.legend.when"), t("moments.legend.where"), t("moments.legend.who"), t("moments.legend.what")],
-    who: { self: t("moments.who.self"), selfWithAi: t("moments.who.selfWithAi") },
-    query: t("moments.query"),
-    placeholder: t("moments.placeholder"),
-    hits: t("moments.hits"),
-    foot: t("moments.foot"),
-    note: t("moments.note"),
-  };
-}
 
 // 探す言葉にあたる部分だけを <mark> で囲む
 function Marked({ text, query }: { text: string; query: string }) {
@@ -103,11 +57,6 @@ function Marked({ text, query }: { text: string; query: string }) {
       {text.slice(at + query.length)}
     </>
   );
-}
-
-function matches(m: Moment, query: string) {
-  const q = query.toLowerCase();
-  return [m.title, m.text].some((s) => s?.toLowerCase().includes(q));
 }
 
 // 絵の進み具合。found が完成形で、動きを使わない環境では最初からこの形を見せる
@@ -167,111 +116,124 @@ function usePlayOnce(query: string) {
   return { ref, stage, typed };
 }
 
-function WhoMark({ who }: { who: Who }) {
-  return <span className="lp-mp-mark" data-who={who} aria-hidden="true" />;
+// 段と段のあいだの矢印
+function Flow() {
+  return (
+    <span className="lp-mp3-flow" aria-hidden="true">
+      <ChevronRight size={18} />
+    </span>
+  );
 }
 
 export function MomentsPicture() {
   const { t, locale } = useI18n();
-  const copy = useMemo(() => buildCopy(t), [t]);
-  const { ref, stage, typed } = usePlayOnce(copy.query);
-  const [when, where, who, what] = copy.legend;
-  const hits = copy.moments.filter((m) => matches(m, copy.query));
+  const k = (key: Key) => t(key);
+  const query = k("moments.query");
+  const { ref, stage, typed } = usePlayOnce(query);
 
   return (
     <figure className="lp-moments" lang={locale}>
-      <div className="lp-mp" data-stage={stage}>
-        <div className="lp-mp-log">
-          <p className="lp-mp-log-head">
-            <span className="lp-mp-heading">{copy.heading}</span>
-            <span className="lp-mp-date">{copy.date}</span>
-            <span className="lp-mp-count">{copy.count}</span>
-          </p>
-          <p className="lp-mp-legend" aria-hidden="true">
-            <span>{when}</span>
-            <span>
-              {where} · {who} · {what}
-            </span>
-          </p>
-          <ol>
-            {copy.moments.map((m) => (
-              <li key={m.id} data-hit={matches(m, copy.query)}>
-                <time>{m.time}</time>
-                <div className="lp-mp-entry">
-                  <WhoMark who={m.who} />
-                  <p className="lp-mp-meta">
-                    <span className="lp-mp-where" data-tone={m.tone}>
-                      <m.icon size={13} aria-hidden="true" />
-                      {m.where}
-                    </span>
-                    <span className="lp-mp-who">{copy.who[m.who]}</span>
-                  </p>
-                  {m.title && (
-                    <p className="lp-mp-title">
-                      <Marked text={m.title} query={copy.query} />
-                    </p>
-                  )}
-                  {m.text && (
-                    <p className={m.title ? "lp-mp-text" : "lp-mp-title lp-mp-title-plain"}>
-                      <Marked text={m.text} query={copy.query} />
-                    </p>
-                  )}
-                  {m.file && (
-                    <p className="lp-mp-file">
-                      <span className="lp-mp-thumb" aria-hidden="true">
-                        <ImageIcon size={14} />
-                      </span>
-                      {m.file}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <div className="lp-mp-find" ref={ref}>
-          <p className="lp-mp-field">
-            <Search size={16} aria-hidden="true" />
-            <span className="lp-mp-query">
-              {typed === 0 && stage !== "found" ? (
-                <span className="lp-mp-placeholder">{copy.placeholder}</span>
-              ) : (
-                copy.query.slice(0, typed)
-              )}
-            </span>
-            <span className="lp-mp-hits">{copy.hits}</span>
-          </p>
+      <div className="lp-mp3" data-stage={stage}>
+        {/* 1 段目: 眠っている記録。形がばらばらで、開かないと中身が分からない */}
+        <section className="lp-mp3-col lp-mp3-before">
+          <h3 className="lp-mp3-h">{k("moments.before.heading")}</h3>
           <ul>
-            {hits.map((m, i) => (
-              <li key={m.id} style={{ ["--i" as string]: i }}>
-                <span className="lp-mp-hit-icon" data-tone={m.tone} aria-hidden="true">
-                  <m.icon size={14} />
+            {ROWS.map((r) => (
+              <li key={r.id} data-kind={r.id}>
+                <span className="lp-mp3-thumb" aria-hidden="true">
+                  <r.beforeIcon size={16} />
                 </span>
-                <div>
-                  {m.title && (
-                    <p className="lp-mp-hit">
-                      <Marked text={m.title} query={copy.query} />
-                    </p>
-                  )}
-                  {m.text && (
-                    <p className={m.title ? "lp-mp-hit-detail" : "lp-mp-hit"}>
-                      <Marked text={m.text} query={copy.query} />
-                    </p>
-                  )}
-                  <p className="lp-mp-hit-meta">
-                    <span>{m.time}</span>
-                    <span>{m.where}</span>
-                    <span>{copy.who[m.who]}</span>
-                  </p>
-                </div>
+                <span className="lp-mp3-before-name">{k(`moments.${r.id}.before` as Key)}</span>
+                <span className="lp-mp3-blur" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
               </li>
             ))}
           </ul>
-          <p className="lp-mp-foot">{copy.foot}</p>
-        </div>
+          <p className="lp-mp3-foot">{k("moments.before.foot")}</p>
+        </section>
+
+        <Flow />
+
+        {/* 2 段目: Graphium に入れると、文字になって 1 か所に並ぶ（記録の画面） */}
+        <section className="lp-mp3-col lp-mp3-in">
+          <h3 className="lp-mp3-h">{k("moments.in.heading")}</h3>
+          <div className="lp-mp3-card">
+            <p className="lp-mp3-card-head">
+              <span>{k("moments.heading")}</span>
+              <span className="lp-mp3-count">{k("moments.count")}</span>
+            </p>
+            <ol>
+              {ROWS.map((r) => (
+                <li key={r.id}>
+                  <time>{r.time}</time>
+                  <div className="lp-mp3-entry">
+                    <span className="lp-mp3-mark" aria-hidden="true" />
+                    <p className="lp-mp3-meta">
+                      <span className="lp-mp3-where" data-tone={r.tone}>
+                        <r.icon size={12} aria-hidden="true" />
+                        {k(`moments.${r.id}.where` as Key)}
+                      </span>
+                      <span className="lp-mp3-who">{k("moments.who.self")}</span>
+                    </p>
+                    <p className="lp-mp3-name">{k(`moments.${r.id}.name` as Key)}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="lp-mp3-foot">{k("moments.in.foot")}</p>
+        </section>
+
+        <Flow />
+
+        {/* 3 段目: 人が言葉で探せる。AI を使い始めたら、同じ記録を AI も読む */}
+        <section className="lp-mp3-col lp-mp3-out">
+          <h3 className="lp-mp3-h">{k("moments.out.heading")}</h3>
+          <div className="lp-mp3-card lp-mp3-person" ref={ref}>
+            <p className="lp-mp3-reader">{k("moments.person.label")}</p>
+            <p className="lp-mp3-field">
+              <Search size={15} aria-hidden="true" />
+              <span className="lp-mp3-query">
+                {typed === 0 && stage !== "found" ? (
+                  <span className="lp-mp3-placeholder">{k("moments.placeholder")}</span>
+                ) : (
+                  query.slice(0, typed)
+                )}
+              </span>
+              <span className="lp-mp3-hits">{k("moments.hits")}</span>
+            </p>
+            <ul>
+              {ROWS.map((r, i) => (
+                <li key={r.id} style={{ ["--i" as string]: i }}>
+                  <span className="lp-mp3-hit-icon" data-tone={r.tone} aria-hidden="true">
+                    <r.icon size={12} />
+                  </span>
+                  <p className="lp-mp3-hit">
+                    <Marked text={k(`moments.${r.id}.hit` as Key)} query={query} />
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="lp-mp3-card lp-mp3-ai">
+            <p className="lp-mp3-reader">
+              <Sparkles size={13} aria-hidden="true" />
+              {k("moments.ai.label")}
+            </p>
+            <p className="lp-mp3-q">{k("moments.ai.q")}</p>
+            <p className="lp-mp3-a">{k("moments.ai.a")}</p>
+            <p className="lp-mp3-sources">
+              <span>{k("moments.ai.sources")}</span>
+              <span className="lp-mp3-source">{k("moments.audio.name")}</span>
+              <span className="lp-mp3-source">{k("moments.pdf.name")}</span>
+            </p>
+          </div>
+        </section>
       </div>
-      <figcaption className="lp-moments-note">{copy.note}</figcaption>
+      <figcaption className="lp-moments-note">{k("moments.note")}</figcaption>
     </figure>
   );
 }

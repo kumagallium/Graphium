@@ -19,7 +19,7 @@ function Stage({ locale }: { locale: StoryLocale }) {
     <div className="lp-root">
       <section className="lp-section">
         <p className="lp-eyebrow">{t("hero.eyebrow")}</p>
-        <h1 className="lp-h1" style={{ marginTop: "0.6rem" }}>
+        <h1 className="lp-h1" lang={locale} style={{ marginTop: "0.6rem" }}>
           {t("hero.title")}
         </h1>
         <MomentsPicture />
