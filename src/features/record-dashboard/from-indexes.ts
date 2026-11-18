@@ -63,12 +63,57 @@ export function deriveNoteWho(entry: NoteIndexEntry): RecordWho {
  * 素材の出どころ。
  * - 受信箱から取り込んだ（capture）→ スマホから
  * - Web クリップ、または URL の素材 → Web クリップ
+ * - 録音・文字起こしを持つノートが使っている音声・動画 → 録音から
  * - それ以外 → 取り込んだファイル
  */
-export function deriveMediaOrigin(entry: MediaIndexEntry): RecordOrigin {
+export function deriveMediaOrigin(entry: MediaIndexEntry, recordingNoteIds?: ReadonlySet<string>): RecordOrigin {
   if (entry.capture) return "phone";
   if (entry.webClip || entry.type === "url") return "webClip";
+  if (isRecordingMedia(entry, recordingNoteIds)) return "recording";
   return "file";
+}
+
+/** 録音・文字起こしを持つノート（hasRecording）の ID */
+export function collectRecordingNoteIds(notes: readonly NoteIndexEntry[]): Set<string> {
+  const ids = new Set<string>();
+  for (const n of notes) {
+    if (n.hasRecording) ids.add(n.noteId);
+  }
+  return ids;
+}
+
+/**
+ * 録音の素材か。素材の索引には「アプリで録った録音」の印が無いので、
+ * 「音声・動画の素材で、録音・文字起こしを持つノートが使っている」ことから導く。
+ * どのノートにも置いていない録音は見分けられず、取り込んだファイルのままになる。
+ */
+export function isRecordingMedia(entry: MediaIndexEntry, recordingNoteIds?: ReadonlySet<string>): boolean {
+  if (!recordingNoteIds || recordingNoteIds.size === 0) return false;
+  if (entry.type !== "audio" && entry.type !== "video") return false;
+  return (entry.usedIn ?? []).some((u) => recordingNoteIds.has(u.noteId));
+}
+
+/**
+ * 録音の文字起こしで当たった素材から、その録音を持つノートにも当たりを広げる。
+ * ノートの本文には文字起こしが入らない（素材のそばに保存される）ので、こうしないと
+ * 「会議で話した言葉」でノートが見つからない。ノート自身が本文で当たっていれば、そちらを残す。
+ * hits のキーは記録の id（"note:<id>" / "media:<fileId>"）。
+ */
+export function spreadRecordingHits<T>(
+  hits: Map<string, T>,
+  media: readonly MediaIndexEntry[],
+  recordingNoteIds: ReadonlySet<string>,
+): Map<string, T> {
+  if (recordingNoteIds.size === 0) return hits;
+  for (const m of media) {
+    const hit = hits.get(`media:${m.fileId}`);
+    if (hit === undefined || !isRecordingMedia(m, recordingNoteIds)) continue;
+    for (const u of m.usedIn ?? []) {
+      const key = `note:${u.noteId}`;
+      if (recordingNoteIds.has(u.noteId) && !hits.has(key)) hits.set(key, hit);
+    }
+  }
+  return hits;
 }
 
 /** メモの出どころ。素材から引用したメモだけ区別できる */
@@ -97,14 +142,14 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
   };
 }
 
-export function mediaToRecord(entry: MediaIndexEntry): RecordItem {
+export function mediaToRecord(entry: MediaIndexEntry, recordingNoteIds?: ReadonlySet<string>): RecordItem {
   const used = countNotes(entry.usedIn);
   const detail = entry.urlMeta?.excerpt?.trim() || entry.urlMeta?.description?.trim();
   return {
     id: `media:${entry.fileId}`,
     kind: "media",
     at: entry.uploadedAt,
-    origin: deriveMediaOrigin(entry),
+    origin: deriveMediaOrigin(entry, recordingNoteIds),
     // 素材に残した人の欄は無い。手元の保存先に入っているものなので「自分」と導く
     who: { type: "self" },
     title: entry.name,
@@ -137,6 +182,7 @@ export function memoToRecord(entry: CaptureEntry): RecordItem {
  */
 export function buildRecords(sources: RecordSources): RecordItem[] {
   const webClipNoteIds = collectWebClipNoteIds(sources.media);
+  const recordingNoteIds = collectRecordingNoteIds(sources.notes);
   const items: RecordItem[] = [];
   for (const n of sources.notes) {
     if (n.deletedAt || n.archivedAt || n.source === "skill") continue;
@@ -144,7 +190,7 @@ export function buildRecords(sources: RecordSources): RecordItem[] {
   }
   for (const m of sources.media) {
     if (m.archivedAt || m.type === "memo") continue;
-    items.push(mediaToRecord(m));
+    items.push(mediaToRecord(m, recordingNoteIds));
   }
   for (const c of sources.captures) {
     if (c.deletedAt || c.archivedAt) continue;

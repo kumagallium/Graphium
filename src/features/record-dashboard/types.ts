@@ -20,7 +20,7 @@ export type RecordKind =
 export type RecordOrigin =
   /** 手で書いたノート — 下のどれにも当たらないノート */
   | "written"
-  /** 録音から — 録音済みの文字起こしブロックを持つノート（note-index の hasRecording） */
+  /** 録音から — 録音済みの文字起こしブロックを持つノート（note-index の hasRecording）と、そのノートが使っている音声・動画の素材 */
   | "recording"
   /** Web クリップ — 素材の webClip、または type が "url" の素材 */
   | "webClip"

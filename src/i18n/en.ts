@@ -4508,6 +4508,13 @@ export const en: Record<string, string> = {
   "asset.sourceYear": "Year",
   "asset.sourceVenue": "Published in",
   "asset.sourceDoi": "DOI",
+  // 素材の情報欄の見出し（以前は英語の固定文字列だった）
+  "asset.metaName": "Name",
+  "asset.metaType": "Type",
+  "asset.metaUploaded": "Uploaded",
+  "asset.metaUsedIn": "Used in ({count})",
+  "asset.metaTextInImage": "Text in image",
+  "asset.metaDerivedFrom": "Derived from ({count})",
   "asset.sourceUnset": "Not set",
   "asset.sourceEtAl": "et al.",
   "asset.sourceEdit": "Edit",

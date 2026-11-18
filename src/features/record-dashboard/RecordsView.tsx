@@ -8,7 +8,7 @@ import type { GraphiumIndex } from "../navigation/index-file";
 import { lexicalSearch, phraseHitsBySource } from "../lexical-search";
 import "./record-dashboard.css";
 import { useRecordCopy } from "./copy";
-import { buildRecords } from "./from-indexes";
+import { buildRecords, collectRecordingNoteIds, spreadRecordingHits } from "./from-indexes";
 import { tidyBodyHit, type BodyHit } from "./model";
 import { RecordDashboard } from "./RecordDashboard";
 import type { RecordItem } from "./types";
@@ -75,10 +75,11 @@ export function RecordsView({
       // 入れた言葉がそのまま入っている断片だけを当たりにする（題や見出しの照合と同じく、部分一致）
       for (const [id, h] of phraseHitsBySource(query, ["note", "wiki"])) out.set(`note:${id}`, tidyBodyHit(h.snippet));
       for (const [id, h] of phraseHitsBySource(query, ["asset"])) out.set(`media:${id}`, tidyBodyHit(h.snippet));
-      return out;
+      // 録音の文字起こしで当たったら、その録音を持つノートも当たりにする
+      return spreadRecordingHits(out, mediaIndex?.media ?? [], collectRecordingNoteIds(noteIndex?.notes ?? []));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 索引が使えるようになったら引き直す
-    [lexicalKey],
+    [lexicalKey, mediaIndex, noteIndex],
   );
 
   const open = (item: RecordItem) => {

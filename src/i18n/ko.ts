@@ -4469,6 +4469,13 @@ export const ko: Record<string, string> = {
   "asset.sourceYear": "연도",
   "asset.sourceVenue": "게재지",
   "asset.sourceDoi": "DOI",  // 영어 유지
+  // 素材の情報欄の見出し（以前は英語の固定文字列だった）
+  "asset.metaName": "이름",
+  "asset.metaType": "종류",
+  "asset.metaUploaded": "추가한 일시",
+  "asset.metaUsedIn": "사용된 노트 ({count})",
+  "asset.metaTextInImage": "이미지의 글자",
+  "asset.metaDerivedFrom": "원본 자료 ({count})",
   "asset.sourceUnset": "설정 안 됨",
   "asset.sourceEtAl": "외",
   "asset.sourceEdit": "편집",
