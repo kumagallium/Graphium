@@ -2,7 +2,7 @@
 
 **Question.** Data tables were described as having no row limit, but the record of checking them stopped at 2,000 rows. How long does the screen freeze when a CSV of 233,000 rows and 188 MB is imported?
 
-**Short answer.** Before the fix, the screen froze for up to about 16 seconds between dropping the file and the import screen opening. After splitting the import and display work into small slices, the longest freeze under the same conditions was about 0.5 seconds. I am not adding a row limit this time either. In the web version (Chromium), importing 233,000 rows now stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app has not been measured.
+**Short answer.** Before the fix, the screen froze for up to about 16 seconds between dropping the file and the import screen opening. After splitting the import and display work into small slices, the longest freeze under the same conditions was about 0.5 seconds. I am not adding a row limit this time either. In the web version (Chromium), importing 233,000 rows now stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app was measured afterwards ([Measured in the desktop app](#measured-in-the-desktop-app)).
 
 - The longest single freeze got shorter in all four steps.
 - The time from confirming to the data table appearing got longer (2.3–2.6 seconds to 4.1–4.3 seconds), because parsing is split into slices and the columns are read first. The screen does not stall in the meantime (the longest gap between frames was about 0.2 seconds).
@@ -66,7 +66,7 @@ Before the fix, four things froze the screen.
 
 ## Limits
 
-- Not measured in the desktop app (its web view is WebKit). The desktop version passes the whole file as a base64 string when saving and reading back an asset. The time and memory of that path were not measured.
+- At this point the desktop app (its web view is WebKit) had not been measured. The later results are in [Measured in the desktop app](#measured-in-the-desktop-app).
 - Not measured on a production build (development server).
 - Memory use was not measured before and after. Keeping both the file's text and the parsed rows in memory is unchanged.
 - What was measured is importing, viewing, editing the note and reopening. Scrolling and sorting the table and drawing charts were not measured.
@@ -79,4 +79,34 @@ Before the fix, four things froze the screen.
 
 ## What I decided
 
-- No row limit for data tables. In the web version (Chromium), importing 233,000 rows (188 MB) stalls the screen for about 0.5 seconds at most, so the manual states that range. Checking the desktop app is still to do.
+- No row limit for data tables. In the web version (Chromium), importing 233,000 rows (188 MB) stalls the screen for about 0.5 seconds at most, so the manual states that range. The desktop app was measured afterwards.
+
+## Fixed afterwards
+
+- **The same cause also erased typed text when a new note's first save was slow.** With the save delayed by 3 seconds, text typed during that save disappeared too. I stopped rebuilding the editor when a new note gets its ID, which fixes it at the root. Text typed and a data table inserted during the save stayed on screen and after a reload.
+- **The wait for the first save before inserting a data table is gone.** It is no longer needed.
+- **A chart over 233,000 rows froze for 45 seconds or more while it was drawn.** Measured with a 4-column version of the same synthetic data (233,000 rows), read through the chart's **From a data asset**. The cost was drawing every point, not parsing, and once drawn, typing one character in the note took 52–153 seconds. A series with more than 4,000 points is now thinned for drawing only, and editing the note no longer redraws the chart. Confirming until the chart is drawn went from 45.3–50.0 seconds to 1.2 seconds (longest stall 0.4 seconds), and the delay per character is 0.064 seconds at most. Charts of 500 and 3,000 rows draw every point as before. Stacking and normalisation are computed from every point.
+- **The asset preview rendered all rows of a 233,000 × 16 table at once.** It now renders the first 1,000 rows and 200 columns and states the size of the whole table. Sorting works on all rows. Opening took 3.3 seconds and sorting a text column 0.6–1.1 seconds (not measured before the change).
+
+## Measured in the desktop app
+
+After the measurements above, the same synthetic data (233,000 rows × 16 columns, 188 MB) was run through the desktop app, in a build with every fix so far. The desktop app before the fixes was not measured.
+
+| | |
+|---|---|
+| Hardware | Apple M1 Max, 64 GB, macOS 27.2 |
+| Build | Built with the same optimisation as a release. Only the identifier and the internal port were changed, to keep it apart from the installed app. Storage was a temporary folder |
+| Driving it | A small hook, present only in this verification build, creates the synthetic data in the page and performs the drop, confirm, typing, save and reload by itself |
+| Runs | 1 |
+
+| Step | Time taken | Longest single stall |
+|---|---|---|
+| Dropping the file until the import screen opens | 0.7 s | 0.5 s |
+| Confirming until the data table appears | 6.1 s | 1.0 s |
+| Then typing 31 characters in the body | — | 0.01 s |
+| Reloading until the data table appears | 6.0 s | 1.1 s |
+
+- With 23,300 rows (19 MB), confirming until the table appears took 0.6 seconds and reloading until the table appears 0.8 seconds.
+- The memory of the process that draws the window peaked at 3.2 GB during the import and was 2.1 GB after reopening.
+- Confirming and reopening are slower than in the web version because saving and reading back an asset passes the whole file as a base64 string. For the 188 MB asset, reading back took 0.5 seconds to receive, 0.4 seconds to decode and 0.2 seconds to copy into bytes; saving took 0.6 seconds to encode and 0.9 seconds to send. The screen stalls during the decoding, copying and encoding.
+- In an unoptimised development build, confirming until the table appears took 9.3 seconds and reloading 15.3 seconds. Numbers from a development build do not indicate what a release does.

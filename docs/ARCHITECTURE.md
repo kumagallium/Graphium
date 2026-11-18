@@ -97,6 +97,10 @@ talks to LLM and embedding backends.
   content (entity / agent highlights) lives under
   `src/features/inline-label/`; inline math lives under
   `src/features/inline-math/`.
+- A note's editor is rebuilt per note by `fm.editorKey` (the outer `key` on
+  `NoteEditor`). It is not rebuilt when a new note gets its ID on first save,
+  so edits typed while that save is in flight are not lost; the editor itself
+  is recreated only on a language change.
 - `meetingTranscript` is the in-note face of a meeting recording (§4.2).
   It holds only a reference — the recording id, the media `fileId`, when
   it started, and a few display flags — never the words: the transcript
@@ -358,9 +362,7 @@ talks to LLM and embedding backends.
   (`publishTableColumns`) does not re-read them. The import dialog infers its
   settings from a leading sample for files over 5,000 lines and, over 20,000
   data rows, parses only the first 2,000 for the preview (constants in
-  `src/features/data-import/large-file.ts`). A new note's editor is rebuilt by
-  its first save, so an asynchronous insert first waits for that save and
-  rebuild with `settleFirstSave` (`src/lib/settle-first-save.ts`).
+  `src/features/data-import/large-file.ts`).
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the
@@ -378,7 +380,22 @@ talks to LLM and embedding backends.
   and the series refers to it as `asset:<fileId>`; the file body is
   fetched through the storage provider and cached per asset. Those
   references count as the asset being *used* by the note (media index
-  v6), the same way an imported table's source file does. Series can
+  v6), the same way an imported table's source file does. An asset's
+  table is parsed through the data table's reader
+  (`loadDelimitedAsset` in `blocks/data-table/data.ts`): bodies over
+  `SYNC_PARSE_MAX_CHARS` are parsed in slices, and a chart and a data
+  table that read the same asset with the same import settings share one
+  parsed `rows` array. Only the drawn data is thinned: a series with more
+  than `CHART_MAX_DRAWN_POINTS` (4,000) points inside the visible x range
+  keeps the first / min / max / last of each run for lines and an even
+  stride for scatter and bars (`blocks/chart/decimate.ts`); histograms
+  are binned over all points. Normalisation, stacking and axis ranges
+  are computed on all points first; the thinning happens last, on the
+  data handed to ECharts (a series at or under the limit is passed
+  through unchanged), and a note under the figure says the chart draws a
+  thinned set. The numeric conversion and the thinning are memoized
+  on the table's `rows` identity and the config, so editing the note body
+  does not redraw the chart. Series can
   also be **offset into rows** — each normalised to its own maximum and lifted by
   a fixed gap — which is how spectra get compared (an XRD measurement
   against reference patterns). Stacked that way, the comparison keeps one
@@ -5466,7 +5483,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | On-device embeddings (desktop) | `fastembed` (Apache-2.0; ONNX Runtime through `ort`, whose prebuilt library is downloaded by the build script, plus HuggingFace `tokenizers` with its `onig` C regex — built with the same C toolchain whisper.cpp already needs). `src-tauri/src/embedding_models.rs` loads a model lazily, keeps it in memory while it is being used and unloads it after 10 minutes without a call (the next call reloads it in a second or two, nothing is skipped); inputs are cut at 512 tokens, outputs are L2-normalised. The models are not shipped: `bge-m3` (587 MB, 1024 dims, CLS pooling, the default) or `multilingual-e5-small` (135 MB, 384 dims, mean pooling with the `query:` / `passage:` prefixes) — the Xenova q8 ONNX exports — are downloaded once from Hugging Face into `appdata/models/embedding/<name>/` through the same `.part` + SHA-256 downloader as the whisper models (`src-tauri/src/model_download.rs`). The vectors carry the model version `local:<name>-q8` so the embedding store keeps them apart from API-made vectors. Inputs go to the model 8 at a time: ONNX Runtime keeps the peak working memory of one run in its arena until the model is unloaded, and the peak grows with the batch (bge-m3 at 512 tokens: 1.4 GB for 8, 3.2 GB for 32, same speed). `fastembed` is pinned to 5.13.0 (`ort` 2.0.0-rc.11 = ONNX Runtime 1.23.2): from ONNX Runtime 1.24 on, Apple Silicon builds stop releasing intermediate tensors inside a run, and one call with 32 sections took the desktop process past 39 GB (microsoft/onnxruntime#29538); the measurement to repeat before bumping it is in the Crucible repository under `experiments/2026-11-05-embedding-memory-regression/` |
 | Copilot CLI (optional, downloaded at first use) | The official `github/copilot-cli` release (pinned version), fetched by the Node server with `fetch` and verified with `node:crypto` SHA-256 before it is unpacked under the data directory; nothing is bundled and no dependency is added. Skipped entirely when a working CLI is already installed |
 | Full-text search | MiniSearch (MIT, zero dependencies) as the BM25 core of `features/lexical-search/`; tokenization by the platform's `Intl.Segmenter` — no dictionary shipped, no WASM |
-| Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
+| Word export | `docx` (MIT, pinned to 9.15.1). BlockNote's official docx exporter (`@blocknote/xl-docx-exporter`) is GPL-3.0 or commercial only, which cannot coexist with Apache-2.0 distribution, so it is not used: blocks are lowered to standard blocks first and the file is assembled in `features/docx-export/`. Custom blocks are lowered through the same registry as the Markdown export (`src/blocks/markdown.ts`). Images are embedded only when the bytes are already local; external URLs are never fetched. Formulas are written as Word equations (OMML): KaTeX, the renderer the editor already uses, parses the LaTeX and emits MathML, and `features/docx-export/mathml-to-omml.ts` maps that to OMML with our own code (the ready-made `mathml2omml` is LGPL-3.0, so it is not used). The decision is per formula and all-or-nothing: if any element has no mapping (matrices, aligned lines, equation numbers, boxes) or KaTeX cannot parse the source, the whole formula falls back to its LaTeX text, so a file never carries a half-converted equation. The library is not part of the initial bundle — it is loaded (dynamic `import()`) when the user exports |
 | Printing / PDF | The platform's own print pipeline, no PDF library. A print-only tree is built in `features/pdf-export/print-note.ts` and everything else is hidden by the print section of `app.css`, so the output keeps selectable text and the user gets a preview before saving. The web build calls `window.print()`; the desktop build opens the panel from Rust (`print_webview`, see §4). On an A4 note (`paperSize: "a4"`) the page-break guide lines are worked out by building the same tree off-screen (`.graphium-print-measure`, same width and CSS as the print root) and replaying the browser's page-splitting rules on the measured blocks (`features/paper-mode/measure-print-layout.ts`, `page-breaks.ts`); the result is drawn by `PageGuides` on the desk (the grey area) to the left and right of the screen sheet, in a layer beside the sheet (it never overlaps the sheet), so nothing is drawn over the text, and it never touches the editor DOM. |
 
 ## 8. Source map

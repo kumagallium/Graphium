@@ -64,3 +64,39 @@ export function mergeLinkedColumns(
     linked: fresh,
   };
 }
+
+// ── 同じ入力なら同じ結果オブジェクトを返す版 ──
+//
+// mergeLinkedColumns は呼ぶたびに全行を作り直す。チャートは本文を編集するたびに表を引き直す
+// ので、そのたびに新しい行の配列になると、数値化と描き直しの「前回と同じ」の判定が効かない
+// （計算列つきのデータ表を参照するチャートだけが、1 文字ごとに重くなる）。
+// 素材の表（data の同一性）と計算列（列名と texts の中身）が前回と同じなら、前回の結果を返す。
+// mergeLinkedColumns 自体のふるまいは変えない
+
+type MergeResult = { data: DataTableData; linked: LinkedColumn[] } | null;
+
+const mergeCache = new WeakMap<DataTableData, Array<{ linked: LinkedColumn[]; result: MergeResult }>>();
+/** 1 つの素材の表に対して覚える組み合わせの数（複数のチャート・表が別の計算列で引く分） */
+const MERGE_CACHE_PER_DATA = 4;
+
+function sameTexts(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function sameLinked(a: LinkedColumn[], b: LinkedColumn[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((col, i) => col.name === b[i].name && col.calcName === b[i].calcName && sameTexts(col.texts, b[i].texts));
+}
+
+export function mergeLinkedColumnsCached(data: DataTableData | null, linked: LinkedColumn[]): MergeResult {
+  if (!data) return null;
+  const entries = mergeCache.get(data) ?? [];
+  const hit = entries.find((e) => sameLinked(e.linked, linked));
+  if (hit) return hit.result;
+  const result = mergeLinkedColumns(data, linked);
+  mergeCache.set(data, [{ linked, result }, ...entries].slice(0, MERGE_CACHE_PER_DATA));
+  return result;
+}

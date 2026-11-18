@@ -505,7 +505,7 @@ Braces work as they do in LaTeX: a single character needs none (`H_2O` and `H_{2
 
 The markup only applies inside the figure: axis labels, the legend, and offset row names. Tooltips and the Markdown export show the plain text. For the usual typesetting, where a quantity is italic but its subscript is upright, close the italics before the subscript — `\it{C}_p` — while `\it{C_p}` italicizes the subscript too.
 
-The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead.
+The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one. If a series draws from a data asset that no longer exists, the block says "The referenced data asset was not found" instead. When a series has many points (more than 4,000 in the visible range), the chart draws a thinned set of them and a line under the figure says so. <Badge type="tip" text="Added in v0.141.1 (2026-11-18)" /> A line keeps the peaks and dips of each stretch; scatter and bar series are sampled at even intervals. The data itself is not changed.
 
 ## Importing measurement data <Badge type="tip" text="Added in v0.36.0 (2026-08-14)" /> {#importing-measurement-data}
 
@@ -524,7 +524,7 @@ Lines like `Device Model: ENV-MONITOR-X9` from the preamble are **kept alongside
 
 An imported table carries its **source** next to its name. Press it to reopen the same screen and rebuild the table with a corrected range or delimiter — the table keeps its place and its name. The file itself stays as a **Data** asset, so the numbers lead back to the raw output. Importing the same file twice does not add a second asset.
 
-A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no row limit (importing, viewing, editing the note and reopening have been tried with 230,000 rows, 188 MB, in the web version; see the [record of the measurement](/evaluations/large-data-tables)) — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
+A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no row limit (importing, viewing, editing the note and reopening have been tried with 230,000 rows, 188 MB, in the web version and the desktop app; see the [record of the measurement](/evaluations/large-data-tables)) — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
 
 A file does not have to become a table to be plotted — a chart can read a data asset directly (see [charts](#the-time-series-table-and-charts) above), which keeps a note free of tables that exist only to be drawn.
 

@@ -863,3 +863,88 @@ describe("buildChart（通常の幅で枠が潰れる図）", () => {
     expect(rect.height).toBeCloseTo(plot, 5);
   });
 });
+
+describe("間引き導入後も、上限以下のチャートは変わらない", () => {
+  it("X の範囲を絞っても、規格化（全点の最大で割る）と渡す点は全点のまま", () => {
+    // 範囲外 x=2 に y=100、範囲内 x=30 に y=10。規格化の基準は全点の最大 100
+    const points = Array.from({ length: 50 }, (_, i): [number, number] => [i + 1, 1]);
+    points[1] = [2, 100];
+    points[29] = [30, 10];
+    const result: OkResult = {
+      kind: "ok",
+      xAxis: "value",
+      categories: [],
+      series: [{ points }, { points: points.map(([x, y]): [number, number] => [x, y]) }],
+    };
+    const { option } = buildChart(
+      result,
+      config({
+        stack: { ...DEFAULT_STACK_CONFIG, enabled: true, normalize: "max", gap: 1 },
+        xMin: "20",
+        xMax: "40",
+      }),
+      [],
+      { width: 564 }
+    );
+    const first = option.series[0].data as Array<[number, number]>;
+    expect(first).toHaveLength(50);
+    expect(first.find(([x]) => x === 30)?.[1]).toBeCloseTo(0.1, 10);
+    expect(first.find(([x]) => x === 2)?.[1]).toBeCloseTo(1, 10);
+  });
+
+  it("上限以下の系列は、渡す配列が入力と同じ内容（範囲指定があっても切らない）", () => {
+    const pts: Array<[number, number]> = Array.from({ length: 100 }, (_, i) => [i, i % 7]);
+    const result: OkResult = { kind: "ok", xAxis: "value", categories: [], series: [{ points: pts }] };
+    const { option } = buildChart(
+      result,
+      config({ series: [{ sourceBlockId: "t1", xColumn: "x", yColumn: "y" }], xMin: "20", xMax: "40" }),
+      [],
+      { width: 564 }
+    );
+    expect(option.series[0].data).toBe(pts);
+  });
+
+  it("上限を超える系列だけ間引く（規格化は全点で済ませてから）", () => {
+    const pts: Array<[number, number]> = Array.from({ length: 50_000 }, (_, i) => [i, i === 777 ? 100 : 1]);
+    const result: OkResult = { kind: "ok", xAxis: "value", categories: [], series: [{ points: pts }] };
+    const { option } = buildChart(
+      result,
+      config({ series: [{ sourceBlockId: "t1", xColumn: "x", yColumn: "y" }] }),
+      [],
+      { width: 564 }
+    );
+    const data = option.series[0].data as Array<[number, number]>;
+    expect(data.length).toBeLessThanOrEqual(4000);
+    expect(data.some(([, y]) => y === 100)).toBe(true);
+  });
+});
+
+describe("積み上げ棒の間引き", () => {
+  const mk = (n: number): Array<[number, number]> => Array.from({ length: n }, (_, i) => [i, 1]);
+  const stackedBars = (a: number, b: number) =>
+    buildChart(
+      { kind: "ok", xAxis: "value", categories: [], series: [{ points: mk(a) }, { points: mk(b) }] },
+      config({
+        chartType: "bar",
+        series: [
+          { sourceBlockId: "t1", xColumn: "x", yColumn: "a", stacked: true },
+          { sourceBlockId: "t1", xColumn: "x", yColumn: "b", stacked: true },
+        ],
+      }),
+      [],
+      { width: 564 }
+    ).option;
+
+  it("同じ長さの系列は、同じ添字の点が残る", () => {
+    const o = stackedBars(50_000, 50_000);
+    const xs = (i: number) => (o.series[i].data as Array<[number, number]>).map(([x]) => x);
+    expect(xs(0).length).toBeLessThanOrEqual(4000);
+    expect(xs(0)).toEqual(xs(1));
+  });
+
+  it("長さが違うと、添字の対応が崩れるので間引かない", () => {
+    const o = stackedBars(50_000, 40_000);
+    expect(o.series[0].data).toHaveLength(50_000);
+    expect(o.series[1].data).toHaveLength(40_000);
+  });
+});

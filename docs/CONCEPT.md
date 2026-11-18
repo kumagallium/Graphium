@@ -24,7 +24,7 @@ service of that one line.
 
 ### First in one place, AI later
 
-Photos of paper notes, meeting recordings, pages read on the web, old files. Records tend
+Photos of paper documents, meeting recordings, pages read on the web, old files. Records tend
 to stay scattered, and they sleep without ever being read again.
 
 I started by making this work without AI: bring them into one place, turn them into text,

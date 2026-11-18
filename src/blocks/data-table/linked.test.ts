@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linkedColumnsFor, mergeLinkedColumns } from "./linked";
+import { linkedColumnsFor, mergeLinkedColumns, mergeLinkedColumnsCached } from "./linked";
 
 const writebacks = {
   calcA: [
@@ -47,5 +47,42 @@ describe("mergeLinkedColumns", () => {
 
   it("data が null なら null", () => {
     expect(mergeLinkedColumns(null, [{ name: "d", texts: [] }])).toBeNull();
+  });
+});
+
+describe("mergeLinkedColumnsCached", () => {
+  const mkData = () => ({ headers: ["t", "v"], rows: [["0", "10"], ["1", "20"], ["2", "30"]] });
+
+  it("同じ表・同じ計算列（別の配列でも中身が同じ）なら同じ結果オブジェクトを返す", () => {
+    const data = mkData();
+    const a = mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a", "b", "c"] }]);
+    const b = mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a", "b", "c"] }]);
+    expect(b).toBe(a);
+    expect(b?.data.rows).toBe(a?.data.rows);
+    // 中身は mergeLinkedColumns と同じ
+    expect(a).toEqual(mergeLinkedColumns(data, [{ name: "d", texts: ["a", "b", "c"] }]));
+  });
+
+  it("texts が 1 つ変われば新しい結果", () => {
+    const data = mkData();
+    const a = mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a", "b", "c"] }]);
+    const b = mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a", "X", "c"] }]);
+    expect(b).not.toBe(a);
+    expect(b?.data.rows[1]).toEqual(["1", "20", "X"]);
+  });
+
+  it("列名・列の数・calcName が違えば新しい結果。素材の表が別なら別", () => {
+    const data = mkData();
+    const a = mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a"] }]);
+    expect(mergeLinkedColumnsCached(data, [{ name: "e", texts: ["a"] }])).not.toBe(a);
+    expect(mergeLinkedColumnsCached(data, [])).not.toBe(a);
+    expect(mergeLinkedColumnsCached(data, [{ name: "d", texts: ["a"], calcName: "x" }])).not.toBe(a);
+    expect(mergeLinkedColumnsCached(mkData(), [{ name: "d", texts: ["a"] }])).not.toBe(a);
+  });
+
+  it("data が null なら null。計算列が無ければ素材の表をそのまま返す", () => {
+    expect(mergeLinkedColumnsCached(null, [])).toBeNull();
+    const data = mkData();
+    expect(mergeLinkedColumnsCached(data, [])?.data).toBe(data);
   });
 });
