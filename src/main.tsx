@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { migrateFromProvnote } from "./lib/migration";
 import { applyFontMode, getSelectedLatinFont, getSelectedJpFont, applyColorMode, getSelectedColorMode } from "./features/settings";
+import { isOcrNativeEnabled } from "./features/settings/store";
+import { setOcrNativeEnabledReader } from "./lib/ocr";
 import { NoteApp } from "./note-app";
 import { LocaleProvider } from "./i18n";
 import { restartSidecar, startSidecar, stopSidecar } from "./lib/sidecar";
@@ -28,6 +30,9 @@ import { ViewerWindow } from "./features/viewer-window/ViewerWindow";
 // 別ウィンドウは 1 つのノートだけを出すページ。sidecar・メニュー・自動更新・アプリの終了処理は
 // メインのウィンドウだけが持つ（別ウィンドウでも動かすと sidecar が 2 つ立つ）。
 const viewerTarget = getViewerTarget();
+
+// 画像の文字読みが、端末内モデルを使う設定かを読めるようにする（lib から設定の層へ依存させない）
+setOcrNativeEnabledReader(isOcrNativeEnabled);
 
 // セルフホストの合言葉（X-Graphium-Token）を API への fetch すべてに足す（描画前に包む）
 installApiAuthFetch();
