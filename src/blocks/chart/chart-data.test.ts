@@ -509,3 +509,23 @@ describe("unstackValue", () => {
     expect(unstackValue(42, undefined)).toBe(42);
   });
 });
+
+describe("parseNumeric（素の数値の近道と一般経路が同じ結果）", () => {
+  it("素の数値・指数・符号", () => {
+    expect(parseNumeric("36.5")).toBe(36.5);
+    expect(parseNumeric(" -12 ")).toBe(-12);
+    expect(parseNumeric("+3")).toBe(3);
+    expect(parseNumeric("8e-4")).toBe(0.0008);
+  });
+  it("桁区切り・全角・単位つきは一般経路で読む", () => {
+    expect(parseNumeric("1,200")).toBe(1200);
+    expect(parseNumeric("１２．５")).toBe(12.5);
+    expect(parseNumeric("36.5℃")).toBe(36.5);
+    expect(parseNumeric("6/10")).toBe(6);
+  });
+  it("読めない値・空は null", () => {
+    expect(parseNumeric("")).toBeNull();
+    expect(parseNumeric("abc")).toBeNull();
+    expect(parseNumeric("1e999")).toBeNull();
+  });
+});
