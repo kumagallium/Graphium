@@ -26,7 +26,7 @@ export const en = {
   "hero.eyebrow": "Graphium · Your records in one place, readable by you and by AI",
   "hero.title": "Wake your sleeping records. Readable by you, and by AI.",
   "hero.subtitle":
-    "Photos of paper notes, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to sleep. Everything up to here works without AI. Once you start using AI, it reads the same records as they are and answers with the source attached.",
+    "Photos of paper documents, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to sleep. Everything up to here works without AI. Once you start using AI, it reads the same records as they are and answers with the source attached.",
   "hero.tryOnline": "Try online",
   "hero.seeSample": "See a sample notebook",
   "hero.download": "Download desktop",
@@ -189,7 +189,7 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.eyebrow": "Graphium · 記録を 1 か所に、人にも AI にも読める形で",
   "hero.title": "眠っている記録を、人にも AI にも読める形に。",
   "hero.subtitle":
-    "紙のメモの写真、会議の録音、Web で読んだページ、昔のファイル。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。",
+    "紙の資料の写真、会議の録音、Web で読んだページ、昔のファイル。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。",
   "hero.tryOnline": "オンラインで試す",
   "hero.seeSample": "見本のノートを見る",
   "hero.download": "デスクトップ版を入手",
