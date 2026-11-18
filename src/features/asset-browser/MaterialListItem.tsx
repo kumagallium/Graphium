@@ -3,12 +3,15 @@
 // 親テーブルから渡される列幅・ヘッダと合わせて使う。
 
 import { safeExternalHref } from "../../lib/safe-href";
-import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table } from "lucide-react";
+import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table, File as FileIcon } from "lucide-react";
 import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
+import { isLinkedEntry } from "../linked-files/link-url";
+import type { LinkState } from "../linked-files/linked-entry";
+import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
 
 const TYPE_LABEL: Record<MediaType, string> = {
   image: "Image",
@@ -91,6 +94,14 @@ function ThumbCell({ entry }: { entry: MediaIndexEntry }) {
       </div>
     );
   }
+  // リンクした素材は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
+  if (isLinkedEntry(entry)) {
+    return (
+      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+        <FileIcon size={16} />
+      </div>
+    );
+  }
   if (entry.type === "url") return <UrlThumbCell entry={entry} />;
   return (
     <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
@@ -141,6 +152,8 @@ export type MaterialListItemProps = {
   onDelete?: (entry: MediaIndexEntry) => void;
   /** チェックボックスを表示するか */
   showCheckbox?: boolean;
+  /** リンクした素材の状態（useLinkStates の結果）。「変わりなし」以外のときだけ印を出す */
+  linkState?: LinkState;
 };
 
 /**
@@ -166,8 +179,10 @@ export function MaterialListItem({
   onToggleSelect,
   onDelete,
   showCheckbox = true,
+  linkState,
 }: MaterialListItemProps) {
   const t = useT();
+  const linked = isLinkedEntry(entry);
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
 
   return (
@@ -208,7 +223,9 @@ export function MaterialListItem({
           <span className="text-foreground truncate" title={entry.name}>
             {entry.name}
           </span>
-          {entry.type === "url" && entry.url && (
+          {linked && <LinkedBadge />}
+          {linked && linkState && linkState !== "ok" && <LinkStateBadge state={linkState} className="shrink min-w-0" />}
+          {entry.type === "url" && !linked && entry.url && (
             (() => {
               const href = safeExternalHref(entry.url);
               return href ? (

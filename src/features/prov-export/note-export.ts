@@ -76,6 +76,8 @@ export type AssetExportEntry = {
   /** 分かれば dc:format に出す（無ければ pdf と拡張子から推す） */
   mimeType?: string;
   sourceInfo?: SourceInfo;
+  /** リンクした素材の控え（置き場の id と相対パス。絶対パスは持たない。履歴は出さない） */
+  link?: { placeId: string; relPath: string; size: number; mtimeMs: number; recordedAt: string };
 };
 
 export type ChatExportEntry = {
@@ -422,6 +424,17 @@ function buildAssetNode(a: AssetExportEntry): W3CProvNode {
   };
   const mime = guessMime(a);
   if (mime) node["dc:format"] = mime;
+  if (a.link) {
+    node["graphium:placeId"] = a.link.placeId;
+    node["graphium:relPath"] = a.link.relPath;
+    node["graphium:fileSize"] = a.link.size;
+    if (Number.isFinite(a.link.mtimeMs)) {
+      node["graphium:fileModified"] = {
+        "@value": new Date(a.link.mtimeMs).toISOString(),
+        "@type": "xsd:dateTime",
+      };
+    }
+  }
   const info = a.sourceInfo;
   if (info) {
     const authors = (info.authors ?? []).filter((s) => typeof s === "string" && s.trim() !== "");

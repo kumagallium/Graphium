@@ -28,6 +28,7 @@ import {
   previewImageRef,
   previewRefKey,
   persistUrlMetaPatch,
+  persistLinkPatch,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -1583,5 +1584,44 @@ describe("normalizeMediaIndexEntry（旧 Drive 形式の素材 URL）", () => {
       usedIn: [],
     };
     expect(normalizeMediaIndexEntry(entry)).toBe(entry);
+  });
+});
+
+describe("persistLinkPatch（リンクした素材の控えの書き戻し）", () => {
+  const provider = { readAppData: vi.fn(), writeAppData: vi.fn() };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (getActiveProvider as any).mockReturnValue(provider);
+  });
+  const oldLink = { placeId: "p", relPath: "a.txt", size: 1, mtimeMs: 1, recordedAt: "2026-11-01T00:00:00.000Z" };
+  const newLink = { ...oldLink, size: 2, mtimeMs: 2, recordedAt: "2026-11-02T00:00:00.000Z" };
+  const entry = (over: Partial<MediaIndexEntry>): MediaIndexEntry => ({
+    fileId: "url_1", name: "a.txt", type: "url", mimeType: "text/x-uri", url: "graphium-place://p/a.txt",
+    thumbnailUrl: "", uploadedAt: "2026-11-01T00:00:00.000Z", usedIn: [], ...over,
+  });
+  const idx = (media: MediaIndexEntry[]): MediaIndex => ({
+    version: CURRENT_MEDIA_INDEX_VERSION, updatedAt: "2026-11-01T00:00:00.000Z", media,
+  });
+
+  it("最新の索引を読み直して link を差し替える", async () => {
+    provider.readAppData.mockResolvedValue(idx([entry({ link: oldLink })]));
+    expect(await persistLinkPatch("url_1", newLink)).toBe(true);
+    const saved = provider.writeAppData.mock.calls[0][1] as MediaIndex;
+    expect(saved.media[0].link).toEqual(newLink);
+  });
+  it("該当の fileId が無ければ何もしない", async () => {
+    provider.readAppData.mockResolvedValue(idx([entry({ link: oldLink })]));
+    expect(await persistLinkPatch("nope", newLink)).toBe(false);
+    expect(provider.writeAppData).not.toHaveBeenCalled();
+  });
+  it("link を持たないエントリには当てない", async () => {
+    provider.readAppData.mockResolvedValue(idx([entry({ url: "https://example.com" })]));
+    expect(await persistLinkPatch("url_1", newLink)).toBe(false);
+    expect(provider.writeAppData).not.toHaveBeenCalled();
+  });
+  it("同じ値なら書き込まない", async () => {
+    provider.readAppData.mockResolvedValue(idx([entry({ link: oldLink })]));
+    expect(await persistLinkPatch("url_1", { ...oldLink })).toBe(false);
+    expect(provider.writeAppData).not.toHaveBeenCalled();
   });
 });

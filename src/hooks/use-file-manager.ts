@@ -48,6 +48,7 @@ import { countUserTemplatesReferencingAsset } from "../features/template/user-te
 import { registerPendingOcrFile } from "../features/media-ocr";
 // 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
 import { clearForkBase } from "../features/sharing/fork-base";
+import { addLinkedEntry, buildLinkedEntry, listPlaces, pickPlaceFile } from "../features/linked-files";
 import {
   addForkedProcess,
   buildNoteGraph,
@@ -91,6 +92,7 @@ import {
   remapMediaContexts,
   createEmptyIndex,
   addMediaEntry,
+  generateUrlBookmarkId,
   removeMediaEntry,
   archiveMediaEntry,
   restoreMediaEntry,
@@ -3055,6 +3057,35 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
+  // 置き場のファイルをリンクする（リンクした素材。索引では type: "url"）。
+  // 流れは handleAddUrlBookmark と同じ（索引の更新 → 状態へ反映 → 保存）。
+  // 「どの置き場の中でもないファイル」は何も足さず "outside" を返す（知らせるのは呼び出し側の画面）。
+  // すでに同じファイルがリンク済みなら足さず、それを返す。
+  const handleLinkPlaceFile = useCallback(async (): Promise<{
+    status: "cancelled" | "outside" | "linked" | "existing";
+    entry?: MediaIndexEntry;
+  }> => {
+    const picked = await pickPlaceFile();
+    if (!picked) return { status: "cancelled" };
+    if (picked.placeId === null || picked.relPath === null) return { status: "outside" };
+    const place = (await listPlaces()).find((p) => p.id === picked.placeId);
+    if (!place) return { status: "outside" };
+    // 選んでいる間に索引が変わりうるので、最新の索引は待ったあとで読む
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const built = buildLinkedEntry({
+      picked,
+      place,
+      now: new Date().toISOString(),
+      fileId: generateUrlBookmarkId(),
+    });
+    const result = addLinkedEntry(current, built);
+    if (!result.added) return { status: "existing", entry: result.entry };
+    mediaIndexRef.current = result.index;
+    setMediaIndex(result.index);
+    saveMediaIndex(result.index).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+    return { status: "linked", entry: result.entry };
+  }, []);
+
   // --- Wiki ドキュメント操作 ---
 
   // Wiki を開く
@@ -4097,6 +4128,7 @@ export function useFileManager(authenticated: boolean) {
     remapMediaContextsEverywhere,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,
+    handleLinkPlaceFile,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
     handleSaveImportedDoc,

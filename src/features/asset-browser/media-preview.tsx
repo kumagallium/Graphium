@@ -7,6 +7,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { PdfViewer } from "./PdfViewer";
 import { UrlReaderView } from "./UrlReaderView";
+import { LinkedFileView } from "../linked-files/LinkedFileView";
+import { isLinkedEntry } from "../linked-files/link-url";
 import { UrlPreviewCard } from "./url-preview-card";
 import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
@@ -166,6 +168,8 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset,
     case "document":
       return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
+      // リンクした素材は Web ページではない。UrlReaderView は URL を取りに行くので、絶対に描かない
+      if (isLinkedEntry(entry)) return <LinkedFileView entry={entry} />;
       return (
         <UrlReaderView
           entry={entry}

@@ -72,6 +72,17 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
     ...(e.url ? { url: e.url } : {}),
     ...(e.mimeType ? { mimeType: e.mimeType } : {}),
     ...(e.sourceInfo ? { sourceInfo: e.sourceInfo } : {}),
+    ...(e.link
+      ? {
+          link: {
+            placeId: e.link.placeId,
+            relPath: e.link.relPath,
+            size: e.link.size,
+            mtimeMs: e.link.mtimeMs,
+            recordedAt: e.link.recordedAt,
+          },
+        }
+      : {}),
   };
 }
 
