@@ -9,6 +9,7 @@ import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, getSharedFolders } from "../../lib/storage/shared";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { notifySharedLibraryChanged, resolveShareTarget, shareMedia, shareReference, SharedFolderPicker } from "../sharing";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
@@ -59,6 +60,8 @@ export function ShareMediaDialog({
   const blobRoot = getSharedFolders().some((f) => f.blobRoot) ? "any" : getBlobRoot();
   const sharedAuthor = loadAuthorIdentity();
   const isUrlEntry = entry.type === "url";
+  // リンクした素材（置き場のファイル）は共有の対象外
+  const isLinked = entry.type === "url" && isPlaceUrl(entry.url);
   const disabledReason: string | undefined = !isTauri()
     ? t("share.disabled.desktopOnly")
     : !sharedRoot
@@ -129,6 +132,8 @@ export function ShareMediaDialog({
       setBusy(false);
     }
   }, [sharedRoot, sharedAuthor, isUrlEntry, entry, noteFolderLookup, sharedRefState, title, description, onSharedRefUpdated, t, folderRoot]);
+
+  if (isLinked) return null;
 
   return (
     <>

@@ -259,8 +259,34 @@ export type MediaSharedRef = {
   blobHash?: string;
 };
 
+/** リンクした素材の控え直す前の値（履歴 1 件分）。 */
+export type MediaLinkSnapshot = { size: number; mtimeMs: number; recordedAt: string };
+
+/**
+ * リンクした素材（データの置き場のファイルを写さずに指す素材）の控え。
+ * 置き場の id と、その中での相対パス（`/` 区切り・先頭に `/` なし）だけを持つ。
+ * 絶対パスは持たない（置き場の場所は Rust 側が持つ）。
+ */
+export type MediaLink = {
+  placeId: string;
+  relPath: string;
+  /** 控えた時点の大きさ（バイト） */
+  size: number;
+  /** 控えた時点の更新日時（エポックからのミリ秒） */
+  mtimeMs: number;
+  /** 控えた時刻（ISO） */
+  recordedAt: string;
+  /** 控え直す前の値。新しい順、最大 20 件 */
+  history?: MediaLinkSnapshot[];
+};
+
 /** メディアインデックスのエントリ */
 export type MediaIndexEntry = {
+  /**
+   * リンクした素材の控え。リンクした素材（type は "url"・url は graphium-place://）のときだけ持つ。
+   * optional の追加なので索引の版は上げない。
+   */
+  link?: MediaLink;
   /** Google Drive ファイル ID（URL ブックマークの場合は生成 ID） */
   fileId: string;
   /** ファイル名（URL ブックマークの場合はタイトル） */
@@ -800,6 +826,42 @@ export async function persistUrlMetaPatch(
 }
 
 /**
+ * リンクした素材の控え（`link`）を書き換える。
+ * 最新の索引を読み直してから当てる。該当が無い・`link` を持たないエントリには何もしない。
+ *
+ * @returns 実際に索引へ反映できたら true
+ */
+export async function persistLinkPatch(fileId: string, link: MediaLink): Promise<boolean> {
+  const index = await readMediaIndex();
+  if (!index) return false;
+  let changed = false;
+  const nextMedia = index.media.map((m) => {
+    if (m.fileId !== fileId || !m.link) return m;
+    if (JSON.stringify(m.link) === JSON.stringify(link)) return m;
+    changed = true;
+    return { ...m, link };
+  });
+  if (!changed) return false;
+  const next: MediaIndex = {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    media: nextMedia,
+  };
+  try {
+    await saveMediaIndex(next);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "link-patch", fileId } }),
+      );
+    }
+    return true;
+  } catch (err) {
+    console.warn("リンクの控えの書き戻し失敗:", err);
+    return false;
+  }
+}
+
+/**
  * 画像の OCR テキストを media-index に書き戻す。
  *
  * altText: 検索用の別の読み（ocrAltText）。undefined なら触らない（PowerPoint のスライド文字など
@@ -1185,12 +1247,19 @@ export function removeNoteFromUsedIn(
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
 
-/** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
-export function countByType(index: MediaIndex): Record<MediaType, number> {
+/**
+ * メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない）。
+ * typeOf: 数える種類の決め方。既定は entry.type。リンクした素材を拡張子の種類で数えるときは
+ * linked-files の displayTypeOf を渡す（media-index から linked-files へは import しない）。
+ */
+export function countByType(
+  index: MediaIndex,
+  typeOf: (entry: MediaIndexEntry) => MediaType = (e) => e.type,
+): Record<MediaType, number> {
   const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, data: 0, memo: 0, conversation: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
-    counts[entry.type]++;
+    counts[typeOf(entry)]++;
   }
   return counts;
 }

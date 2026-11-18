@@ -21,7 +21,7 @@ import { extractPlainTextFromDoc } from "../features/wiki/wiki-service";
 import { readCaptureIndex } from "./captures";
 import { extractPdfTextNode } from "./pdf-text-node";
 import { findMediaFile } from "./source-text";
-import { readMediaIndex } from "./sources";
+import { describeLinkedFile, readMediaIndex } from "./sources";
 import { getFlags } from "./upkeep/index-store";
 import { notesDir, wikiDir } from "./vault";
 import type { GenerationLanguage } from "../lib/language";
@@ -161,6 +161,9 @@ function loadUrl(root: string, noteId: string): Promise<LoadedClaimSource> | Loa
   const url = noteId.slice("url:".length);
   const entry = [...readMediaIndex(root).values()].find((m) => m.type === "url" && m.url === url);
   if (!entry || entry.archivedAt) return notFound("URL 素材", noteId);
+  // リンクした素材（置き場のファイル）は Web へ取りに行かず、場所の説明を返す
+  const linkedNote = describeLinkedFile(entry);
+  if (linkedNote) return { ok: false, message: `SOURCE_UNAVAILABLE: ${linkedNote}` };
   return (async (): Promise<LoadedClaimSource> => {
     let page: Awaited<ReturnType<typeof claimSourceDeps.fetchUrl>>;
     try {

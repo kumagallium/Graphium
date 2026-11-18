@@ -27,6 +27,7 @@ import { saveSharedNoteLink } from "./shared-note-link";
 import { shareKnowledge } from "./share-knowledge";
 import { shareMedia } from "./share-media";
 import { shareReference } from "./share-reference";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { ensureSharedEntryRoots, resolveOwnCopyRoot } from "./shared-library-store";
 import { getBlobRoot } from "../../lib/storage/shared/config";
 
@@ -73,6 +74,8 @@ export type BulkShareSummary = {
   failed: number;
   /** 共有はできたが、読める写しだけ置けなかった件数 */
   readableCopyFailed?: number;
+  /** リンクした素材（置き場のファイル）は共有の対象外なので飛ばした件数（shared / failed には数えない） */
+  skippedLinked?: number;
   /** キャンセルで打ち切った場合 true（results は処理済み分のみ） */
   cancelled: boolean;
 };
@@ -132,13 +135,15 @@ async function shareOneMedia(
   deps: BulkShareDeps,
   index: number,
   total: number,
-): Promise<BulkShareItemResult> {
+): Promise<BulkShareItemResult | "skipped"> {
   let title = "";
   try {
     const entry = deps.loadMedia ? await deps.loadMedia(target.id) : null;
     if (!entry) {
       return { ...target, title: target.id, ok: false, error: "Asset not found" };
     }
+    // リンクした素材（置き場のファイル）は共有しない。件数にも数えず飛ばす
+    if (entry.type === "url" && isPlaceUrl(entry.url)) return "skipped";
     title = entry.name || target.id;
     deps.onProgress?.(index, total, title);
 
@@ -207,6 +212,7 @@ export async function bulkShare(
 ): Promise<BulkShareSummary> {
   const results: BulkShareItemResult[] = [];
   let cancelled = false;
+  let skippedLinked = 0;
   // 再共有の書き込み先（自分の共有コピーがあるフォルダ）を引く前に、一覧を読み終えておく
   await ensureSharedEntryRoots();
 
@@ -218,7 +224,9 @@ export async function bulkShare(
     const target = targets[i];
     if (target.kind === "media") {
       // 素材はドキュメントを読まない別経路。ノート / Knowledge の流れは触らない
-      results.push(await shareOneMedia(target, deps, i, targets.length));
+      const one = await shareOneMedia(target, deps, i, targets.length);
+      if (one === "skipped") skippedLinked++;
+      else results.push(one);
       continue;
     }
     const isKnowledge = target.kind === "knowledge";
@@ -301,5 +309,5 @@ export async function bulkShare(
   const updated = results.filter((r) => r.ok && r.isUpdate).length;
   const failed = results.filter((r) => !r.ok).length;
   const readableCopyFailed = results.filter((r) => r.ok && r.readableCopyFailed).length;
-  return { results, shared, updated, failed, readableCopyFailed, cancelled };
+  return { results, shared, updated, failed, readableCopyFailed, skippedLinked, cancelled };
 }

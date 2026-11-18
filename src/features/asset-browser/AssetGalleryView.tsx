@@ -5,7 +5,7 @@ import { safeExternalHref } from "../../lib/safe-href";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked } from "lucide-react";
+import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked, File as FileIcon } from "lucide-react";
 import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
 import { isPlanFolderPath } from "../note-context/reserved-folders";
@@ -39,6 +39,12 @@ import { isSourceLookupTarget, runBulkSourceLookup, type BulkSourceLookupProgres
 import { readEntryBytes } from "./read-entry-bytes";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
+import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
+import { displayTypeOf, displayMimeOf, isInMediaList } from "../linked-files/display-type";
+import type { LinkState } from "../linked-files/linked-entry";
+import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
+import { useLinkStates } from "../linked-files/use-link-states";
+import { isTauri } from "../../lib/platform";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import { MemoChip, canHoverDevice } from "./MemoChip";
@@ -461,6 +467,13 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       return <div className={cls}><FileText size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
     case "url":
+      // リンクした素材（控えが壊れたものを含む）は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
+      if (isPlaceUrl(entry.url)) {
+        const cls = compact
+          ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+          : "w-full h-40 flex items-center justify-center bg-muted";
+        return <div className={cls}><FileIcon size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
+      }
       return <UrlThumbnail entry={entry} compact={compact} />;
     case "data":
       return <DataThumbnail entry={entry} compact={compact} />;
@@ -534,8 +547,11 @@ function MediaCard({
   onOpenDetail,
   onOpenInAppFailed,
   memo,
+  linkState,
 }: {
   entry: MediaIndexEntry;
+  /** リンクした素材の状態（useLinkStates の結果）。「変わりなし」以外のときだけ印を出す */
+  linkState?: LinkState;
   /** filtered 内での位置。範囲選択（useRangeSelect）が行番号として使う */
   index: number;
   /** このタイルが選択中か */
@@ -596,7 +612,7 @@ function MediaCard({
           （印は 1 件以上なら常に見える。操作が出入りしても印の位置は変わらない） */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-          {entry.type === "url" && (
+          {entry.type === "url" && !isLinkedEntry(entry) && (
             (() => {
               const href = safeExternalHref(entry.url);
               return href ? (
@@ -649,12 +665,18 @@ function MediaCard({
             <p className="text-xs font-medium text-foreground truncate min-w-0 flex-1" title={entry.name}>
               {entry.name}
             </p>
+            {isLinkedEntry(entry) && <LinkedBadge />}
             {entry.pageCount !== undefined && (
               <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
                 {t("asset.pageCountShort", { count: String(entry.pageCount) })}
               </span>
             )}
           </div>
+          {isLinkedEntry(entry) && linkState && linkState !== "ok" && (
+            <div className="mt-1 flex min-w-0">
+              <LinkStateBadge state={linkState} className="shrink min-w-0" />
+            </div>
+          )}
           {sourceLine && (
             <p className="text-[10px] text-muted-foreground truncate" title={sourceLine}>
               {sourceLine}
@@ -698,6 +720,11 @@ export type AssetGalleryViewProps = {
   noteFolderLookup?: NoteFolderLookup;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
+  /**
+   * 置き場のファイルをリンクする（type === "url" のタブ・デスクトップ版のみ）。
+   * 結果で「置き場の外のファイルだった」ときだけ、ここで知らせる。
+   */
+  onLinkPlaceFile?: () => Promise<{ status: "cancelled" | "outside" | "linked" | "existing"; entry?: MediaIndexEntry }>;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
   /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
@@ -889,6 +916,7 @@ export function AssetGalleryView({
   noteFolders,
   noteFolderLookup,
   onAddUrlBookmark,
+  onLinkPlaceFile,
   onUploadMedia,
   onIntakeFiles,
   onIngestMedia,
@@ -1082,6 +1110,39 @@ export function AssetGalleryView({
     return () => clearTimeout(timer);
   }, [openInAppFailure]);
 
+  // 「置き場のファイルをリンク」の結果の通知（数秒で消える）
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!linkNotice) return;
+    const timer = setTimeout(() => setLinkNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [linkNotice]);
+  const handleLinkPlaceFile = useCallback(async () => {
+    if (!onLinkPlaceFile) return;
+    try {
+      const result = await onLinkPlaceFile();
+      if (result.status === "outside") setLinkNotice(t("linkedFile.outsidePlace"));
+      // 開いている一覧と違う種類の一覧に入ったときは、切り替えずに短く知らせる
+      else if (result.entry && !isInMediaList(result.entry, mediaType)) {
+        setLinkNotice(t("linkedFile.listedIn", { type: t(`asset.type.${displayTypeOf(result.entry)}`) }));
+      }
+    } catch (err) {
+      setLinkNotice(t("linkedFile.linkFailed", { message: err instanceof Error ? err.message : String(err) }));
+    }
+  }, [onLinkPlaceFile, t, mediaType]);
+
+  // 「置き場のファイルをリンク」ボタン（デスクトップ版のみ）。URL の一覧と、ファイルの種類ごとの一覧で同じ見た目
+  const linkPlaceFileButton =
+    onLinkPlaceFile && isTauri() && ["url", "image", "document", "data", "video", "audio"].includes(mediaType) ? (
+      <button
+        onClick={() => void handleLinkPlaceFile()}
+        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap shrink-0"
+      >
+        <FileIcon size={12} />
+        {t("linkedFile.add")}
+      </button>
+    ) : null;
+
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1232,9 +1293,12 @@ export function AssetGalleryView({
     if (!mediaIndex) return [];
     let result = mediaIndex.media.filter((m) => {
       if (m.archivedAt) return false;
-      if (mediaType !== "document") return m.type === mediaType;
-      if (docFilter !== "all") return documentKindOf(m) === docFilter;
-      return m.type === "document" || m.type === "pdf";
+      // リンクした素材は拡張子から決めた種類の一覧に並べる（索引の type は "url" のまま）
+      if (!isInMediaList(m, mediaType)) return false;
+      if (mediaType === "document" && docFilter !== "all") {
+        return documentKindOf({ type: displayTypeOf(m), mimeType: displayMimeOf(m) }) === docFilter;
+      }
+      return true;
     });
     // フォルダ絞り込み（OR・小文字比較）。ノート一覧の文脈フィルタと同じ規則にそろえる
     if (folderFilter.length > 0) {
@@ -1289,14 +1353,16 @@ export function AssetGalleryView({
     });
   }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter, folderFilter, noteFolderLookup, emptyLookup]);
 
+  // リンクした素材の状態（表示中の分を 1 回でまとめて見る。デスクトップ版でなければ呼ばない）
+  const linkStates = useLinkStates(filtered);
+
   // フォルダ絞り込みの選択肢。いま見ている種類の素材に実際に付いているものだけ出す
   // （空振りする候補を並べない）。未分類は件数が 1 件以上あるときだけ足す。
   const folderFilterOptions = useMemo<FilterOption[]>(() => {
     if (!mediaIndex) return [];
     const inScope = mediaIndex.media.filter((m) => {
       if (m.archivedAt) return false;
-      if (mediaType !== "document") return m.type === mediaType;
-      return m.type === "document" || m.type === "pdf";
+      return isInMediaList(m, mediaType);
     });
     const counts = aggregateNoteContexts(
       inScope.map((m) => ({ noteContexts: assetFolderValues(m, noteFolderLookup ?? emptyLookup) })),
@@ -1340,9 +1406,10 @@ export function AssetGalleryView({
     if (!mediaIndex) return counts;
     for (const m of mediaIndex.media) {
       if (m.archivedAt) continue;
-      if (m.type !== "document" && m.type !== "pdf") continue;
+      const shown = displayTypeOf(m);
+      if (shown !== "document" && shown !== "pdf") continue;
       counts.all++;
-      const kind = documentKindOf(m);
+      const kind = documentKindOf({ type: shown, mimeType: displayMimeOf(m) });
       if (kind) counts[kind]++;
     }
     return counts;
@@ -1747,6 +1814,15 @@ export function AssetGalleryView({
           {t(openInAppFailure)}
         </div>
       )}
+      {linkNotice && (
+        <div
+          className="fixed bottom-40 right-4 z-[9999] flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 shadow-lg pl-3 pr-3.5 py-1.5 text-xs text-foreground"
+          role="status"
+          data-testid="link-notice"
+        >
+          {linkNotice}
+        </div>
+      )}
       {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* ヘッダー。サイドピークが並んで一覧が 300px 前後まで狭くなると（853px 幅で約 277px）、
@@ -1765,16 +1841,22 @@ export function AssetGalleryView({
             {t("asset.count", { count: String(filtered.length) })}
           </span>
           {mediaType === "url" && onAddUrlBookmark && (
-            <button
-              onClick={() => setShowUrlModal(true)}
-              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
-            >
-              <Plus size={12} />
-              {t("asset.urlAdd")}
-            </button>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              {/* 置き場のファイルをリンク（デスクトップ版のみ）。「URL を追加」の隣に並べる */}
+              {linkPlaceFileButton}
+              <button
+                onClick={() => setShowUrlModal(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+              >
+                <Plus size={12} />
+                {t("asset.urlAdd")}
+              </button>
+            </div>
           )}
           {mediaType === "document" && onUploadMedia && (
-            <div className="ml-auto relative" ref={menuRef}>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+            {linkPlaceFileButton}
+            <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 disabled={uploading}
@@ -1841,13 +1923,15 @@ export function AssetGalleryView({
                 className="hidden"
               />
             </div>
+            </div>
           )}
           {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
             <>
+              {linkPlaceFileButton && <div className="ml-auto shrink-0">{linkPlaceFileButton}</div>}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 whitespace-nowrap shrink-0"
+                className={`${linkPlaceFileButton ? "" : "ml-auto "}flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 whitespace-nowrap shrink-0`}
               >
                 <Plus size={12} />
                 {uploading ? t("asset.uploading") : t("asset.upload")}
@@ -2141,6 +2225,7 @@ export function AssetGalleryView({
                   onMouseEnter={range.onRowMouseEnter}
                   onDelete={setDeleteTarget}
                   memo={memoChipFor(entry)}
+                  linkState={linkStates.get(entry.fileId)}
                   onOpenInAppFailed={setOpenInAppFailure}
                   onOpenDetail={(e) => {
                     // ドラッグ範囲選択の直後の click は開く操作にしない（list 行と同じ）
@@ -2238,7 +2323,7 @@ export function AssetGalleryView({
                           <span className="text-foreground truncate" title={entry.name}>
                             {entry.name}
                           </span>
-                          {entry.type === "url" && (
+                          {entry.type === "url" && !isLinkedEntry(entry) && (
                             (() => {
                               const href = safeExternalHref(entry.url);
                               return href ? (
@@ -2285,6 +2370,16 @@ export function AssetGalleryView({
                             </button>
                           )}
                         </div>
+                        {/* 「リンク」の札と状態の印は名前の下の行に置く。名前と同じ行に並べると、
+                            右に詳細を開いた狭い幅で名前が押しつぶされて読めなくなる */}
+                        {isLinkedEntry(entry) && (
+                          <div className="mt-0.5 flex items-center gap-1 min-w-0">
+                            <LinkedBadge />
+                            {linkStates.get(entry.fileId) && linkStates.get(entry.fileId) !== "ok" && (
+                              <LinkStateBadge state={linkStates.get(entry.fileId)!} className="shrink min-w-0" />
+                            )}
+                          </div>
+                        )}
                         {entry.type === "data" && <DataSummaryLine entry={entry} />}
                         {(() => {
                           const line = formatSourceLine(entry.sourceInfo, t("asset.sourceEtAl"));

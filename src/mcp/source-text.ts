@@ -9,10 +9,11 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveSourceText, type ResolveSourceTextDeps } from "../features/source-check/resolve-source-text";
+import { isPlaceUrl } from "../features/linked-files/link-url";
 import { parseExternalSource } from "../features/network-graph/external-source";
 import { WINDOW_OVERLAP, splitIntoWindows } from "../features/wiki/source-windows";
 import { extractPdfTextNode } from "./pdf-text-node";
-import { readMediaIndex } from "./sources";
+import { describeLinkedFile, readMediaIndex } from "./sources";
 import { notesDir, readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
 import { extractDocxText } from "../lib/docx-text";
 import { parseConversationFileId } from "../lib/conversation/types";
@@ -148,6 +149,8 @@ function buildDeps(root: string): ResolveSourceTextDeps {
     },
     loadStoredUrlText: undefined,
     fetchUrlText: async (url) => {
+      // リンクした素材（置き場のファイル）は Web ではない。取りに行かない
+      if (isPlaceUrl(url)) return null;
       // 宛先は外の AI が選ぶので、この PC 内・LAN 宛（リダイレクト先を含む）は取りに行かない
       const { fetchPublicUrlText } = await import("./public-url-fetch");
       return fetchPublicUrlText(url);
@@ -217,7 +220,11 @@ export async function resolveFullSourceText(sourceId: string, root = resolveGrap
     stamp = mtimeOf(file);
   } else if (parsed?.kind === "url") {
     kind = "url";
-    const registered = [...readMediaIndex(root).values()].some((m) => m.type === "url" && m.url === parsed.key);
+    const registeredEntry = [...readMediaIndex(root).values()].find((m) => m.type === "url" && m.url === parsed.key);
+    const registered = !!registeredEntry;
+    // リンクした素材（置き場のファイル）は Web へ取りに行かず、場所の説明を返す
+    const linkedNote = registeredEntry ? describeLinkedFile(registeredEntry) : undefined;
+    if (linkedNote) return { ok: false, message: refuse("LINKED_FILE", linkedNote) };
     if (!registered) {
       return {
         ok: false,

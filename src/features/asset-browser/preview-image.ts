@@ -25,6 +25,7 @@
 // `blob != null` で絞る、sidecar は別ディレクトリ）。
 
 import { useEffect, useState } from "react";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { apiBase } from "../../lib/platform";
 import { getActiveProvider } from "../../lib/storage/registry";
 // image-proxy が届くかの判定は remote-image.ts と共有する（2 本に分けない）
@@ -116,6 +117,8 @@ export function needsPreviewCache(
   opts: PreviewCacheOptions = {},
 ): boolean {
   if (entry.type !== "url") return false;
+  // リンクした素材（置き場のファイル）は Web ページではない。画像を取りに行かない
+  if (isPlaceUrl(entry.url)) return false;
   if (isLocalPreviewRef(entry.urlMeta?.previewImage)) return false;
   if (previewImageKey(entry.fileId) === null) return false;
   if (!opts.ignoreCooldown && inCooldown(entry.urlMeta?.previewImageAt, nowMs)) return false;

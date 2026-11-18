@@ -8,6 +8,7 @@
 import type { GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { buildMemoInsertBlock } from "../mobile-capture/memo-insert";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
 import { buildMemoQuoteRef } from "../memo-quote/memo-quote";
@@ -64,7 +65,7 @@ export function findClipUrlEntry(
   index: Pick<MediaIndex, "media"> | null | undefined,
   clip: Pick<WebClip, "url" | "doi">,
 ): MediaIndexEntry | undefined {
-  const urls = (index?.media ?? []).filter((m) => m.type === "url");
+  const urls = (index?.media ?? []).filter((m) => m.type === "url" && !isPlaceUrl(m.url));
   if (clip.doi) {
     const doi = clip.doi.toLowerCase();
     const byDoi = urls.find((m) => m.webClip?.doi?.toLowerCase() === doi);

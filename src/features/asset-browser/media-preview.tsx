@@ -7,6 +7,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { PdfViewer } from "./PdfViewer";
 import { UrlReaderView } from "./UrlReaderView";
+import { LinkedFileView } from "../linked-files/LinkedFileView";
+import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
 import { UrlPreviewCard } from "./url-preview-card";
 import { DocumentViewer } from "./DocumentViewer";
 import { DataPreview } from "./DataPreview";
@@ -153,6 +155,16 @@ function MemoPreviewCard({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
+/** リンクした素材の控えが壊れているときの短い表示（URL は取りに行かない） */
+function BrokenLinkNotice() {
+  const t = useT();
+  return (
+    <p className="text-xs text-muted-foreground" data-testid="broken-link-notice">
+      {t("linkedFile.brokenRecord")}
+    </p>
+  );
+}
+
 export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset, focus }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
@@ -166,6 +178,10 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset,
     case "document":
       return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
+      // リンクした素材は Web ページではない。UrlReaderView は URL を取りに行くので、絶対に描かない
+      if (isLinkedEntry(entry)) return <LinkedFileView entry={entry} />;
+      // 置き場の URL なのに控えが壊れているとき: Web へは取りに行かず、読めない旨だけ出す
+      if (isPlaceUrl(entry.url)) return <BrokenLinkNotice />;
       return (
         <UrlReaderView
           entry={entry}

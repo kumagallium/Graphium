@@ -77,6 +77,7 @@ import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
 import { ModelFitHint } from "./ModelFitHint";
 import { SharedFoldersSection } from "./SharedFoldersSection";
+import { DataPlacesSection } from "./DataPlacesSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
 import { OcrModelSettingsSection } from "../media-ocr/OcrModelSettingsSection";
 import { LocalEmbeddingModelSection } from "../embedding/LocalEmbeddingModelSection";
@@ -2435,6 +2436,19 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     {t("settings.serverStorage.noAuth")}
                   </p>
                 )}
+              </SettingSection>
+            )}
+
+            {/* データの置き場（デスクトップ版のみ）。組織の同期フォルダなどの中のファイルを、
+                写さず・中身も読まずにリンクするための登録。一覧は DataPlacesSection が持つ */}
+            {isTauri() && (
+              <SettingSection band
+                icon={FolderOpen}
+                title={t("places.title")}
+                summary={t("places.summary")}
+                details={<p>{t("places.help")}</p>}
+              >
+                <DataPlacesSection />
               </SettingSection>
             )}
 
