@@ -1,6 +1,6 @@
 # Insights from AI conversations <Badge type="info" text="Measured 2026-11-18 · v0.141.2" />
 
-**Question.** I measured this before building it, for an upcoming "AI conversations" import: putting a record of a conversation with Claude Code or a similar tool into Graphium as a source, and making insights from it. **The app at the time of measurement (v0.141.2) does not have this feature yet.** What follows are measurements of two things I wanted to settle before implementing it.
+**Question.** I measured this before building it, for an upcoming "AI conversations" import: putting a record of a conversation with Claude Code or a similar tool into Graphium as a source, and making insights from it. **The app at the time of measurement (v0.141.2) does not have this feature yet.** The intake screen came in afterwards ([Bring in AI conversations](/materials-and-citations#bring-in-ai-conversations)). Making knowledge from a conversation is not there yet. What follows are measurements of two things I wanted to settle before implementing it.
 
 - If the claim instructions are changed only when the source is a conversation, do the claims come from the user's own words?
 - How long does the excerpt of the AI's replies in the source need to be?
