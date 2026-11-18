@@ -37,6 +37,7 @@ import {
   type MediaIndexEntry,
 } from "./media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { MAX_OCR_TEXT_CHARS } from "../../lib/ocr-text";
 
 vi.mock("../../lib/storage/registry", () => ({
   getActiveProvider: vi.fn(),
@@ -712,6 +713,30 @@ describe("ensureMediaIndex（ノートに貼った画像の OCR テキスト集�
   it("mediaOcr を持たないノートの画像には ocrText が付かない", async () => {
     const index = await runRebuild(staleIndex(), docWithOcr());
     expect(index.media[0].ocrText).toBeUndefined();
+  });
+
+  it("text が数値・オブジェクト・配列・null、mediaOcr が配列・文字列・null でも投げず、写さない", async () => {
+    const bad: unknown[] = [123, {}, ["x"], null];
+    for (const v of bad) {
+      const doc = docWithOcr();
+      (doc.pages[0] as any).mediaOcr = { "block-1": { text: v } };
+      const index = await runRebuild(staleIndex(), doc);
+      expect(index.media[0].ocrText).toBeUndefined();
+    }
+    for (const m of [[], "abc", null, { "block-1": null }]) {
+      const doc = docWithOcr();
+      (doc.pages[0] as any).mediaOcr = m;
+      const index = await runRebuild(staleIndex(), doc);
+      expect(index.media[0].ocrText).toBeUndefined();
+    }
+  });
+
+  it("5 MB の text は上限で切り、サロゲートペアの途中で切れない", async () => {
+    const big = await runRebuild(staleIndex(), docWithOcr("あ".repeat(5 * 1024 * 1024)));
+    expect(big.media[0].ocrText!.length).toBe(MAX_OCR_TEXT_CHARS);
+    clearMediaIndexCache(); // 直前の結果が最新の索引として残っていると、写し先が埋まって見える
+    const edge = await runRebuild(staleIndex(), docWithOcr("a".repeat(MAX_OCR_TEXT_CHARS - 1) + "😀"));
+    expect(edge.media[0].ocrText!.length).toBe(MAX_OCR_TEXT_CHARS - 1);
   });
 
   it("空白だけの OCR テキストは写さない", async () => {

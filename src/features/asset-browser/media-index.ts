@@ -1,7 +1,7 @@
 // .graphium-media-index.json の型定義と Drive 読み書き
 // 全メディアファイルのメタデータを1ファイルに集約し、ギャラリー表示を高速化する
 
-import { sanitizeAltText } from "../../lib/ocr-alt";
+import { readOcrEntry, sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import { getActiveProvider, mediaUrlForActiveProvider } from "../../lib/storage/registry";
 import { isDelimitedDataFile } from "../data-import/file-kind";
 import { normalizeNoteContexts } from "../note-context/context-tags";
@@ -881,7 +881,7 @@ export async function persistOcrTextPatch(
 ): Promise<void> {
   const index = await readMediaIndex();
   if (!index) return;
-  const text = ocrText.trim();
+  const text = sanitizeOcrText(ocrText) ?? "";
   const alt = altText === undefined ? undefined : (sanitizeAltText(altText) ?? "");
   let changed = false;
   const nextMedia = index.media.map((m) => {
@@ -1662,11 +1662,13 @@ export async function ensureMediaIndex(
           // 素材ギャラリーから直接読んだ既存の ocrText は上書きしない
           // — ユーザーが素材そのものに対して明示的に取った結果を正とする
           //（上書きしない判定は、実体を組み立てる後段で行う）。
-          const noteOcr = page.mediaOcr?.[blockId]?.text?.trim();
+          // mediaOcr は他人のノートからも来る。型が違う・巨大な値でも投げない
+          const ocrEntry = readOcrEntry(page.mediaOcr, blockId);
+          const noteOcr = sanitizeOcrText(ocrEntry?.text);
           if (noteOcr && !ocrByFileId.has(fileId)) {
             ocrByFileId.set(fileId, noteOcr);
           }
-          const noteAlt = sanitizeAltText(page.mediaOcr?.[blockId]?.altText);
+          const noteAlt = sanitizeAltText(ocrEntry?.altText);
           if (noteAlt && !ocrAltByFileId.has(fileId)) {
             ocrAltByFileId.set(fileId, noteAlt);
           }

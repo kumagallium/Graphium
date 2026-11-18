@@ -11,7 +11,7 @@ import { useT } from "../../i18n";
 import { useMediaOcrStore } from "./store";
 import { runOcrForImage } from "./run-ocr";
 import { mirrorOcrToMediaIndex } from "./mirror-to-media-index";
-import { sanitizeAltText } from "../../lib/ocr-alt";
+import { safeOcrNumber, sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import { type Rect, useFloatingPlacement } from "../../ui/floating-position";
 
 type Props = {
@@ -31,9 +31,10 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
   // 結果パネルの実寸を測って、画面に収まる側・高さへ置く（下に収まらなければ上へ反転）
   const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
 
-  const entry = store.getEntry(blockId);
+  const rawEntry = store.getEntry(blockId);
+  const entry = rawEntry && typeof rawEntry === "object" ? rawEntry : undefined;
   // mediaOcr は共有フォルダの他人のノートからも来る。文字列でない値で落ちないようにする
-  const text = typeof entry?.text === "string" ? entry.text.trim() : "";
+  const text = sanitizeOcrText(entry?.text) ?? "";
   const charCount = text ? text.replace(/\s/g, "").length : 0;
   // 表示用の text が空でも、別の読み（検索用）だけがある状態がありうる
   const altText = sanitizeAltText(entry?.altText) ?? "";
@@ -144,7 +145,7 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
                   {charCount > 0 && (
                     <span className="ml-2 font-normal text-muted-foreground">
                       {t("ocr.chars", { count: String(charCount) })}
-                      {entry?.confidence ? ` · ${entry.confidence}%` : ""}
+                      {safeOcrNumber(entry?.confidence) ? ` · ${safeOcrNumber(entry?.confidence)}%` : ""}
                     </span>
                   )}
                 </span>

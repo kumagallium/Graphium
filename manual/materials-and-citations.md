@@ -350,6 +350,8 @@ Three ways in:
 2. The same item lives in the block's drag-handle (⠿) menu.
 3. Images newly added while a note is open are read automatically, with a progress toast so nothing runs silently.
 
+To re-read images that were read the old way in one go, open **Images** under **Materials** in the sidebar, select the images (checkboxes, as in the [material gallery](#the-material-gallery)) and choose **Read text** in the selection bar (under **More** if it is not on the bar); images that were already read are included. This updates the reading kept with the material, which is what the material list and `⌘K` search; the reading you see when you open a note stays as it was until you run **Read text from image** again in that note.
+
 Once extracted, the text works for you in several places: note search matches it (results show an **image text** badge), the [Composer finds the image itself](/ai-chat-and-ask#finding-images) by the words inside it <Badge type="tip" text="Added in v0.35.0 (2026-08-13)" />, and you can view and **Copy** the raw text from the image toolbar.
 
 ![The drag-handle menu of an image block after reading, with Text extracted (48 chars) among its items](/screenshots/image-ocr.png)
