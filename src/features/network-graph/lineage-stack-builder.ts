@@ -176,6 +176,7 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
     const ext = parseExternalSource(id);
     if (ext?.kind === "pdf") return mediaByFileId.get(ext.key)?.name ?? `PDF ${ext.key.slice(0, 8)}`;
     if (ext?.kind === "document") return mediaByFileId.get(ext.key)?.name ?? `Document ${ext.key.slice(0, 8)}`;
+    if (ext?.kind === "conversation") return mediaByFileId.get(ext.key)?.name ?? "AI conversation";
     if (ext?.kind === "url") return mediaByUrl.get(ext.key)?.name ?? ext.key;
     if (ext?.kind === "chat") return "AI Chat";
     if (ext?.kind === "memo") return "Memo";
@@ -186,7 +187,7 @@ export function buildLineageStack(input: BuildLineageStackInput): LineageStackMo
   const openOf = (id: string): StackOpenTarget | undefined => {
     const ext = parseExternalSource(id);
     if (ext) {
-      if (ext.kind === "pdf" || ext.kind === "document") return { type: "media", fileId: ext.key };
+      if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "conversation") return { type: "media", fileId: ext.key };
       if (ext.kind === "url") return { type: "url", url: ext.key };
       if (ext.kind === "memo") return { type: "memo", captureId: ext.key };
       return undefined;

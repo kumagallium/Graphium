@@ -113,6 +113,16 @@ export function buildResolveDeps(deps: UseSourceCheckDeps): ResolveSourceTextDep
       return { text };
     },
     findCaptureText: (captureId) => deps.captureIndex?.captures.find((c) => c.id === captureId)?.text,
+    loadConversationText: async (fileId) => {
+      // 素材の一覧に「AI との会話」として載っているものだけを読む
+      const known = deps.mediaIndex?.media.some((m) => m.fileId === fileId && m.type === "conversation");
+      if (!known) return undefined;
+      try {
+        return await getActiveProvider().loadMediaText?.(fileId);
+      } catch {
+        return undefined;
+      }
+    },
     findClaim: (claimId) => {
       if (!deps.wikiMetas.has(claimId)) return undefined;
       const entry = deps.rawNoteIndex?.notes.find((n) => n.noteId === claimId);

@@ -4362,6 +4362,7 @@ export const ko: Record<string, string> = {
   "sourceCheck.sourceKind.url": "URL",  // 영어 유지
   "sourceCheck.sourceKind.memo": "메모",
   "sourceCheck.sourceKind.chat": "AI 채팅",
+  "sourceCheck.sourceKind.conversation": "AI 대화",
   "sourceCheck.sourceKind.claim": "지견",
   "sourceCheck.sourceKind.unknown": "알 수 없는 출처",
   "paper.narrowNotice": "화면이 용지보다 좁아 줄바꿈이 인쇄와 다릅니다. 축소하거나 오른쪽 패널을 닫으면 용지 너비로 보입니다.",

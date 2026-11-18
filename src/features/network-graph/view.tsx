@@ -68,7 +68,7 @@ const NODE_COLORS = {
 
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 
-type ExternalKind = "pdf" | "url" | "document" | "chat" | "memo" | "media";
+type ExternalKind = "pdf" | "url" | "document" | "conversation" | "chat" | "memo" | "media";
 type SharedKind = "shared" | "proposal";
 
 function getNodeColor(
@@ -601,6 +601,11 @@ export function NetworkGraphPanel({
       if (nodeId.startsWith("document:")) {
         // Word(.docx) など document 素材を PDF と同じくアセットモーダルで開く
         if (onOpenMedia) onOpenMedia(nodeId.slice("document:".length));
+        return;
+      }
+      if (nodeId.startsWith("conversation:")) {
+        // AI との会話の素材も document と同じくアセットモーダルで開く
+        if (onOpenMedia) onOpenMedia(nodeId.slice("conversation:".length));
         return;
       }
       if (nodeId.startsWith("chat:")) {

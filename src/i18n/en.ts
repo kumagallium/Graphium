@@ -4401,6 +4401,7 @@ export const en: Record<string, string> = {
   "sourceCheck.sourceKind.url": "URL",
   "sourceCheck.sourceKind.memo": "Memo",
   "sourceCheck.sourceKind.chat": "AI chat",
+  "sourceCheck.sourceKind.conversation": "AI conversation",
   "sourceCheck.sourceKind.claim": "Claim",
   "sourceCheck.sourceKind.unknown": "Unknown source",
   "paper.narrowNotice": "The screen is narrower than the paper, so line breaks will differ from print. Zoom out or close the right panel to see it on paper.",

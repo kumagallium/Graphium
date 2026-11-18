@@ -1286,7 +1286,7 @@ type DerivedFromEntry = {
   memoCaptureId?: string;
 };
 
-// 外部ソース ID（pdf:/url:/document:/chat:/memo:）のラベルを mediaIndex から解決する。
+// 外部ソース ID（pdf:/url:/document:/conversation:/chat:/memo:）のラベルを mediaIndex から解決する。
 // pdf / document は mediaFileId、url はブックマーク URL でメディアを引く。
 function resolveExternalLabel(
   kind: string,
@@ -1306,6 +1306,8 @@ function resolveExternalLabel(
     if (m) return m.name;
   }
   if (kind === "url") return key;
+  // conversation は引けないとき題だけ（短縮 ID は付けない）
+  if (kind === "conversation") return "AI conversation";
   const labelPrefix = kind === "pdf" ? "PDF" : "Document";
   return `${labelPrefix} ${key.slice(0, 8)}`;
 }

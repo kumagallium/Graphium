@@ -15,6 +15,10 @@
 //   - "document:<mediaFileId>" Word(.docx) など document 素材を Knowledge 化したソース
 //   - "chat:<timestamp>"       AI チャットを Knowledge 化したソース
 //   - "memo:<captureId>"       メモ（CaptureEntry）を Knowledge 化したソース
+//   - "conversation:<mediaFileId>" AI との会話（Claude Code などの会話の記録）の素材を
+//                              Knowledge 化したソース。"chat:" はアプリの中の AI チャットで、
+//                              元の会話への参照を持たない。こちらは取り込んだ本文を素材として持ち、
+//                              引いた一節を照らし合わせられるので、別の接頭辞にしてある
 //   - "shared:<sharedId>"      team-shared storage のエントリを引用したソース
 //                              （EditActivity.used にのみ入る。derivedFromNotes には入らない）
 //   - "data:<mediaFileId>"     区切りテキスト（.csv/.txt/.dat）のデータ素材への引用リンク
@@ -30,7 +34,16 @@
 // document モード（多数の知見を収穫）、memo: は memo モード（1 断片 ≈ 1 着想を
 // 抽出）と、ingester の Claim ガイダンスがソース種別で切り替わる。
 
-export type ExternalSourceKind = "pdf" | "url" | "document" | "chat" | "memo" | "shared" | "data" | "image";
+export type ExternalSourceKind =
+  | "pdf"
+  | "url"
+  | "document"
+  | "chat"
+  | "memo"
+  | "conversation"
+  | "shared"
+  | "data"
+  | "image";
 
 const PREFIXES: { kind: ExternalSourceKind; prefix: string }[] = [
   { kind: "pdf", prefix: "pdf:" },
@@ -38,6 +51,7 @@ const PREFIXES: { kind: ExternalSourceKind; prefix: string }[] = [
   { kind: "document", prefix: "document:" },
   { kind: "chat", prefix: "chat:" },
   { kind: "memo", prefix: "memo:" },
+  { kind: "conversation", prefix: "conversation:" },
   { kind: "shared", prefix: "shared:" },
   { kind: "data", prefix: "data:" },
   { kind: "image", prefix: "image:" },
@@ -56,7 +70,7 @@ export function parseExternalSource(
   return null;
 }
 
-/** 外部ソース ID かどうか（pdf: / url: / document: / chat: / memo:）。 */
+/** 外部ソース ID かどうか（pdf: / url: / document: / chat: / memo: / conversation: など）。 */
 export function isExternalSourceId(id: string): boolean {
   return parseExternalSource(id) !== null;
 }
@@ -64,12 +78,19 @@ export function isExternalSourceId(id: string): boolean {
 /**
  * 全体グラフのノードクリックの振り分け。
  * select = 選ぶだけ（来歴パネルを出す）/ open = そのまま開く。
- * 外部ソース（pdf/document/url/memo/chat）は来歴の起点にならないので常に open。
+ * 外部ソース（pdf/document/url/memo/chat/conversation）は来歴の起点にならないので常に open。
  */
 export function classifyNodeTap(id: string, opts: { hasSelect: boolean }): "select" | "open" {
   if (!opts.hasSelect) return "open";
   const kind = parseExternalSource(id)?.kind;
-  if (kind === "pdf" || kind === "document" || kind === "url" || kind === "memo" || kind === "chat") {
+  if (
+    kind === "pdf" ||
+    kind === "document" ||
+    kind === "url" ||
+    kind === "memo" ||
+    kind === "chat" ||
+    kind === "conversation"
+  ) {
     return "open";
   }
   return "select";
