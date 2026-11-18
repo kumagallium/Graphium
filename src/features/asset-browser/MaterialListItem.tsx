@@ -19,6 +19,7 @@ const TYPE_LABEL: Record<MediaType, string> = {
   document: "Document",
   data: "Data",
   memo: "Memo",
+  conversation: "AI conversation",
   other: "File",
 };
 
@@ -31,6 +32,8 @@ const TYPE_HEX: Record<MediaType, string> = {
   document: "#6f5b8b",
   data: "#3f7c85",
   memo: MEMO_QUOTE_COLOR,
+  // AI との会話。色は取り込みの画面を作るときに決める（それまでは other と同じ）
+  conversation: "#7a7a7a",
   other: "#7a7a7a",
 };
 

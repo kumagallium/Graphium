@@ -14,7 +14,7 @@ import { allEntries } from "./search";
 import { readMediaIndex } from "./sources";
 import { appDataDir, resolveGraphiumRoot } from "./vault";
 
-export const MEDIA_TYPES = ["image", "video", "audio", "pdf", "url", "document", "data", "memo", "other"] as const satisfies readonly MediaType[];
+export const MEDIA_TYPES = ["image", "video", "audio", "pdf", "url", "document", "data", "memo", "conversation", "other"] as const satisfies readonly MediaType[];
 
 type MediaDoc = {
   id: string;
