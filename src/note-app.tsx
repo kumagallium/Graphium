@@ -12298,7 +12298,7 @@ export function NoteApp() {
           handleOpenMemoSource(ext.key);
           return;
         }
-        if (ext.kind === "pdf" || ext.kind === "document") {
+        if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "conversation") {
           const entry = fm.mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (!entry) return;
           // PDF は照合済みの抜粋の文へ送る（無ければページへ。どちらも無ければ頭から）
@@ -13941,12 +13941,17 @@ export function NoteApp() {
   const conversationOfferEntries = useMemo(() => {
     if (conversationIntakeState.kind !== "done") return null;
     const knowledge = buildKnowledgeMap(fm.noteIndex ?? null);
-    return conversationIngestCandidates(
+    const media = fm.mediaIndex?.media ?? [];
+    const entries = conversationIngestCandidates(
       conversationIntakeState.importedIds,
       new Set(conversationIntakeState.changedIds),
-      fm.mediaIndex?.media ?? [],
+      media,
       (sourceId) => (knowledge.get(sourceId)?.length ?? 0) > 0,
     );
+    // 候補が全部ナレッジ化済みのときは、申し出の行そのものを出さない
+    //（「発言が多い会話が無い」と出すと事実と違う）
+    if (entries.length === 0 && conversationIngestCandidates(conversationIntakeState.importedIds, new Set(), media, () => false).length > 0) return null;
+    return entries;
   }, [conversationIntakeState, fm.noteIndex, fm.mediaIndex]);
 
   // カード選択時のハンドラ:
