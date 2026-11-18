@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.140.1](https://github.com/kumagallium/Graphium/compare/v0.140.0...v0.140.1) - 2026-11-18
+
+- [docs] Manual: badges for the passage checks and a roadmap row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1727
+- feat(topics): report a sentence appended after a passage that ended its note when it shares a number or a term by @kumagallium in https://github.com/kumagallium/Graphium/pull/1729
+- feat(source-check): record a hash of the source text read for each check by @kumagallium in https://github.com/kumagallium/Graphium/pull/1733
+
 ## [v0.140.0](https://github.com/kumagallium/Graphium/compare/v0.139.0...v0.140.0) - 2026-11-17
 
 - feat: export a note as a Word (.docx) file by @kumagallium in https://github.com/kumagallium/Graphium/pull/1718
