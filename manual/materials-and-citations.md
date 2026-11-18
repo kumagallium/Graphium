@@ -122,7 +122,7 @@ In the browser, choosing a folder shows **Looking through the folder…** until 
 
 Notes follow the same idea as materials (see below): a Markdown file whose contents match one you already brought in is not re-imported, and the report shows **N already in your notes** next to the notes count. The check reads the contents, not the name, so a renamed copy still counts as the same file. If the contents changed, it comes in as a new note. A note you have since edited in Graphium is never touched: re-importing the unchanged original is simply recognized as already brought in, and a changed original arrives as a new note beside your edited one. <Badge type="tip" text="Added in v0.65.0 (2026-09-08)" />
 
-## Bring in AI conversations {#bring-in-ai-conversations}
+## Bring in AI conversations <Badge type="tip" text="Added in v0.147.0 (2026-11-18)" /> {#bring-in-ai-conversations}
 
 This keeps what you decided, and why, in a conversation with an AI next to the rest of your records. In the desktop app, Graphium reads the records of your Claude Code conversations on this PC and keeps each conversation as one material.
 
