@@ -3536,7 +3536,7 @@ export const ko: Record<string, string> = {
   "intake.section.label": "가져올 항목의 종류",
   "intake.section.files": "파일",
   "intake.section.conversations": "AI 대화",
-  "intake.conversation.rule": "Claude Code 대화를 작업 폴더별로 골라 자료로 가져옵니다. 들어가는 것은 내가 쓴 말 전체와 AI 답변의 발췌입니다",
+  "intake.conversation.rule": "Claude Code 대화를 작업 폴더별로 골라 자료로 가져옵니다.\n들어가는 것은 내가 쓴 말 전체와 AI 답변의 발췌입니다",
   "intake.conversation.selectAll": "모두 선택",
   "intake.conversation.folderCount": "작업 폴더 {count}개",
   "intake.conversation.rowSessions": "대화 {sessions}개",
