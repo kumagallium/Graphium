@@ -67,7 +67,11 @@ fn reencode_png(img: &RgbImage) -> Result<Vec<u8>> {
     let long = w.max(h);
     let mut out = Vec::new();
     let write = |im: &RgbImage, out: &mut Vec<u8>| -> Result<()> {
-        im.write_to(&mut std::io::Cursor::new(out), image::ImageFormat::Png)?;
+        // Vision に渡すだけの一時的な PNG なので、圧縮は最も軽い設定にする（大きさより速さ）
+        use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+        use image::ImageEncoder;
+        PngEncoder::new_with_quality(std::io::Cursor::new(out), CompressionType::Fast, FilterType::NoFilter)
+            .write_image(im.as_raw(), im.width(), im.height(), image::ExtendedColorType::Rgb8)?;
         Ok(())
     };
     if long > VISION_MAX_SIDE {
