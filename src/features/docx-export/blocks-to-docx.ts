@@ -1,8 +1,9 @@
 // 標準ブロック → Word（docx）の要素（Paragraph / Table）
 //
-// 入力は normalize-blocks.ts が返す「標準ブロック（＋ docxChart）だけ」の配列。
+// 入力は normalize-blocks.ts が返す「標準ブロック（＋ docxChart・docxMath）だけ」の配列。
 // 画像の取得はコンテキストの関数に任せる（ここは I/O を持たない）。
 // 画像が 1 枚取れなくても全体は失敗させず、その箇所だけ差し込み文字にする。
+// 数式は式ごとに Word の数式にする（latex-to-omml.ts）。できない式は LaTeX の文字のまま出す。
 
 import {
   AlignmentType,
@@ -12,6 +13,7 @@ import {
   ImageRun,
   LevelFormat,
   LineRuleType,
+  NextAttributeComponent,
   Paragraph,
   ShadingType,
   Tab,
@@ -21,10 +23,13 @@ import {
   TableRow,
   TextRun,
   WidthType,
+  XmlComponent,
   type NumberingDefinition,
   type ParagraphChild,
 } from "docx";
 import { t } from "../../i18n";
+import { latexToOmml } from "./latex-to-omml";
+import type { OmmlNode } from "./mathml-to-omml";
 import type { NormalizedBlock } from "./normalize-blocks";
 
 /** Word に埋め込む画像（width・height は px） */
@@ -122,6 +127,49 @@ export function cleanXmlText(text: string): string {
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url);
 /** Word のリンクにしてよい行き先 */
 const isLinkableHref = (href: string) => /^(https?:\/\/|mailto:)/i.test(href);
+
+// ─────────────────────────────────────────────
+// 数式
+// ─────────────────────────────────────────────
+
+/**
+ * Word の数式の要素。docx ライブラリの数式の部品（MathRun・MathFraction など）は、立体・括弧の文字・
+ * 総和の添え字の位置といった属性を指定できないので、OmmlNode の木をそのまま XML の要素にする
+ */
+export class OmmlElement extends XmlComponent {
+  constructor(node: OmmlNode) {
+    super(node.name);
+    const attrs = Object.entries(node.attrs ?? {});
+    if (attrs.length > 0) {
+      this.root.push(
+        new NextAttributeComponent(
+          Object.fromEntries(attrs.map(([key, value]) => [key, { key, value: cleanXmlText(value) }])),
+        ),
+      );
+    }
+    if (node.text !== undefined) this.root.push(cleanXmlText(node.text));
+    for (const child of node.children ?? []) this.root.push(new OmmlElement(child));
+  }
+}
+
+/** 文中の数式（m:oMath）。Word の数式にできなければ null */
+function inlineMath(latex: unknown): OmmlElement | null {
+  const omml = latexToOmml(latex, false);
+  return omml ? new OmmlElement(omml) : null;
+}
+
+/** ブロックの数式（m:oMathPara）。1 行を占める数式として中央に置く。できなければ null */
+function displayMath(latex: unknown): OmmlElement | null {
+  const omml = latexToOmml(latex, true);
+  if (!omml) return null;
+  return new OmmlElement({
+    name: "m:oMathPara",
+    children: [
+      { name: "m:oMathParaPr", children: [{ name: "m:jc", attrs: { "m:val": "center" } }] },
+      omml,
+    ],
+  });
+}
 
 // ─────────────────────────────────────────────
 // 内部状態
@@ -259,7 +307,9 @@ async function inlinesToChildren(
       const href = typeof item.href === "string" ? item.href : "";
       const children = await inlinesToChildren(item.content, state, isLinkableHref(href) ? { ...base, style: "Hyperlink" } : base);
       if (isLinkableHref(href)) {
-        const inner = children.filter((c): c is TextRun | ImageRun => c instanceof TextRun || c instanceof ImageRun);
+        const inner = children.filter(
+          (c) => c instanceof TextRun || c instanceof ImageRun || c instanceof OmmlElement,
+        );
         out.push(new ExternalHyperlink({ link: cleanXmlText(href), children: inner }));
       } else {
         // アプリ内の行き先（#note/… など）はリンクにせず文字だけ
@@ -275,6 +325,11 @@ async function inlinesToChildren(
       } else {
         out.push(...textRuns(`[${name}]`, {}, base));
       }
+    } else if (item.type === "docxInlineMath") {
+      // 文の流れの中に Word の数式として入れる。できない式は LaTeX の文字（$…$）
+      const math = inlineMath(item.latex);
+      if (math) out.push(math as unknown as ParagraphChild);
+      else out.push(...textRuns(typeof item.text === "string" ? item.text : "", {}, base));
     }
   }
   return out;
@@ -411,6 +466,24 @@ async function renderBlock(
       } else {
         out.push(...(await renderBlocks(Array.isArray(block.fallback) ? block.fallback : [], state, level)));
       }
+      return out;
+    }
+    case "docxMath": {
+      const math = displayMath(block.latex);
+      if (!math) {
+        // Word の数式にできない式は、これまでどおり LaTeX の文字（$$ … $$）の段落
+        out.push(...(await renderBlocks(Array.isArray(block.fallback) ? block.fallback : [], state, level)));
+        return out;
+      }
+      out.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          indent: left > 0 ? { left } : undefined,
+          spacing: { before: 120, after: 200 },
+          children: [math as unknown as ParagraphChild],
+        }),
+      );
+      out.push(...(await renderBlocks(Array.isArray(block.mathChildren) ? block.mathChildren : [], state, level + 1)));
       return out;
     }
     case "heading": {

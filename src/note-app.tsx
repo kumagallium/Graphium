@@ -135,6 +135,7 @@ import {
 import { ToolApprovalHost } from "./features/ai-assistant/ToolApprovalDialog";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
+import { decideInitialDocAction } from "./lib/initial-doc-restore";
 import {
   csvFileNameFor,
   noteTableToRows,
@@ -2201,8 +2202,8 @@ function NoteEditorInner({
   }, [chatStorageId]);
   const editorRef = useRef<any>(null);
   // 「いま画面にあるエディタ」だけを持つ ref。SandboxEditor がコミット中
-  // （useLayoutEffect）に差し替えるので、上の editorRef と違って、下の
-  // key={fileId || "new"} で作り直された直後でも捨てられた前のインスタンスを指さない
+  // （useLayoutEffect）に差し替えるので、上の editorRef と違って、言語の切り替えで
+  // エディタが作り直された直後でも捨てられた前のインスタンスを指さない
   // （editorRef は onEditorReady = passive effect 待ちで、その一瞬だけ古いままになる）。
   // 非同期の結果を本文へ書き戻す処理の行き先に使う（いまは外部画像の取り込みだけ）。
   const liveEditorRef = useRef<any>(null);
@@ -2744,6 +2745,10 @@ function NoteEditorInner({
       },
       result: DataImportResult
     ) => {
+      // カーソルのあったブロックは、待つ前に ID で覚えておく。素材の登録を待つ間に
+      // 言語の切り替えでエディタが作り直されても、同じ ID のブロックを引き直せる
+      const anchorId: string | undefined =
+        liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
       let fileId = file.fileId;
       if (!fileId) {
         const rawFile = file.file;
@@ -2758,8 +2763,11 @@ function NoteEditorInner({
       if (!fileId) return;
       // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）
       if (file.text !== undefined) primeAssetText(fileId, file.text);
-      // 登録を待つ間にノートを切り替えていることがあるので、挿す先は今生きているエディタ
-      const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
+      // 登録を待つ間にエディタが作り直される（言語の切り替え・ノートの切り替え）ことがあるので、
+      // 挿す先は今生きているエディタ。作り直された直後は editorRef が一瞬だけ前の
+      // インスタンスを指すので liveEditorRef を先に見る
+      const editor =
+        liveEditor(pickerEditorRef.current) ?? liveEditor(liveEditorRef.current) ?? editorRef.current;
       if (!editor) return;
       const source = buildTableSource({
         fileName: file.fileName,
@@ -2784,7 +2792,8 @@ function NoteEditorInner({
         tableMetaStore.setSource(existing.id, undefined);
         editor.replaceBlocks([existing], [{ type: "dataTable", props: { ...props, caption } }]);
       } else {
-        const currentBlock = editor.getTextCursorPosition()?.block;
+        const currentBlock =
+          (anchorId ? editor.getBlock(anchorId) : undefined) ?? editor.getTextCursorPosition()?.block;
         const anchor = currentBlock ?? editor.document[editor.document.length - 1];
         if (!anchor) return;
         editor.insertBlocks([{ type: "dataTable", props }], anchor, "after");
@@ -2830,6 +2839,8 @@ function NoteEditorInner({
       // 注釈だけが共有ストアに残る）。DOM が繋がっている方を選ぶ。
       const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
       if (!editor) return;
+      // 文書の表は DOC_TABLE_HARD_MAX_ROWS で止まるので通常は常に全行。標本だけの結果で表を作らない（防御）
+      if (!result.rowsComplete) return;
       const block = toTableBlock(result.parsed);
       if (!block) return;
 
@@ -3047,7 +3058,7 @@ function NoteEditorInner({
             });
           }
           // 登録を待つ間にノートを切り替えていることがあるので、差し替え先は今生きているエディタ
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "table") return;
           removeBlockMetadata([blockId]);
@@ -3088,7 +3099,7 @@ function NoteEditorInner({
           if (data.rows.length > DOC_TABLE_HARD_MAX_ROWS) return;
           const spec = toTableBlock({ headers: data.headers, rows: data.rows, headerLines: [], footerLines: [] });
           if (!spec) return;
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "dataTable") return;
           const { insertedBlocks } = live.replaceBlocks([current], [spec]);
@@ -3338,7 +3349,7 @@ function NoteEditorInner({
   // 開いた時点で固定しているので、切り替え先のノートへ書くことはない（saveTargetRef）。
   const markDirtyRef = useRef<() => void>(() => {});
   // 取り込みのような「まとまった量が一度に入る」編集は、3 秒の自動保存待ちに
-  // 賭けずその場で保存する（待っている間に何かがエディタを作り直すと丸ごと消える）。
+  // 賭けずその場で保存する（待っている間にノートを閉じたり切り替えたりしても失わない）。
   // markDirtyRef と同じく useAutoSave がこの位置より後で宣言されるため ref 経由。
   const saveNowRef = useRef<(() => void) | null>(null);
 
@@ -5357,7 +5368,7 @@ function NoteEditorInner({
 
   // 会議の録音開始時に文字起こしブロックを差し込む命令口を登録する。
   // 非同期（start 応答の後）に呼ばれるので editorRef ではなく liveEditorRef を使う
-  // （key で作り直された直後に、捨てられた前のエディタへ書かないため）。
+  // （言語の切り替えで作り直された直後に、捨てられた前のエディタへ書かないため）。
   useEffect(() => {
     if (!insertMeetingBlockRef) return;
     insertMeetingBlockRef.current = (props) => insertMeetingTranscriptBlock(liveEditorRef.current, props);
@@ -5845,9 +5856,28 @@ function NoteEditorInner({
 
   // ── 初期データの復元 ──
   const initializedRef = useRef(false);
+  // 白紙の新規ノートとして開いた（開いた時点で復元するものが無い）。このときに後から届く
+  // initialDoc は、このエディタ自身が最初の保存で書いた本文（fm.activeDoc）。ストアの
+  // 中身は保存した時点より新しいことがある（保存の最中に付けた表の注釈・ラベルなど）ので、
+  // 保存した内容で置き換えない。エディタを作り直さなくなったので、本文だけ残って注釈が
+  // 巻き戻る、という食い違いをここで防ぐ
+  const openedBlankRef = useRef(initialDoc == null);
   useEffect(() => {
-    if (initializedRef.current || !initialDoc) return;
+    const action = decideInitialDocAction({
+      initialized: initializedRef.current,
+      hasInitialDoc: !!initialDoc,
+      openedBlank: openedBlankRef.current,
+    });
+    if (action === "skip" || !initialDoc) return;
     initializedRef.current = true;
+    if (action === "notify-only") {
+      // 復元はしないが、「準備ができた」ことは今までと同じ時点で伝える。リンクはストアの
+      // 生きている中身を使う（引数を渡さない）
+      if (editorRef.current) {
+        mentionRenameQueueRef.current.flushPending((r) => applyQueuedMentionRenameRef.current(r));
+      }
+      return;
+    }
     // mention-live: flush 時に restoreLinks 前後どちらの呼び出しでも使えるよう、
     // if ブロックの外まで持ち出す（本文が空のドキュメントなら空のまま）
     let restoredLinksForRename: BlockLink[] = [];
@@ -6215,8 +6245,8 @@ function NoteEditorInner({
 
   // 日時が入る列を持つテーブルの行数を、このエディタの分として先に記録しておく
   // （開いて最初の行追加から日時が入るように）。記録はエディタ単位なので、
-  // エディタが作り直されるたびに取り直す — 新規ノートは初回保存で ID が付くと
-  // key={fileId || "new"} で作り直されるが、表の注釈（tableMetaStore）は残る。
+  // エディタが作り直されるたびに取り直す — 言語の切り替えでエディタだけが作り直されるが、
+  // 表の注釈（tableMetaStore）は残るため。
   // 初期データの復元でも記録するので、注釈の復元とエディタの公開のどちらが先でも
   // 取りこぼさない（記録の無い表だけを埋めるので、二度呼んでも崩れない）
   useEffect(() => {
@@ -6881,9 +6911,9 @@ function NoteEditorInner({
 
   // 本文に入ったばかりの外部画像を、その場でローカルへ取り込む。
   // 自分で貼った画像は取り込み後ローカル参照になるので、外部メディアのバーは出ない。
-  // 書き戻し先は liveEditorRef（editorRef ではない）: 取り込みの最中に自動保存で
-  // fileId が付くと下の key={fileId || "new"} でエディタだけが作り直され、editorRef が
-  // 追いつく前に取り込みが解決すると、捨てられたインスタンスへ書いて消えるため。
+  // 書き戻し先は liveEditorRef（editorRef ではない）: 取り込みの最中に言語の切り替えで
+  // エディタが作り直され、editorRef が追いつく前に取り込みが解決すると、
+  // 捨てられたインスタンスへ書いて消えるため。
   const remoteImport = useRemoteImageImport({
     editorRef: liveEditorRef,
     scope: remoteScope,
@@ -7673,11 +7703,11 @@ function NoteEditorInner({
             {/* 外部画像のローカル取り込みの進行トースト（OCR の 1 段上） */}
             <RemoteImportToast state={remoteImport.toast} />
             <SandboxEditor
-              key={fileId || "new"}
+              // 鍵は付けない。fileId 由来の鍵だと、最初の保存で作り直されて保存の最中の編集が
+              // 消える。ノートの切り替えは、外側の key={fm.editorKey} が NoteEditor ごと作り直す
               editable={!archived && !trashed}
-              // 外部メディアの読み込み同意の単位。key とは別の値にする: 新規ノートは
-              // 自動保存で fileId が付いた時点でこの key が変わりエディタが作り直されるが、
-              // 開いている本文は同じなので、同意まで作り直されては困る。
+              // 外部メディアの読み込み同意の単位。fileId 由来にしない: 新規ノートは最初の
+              // 保存で fileId が付くが、開いている本文は同じなので、同意の単位は変えない。
               remoteContentScope={remoteScope}
               blocks={customBlockEntries}
               initialContent={initialContent}
@@ -7687,7 +7717,7 @@ function NoteEditorInner({
               slashMenuGroupOrder={getSlashMenuGroupOrder}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
-              // 作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
+              // 言語の切り替えによる作り直しの直後でも「いま画面にあるインスタンス」を指す ref。
               // 取り込み中の外部画像の書き戻し先（useRemoteImageImport）に使う。
               liveEditorRef={liveEditorRef}
               onChange={handleContentChange}

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { detectImportOptions } from "./detect";
 import { splitLines, parseDelimited } from "./parse";
+import { DETECT_SAMPLE_LINES } from "./large-file";
 
 function detect(text: string) {
   return detectImportOptions(splitLines(text));
@@ -134,5 +135,86 @@ describe("detectImportOptions", () => {
       headerRow: 1,
       endRow: 3,
     });
+  });
+});
+
+// ── 標本推定（DETECT_SAMPLE_LINES 行を超えるファイル）──
+
+/** 前置き 2 行 + 見出し + n 行のデータ + 後書き */
+function bigCsv(n: number, tail: string[] = []): string {
+  return [
+    "# instrument log",
+    "# note",
+    "time,value,flag",
+    ...Array.from({ length: n }, (_, i) => `${i},${(i % 97) / 10},ok`),
+    ...tail,
+  ].join("\n");
+}
+
+describe("detectImportOptions / 大きなファイル", () => {
+  it("標本以下の行数は従来どおり（全行で推定する）", () => {
+    const n = DETECT_SAMPLE_LINES - 10;
+    const o = detect(bigCsv(n));
+    expect(o).toMatchObject({ headerRow: 3, endRow: 3 + n, delimiter: "comma" });
+  });
+
+  it("6,000 行超でも区切り・見出し行・終了行を当てる", () => {
+    const n = 8_000;
+    const o = detect(bigCsv(n));
+    expect(o).toMatchObject({ headerRow: 3, endRow: 3 + n, delimiter: "comma", collapseConsecutive: false });
+  });
+
+  it("タブ区切りも標本から当てる", () => {
+    const text = ["h", ...Array.from({ length: 7_000 }, (_, i) => `${i}\t${i * 2}`)].join("\n").replace("h", "x\ty");
+    const o = detect(text);
+    expect(o).toMatchObject({ headerRow: 1, endRow: 7_001, delimiter: "tab" });
+  });
+
+  it("末尾の空行は数えない", () => {
+    const n = 7_000;
+    const o = detect(bigCsv(n) + "\n\n\n");
+    expect(o.endRow).toBe(3 + n);
+  });
+
+  it("末尾の後書き（コメント行・列数の違う行）の手前を終了行にする", () => {
+    const n = 7_000;
+    const o = detect(bigCsv(n, ["# [DATA END]", "# checksum: 0x2f19", "total only"]));
+    expect(o.endRow).toBe(3 + n);
+    // 実際に変換して、後書きがデータ行に混ざっていない
+    const parsed = parseDelimited(bigCsv(n, ["# [DATA END]", "total only"]), detect(bigCsv(n, ["# [DATA END]", "total only"])));
+    expect(parsed.rows).toHaveLength(n);
+    expect(parsed.footerLines).toEqual(["# [DATA END]", "total only"]);
+  });
+
+  it("標本の途中でデータが終わるときは従来どおりの推定を使う", () => {
+    // 先頭 3,000 行が表で、その後ろは別の内容（標本の最後には届かない）
+    const head = Array.from({ length: 3_000 }, (_, i) => `${i},${i}`);
+    const rest = Array.from({ length: 4_000 }, (_, i) => `memo line ${i}`);
+    const text = ["a,b", ...head, ...rest].join("\n");
+    const o = detect(text);
+    expect(o).toMatchObject({ headerRow: 1, endRow: 3_001, delimiter: "comma" });
+  });
+
+  it("標本の中に乱れた行が 1 行あっても、その先まで続くデータを途中で切らない", () => {
+    // 全行を見ていた頃は後ろの長い塊を拾えていた。標本で切れた所を終わりと決めつけない
+    for (const odd of ["", "x,y"]) {
+      const lines = ["a,b,c,d", ...Array.from({ length: 23_000 }, (_, i) => `${i},1,2,3`)];
+      lines[3_000] = odd;
+      const o = detect(lines.join("\n"));
+      expect(o.delimiter).toBe("comma");
+      expect(o.endRow).toBe(23_001);
+    }
+  });
+
+  it("データが標本の最後の行でちょうど終わり、後書きが続くときは、後書きを含めない", () => {
+    const text = ["a,b", ...Array.from({ length: DETECT_SAMPLE_LINES - 1 }, (_, i) => `${i},${i}`), "# end"].join("\n");
+    const o = detect(text);
+    expect(o).toMatchObject({ headerRow: 1, endRow: DETECT_SAMPLE_LINES, delimiter: "comma" });
+  });
+
+  it("標本に塊が無いときは全行を指す既定に倒す", () => {
+    const text = Array.from({ length: 6_000 }, (_, i) => `memo${i}`).join("\n");
+    const o = detect(text);
+    expect(o).toMatchObject({ headerRow: 1, endRow: 6_000, delimiter: "comma" });
   });
 });

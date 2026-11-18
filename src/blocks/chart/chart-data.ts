@@ -86,7 +86,16 @@ export function matchNumericPrefix(normalized: string): string | null {
   return normalized.match(/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?/)?.[0] ?? null;
 }
 
+// 素の数値（全角・桁区切りを含まない）。数十万行を数値化するとき、セルごとに 4 回の置換を
+// 掛けない近道。結果は下の一般経路と同じ（正規化で何も変わらず、前置きの一致が全体になる）
+const PLAIN_NUMBER = /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/;
+
 export function parseNumeric(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (PLAIN_NUMBER.test(trimmed)) {
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
   const s = normalizeNumericText(raw);
   if (!s) return null;
   const m = matchNumericPrefix(s);
@@ -151,8 +160,13 @@ function computeBins(values: number[], seriesCount: number): {
   labels: string[];
 } | null {
   if (values.length === 0) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  // 点が数十万ある素材でも落ちないよう、spread（引数の上限がある）は使わない
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
   if (min === max) {
     return { start: min, width: 1, bins: 1, labels: [String(min)] };
   }

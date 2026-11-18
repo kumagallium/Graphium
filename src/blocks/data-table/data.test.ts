@@ -3,12 +3,18 @@ import {
   peekDataTable,
   peekDataTableFromBlock,
   loadDataTable,
+  loadDelimitedAsset,
+  cacheKey,
+  peekDelimitedAsset,
   subscribeDataTableData,
   clearDataTableCache,
+  registerLargeTablePreparer,
 } from "./data";
+import { SYNC_PARSE_MAX_CHARS } from "../../features/data-import/large-file";
 import { primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
 import { serializeDataTableSource } from "./source";
 import type { TableSource } from "../../lib/document-types";
+import { loadAssetTable } from "../chart/asset-source";
 
 function source(overrides: Partial<TableSource> = {}): TableSource {
   return {
@@ -151,5 +157,177 @@ describe("subscribeDataTableData", () => {
     await new Promise((r) => setTimeout(r, 5));
     expect(calls).toBe(0);
     unsubscribe();
+  });
+});
+
+describe("大きな本文（SYNC_PARSE_MAX_CHARS 超）", () => {
+  /** しきい値を超える本文。1 行 20 文字前後 × 十分な行数 */
+  function bigText(): { text: string; rows: number } {
+    const rows = Math.ceil(SYNC_PARSE_MAX_CHARS / 8) + 10;
+    const lines = ["time,temp_c"];
+    for (let i = 0; i < rows; i++) lines.push(`${i},${i % 100}`);
+    return { text: lines.join("\n"), rows };
+  }
+  const bigSource = (rows: number) => source({ options: { ...source().options, endRow: rows + 1 } });
+
+  it("peek は最初 null を返し、変換が終わると通知が 1 回来て、その後はデータを返す", async () => {
+    const { text, rows } = bigText();
+    expect(text.length).toBeGreaterThan(SYNC_PARSE_MAX_CHARS);
+    primeAssetText("asset-1", text);
+    let calls = 0;
+    const unsubscribe = subscribeDataTableData(() => {
+      calls += 1;
+    });
+    const src = bigSource(rows);
+    expect(peekDataTable(src)).toBeNull();
+    // 変換中に重ねて peek しても変換は 1 回（通知も 1 回）
+    expect(peekDataTable(src)).toBeNull();
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(calls).toBe(1);
+    const data = peekDataTable(src);
+    expect(data?.headers).toEqual(["time", "temp_c"]);
+    expect(data?.rows).toHaveLength(rows);
+    unsubscribe();
+  });
+
+  it("load を重ねて呼んでも同じ結果オブジェクトになる", async () => {
+    const { text, rows } = bigText();
+    primeAssetText("asset-1", text);
+    const src = bigSource(rows);
+    const [a, b] = await Promise.all([loadDataTable(src), loadDataTable(src)]);
+    expect(a).toBe(b);
+    expect(a.rows).toHaveLength(rows);
+    // 終わったあとの peek もキャッシュの同じオブジェクト
+    expect(peekDataTable(src)).toBe(a);
+  });
+});
+
+describe("registerLargeTablePreparer", () => {
+  // SYNC_PARSE_MAX_CHARS（200 万文字）を超える本文
+  const bigCsv = "a,b\n" + Array.from({ length: 260_000 }, (_, i) => `${i},${i * 2}`).join("\n") + "\n";
+  const bigSource = () => source({ options: { ...source().options, endRow: 260_001 } });
+
+  it("大きな表は、下ごしらえが済んでから「読めた」と知らせる", async () => {
+    const order: string[] = [];
+    const unregister = registerLargeTablePreparer(async (data) => {
+      await new Promise((r) => setTimeout(r, 10));
+      order.push(`prepared:${data.rows.length}`);
+    });
+    const unsubscribe = subscribeDataTableData(() => order.push("notified"));
+    primeAssetText("asset-1", bigCsv);
+    expect(peekDataTable(bigSource())).toBeNull();
+    const data = await loadDataTable(bigSource());
+    await new Promise((r) => setTimeout(r, 5));
+    expect(data.rows.length).toBe(260_000);
+    expect(order).toEqual(["prepared:260000", "notified"]);
+    unregister();
+    unsubscribe();
+  });
+
+  it("下ごしらえが失敗しても表は読める", async () => {
+    const unregister = registerLargeTablePreparer(async () => {
+      throw new Error("boom");
+    });
+    primeAssetText("asset-1", bigCsv);
+    const data = await loadDataTable(bigSource());
+    expect(data.headers).toEqual(["a", "b"]);
+    unregister();
+  });
+
+  it("小さな表には下ごしらえを掛けない（同期で読む）", () => {
+    let called = 0;
+    const unregister = registerLargeTablePreparer(async () => {
+      called += 1;
+    });
+    primeAssetText("asset-1", CSV);
+    expect(peekDataTable(source())?.rows).toHaveLength(2);
+    expect(called).toBe(0);
+    unregister();
+  });
+});
+
+describe("loadDelimitedAsset / peekDelimitedAsset（素材 ID と読み方から読む口）", () => {
+  const bigCsv = "a,b\n" + Array.from({ length: 260_000 }, (_, i) => `${i},${i * 2}`).join("\n") + "\n";
+  const bigSource = () => source({ options: { ...source().options, endRow: 260_001 } });
+
+  it("小さい本文: loadDataTable / peekDataTable と同じ結果・同じ参照を返す", async () => {
+    primeAssetText("asset-1", CSV);
+    const src = source();
+    const peeked = peekDelimitedAsset(src.fileId!, src.options);
+    expect(peeked?.rows).toEqual([
+      ["08:00", "180"],
+      ["08:05", "182"],
+    ]);
+    expect(peekDataTable(src)).toBe(peeked);
+    expect(await loadDelimitedAsset(src.fileId!, src.options)).toBe(peeked);
+    expect(await loadDataTable(src)).toBe(peeked);
+  });
+
+  it("本文が読めていなければ peek は null、fileId が空なら load は reject", async () => {
+    expect(peekDelimitedAsset("asset-1", source().options)).toBeNull();
+    await expect(loadDelimitedAsset("", source().options)).rejects.toThrow();
+  });
+
+  it("大きい本文: peek は null で裏で変換し、load と同じ参照を返す", async () => {
+    primeAssetText("asset-1", bigCsv);
+    const src = bigSource();
+    expect(peekDelimitedAsset(src.fileId!, src.options)).toBeNull();
+    const loaded = await loadDelimitedAsset(src.fileId!, src.options);
+    expect(loaded.rows).toHaveLength(260_000);
+    expect(peekDelimitedAsset(src.fileId!, src.options)).toBe(loaded);
+    expect(await loadDataTable(src)).toBe(loaded);
+  });
+
+  it("大きい本文: チャート側の loadAssetTable とデータ表側が同じ rows を返す（2 回変換しない）", async () => {
+    primeAssetText("asset-1", bigCsv);
+    const src = bigSource();
+    const [fromChart, fromTable] = await Promise.all([
+      loadAssetTable({ fileId: "asset-1", fileName: "big.csv", options: src.options }),
+      loadDataTable(src),
+    ]);
+    expect(fromChart.rows).toBe(fromTable.rows);
+    expect(fromChart.rows).toHaveLength(260_000);
+  });
+
+  it("小さい本文: チャート側の loadAssetTable は今までどおりの表を返す", async () => {
+    primeAssetText("asset-1", CSV);
+    const table = await loadAssetTable({ fileId: "asset-1", fileName: "o.csv", options: source().options });
+    expect(table.headers).toEqual(["time", "temp_c"]);
+    expect(table.rows).toEqual([
+      ["08:00", "180"],
+      ["08:05", "182"],
+    ]);
+  });
+});
+
+describe("cacheKey（読み方の正規化）", () => {
+  const base = { headerRow: 1, endRow: 3, delimiter: "comma" as const, collapseConsecutive: false };
+
+  it("プロパティの並びだけ違う options は同じキー", () => {
+    const reordered = { collapseConsecutive: false, delimiter: "comma" as const, endRow: 3, headerRow: 1 };
+    expect(cacheKey("f", reordered)).toBe(cacheKey("f", base));
+  });
+
+  it("delimiter が custom でないとき、customDelimiter（空文字・値あり）はキーに入らない", () => {
+    expect(cacheKey("f", { ...base, customDelimiter: "" })).toBe(cacheKey("f", base));
+    expect(cacheKey("f", { ...base, customDelimiter: ";" })).toBe(cacheKey("f", base));
+  });
+
+  it("custom では customDelimiter が効く。未指定と空文字は同じ", () => {
+    const c = { ...base, delimiter: "custom" as const };
+    expect(cacheKey("f", { ...c, customDelimiter: "" })).toBe(cacheKey("f", c));
+    expect(cacheKey("f", { ...c, customDelimiter: ";" })).not.toBe(cacheKey("f", c));
+  });
+
+  it("素材 ID や読み方が違えば別のキー", () => {
+    expect(cacheKey("g", base)).not.toBe(cacheKey("f", base));
+    expect(cacheKey("f", { ...base, endRow: 4 })).not.toBe(cacheKey("f", base));
+  });
+
+  it("並びだけ違う options で、同じ結果（同じ参照）を返す", async () => {
+    primeAssetText("asset-1", CSV);
+    const a = await loadDelimitedAsset("asset-1", base);
+    const b = await loadDelimitedAsset("asset-1", { ...base, customDelimiter: "", endRow: 3 });
+    expect(b).toBe(a);
   });
 });

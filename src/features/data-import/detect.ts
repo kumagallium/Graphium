@@ -5,6 +5,7 @@
 // 装置ファイルは前置きと後書きが付くだけで、本体は「列数が一定の行が連続する塊」
 // として素直に立ち上がる。その塊を探すだけで開始行・終了行・区切りがまとめて決まる。
 
+import { DETECT_SAMPLE_LINES, DETECT_TAIL_SCAN_LINES } from "./large-file";
 import { countFields, splitLine } from "./parse";
 import type { DelimitedImportOptions, DelimiterKind } from "./types";
 
@@ -83,18 +84,66 @@ function findLongestRun(lines: string[], candidate: Candidate): Run | null {
   return best;
 }
 
+/** 推定の中身。塊（run）と候補も返すのは、大きなファイルで終了行を補正するため */
+type Detection = {
+  options: DelimitedImportOptions;
+  run: Run | null;
+  candidate: Candidate | null;
+};
+
 /**
  * 本文から取り込み設定を推定する。
  *
  * 塊が見つからなければ「全行をカンマ区切りで取り込む」に倒す。取り込めない
  * ファイルでもダイアログは開き、人が区切り文字を選べば表になる。
+ *
+ * 末尾の空行を除いた行数が DETECT_SAMPLE_LINES を超えるファイルは、先頭の標本だけで
+ * 区切りと見出し行を推定する（全行で 4 候補を試すと 23 万行で 11 秒固まった）。
+ * 標本の最後までデータが続いているときは、終了行をファイルの末尾側から決める。
+ *
+ * この近似の代償（どちらも人が終了行・区切りを直せば取り込める）:
+ * - 前置きが標本（5,000 行）を超えるファイルは、標本に塊が無く見出し行を外す
+ * - 標本より後ろに、標本内の塊より長い別の塊があるファイルは、そちらを見逃す
+ * - 終了行は、末尾 DETECT_TAIL_SCAN_LINES 行の範囲でしか後書きを見分けない。
+ *   標本の最後まで続く塊で、それより長い後書きがあると、後書きも終了行に含まれる
+ * - 末尾に塊と同じ列数の行があれば、そこまでを範囲にする。途中に別の形の行が
+ *   挟まっていても範囲に入る（変換では列数を揃えて出すので、プレビューで気づける）
  */
 export function detectImportOptions(lines: string[]): DelimitedImportOptions {
   // 末尾の空行は終了行の推定をぶれさせるだけなので数に入れない
   let last = lines.length;
   while (last > 0 && lines[last - 1].trim() === "") last--;
-  const body = lines.slice(0, last);
 
+  if (last <= DETECT_SAMPLE_LINES) {
+    return detectCore(lines.slice(0, last)).options;
+  }
+
+  const sample = lines.slice(0, DETECT_SAMPLE_LINES);
+  const { options, run, candidate } = detectCore(sample);
+  if (!run || !candidate) {
+    // 標本に塊が無いときの既定は「全行」。標本の長さで切らず、ファイル全体を指す
+    return { ...options, endRow: Math.max(1, last) };
+  }
+  // 終了行はファイルの末尾側から決める: 末尾から戻って、塊と同じ列数の最後の行を探す。
+  // 塊が標本の途中で切れていても同じ（標本の中に列数の違う行が 1 行あるだけで、その先も
+  // データが続いていることがある。全行を見ていた頃は後ろの長い塊を拾えていたので、
+  // 標本の中で切れたことを「データの終わり」とは決めつけない）
+  const delim = delimiterChar(candidate);
+  const stop = Math.max(run.end, last - DETECT_TAIL_SCAN_LINES);
+  for (let i = last - 1; i >= stop; i--) {
+    const line = lines[i];
+    if (line.trim() === "" || COMMENT_PREFIX.test(line)) continue;
+    if (countFields(line, delim, candidate.collapseConsecutive) === run.width) {
+      return { ...options, endRow: i + 1 };
+    }
+  }
+  // 末尾に同じ列数の行が無い。塊が標本の途中で終わっていれば、データはそこまでとみなす。
+  // 標本の最後まで続いていたなら、どこで終わるかは分からないので末尾までを指す
+  if (run.end < sample.length - 1) return options;
+  return { ...options, endRow: last };
+}
+
+function detectCore(body: string[]): Detection {
   let bestRun: Run | null = null;
   let bestCandidate: Candidate | null = null;
   for (const candidate of CANDIDATES) {
@@ -113,10 +162,14 @@ export function detectImportOptions(lines: string[]): DelimitedImportOptions {
 
   if (!bestRun || !bestCandidate) {
     return {
-      headerRow: 1,
-      endRow: Math.max(1, body.length),
-      delimiter: "comma",
-      collapseConsecutive: false,
+      options: {
+        headerRow: 1,
+        endRow: Math.max(1, body.length),
+        delimiter: "comma",
+        collapseConsecutive: false,
+      },
+      run: null,
+      candidate: null,
     };
   }
 
@@ -136,11 +189,15 @@ export function detectImportOptions(lines: string[]): DelimitedImportOptions {
       : bestRun.start;
 
   return {
-    headerRow: headerIdx + 1,
-    endRow: bestRun.end + 1,
-    delimiter: bestCandidate.delimiter,
-    customDelimiter: bestCandidate.customDelimiter,
-    collapseConsecutive: bestCandidate.collapseConsecutive,
+    options: {
+      headerRow: headerIdx + 1,
+      endRow: bestRun.end + 1,
+      delimiter: bestCandidate.delimiter,
+      customDelimiter: bestCandidate.customDelimiter,
+      collapseConsecutive: bestCandidate.collapseConsecutive,
+    },
+    run: bestRun,
+    candidate: bestCandidate,
   };
 }
 
