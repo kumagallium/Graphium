@@ -3,14 +3,17 @@
 // 左はアプリの「記録」の画面を小さく写したもの（札の言葉と色・残した人の印はアプリと同じ）、
 // 右は同じ記録が言葉で見つかる様子。画面に入ると、言葉が打たれて結果が順に現れる。
 // 絵に出すのは、いまの記録の画面で実際に起きることだけにする（札は records.origin.* の言葉、
-// 見つかるのは題・見出し・メモの本文・URL の抜粋）。実装が変わったら、ここも合わせる。
+// 見つかるのは題・見出し・ノートの本文・メモの本文・URL の抜粋。v0.139.0 で確かめた）。
+// 「録音から」は、録音済みの文字起こしブロックを持つノートに付く札。絵の 1 文はそのノートに
+// 書いた本文で、文字起こしの中の言葉ではない（文字起こしの言葉で見つかるのは録音の素材のほう）。
+// 実装が変わったら、ここも合わせる。
 // まだ LandingPage には組み込んでいない。文言はここに仮置きしている（決まったら i18n.ts へ移す）。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Globe,
   Image as ImageIcon,
   MessagesSquare,
-  PenLine,
+  Mic,
   Search,
   Smartphone,
   StickyNote,
@@ -34,8 +37,8 @@ type Moment = {
   who: Who;
   // 何を（題）。メモは題を持たない
   title?: string;
-  // 何を（題の下の 1 行）。メモは本文、ノートは見出し、Web クリップは抜粋。写真は持たない。
-  // 記録の画面で探したときに当たるのは、題とこの 1 行だけ（ノートの本文は当たらない）
+  // 何を（題の下の 1 行）。メモは本文、ノートは本文の中の 1 文、Web クリップは抜粋。写真は持たない。
+  // v0.139.0 から、記録の画面はノートの本文でも当たり、当たった 1 文を題の下に出す
   text?: string;
   // 写真などのファイル名
   file?: string;
@@ -70,12 +73,12 @@ const COPY: Record<MomentsLocale, Copy> = {
       {
         id: "meeting",
         time: "10:12",
-        icon: PenLine,
-        tone: "plain",
-        where: "手で書いた",
+        icon: Mic,
+        tone: "rose",
+        where: "録音から",
         who: "self",
         title: "パン教室の打ち合わせ",
-        text: "決まったこと · 発酵の温度をどうするか",
+        text: "次は、発酵の温度を先に下げてみよう",
       },
       {
         id: "photo",
@@ -104,7 +107,7 @@ const COPY: Record<MomentsLocale, Copy> = {
         where: "AI から",
         who: "selfWithAi",
         title: "発酵時間の見直し案",
-        text: "温度はそのままで時間を倍にする案 · 試す順番",
+        text: "温度はそのままで、時間を倍にする手があります",
       },
     ],
     heading: "今日の記録",
@@ -116,7 +119,7 @@ const COPY: Record<MomentsLocale, Copy> = {
     placeholder: "言葉で探す",
     hits: "4 件",
     foot: "残した場面が違っても、同じ言葉で見つかります",
-    note: "Web のクリップとスマホからの受け取りは、デスクトップ版で動きます。",
+    note: "Web のクリップ、録音、スマホからの受け取りは、デスクトップ版で動きます。",
   },
   en: {
     moments: [
@@ -132,12 +135,12 @@ const COPY: Record<MomentsLocale, Copy> = {
       {
         id: "meeting",
         time: "10:12",
-        icon: PenLine,
-        tone: "plain",
-        where: "Written by hand",
+        icon: Mic,
+        tone: "rose",
+        where: "From a recording",
         who: "self",
         title: "Bread class planning",
-        text: "Decisions · What to do about the proofing temperature",
+        text: "Next time, let's lower the proofing temperature first",
       },
       {
         id: "photo",
@@ -166,7 +169,7 @@ const COPY: Record<MomentsLocale, Copy> = {
         where: "From AI",
         who: "selfWithAi",
         title: "A new proofing schedule",
-        text: "Same temperature, twice the time · What to try first",
+        text: "Keep the temperature and double the time",
       },
     ],
     heading: "Today's records",
@@ -178,7 +181,7 @@ const COPY: Record<MomentsLocale, Copy> = {
     placeholder: "Find by words",
     hits: "4 found",
     foot: "Different moments, found by the same word",
-    note: "Web clips and receiving from your phone run in the desktop app.",
+    note: "Web clips, recording, and receiving from your phone run in the desktop app.",
   },
 };
 
