@@ -14,6 +14,7 @@
 // 最大値が、そのノートを最後に取り込んだ時刻になる。資料ごとに正確で、新しい保存先も要らない。
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import { isPlaceUrl } from "../linked-files/link-url";
 
 /**
  * ナレッジページ群の来歴から、指定ソース（ノート等）を最後に取り込んだ時刻を求める。
@@ -71,7 +72,11 @@ export function mediaKnowledgeSourceId(entry: {
   url?: string;
   mimeType?: string;
 }): string | undefined {
-  if (entry.type === "url") return entry.url ? `url:${entry.url}` : undefined;
+  if (entry.type === "url") {
+    // リンクした素材（置き場のファイル）は中身を読まないので取り込みの対象外
+    if (entry.url && isPlaceUrl(entry.url)) return undefined;
+    return entry.url ? `url:${entry.url}` : undefined;
+  }
   if (!entry.fileId) return undefined;
   if (entry.type === "pdf") return `pdf:${entry.fileId}`;
   if (entry.type === "document" && entry.mimeType === WORD_DOCX_MIME) return `document:${entry.fileId}`;

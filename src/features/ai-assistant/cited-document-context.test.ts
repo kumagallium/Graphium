@@ -576,3 +576,29 @@ describe("resolveAttachedNoteContents", () => {
     expect(got).toEqual(["## 生きているノート\n残った本文"]);
   });
 });
+
+describe("assembleCitedAssetContext — リンクした素材", () => {
+  const placeUrl = "graphium-place://place-1/%E5%AE%9F%E9%A8%93/data%201.xlsx";
+
+  it("Web へ取りに行かず、名前・置き場・場所・読んでいない旨の説明を渡す", async () => {
+    let called = 0;
+    const md = await assembleCitedAssetContext(
+      { fileId: "link-1", name: "data 1.xlsx", type: "url", sourceUrl: placeUrl, placeName: "共有ドライブ", excerpt: "使わない" },
+      {
+        captureIndex: null,
+        provider: { getMediaBlobUrl: async () => "" },
+        loadUrlText: async () => {
+          called++;
+          return "取得した本文";
+        },
+      },
+    );
+    expect(called).toBe(0);
+    expect(md).toContain("data 1.xlsx");
+    expect(md).toContain("共有ドライブ");
+    expect(md).toContain("実験/data 1.xlsx");
+    expect(md).toContain("中身も読んでいません");
+    expect(md).not.toContain("取得した本文");
+    expect(md).not.toContain("使わない");
+  });
+});

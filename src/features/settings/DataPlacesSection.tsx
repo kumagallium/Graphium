@@ -18,6 +18,7 @@ import { useLocale } from "../../i18n";
 import { confirmAction } from "../../ui/confirm-dialog";
 import {
   listPlaces,
+  persistPlaceName,
   registerPlace,
   removePlace,
   renamePlace,
@@ -36,6 +37,7 @@ export type DataPlacesSectionProps = {
     listPlaces?: () => Promise<PlaceInfo[]>;
     registerPlace?: () => Promise<PlaceInfo | null>;
     renamePlace?: (id: string, name: string) => Promise<PlaceInfo>;
+    persistPlaceName?: (placeId: string, placeName: string) => Promise<number>;
     removePlace?: (id: string) => Promise<void>;
   };
 };
@@ -51,6 +53,7 @@ export function DataPlacesSection({ onChange, __test }: DataPlacesSectionProps) 
   const list = __test?.listPlaces ?? listPlaces;
   const register = __test?.registerPlace ?? registerPlace;
   const rename = __test?.renamePlace ?? renamePlace;
+  const syncName = __test?.persistPlaceName ?? persistPlaceName;
   const remove = __test?.removePlace ?? removePlace;
 
   const reload = useCallback(async () => {
@@ -87,12 +90,18 @@ export function DataPlacesSection({ onChange, __test }: DataPlacesSectionProps) 
       if (!name || name === place.name) return;
       try {
         await rename(place.id, name);
+        // 一覧に出る置き場の名前（素材の urlMeta.domain）も新しい名前に合わせる。失敗しても改名は成功のまま
+        try {
+          await syncName(place.id, name);
+        } catch {
+          // 素材側の名前が古いままでも、リンクは置き場の id で引くので動作には影響しない
+        }
         await reload();
       } catch (e) {
         setMessage(t("linkedFile.actionFailed", { message: e instanceof Error ? e.message : String(e) }));
       }
     },
-    [rename, reload, t],
+    [rename, syncName, reload, t],
   );
 
   const handleRemove = useCallback(

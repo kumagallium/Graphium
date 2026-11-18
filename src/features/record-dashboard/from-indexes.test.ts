@@ -245,3 +245,11 @@ describe("buildRecords", () => {
     expect(() => buildRecords({ notes, media: mediaList, captures: [] })).not.toThrow();
   });
 });
+
+describe("リンクした素材の分類", () => {
+  it("置き場の URL の素材は Web クリップでなく、取り込んだファイルと同じ分類", () => {
+    const linked = media({ type: "url", url: "graphium-place://place-1/docs/a.xlsx", name: "a.xlsx" });
+    expect(deriveMediaOrigin(linked)).toBe("file");
+    expect(mediaToRecord(linked).origin).toBe("file");
+  });
+});

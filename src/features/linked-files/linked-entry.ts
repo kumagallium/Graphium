@@ -2,11 +2,14 @@
 
 import {
   addMediaEntry,
+  MEDIA_INDEX_CHANGED_EVENT,
+  readMediaIndex,
+  saveMediaIndex,
   type MediaIndex,
   type MediaIndexEntry,
   type MediaLink,
 } from "../asset-browser/media-index";
-import { buildPlaceUrl } from "./link-url";
+import { buildPlaceUrl, parsePlaceUrl } from "./link-url";
 import type { LinkStat, PickedFile, PlaceInfo } from "./places";
 
 export type LinkState = "ok" | "changed" | "missing" | "unreachable" | "unregistered";
@@ -83,4 +86,45 @@ export function withPlaceName(entry: MediaIndexEntry, placeName: string): MediaI
     ...entry,
     urlMeta: { ...(entry.urlMeta ?? { domain: placeName }), domain: placeName },
   };
+}
+
+/** 索引の中の、その置き場のリンクした素材すべてに新しい置き場の名前を当てる。変わらなければ同じ索引を返す。 */
+export function withPlaceNameInIndex(
+  index: MediaIndex,
+  placeId: string,
+  placeName: string,
+): { index: MediaIndex; changed: number } {
+  let changed = 0;
+  const media = index.media.map((m) => {
+    if (m.type !== "url") return m;
+    const id = m.link?.placeId ?? parsePlaceUrl(m.url)?.placeId;
+    if (id !== placeId || m.urlMeta?.domain === placeName) return m;
+    changed++;
+    return withPlaceName(m, placeName);
+  });
+  if (changed === 0) return { index, changed };
+  return { index: { ...index, updatedAt: new Date().toISOString(), media }, changed };
+}
+
+/**
+ * 置き場の名前を変えたあとに呼ぶ。索引を読み直し、その置き場の素材の名前（urlMeta.domain）を合わせて保存する。
+ * persistLinkPatch と同じ流儀（読み直し → 書き戻し → 変更通知）。返り値は書き換えた件数。
+ */
+export async function persistPlaceName(placeId: string, placeName: string): Promise<number> {
+  const index = await readMediaIndex();
+  if (!index) return 0;
+  const { index: next, changed } = withPlaceNameInIndex(index, placeId, placeName);
+  if (changed === 0) return 0;
+  try {
+    await saveMediaIndex(next);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "place-renamed", placeId } }),
+      );
+    }
+    return changed;
+  } catch (err) {
+    console.warn("置き場の名前の書き戻し失敗:", err);
+    return 0;
+  }
 }

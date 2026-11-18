@@ -6,6 +6,7 @@ import { safeExternalHref } from "../../lib/safe-href";
 import { StickyNote, BookOpen, TextQuote } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
+import { isPlaceUrl } from "../linked-files/link-url";
 import type { TextQuoteAnchor } from "../mobile-capture";
 import { useSelectionQuoteTarget } from "./selection-quote-context";
 
@@ -209,7 +210,7 @@ export function CitationBlockPreview({ source }: { source: CitationSource }) {
       >
         <BookOpen size={11} />
         <span>Source: {sourceLabel}</span>
-        {source.entry.type === "url" && source.entry.url && (
+        {source.entry.type === "url" && source.entry.url && !isPlaceUrl(source.entry.url) && (
           <a
             href={safeExternalHref(source.entry.url + (source.textFragment ? `#:~:text=${encodeURIComponent(source.textFragment)}` : ""))}
             target="_blank"

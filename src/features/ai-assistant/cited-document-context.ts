@@ -19,6 +19,7 @@
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch, type GroundingScope } from "../../lib/grounding-scope";
+import { isPlaceUrl, parsePlaceUrl } from "../linked-files/link-url";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { CaptureEntry, CaptureIndex } from "../mobile-capture/capture-store";
 import { formatMemoEdgeLabel } from "../mobile-capture/memo-edge";
@@ -339,6 +340,8 @@ export type CitedAsset = {
   sourceUrl?: string;
   /** URL 素材の抽出済み本文抜粋（urlMeta.excerpt）。loadUrlText が取れないときのフォールバック。 */
   excerpt?: string;
+  /** リンクした素材（sourceUrl が置き場の URL）の置き場の名前（urlMeta.domain）。説明文に使う。 */
+  placeName?: string;
 };
 
 /** assembleCitedAssetContext の依存 */
@@ -353,6 +356,22 @@ export type CitedAssetDeps = {
   /** grounding スコープ（未指定なら既定の内部参照）。素材は知識を持たないため主に呼び出しの一貫性のため */
   scope?: GroundingScope;
 };
+
+/** リンクした素材を AI に渡すための短い説明（本文の代わり）。 */
+export function describeLinkedAsset(asset: Pick<CitedAsset, "name" | "sourceUrl" | "placeName">): string {
+  const parsed = asset.sourceUrl ? parsePlaceUrl(asset.sourceUrl) : null;
+  const place = asset.placeName || parsed?.placeId || "";
+  const relPath = parsed?.relPath ?? "";
+  return [
+    "データの置き場にあるファイルを指す素材です。Graphium はファイルを写しておらず、中身も読んでいません。",
+    `- 名前: ${asset.name}`,
+    place ? `- 置き場: ${place}` : "",
+    relPath ? `- 置き場の中の場所: ${relPath}` : "",
+    "- 中身は読んでいないため、内容についての質問には答えられません。",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 /**
  * @ で引用したドキュメント素材（ノートではなく素材本体）を AI コンテキスト用
@@ -383,6 +402,10 @@ export async function assembleCitedAssetContext(
       provider: deps.provider,
       loadBlob: deps.loadBlob,
     });
+  } else if (asset.type === "url" && asset.sourceUrl && isPlaceUrl(asset.sourceUrl)) {
+    // リンクした素材（置き場のファイル）: Web へ取りに行かず、中身も読まない。
+    // 本文の代わりに「名前・置き場・置き場の中の場所・中身は読んでいない」を渡す。
+    fullText = describeLinkedAsset(asset);
   } else if (asset.type === "url") {
     if (asset.sourceUrl && deps.loadUrlText) {
       fullText = await deps.loadUrlText(asset.sourceUrl);
@@ -395,7 +418,7 @@ export async function assembleCitedAssetContext(
 
   const mediumLabel =
     asset.type === "pdf" ? "PDF"
-    : asset.type === "url" ? "URL"
+    : asset.type === "url" ? (asset.sourceUrl && isPlaceUrl(asset.sourceUrl) ? "リンクした素材" : "URL")
     : asset.type === "data" ? "データ"
     : "ドキュメント";
   return formatCitedDocument(

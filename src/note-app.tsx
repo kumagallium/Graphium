@@ -290,6 +290,7 @@ import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
+import { isPlaceUrl } from "./features/linked-files/link-url";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
@@ -4917,6 +4918,7 @@ function NoteEditorInner({
                   type: entry.type,
                   sourceUrl: entry.type === "url" ? entry.url : undefined,
                   excerpt: entry.urlMeta?.excerpt,
+                  placeName: entry.urlMeta?.domain,
                 }
               : assetFileId.startsWith("url:")
                 ? { fileId: assetFileId, name: assetFileId.slice(4), type: "url", sourceUrl: assetFileId.slice(4) }
@@ -12131,7 +12133,8 @@ export function NoteApp() {
       const ext = parseExternalSource(sourceId);
       if (ext) {
         if (ext.kind === "url") {
-          void openExternalUrl(ext.key);
+          // リンクした素材（置き場のファイル）の URL はブラウザへ渡さない
+          if (!isPlaceUrl(ext.key)) void openExternalUrl(ext.key);
           return;
         }
         if (ext.kind === "memo") {
@@ -16661,6 +16664,8 @@ export function NoteApp() {
             onIngestMedia={standardUiEnabled ? ingestMediaEntry : undefined}
             onIngestMediaBulk={standardUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
             onCreateProvNote={procedureUiEnabled ? (entry) => {
+              // リンクした素材（置き場のファイル）は Web ページではない。取りに行かない
+              if (entry.type === "url" && isPlaceUrl(entry.url)) return;
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
@@ -16776,6 +16781,8 @@ export function NoteApp() {
               }
             } : undefined}
             onTranslatePdf={translateUiEnabled ? (entry) => {
+              // リンクした素材（置き場のファイル）は Web ページではない。取りに行かない
+              if (entry.type === "url" && isPlaceUrl(entry.url)) return;
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
@@ -16990,7 +16997,7 @@ export function NoteApp() {
                       // 外部ブラウザで開く
                       if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
                         setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
-                      } else if (entry.type === "url" && entry.url) {
+                      } else if (entry.type === "url" && entry.url && !isPlaceUrl(entry.url)) {
                         void openExternalUrl(entry.url);
                       }
                     }}

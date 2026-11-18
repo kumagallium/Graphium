@@ -9,6 +9,7 @@
 //   - スマホで書いた文字のメモ: メモは書いた端末を持たない
 //   - 共有ライブラリの記録: 別の置き場（SharedEntry）なので、ここでは扱わない
 import type { MediaIndexEntry } from "../asset-browser/media-index";
+import { isPlaceUrl } from "../linked-files/link-url";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import { timeOf } from "./model";
@@ -67,6 +68,8 @@ export function deriveNoteWho(entry: NoteIndexEntry): RecordWho {
  */
 export function deriveMediaOrigin(entry: MediaIndexEntry): RecordOrigin {
   if (entry.capture) return "phone";
+  // リンクした素材（置き場のファイル）は Web ページではないので、ふつうの素材と同じ分類にする
+  if (entry.type === "url" && isPlaceUrl(entry.url)) return "file";
   if (entry.webClip || entry.type === "url") return "webClip";
   return "file";
 }

@@ -12,6 +12,7 @@
 
 import type { GraphiumDocument, SourceCheckSourceKind, SourceMissingReason } from "../../lib/document-types";
 import { parseExternalSource } from "../network-graph/external-source";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { parseClaimSourceId } from "./claim-source-id";
 import { extractPlainTextBlocks, extractPlainTextFromDoc } from "../wiki/wiki-service";
 import { extractDocxText } from "../../lib/docx-text";
@@ -193,6 +194,8 @@ export async function resolveSourceText(
       return extractMediaText(parsed.key, "document", deps);
     case "url": {
       const url = parsed.key;
+      // リンクした素材（置き場のファイル）は Web ページではない。取りに行かず「読めない」で返す
+      if (isPlaceUrl(url)) return { ok: false, kind: "url", reason: "unreadable" };
       let text: string | undefined;
       let title: string | undefined;
       let origin: "stored" | "refetched" = "stored";

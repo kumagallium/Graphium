@@ -32,6 +32,7 @@ function setup(initial: PlaceInfo[]) {
       places = places.map((p) => (p.id === id ? { ...p, name } : p));
       return places.find((p) => p.id === id)!;
     }),
+    persistPlaceName: vi.fn(async (_id: string, _name: string) => 1),
     removePlace: vi.fn(async (id: string) => {
       places = places.filter((p) => p.id !== id);
     }),
@@ -100,6 +101,8 @@ describe("DataPlacesSection", () => {
     fireEvent.change(input, { target: { value: "Bakery HQ" } });
     fireEvent.blur(input);
     await waitFor(() => expect(fns.renamePlace).toHaveBeenCalledWith("p-org", "Bakery HQ"));
+    // その置き場のリンクした素材の名前（一覧に出る置き場の名前）も合わせる
+    await waitFor(() => expect(fns.persistPlaceName).toHaveBeenCalledWith("p-org", "Bakery HQ"));
     await screen.findByText("Bakery HQ");
   });
 

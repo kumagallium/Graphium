@@ -454,3 +454,23 @@ describe("bulkShare（共有フォルダが複数あるとき）", () => {
     expect(writeRoots()).toEqual([]);
   });
 });
+
+describe("bulkShare — リンクした素材", () => {
+  it("リンクした素材は飛ばし、共有・失敗のどちらにも数えない", async () => {
+    const linked = makeMediaEntry({
+      fileId: "link-1",
+      type: "url",
+      name: "a.pdf",
+      url: "graphium-place://place-1/docs/a.pdf",
+    });
+    const { deps, savedRefs } = makeMediaDeps([linked]);
+    const summary = await bulkShare([{ id: "link-1", kind: "media" }], deps);
+
+    expect(summary.shared).toBe(0);
+    expect(summary.failed).toBe(0);
+    expect(summary.results).toHaveLength(0);
+    expect(summary.skippedLinked).toBe(1);
+    expect(fs.entries.size).toBe(0);
+    expect(savedRefs.size).toBe(0);
+  });
+});

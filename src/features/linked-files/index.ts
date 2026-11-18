@@ -19,6 +19,8 @@ export {
   acceptLinkChange,
   addLinkedEntry,
   withPlaceName,
+  withPlaceNameInIndex,
+  persistPlaceName,
   LINK_HISTORY_MAX,
   type LinkState,
 } from "./linked-entry";

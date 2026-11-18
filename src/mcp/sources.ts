@@ -10,6 +10,21 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { MediaIndexEntry } from "../features/asset-browser/media-index";
+import { isPlaceUrl, parsePlaceUrl } from "../features/linked-files/link-url";
+
+/**
+ * リンクした素材（置き場のファイルを指す URL 素材）なら、本文の代わりに返す説明。違えば undefined。
+ * Graphium は中身を持たず Web でもないので、URL を取りに行く道具はこの文を返して終わる。
+ */
+export function describeLinkedFile(
+  entry: Pick<MediaIndexEntry, "type" | "url" | "urlMeta" | "link">,
+): string | undefined {
+  if (entry.type !== "url" || !isPlaceUrl(entry.url)) return undefined;
+  const parsed = parsePlaceUrl(entry.url);
+  const place = entry.urlMeta?.domain || parsed?.placeId || "";
+  const relPath = entry.link?.relPath ?? parsed?.relPath ?? "";
+  return `置き場にあるファイルで、Graphium は中身を持っていません。場所は ${place}/${relPath}`;
+}
 import { allEntries } from "./search";
 import { appDataDir, resolveGraphiumRoot } from "./vault";
 

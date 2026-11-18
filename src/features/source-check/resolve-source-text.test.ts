@@ -304,3 +304,12 @@ describe("resolveSourceText - chat: / 出典として扱えない ID", () => {
     });
   });
 });
+
+describe("resolveSourceText - リンクした素材", () => {
+  it("置き場の URL は再取得せず unreadable で返す", async () => {
+    const fetchUrlText = vi.fn();
+    const result = await resolveSourceText("url:graphium-place://place-1/docs/a.pdf", baseDeps({ fetchUrlText }));
+    expect(result).toEqual({ ok: false, kind: "url", reason: "unreadable" });
+    expect(fetchUrlText).not.toHaveBeenCalled();
+  });
+});

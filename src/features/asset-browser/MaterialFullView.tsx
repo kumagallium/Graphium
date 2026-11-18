@@ -31,6 +31,7 @@ import { useAiAssistant } from "../ai-assistant/store";
 import { useAppDataChatPersistence } from "../ai-assistant/use-app-data-chat-persistence";
 import { assetChatsKey } from "./asset-chat-store";
 import { assembleCitedAssetContext } from "../ai-assistant/cited-document-context";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { loadUrlText } from "../ai-assistant/url-text-loader";
 import { runAgent } from "../ai-assistant/api";
 import { isAgentConfigured, getChatSynthesisModelName } from "../settings";
@@ -158,6 +159,7 @@ export function MaterialFullView({
             type: entry.type,
             sourceUrl: entry.type === "url" ? entry.url : undefined,
             excerpt: entry.urlMeta?.excerpt,
+            placeName: entry.urlMeta?.domain,
           },
           {
             captureIndex: captureIndex ?? null,
@@ -410,7 +412,8 @@ export function MaterialFullView({
           {/* AI が使えない（バックエンド未到達 or モデル未登録）ときは
               「AI に質問」タブごと隠す。Provider の aiAvailable が実体
               （AssetGalleryView → note-app の aiUiEnabled）。 */}
-          {aiAssistant.aiAvailable && (entry.type === "pdf" || entry.type === "url") && (
+          {/* リンクした素材（置き場のファイル）は中身を読んでいないので「AI に質問」は出さない */}
+          {aiAssistant.aiAvailable && (entry.type === "pdf" || (entry.type === "url" && !isPlaceUrl(entry.url))) && (
             <button
               onClick={() => toggleRight("chat")}
               data-tooltip={t("asset.askAi")}

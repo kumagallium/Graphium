@@ -5,6 +5,7 @@ import {
   acceptLinkChange,
   addLinkedEntry,
   withPlaceName,
+  withPlaceNameInIndex,
   LINK_HISTORY_MAX,
 } from "./linked-entry";
 import { createEmptyIndex, type MediaLink } from "../asset-browser/media-index";
@@ -84,5 +85,26 @@ describe("withPlaceName", () => {
     const r = withPlaceName(e, "新しい名前");
     expect(r.urlMeta).toEqual({ domain: "新しい名前", description: "a/b.xlsx" });
     expect(e.urlMeta?.domain).toBe("共有ドライブ");
+  });
+});
+
+describe("withPlaceNameInIndex", () => {
+  it("その置き場のリンクした素材だけ置き場の名前を合わせる", () => {
+    const a = buildLinkedEntry({ picked, place, now: NOW, fileId: "url_1" });
+    const b = buildLinkedEntry({ picked: { ...picked, placeId: "q", relPath: "c.xlsx", name: "c.xlsx" }, place: { id: "q", name: "別の置き場" }, now: NOW, fileId: "url_2" });
+    const index = { ...createEmptyIndex(), media: [a, b] };
+    const { index: next, changed } = withPlaceNameInIndex(index, "p", "新しい名前");
+    expect(changed).toBe(1);
+    expect(next.media[0].urlMeta?.domain).toBe("新しい名前");
+    expect(next.media[0].urlMeta?.description).toBe("a/b.xlsx");
+    expect(next.media[1].urlMeta?.domain).toBe("別の置き場");
+  });
+
+  it("名前が同じなら何も変えない", () => {
+    const a = buildLinkedEntry({ picked, place, now: NOW, fileId: "url_1" });
+    const index = { ...createEmptyIndex(), media: [a] };
+    const r = withPlaceNameInIndex(index, "p", "共有ドライブ");
+    expect(r.changed).toBe(0);
+    expect(r.index).toBe(index);
   });
 });

@@ -24,6 +24,7 @@ import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot, getSharedFolders } from "../../lib/storage/shared";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { notifySharedLibraryChanged, needsSharedFolderChoice, resolveShareTarget, shareMedia, shareReference, ShareToFolderDialog } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isPptxEntry, isWordDocxEntry } from "./media-index";
@@ -196,6 +197,8 @@ export function MaterialActionsMenu({
   const blobRoot = getSharedFolders().some((f) => f.blobRoot) ? "any" : getBlobRoot();
   const sharedAuthor = loadAuthorIdentity();
   const isUrlEntry = entry.type === "url";
+  // リンクした素材（置き場のファイル）。Web ページではないので、取りに行く・読ませる・訳す・共有する対象から外す
+  const isLinked = entry.type === "url" && isPlaceUrl(entry.url);
   const isShared = !!entry.sharedRef;
   // 共有フォルダが 2 件以上で初めて共有するときは、置き場を選ぶダイアログを挟む（§26 PR3）
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -255,10 +258,10 @@ export function MaterialActionsMenu({
   // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
   // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
   const isDocxEntry = isWordDocxEntry(entry);
-  const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
-  const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  const canIngest = !!onIngest && !isLinked && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  const canCreateProv = !!onCreateProvNote && !isLinked && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   // 全文翻訳は PDF と URL（Reader 本文）が対象。Knowledge / PROV と動線を揃える。
-  const canTranslate = !!onTranslatePdf && (entry.type === "pdf" || entry.type === "url");
+  const canTranslate = !!onTranslatePdf && !isLinked && (entry.type === "pdf" || entry.type === "url");
   const canExtract =
     (!!onExtractPdfPages && entry.type === "pdf")
     || (!!onExtractDocxImages && isDocxEntry);
@@ -487,15 +490,17 @@ export function MaterialActionsMenu({
             </>
           )}
           {(hasAiActions || canExtract || canDownload || canCopyLink) && <div className="my-1 border-t border-border" />}
-          <button
-            className={itemClass}
-            disabled={!!shareDisabledReason || shareBusy}
-            onClick={() => { void handleShare(); setOpen(false); }}
-            data-tooltip={shareDisabledReason}
-          >
-            {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
-            {shareBusy ? t("share.sharing") : isShared ? t("share.reshareToTeam") : t("share.shareToTeam")}
-          </button>
+          {!isLinked && (
+            <button
+              className={itemClass}
+              disabled={!!shareDisabledReason || shareBusy}
+              onClick={() => { void handleShare(); setOpen(false); }}
+              data-tooltip={shareDisabledReason}
+            >
+              {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+              {shareBusy ? t("share.sharing") : isShared ? t("share.reshareToTeam") : t("share.shareToTeam")}
+            </button>
+          )}
           {onDelete && (
             <>
               <div className="my-1 border-t border-border" />

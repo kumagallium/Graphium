@@ -19,6 +19,7 @@ import {
   computeSharedEntryHash,
   type SharedEntry,
 } from "../../lib/storage/shared";
+import { isPlaceUrl } from "../linked-files/link-url";
 import { historyForUpdate } from "./share-history";
 
 export type ShareReferenceOptions = {
@@ -62,6 +63,10 @@ export async function shareReference(
     }
     if (!entry.url) {
       return { ok: false, error: "URL bookmark has no url" };
+    }
+    // リンクした素材（置き場のファイル）は共有の対象外。受け取った側が Web の URL として開こうとするため
+    if (isPlaceUrl(entry.url)) {
+      return { ok: false, error: "Linked files in a data place cannot be shared." };
     }
 
     const isUpdate = !!entry.sharedRef;
