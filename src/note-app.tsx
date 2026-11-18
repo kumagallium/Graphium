@@ -164,6 +164,7 @@ import {
 } from "./blocks/chart";
 import { buildSavedPageFields, buildSavedForm } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
+import { useConversationIntake } from "./features/conversation-import/use-conversation-intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
@@ -11269,6 +11270,8 @@ export function NoteApp() {
       if (outcome.ocrTargets.length > 0) intakeOcr.enqueue(outcome.ocrTargets);
     },
   });
+  // 投入口の「AI との会話」の区画（区画を開くまでは何も読まない）
+  const conversationIntake = useConversationIntake();
   // ウィンドウのどこにファイルをドロップしても投入口が拾う（エディタ内・
   // モーダル内・受け皿の上は useGlobalFileDrop 側の既定 ignore で除外される）
   const { dragActive: intakeDragActive } = useGlobalFileDrop({
@@ -11550,6 +11553,7 @@ export function NoteApp() {
     const wasDone = intake.state.kind === "done";
     const outcome = intake.lastOutcome;
     intake.closeIntake();
+    conversationIntake.reset();
     if (wasDone && outcome) {
       if (outcome.notes === 1 && outcome.materials === 0 && outcome.lastNewId) {
         navigateToNote(outcome.lastNewId);
@@ -11557,7 +11561,7 @@ export function NoteApp() {
         showNoteList();
       }
     }
-  }, [intake, navigateToNote, fm.showNoteList, showNoteList]);
+  }, [intake, conversationIntake.reset, navigateToNote, fm.showNoteList, showNoteList]);
 
   // 新規ノートは保存されて初めて fileId が決まる。決まった時点で URL を差し替える。
   // これが無いと、書いたノートがリロードで開かず（URL が home のまま）、
@@ -18559,6 +18563,24 @@ export function NoteApp() {
         dragActive={intakeDragActive}
         onClose={handleIntakeClose}
         onFilesSelected={(files, _source, extra) => void intake.run(files, extra)}
+        conversation={{
+          state: conversationIntake.state,
+          section: conversationIntake.section,
+          onSectionChange: conversationIntake.setSection,
+          onToggle: conversationIntake.toggle,
+          onToggleAll: conversationIntake.toggleAll,
+          onImport: () => void conversationIntake.startImport(),
+          onRetry: conversationIntake.retry,
+          onViewMaterials: () => {
+            intake.closeIntake();
+            conversationIntake.reset();
+            // サイドバーから素材の種類を開くのと同じ経路
+            closeAllViews();
+            fm.setActiveAssetType("conversation");
+            setSidebarOpen(false);
+            router.navigate({ view: "assets", mediaType: "conversation" });
+          },
+        }}
         onSearch={() => { intake.closeIntake(); showNoteList(); setFocusSearchSignal((n) => n + 1); }}
         onShowGraph={() => { intake.closeIntake(); showGlobalGraphView(); }}
         onAskAi={() => { intake.closeIntake(); composer.openComposer(); }}

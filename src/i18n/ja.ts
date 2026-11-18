@@ -117,9 +117,9 @@ export const ja: Record<string, string> = {
   // ── サイドバー ──
   "sidebar.newNote": "+ ノート",
   "sidebar.newNoteTooltip": "新規ノートを開く",
-  "sidebar.intake": "ファイル取り込み",
+  "sidebar.intake": "取り込み",
   "sidebar.intakeShort": "取り込み",
-  "sidebar.intakeTooltip": "手元の Markdown・PDF・Office・画像・CSV をまとめて取り込む",
+  "sidebar.intakeTooltip": "手元のファイルや、AI との会話を取り込む",
   "sidebar.newMemoTooltip": "メモをすばやく書き留める（{shortcut}）",
   "sidebar.provTemplate": "+ PROV テンプレート",
   "sidebar.refresh": "再読み込み",
@@ -2296,6 +2296,10 @@ export const ja: Record<string, string> = {
   "asset.type.data": "データ",
   "asset.type.other": "その他",
   "asset.type.memo": "メモ",
+  "asset.type.conversation": "AI との会話",
+  "asset.conversation.loading": "会話を読み込んでいます…",
+  "asset.conversation.missing": "この会話の本文が見つかりませんでした。取り込み直すと戻ります",
+  "asset.conversation.empty": "まだ AI との会話がありません。「取り込み」から、Claude Code との会話を素材にできます",
   "asset.count": "{count} 件",
   "asset.search": "メディアを検索...",
   "asset.noMedia": "メディアが見つかりません",
@@ -3533,7 +3537,7 @@ export const ja: Record<string, string> = {
   "import.unresolvedLinksNote": "解決できなかった [[リンク]] はテキストとして残しています。",
 
   // 投入口モーダル（既存資料の一括取り込み）
-  "intake.title": "手元のファイルを取り込む",
+  "intake.title": "手元にあるものを取り込む",
   "intake.dropHere": "フォルダやファイルをここに落とす",
   "intake.rule": "Markdown はノートに、PDF・Office・画像・CSV は素材になります",
   "intake.obsidianHint": "Obsidian の vault はそのままで大丈夫です。[[リンク]] と画像も一緒に取り込まれます",
@@ -3602,6 +3606,14 @@ export const ja: Record<string, string> = {
   "intake.conversation.tokensRange": "{low}〜{high} 万トークン",
   "intake.conversation.unavailable": "AI との会話の取り込みは、デスクトップ版のアプリで使えます",
   "intake.conversation.unavailableReason": "AI との会話の取り込みは、デスクトップ版のアプリで使えます。ブラウザからは、この PC にある会話の記録を読めないためです",
+  "intake.conversation.folderRoot": "AI 会話",
+  "intake.conversation.importButton": "取り込む",
+  "intake.conversation.loadError": "会話の記録を読めませんでした",
+  "intake.conversation.retry": "もう一度",
+  "intake.conversation.statCreated": "新しく取り込んだ会話",
+  "intake.conversation.statUpdated": "続きを足した会話",
+  "intake.conversation.statUnchanged": "前回から変わっていない会話",
+  "intake.conversation.viewMaterials": "素材で見る",
 
   // 素材ビューア・抽出
   "asset.docxNoImages": "この Word からは画像オブジェクトを取り出せませんでした。",
