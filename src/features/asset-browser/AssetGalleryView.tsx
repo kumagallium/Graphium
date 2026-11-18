@@ -1565,6 +1565,8 @@ export function AssetGalleryView({
   // 各エントリーは個別ジョブになり、受け取った側のキューで 1 件ずつ順に処理される
   // Documents タブも一括 Knowledge 化対象（中の PDF/Word は受け取った側で分岐）
   const bulkActionable = mediaType === "url" || mediaType === "pdf" || mediaType === "document";
+  // AI との会話は知見だけ作れる（PROV ノートの生成は対象外）
+  const bulkIngestable = bulkActionable || mediaType === "conversation";
   const handleBulkIngest = useCallback(() => {
     if (selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
@@ -2138,7 +2140,7 @@ export function AssetGalleryView({
                   setAssignOpen(true);
                 },
               } satisfies BulkAction] : []),
-              ...(bulkActionable && (onIngestMediaBulk || onIngestMedia) ? [{
+              ...(bulkIngestable && (onIngestMediaBulk || onIngestMedia) ? [{
                 id: "knowledge",
                 label: t("bulk.knowledge"),
                 icon: <Bot size={12} />,

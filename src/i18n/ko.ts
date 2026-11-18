@@ -3481,6 +3481,7 @@ export const ko: Record<string, string> = {
   "ingest.claimsSavedMerged": "지견 {count}개({merged}개 통합)",
   "ingest.pdfNoText": "PDF에서 텍스트를 충분히 추출하지 못했습니다(스캔한 PDF일 수 있습니다)",
   "ingest.docxNoText": "Word 파일에서 텍스트를 충분히 추출하지 못했습니다",
+  "ingest.conversationNoText": "대화 본문을 읽을 수 없습니다. 다시 가져오면 복구됩니다",
   "ingest.noSources": "원본 자료가 없습니다",
 
   // Markdown インポート

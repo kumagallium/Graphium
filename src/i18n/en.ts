@@ -3532,6 +3532,7 @@ export const en: Record<string, string> = {
   "ingest.claimsSavedMerged": "{count} claims ({merged} merged)",
   "ingest.pdfNoText": "Could not extract enough text from the PDF (scanned PDF?)",
   "ingest.docxNoText": "Could not extract enough text from the Word file",
+  "ingest.conversationNoText": "Could not read this conversation. Bring it in again to restore it",
   "ingest.noSources": "No sources available",
 
   // Markdown インポート

@@ -220,6 +220,18 @@ If the note has none, omit the key entirely.`;
  * 知識発展型: ノートの単純な要約ではなく、既存 Claim との関連づけ・
  * 新しい洞察の生成・根拠の提示を行う
  */
+/**
+ * 元が AI との会話の記録のときだけ足す節。測定（2026-11-18、会話 3 本 × 18 回）で、本人の発言だけを
+ * 根拠にした知見が 69% から 85% に増え、AI の中身を本人のものとして書く誤りが減った文。
+ * 本文の見出しは画面の言語で変わるので、日本語（私 / AI）と英語（Me / AI）の両方を名指しする
+ */
+export const CONVERSATION_SOURCE_BLOCK = `## When the source is a conversation with an AI (read before harvesting)
+
+The source note is a record of a conversation between the user and an AI. In this record, lines marked 「私」 or "Me" are what the user wrote, verbatim, and lines marked "AI" are excerpts of the AI's replies.
+
+- **Harvest the points that come from the user's own lines first.** Go through the 「私」 / "Me" lines before anything else and pull out what the user states there — a judgment, a choice and its reason, a policy, a preference, a correction, an open question. Use the "AI" line just before a user line only to recover what the user was responding to.
+- **A point whose only ground is an "AI" line is the AI's assessment, not the user's.** Keep it apart from the user's points: never write it as something the user found, decided or confirmed. If it is worth keeping at all, say in the first sentence that it is what the AI stated (「AI の見立てでは」「AI の報告では」 / "According to the AI"), and set \`epistemicStatus\` no higher than \`interpretation\`.`;
+
 export function buildIngesterSystemPrompt(
   language: string,
   existingWikis: ExistingWikiInfo[],
@@ -227,6 +239,8 @@ export function buildIngesterSystemPrompt(
   opts?: {
     isDocument?: boolean;
     isMemo?: boolean;
+    /** 元が AI との会話の記録か（本人の発言を先に拾う節を足す） */
+    isConversation?: boolean;
     /** 予算で絞った既存の知見一覧（無ければ existingWikis の知見を全部載せる） */
     existingIndex?: ExistingClaimIndex;
   },
@@ -595,7 +609,9 @@ Rules:
 - **Never invent** parameter values or tools that are not in the PROV section. If PROV is missing, you may still set \`keyTools\` from explicit mentions in the body, but leave \`keyParameters\` empty rather than fabricating numbers.
 - The PROV section uses the source note's language for values (e.g., "ボールミル", "300rpm") — keep them verbatim; do not translate.
 
-## Claim (${claimCountHeading})
+${opts?.isConversation ? `${CONVERSATION_SOURCE_BLOCK}
+
+` : ""}## Claim (${claimCountHeading})
 ${isDocument ? `
 ${documentHarvestBlock}
 ` : isMemo ? `

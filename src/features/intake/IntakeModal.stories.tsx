@@ -316,7 +316,18 @@ export const ConversationImporting: Story = {
 export const ConversationDone: Story = {
   args: {
     ...convBase,
-    conversation: conv({ kind: "done", created: 21, updated: 3, unchanged: 8, failed: 0 }),
+    conversation: conv({ kind: "done", created: 21, updated: 3, unchanged: 8, failed: 0, importedIds: [], changedIds: [] }),
+  },
+};
+
+/** 完了 + 申し出。候補の本数と AI の利用の見込みを 1 行で伝え、押したときだけナレッジ化が走る */
+export const ConversationDoneWithOffer: Story = {
+  args: {
+    ...convBase,
+    conversation: {
+      ...conv({ kind: "done", created: 21, updated: 3, unchanged: 8, failed: 0, importedIds: [], changedIds: [] }),
+      offer: { total: 32, candidates: 9, onIngest: () => {} },
+    },
   },
 };
 
@@ -324,6 +335,6 @@ export const ConversationDone: Story = {
 export const ConversationDoneWithFailures: Story = {
   args: {
     ...convBase,
-    conversation: conv({ kind: "done", created: 18, updated: 0, unchanged: 5, failed: 2 }),
+    conversation: conv({ kind: "done", created: 18, updated: 0, unchanged: 5, failed: 2, importedIds: [], changedIds: [] }),
   },
 };

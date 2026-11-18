@@ -3,6 +3,7 @@
 // 組み立てを 1 か所にして、アプリの経路と MCP の経路でプロンプトがずれないようにする。
 
 import { buildKnowledgeSchemaPromptSection } from "../../features/skill/skill-service.js";
+import { isConversationSourceId } from "../../lib/conversation/types.js";
 import { estimateTokens } from "../../lib/context-estimate.js";
 import { buildExistingClaimIndex, INGEST_INPUT_BUDGET_TOKENS, type ExistingClaimIndex } from "./ingest-existing-index.js";
 import { formatProvSummaryForPrompt } from "./prov-prompt-injection.js";
@@ -44,6 +45,8 @@ export function buildIngestPrompt(input: IngestPromptInput): IngestPrompt {
   // Claim 基準だと引用・エピソード型の断片が Claim 0 件に倒れやすいため、
   // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
   const isMemo = /^memo:/.test(input.noteId ?? "");
+  // AI との会話の記録は、本人の発言を先に拾う節を足す（文書モードにはしない。測定した形のまま）
+  const isConversation = isConversationSourceId(input.noteId);
 
   // PROV 構造があれば user message の先頭にコンパクトに添える。
   // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
@@ -56,7 +59,7 @@ export function buildIngestPrompt(input: IngestPromptInput): IngestPrompt {
   // （一覧が増えるとそれだけでコンテキストを使い切るため。ingest-existing-index.ts）
   const existingWikis = input.existingWikiTitles || [];
   const buildPrompt = (existingIndex: ExistingClaimIndex) =>
-    buildIngesterSystemPrompt(input.language || "en", existingWikis, input.skills, { isDocument, isMemo, existingIndex })
+    buildIngesterSystemPrompt(input.language || "en", existingWikis, input.skills, { isDocument, isMemo, isConversation, existingIndex })
     + buildKnowledgeSchemaPromptSection(input.knowledgeSchema);
   const emptyIndex = buildExistingClaimIndex([], "");
   const fixedTokens = estimateTokens(buildPrompt(emptyIndex)) + estimateTokens(userMessage);

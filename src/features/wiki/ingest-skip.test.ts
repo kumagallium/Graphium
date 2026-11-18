@@ -71,6 +71,12 @@ describe("shouldSkipUnchangedSource", () => {
 });
 
 describe("mediaKnowledgeSourceId", () => {
+  it("AI との会話は conversation: の id になる。形の違う id は対象外", () => {
+    const fileId = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+    expect(mediaKnowledgeSourceId({ type: "conversation", fileId })).toBe(`conversation:${fileId}`);
+    expect(mediaKnowledgeSourceId({ type: "conversation", fileId: "../../etc" })).toBeUndefined();
+  });
+
   const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   it("URL・PDF・Word(.docx) は取り込みと同じ出どころ id になる", () => {

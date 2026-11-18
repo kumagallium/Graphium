@@ -6,6 +6,7 @@
 import type { TopicType, WikiMeta } from "../../lib/document-types";
 import {
   DEFAULT_NOTE_URL_BASE,
+  hasConversationSource,
   normalizeClaimBaseIri,
   normalizeNoteUrlBase,
 } from "./asterism-export";
@@ -223,7 +224,8 @@ export function buildKnowledgeBundle(
   // 行の並びは安全化した後の id の順
   const withSid = (kind: "claim" | "topic") =>
     items
-      .filter((i) => i.meta.kind === kind)
+      // AI との会話を出典に持つページは外へ書き出さない（asterism-export と同じ決まり）
+      .filter((i) => i.meta.kind === kind && !hasConversationSource(i.meta))
       .map((i) => ({ ...i, sid: safeKnowledgeId(i.id) }))
       .sort((a, b) => (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : 0));
   const claims = withSid("claim");

@@ -154,9 +154,20 @@ describe("start_topic_task / submit_topic_routes", () => {
     expect(await startTopicTask({ sourceId: "t1" }, ctx, root)).toMatch(/^NOT_SUPPORTED/);
   });
 
-  it("AI との会話の素材（conversation:）からはまだ作らず、NOT_SUPPORTED で断る", async () => {
-    const id = "conversation:conv-claude-code-11111111-2222-4333-8444-555555555555";
-    expect(await startTopicTask({ sourceId: id }, ctx, root)).toMatch(/^NOT_SUPPORTED/);
+  it("AI との会話の素材（conversation:）から課題を作る。登録の無い id は断る", async () => {
+    const fileId = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+    const id = `conversation:${fileId}`;
+    expect(await startTopicTask({ sourceId: id }, ctx, root)).toMatch(/^UNKNOWN_SOURCE/);
+    writeFileSync(p("media", `${fileId}.txt`), "## 2026-10-05\n\n- 私（09:12）: 全粒粉は 2 割までにする。3 割だと成形で形が保てなかった\n");
+    writeJson(p("appdata", "media-index.json"), {
+      version: 12,
+      media: [{ fileId, name: "全粒粉の配合", type: "conversation", mimeType: "text/plain", url: id, thumbnailUrl: "", uploadedAt: "2026-11-10T00:00:00Z", usedIn: [] }],
+    });
+    resetMediaIndexCache();
+    resetSourceTextCache();
+    const reply = await startTopicTask({ sourceId: id }, ctx, root);
+    expect(taskIdOf(reply)).not.toBe("");
+    expect(reply).toContain("全粒粉は 2 割までにする");
   });
 });
 

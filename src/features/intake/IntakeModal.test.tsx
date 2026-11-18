@@ -185,8 +185,25 @@ describe("IntakeModal の AI との会話の区画", () => {
     expect(document.body.textContent).toContain("desktop app");
   });
 
+  it("申し出: 候補があれば本数の 1 行とボタンが出て、押すまで呼ばれない", () => {
+    const onIngest = vi.fn();
+    renderIdle({ ...conv({ kind: "done", created: 3, updated: 0, unchanged: 0, failed: 0, importedIds: [], changedIds: [] }), offer: { total: 3, candidates: 2, onIngest } });
+    expect(document.body.textContent).toContain("2");
+    expect(onIngest).not.toHaveBeenCalled();
+    const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Add all to knowledge");
+    expect(btn).toBeDefined();
+    fireEvent.click(btn as HTMLButtonElement);
+    expect(onIngest).toHaveBeenCalledTimes(1);
+  });
+
+  it("申し出: 候補が 0 本ならボタンを出さない", () => {
+    renderIdle({ ...conv({ kind: "done", created: 1, updated: 0, unchanged: 0, failed: 0, importedIds: [], changedIds: [] }), offer: { total: 1, candidates: 0, onIngest: vi.fn() } });
+    const labels = Array.from(document.querySelectorAll("button")).map((b) => b.textContent?.trim());
+    expect(labels).not.toContain("Add all to knowledge");
+  });
+
   it("done で 4 行と「素材で見る」が出て、「まとめてナレッジ化」は出ない", () => {
-    const c = conv({ kind: "done", created: 2, updated: 1, unchanged: 0, failed: 1 });
+    const c = conv({ kind: "done", created: 2, updated: 1, unchanged: 0, failed: 1, importedIds: [], changedIds: [] });
     renderIdle(c);
     expect(document.querySelectorAll("dl > div")).toHaveLength(4);
     const labels = Array.from(document.querySelectorAll("button")).map((b) => b.textContent?.trim());
