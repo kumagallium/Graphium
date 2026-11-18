@@ -48,6 +48,12 @@ export type RecordCopy = {
   calMore: string;
   showingFrom: (date: string) => string;
   backToLatest: string;
+  folders: string;
+  noFolder: string;
+  unchecked: (open: number, total: number) => string;
+  allChecked: (total: number) => string;
+  lastDays: (n: number) => string;
+  moreFolders: (n: number) => string;
 };
 
 export function buildRecordCopy(t: Translate): RecordCopy {
@@ -128,6 +134,12 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     calMore: t("records.calMore"),
     showingFrom: (date) => t("records.showingFrom", { date }),
     backToLatest: t("records.backToLatest"),
+    folders: t("records.folders"),
+    noFolder: t("records.noFolder"),
+    unchecked: (open, total) => t("records.unchecked", { open: String(open), total: String(total) }),
+    allChecked: (total) => t("records.allChecked", { total: String(total) }),
+    lastDays: (n) => t("records.lastDays", { n: String(n) }),
+    moreFolders: (n) => t("records.moreFolders", { n: String(n) }),
   };
 }
 

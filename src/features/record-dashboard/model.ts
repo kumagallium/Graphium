@@ -287,3 +287,80 @@ export function weekdayLabels(locale: Locale): string[] {
   // 2023-01-01 は日曜
   return Array.from({ length: 7 }, (_, i) => format.format(new Date(2023, 0, 1 + i)));
 }
+
+// ── フォルダごとの動き ─────────────────────────────
+
+/** フォルダ 1 つ分の動き。どれも記録から数えるだけで、保存している状態は無い */
+export type FolderActivity = {
+  /** フォルダの名前。null はどのフォルダにも入っていない記録 */
+  name: string | null;
+  /** 記録の数 */
+  count: number;
+  /** いちばん新しい記録の時刻（ISO 8601） */
+  lastAt: string;
+  /** 直近の日ごとの件数。古い日から並び、最後が今日 */
+  days: number[];
+  /** 残した人の種類（自分・AI・共有の作者）がいるか */
+  who: { self: boolean; ai: boolean; other: boolean };
+  /** チェックリストの項目の数（フォルダの中のノートの合計）。項目が無ければ持たない */
+  checklist?: { open: number; total: number };
+};
+
+/** フォルダの動きで見せる日数 */
+export const FOLDER_SPAN_DAYS = 14;
+
+/** 名前の照合に使う形（大文字・小文字の違いは同じフォルダとして扱う。ノートの側の名寄せと同じ） */
+function folderKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** その記録がフォルダに入っているか。folder が null なら、どのフォルダにも入っていない記録 */
+export function matchesFolder(item: RecordItem, folder: string | null): boolean {
+  const folders = item.folders ?? [];
+  if (folder === null) return folders.length === 0;
+  const key = folderKey(folder);
+  return folders.some((f) => folderKey(f) === key);
+}
+
+/**
+ * フォルダごとに、記録の数・いちばん新しい記録・直近の日ごとの件数・残した人・チェックリストの数をまとめる。
+ * 並びは、いちばん新しい記録が新しい順。どのフォルダにも入っていない記録は最後に置く。
+ * 複数のフォルダに入っている記録は、それぞれのフォルダで数える。
+ */
+export function summarizeFolders(items: readonly RecordItem[], now: string, span: number = FOLDER_SPAN_DAYS): FolderActivity[] {
+  const byKey = new Map<string, FolderActivity>();
+  const add = (key: string, name: string | null, item: RecordItem) => {
+    let f = byKey.get(key);
+    if (!f) {
+      f = { name, count: 0, lastAt: item.at, days: Array.from({ length: span }, () => 0), who: { self: false, ai: false, other: false } };
+      byKey.set(key, f);
+    }
+    f.count += 1;
+    if (timeOf(item.at) > timeOf(f.lastAt)) f.lastAt = item.at;
+    const day = dayKeyOf(item.at);
+    const ago = day ? daysAgo(day, now) : -1;
+    if (ago >= 0 && ago < span) f.days[span - 1 - ago] += 1;
+    if (item.who.type === "self" || item.who.type === "selfWithAi") f.who.self = true;
+    if (item.who.type === "ai" || item.who.type === "selfWithAi") f.who.ai = true;
+    if (item.who.type === "other") f.who.other = true;
+    if (item.checklist) {
+      f.checklist = { open: (f.checklist?.open ?? 0) + item.checklist.open, total: (f.checklist?.total ?? 0) + item.checklist.total };
+    }
+  };
+  for (const item of items) {
+    const folders = item.folders ?? [];
+    if (folders.length === 0) add("", null, item);
+    // 同じ記録に、大文字・小文字だけ違う名前が 2 つ付いていても 1 回だけ数える
+    const seen = new Set<string>();
+    for (const name of folders) {
+      const key = folderKey(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      add(`f:${key}`, name.trim(), item);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => {
+    if ((a.name === null) !== (b.name === null)) return a.name === null ? 1 : -1;
+    return timeOf(b.lastAt) - timeOf(a.lastAt);
+  });
+}

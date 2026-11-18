@@ -4638,5 +4638,11 @@ export const ja: Record<string, string> = {
   "records.calMore": "多い",
   "records.showingFrom": "{date} から表示しています",
   "records.backToLatest": "最新に戻る",
+  "records.folders": "フォルダごとの動き",
+  "records.noFolder": "フォルダなし",
+  "records.unchecked": "未チェック {open} / {total}",
+  "records.allChecked": "{total} 件すべてチェック済み",
+  "records.lastDays": "直近 {n} 日",
+  "records.moreFolders": "ほか {n} フォルダ",
   "records.seeInRecords": "「{query}」をホームで見る",
 };

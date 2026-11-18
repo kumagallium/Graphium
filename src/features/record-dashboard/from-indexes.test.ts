@@ -245,3 +245,26 @@ describe("buildRecords", () => {
     expect(() => buildRecords({ notes, media: mediaList, captures: [] })).not.toThrow();
   });
 });
+
+describe("フォルダとチェックリスト", () => {
+  it("ノートのフォルダと、チェックリストの数（まだの数・全体）を写す", () => {
+    const r = noteToRecord(
+      note({
+        noteContexts: ["食パンの試作"],
+        checklist: [
+          { blockId: "b1", text: "粉を量る", checked: true },
+          { blockId: "b2", text: "温度を測る", checked: false },
+        ],
+      }),
+      new Set(),
+    );
+    expect(r.folders).toEqual(["食パンの試作"]);
+    expect(r.checklist).toEqual({ open: 1, total: 2 });
+  });
+
+  it("フォルダもチェックリストも無いノートは、どちらの項目も持たない", () => {
+    const r = noteToRecord(note(), new Set());
+    expect("folders" in r).toBe(false);
+    expect("checklist" in r).toBe(false);
+  });
+});

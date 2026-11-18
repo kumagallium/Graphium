@@ -1923,3 +1923,184 @@
     margin-inline: 4px;
   }
 }
+
+/* ── フォルダごとの動き ───────────────────────────── */
+.rd-folders {
+  padding: 14px 8px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-1);
+}
+
+.rd-folders-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 6px;
+}
+
+.rd-folders-head h3 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--ink);
+}
+
+.rd-folders-head span {
+  font-size: 13px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.rd-folders ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rd-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-3);
+  background: transparent;
+  text-align: left;
+  color: var(--ink);
+  transition: background-color 200ms;
+}
+
+.rd-folder:hover {
+  background: var(--paper);
+}
+
+.rd-folder[aria-pressed="true"] {
+  background: var(--forest-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--forest) 30%, transparent);
+}
+
+.rd-folder:focus-visible,
+.rd-folders-more:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+.rd-folder-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rd-folder-top svg {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.rd-folder[aria-pressed="true"] .rd-folder-top svg {
+  color: var(--forest-ink);
+}
+
+.rd-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rd-folder-last {
+  flex: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.rd-folder-mid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 24px;
+}
+
+/* 直近の日ごとの件数。升はカレンダーと同じ濃淡 */
+.rd-folder-days {
+  display: grid;
+  flex: 1;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  max-width: 168px;
+}
+
+.rd-folder-days .rd-cal-swatch {
+  width: auto;
+  height: 12px;
+  margin: 0;
+  border-radius: 3px;
+}
+
+.rd-folder-days .rd-cal-swatch[data-level="0"] {
+  background: color-mix(in oklch, var(--ink) 7%, transparent);
+}
+
+.rd-folder-who {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.rd-folder-count {
+  flex: none;
+  margin-left: auto;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.rd-folder-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.rd-folder-check[data-open="true"] {
+  color: var(--ink-2);
+}
+
+.rd-folder-check svg {
+  flex: none;
+}
+
+.rd-folders-more {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-3);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--forest-ink);
+}
+
+.rd-folders-more:hover {
+  background: var(--paper);
+}

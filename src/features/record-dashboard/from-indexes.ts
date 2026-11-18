@@ -76,6 +76,11 @@ export function deriveMemoOrigin(entry: CaptureEntry): RecordOrigin {
   return entry.sourceAsset ? "quote" : "memo";
 }
 
+/** 入っているフォルダ。無ければ項目ごと持たない */
+function foldersOf(contexts: readonly string[] | undefined): { folders?: readonly string[] } {
+  return contexts && contexts.length > 0 ? { folders: contexts } : {};
+}
+
 /** 使われているノートの数（同じノートの複数ブロックは 1 つに数える） */
 function countNotes(usedIn: readonly { noteId: string }[] | undefined): number {
   return new Set((usedIn ?? []).map((u) => u.noteId)).size;
@@ -85,6 +90,7 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
   const isWiki = entry.source === "ai";
   const headings = entry.headings.map((h) => h.text.trim()).filter(Boolean).slice(0, DETAIL_HEADINGS);
   const sources = entry.derivedFromNotes?.length ?? 0;
+  const checklist = entry.checklist ?? [];
   return {
     id: `note:${entry.noteId}`,
     kind: isWiki ? "wiki" : "note",
@@ -94,6 +100,8 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
     title: entry.title,
     ...(headings.length > 0 ? { detail: headings.join(" · ") } : {}),
     ...(isWiki && sources > 0 ? { trace: { type: "sources" as const, count: sources } } : {}),
+    ...foldersOf(entry.noteContexts),
+    ...(checklist.length > 0 ? { checklist: { open: checklist.filter((c) => !c.checked).length, total: checklist.length } } : {}),
   };
 }
 
@@ -113,6 +121,7 @@ export function mediaToRecord(entry: MediaIndexEntry): RecordItem {
     ...(entry.urlMeta?.domain ? { domain: entry.urlMeta.domain } : {}),
     ...(typeof entry.pageCount === "number" ? { pageCount: entry.pageCount } : {}),
     ...(used > 0 ? { trace: { type: "usedIn" as const, count: used } } : {}),
+    ...foldersOf(entry.noteContexts),
   };
 }
 
@@ -127,6 +136,7 @@ export function memoToRecord(entry: CaptureEntry): RecordItem {
     who: { type: "self" },
     text: entry.text,
     ...(used > 0 ? { trace: { type: "usedIn" as const, count: used } } : {}),
+    ...foldersOf(entry.noteContexts),
   };
 }
 

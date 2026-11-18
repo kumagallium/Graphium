@@ -4597,5 +4597,11 @@ export const ko: Record<string, string> = {
   "records.calMore": "많음",
   "records.showingFrom": "{date}부터 표시 중",
   "records.backToLatest": "최신으로 돌아가기",
+  "records.folders": "폴더별 움직임",
+  "records.noFolder": "폴더 없음",
+  "records.unchecked": "미체크 {open} / {total}",
+  "records.allChecked": "{total}개 모두 체크됨",
+  "records.lastDays": "최근 {n}일",
+  "records.moreFolders": "폴더 {n}개 더",
   "records.seeInRecords": "\"{query}\"을(를) 홈에서 보기",
 };
