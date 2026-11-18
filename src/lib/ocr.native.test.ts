@@ -180,4 +180,22 @@ describe("recognizeImage の振り分け", () => {
     expect(h.recognizeNative).not.toHaveBeenCalled();
     expect(h.downloadOcrModel).not.toHaveBeenCalled();
   });
+
+  it("設定がオフ → 端末内 OCR にも自動取得にも触れず Tesseract で読む（オンに戻せば再び使う）", async () => {
+    h.getOcrModelStatus.mockResolvedValue(status(false));
+    const { recognizeImage, setOcrNativeEnabledReader } = await loadOcr();
+    let on = false;
+    setOcrNativeEnabledReader(() => on);
+
+    const r = await recognizeImage(blob());
+    expect(r).toEqual({ text: "tess", confidence: 70, engine: "tesseract" });
+    expect(h.getOcrModelStatus).not.toHaveBeenCalled();
+    expect(h.recognizeNative).not.toHaveBeenCalled();
+    expect(h.downloadOcrModel).not.toHaveBeenCalled();
+
+    // 読み取り関数は画像ごとに呼ばれるので、オンに戻せば次の回から自動取得が走る
+    on = true;
+    await recognizeImage(blob());
+    expect(h.downloadOcrModel).toHaveBeenCalledTimes(1);
+  });
 });

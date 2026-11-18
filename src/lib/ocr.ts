@@ -2,9 +2,10 @@
 //
 // - LLM を一切使わず、画像から文字を抽出する。
 // - 画像（File/Blob）はブラウザ内だけで処理され、外部サーバーへ送信されない。
-//   （wasm と言語データのみ CDN から取得する。完全オフライン運用時は self-host も可能）
+//   （wasm と言語データはアプリに同梱したものを使う）
 // - デスクトップ版は、端末内の PP-OCRv6 small（Rust 側・ocr-native.ts）でモデル取得済みならそちらで読む。
 //   未取得なら取得を裏で始め、今回は Tesseract で読む。端末内の読み取りが失敗した回も Tesseract に落とす。
+//   設定で「端末内のモデルで読む」をオフにすると、この経路も自動取得も使わない。
 // - Tesseract ワーカーは 1 つを使い回し、認識ジョブは直列化する
 //   （ワーカーは同時に 1 ジョブしか処理できず、logger も共有のため）。
 
@@ -169,6 +170,13 @@ const NATIVE_PROGRESS_STATUS = "recognizing text";
 
 type NativeApi = typeof import("./ocr-native");
 
+// 端末内モデルを使うかの読み取り関数。設定の層（features/settings）には依存せず、
+// アプリの起動時に main.tsx が注入する（既定は常にオン）
+let nativeEnabledReader: () => boolean = () => true;
+export function setOcrNativeEnabledReader(reader: () => boolean): void {
+  nativeEnabledReader = reader;
+}
+
 /** 自動取得が失敗してから次に試すまでの待ち（一括 OCR で画像ごとに取得を始めない） */
 export const OCR_DOWNLOAD_RETRY_MS = 10 * 60 * 1000;
 
@@ -215,6 +223,8 @@ async function recognizeNativeOrNull(
   onProgress?: (p: OcrProgress) => void,
 ): Promise<OcrResult | null> {
   if (!isTauri()) return null;
+  // 設定でオフなら、端末内の経路にも自動取得にも触れず Tesseract で読む
+  if (!nativeEnabledReader()) return null;
   let native: NativeApi;
   try {
     native = await import("./ocr-native");
