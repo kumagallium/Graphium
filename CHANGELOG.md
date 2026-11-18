@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.142.0](https://github.com/kumagallium/Graphium/compare/v0.141.2...v0.142.0) - 2026-11-18
+
+- [docs] Record the OCR engine comparison (handwriting and printed text) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1744
+- [feat] Read images with PP-OCRv6 small on the desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1748
+
 ## [v0.141.2](https://github.com/kumagallium/Graphium/compare/v0.141.1...v0.141.2) - 2026-11-18
 
 - feat(docx): write formulas as Word equations instead of LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/1741
