@@ -27,6 +27,7 @@ import {
 } from "./parse";
 import { applyExtract, isActiveCondition } from "../data-extract/apply";
 import { ExtractSection } from "../data-extract/components/ExtractSection";
+import { ExtractSummary } from "../data-extract/components/ExtractSummary";
 import { describeSpec } from "../data-extract/describe";
 import { profileColumns, profileColumnsAsync } from "../data-extract/profile";
 import type { ColumnProfile, ExtractCondition, ExtractSpec } from "../data-extract/types";
@@ -345,8 +346,8 @@ export function DataImportModal({
             {canImport
               ? t("dataImport.summary", {
                   headerRow: String(options.headerRow),
-                  rows: String(effectiveRowCount),
-                  columns: String(shownHeaders.length),
+                  rows: String(rowCount),
+                  columns: String(parsed.headers.length),
                   delimiter: t(`dataImport.delimiter.${options.delimiter}`),
                 })
               : t("dataImport.summaryEmpty")}
@@ -497,28 +498,6 @@ export function DataImportModal({
             </div>
         </div>
 
-        {/* 絞り込み。設定の下・プレビューの上。畳んだ状態が既定で、絞らなければ今までと変わらない */}
-        {canImport && (
-          <ExtractSection
-            open={extractOpen}
-            onToggle={() => setExtractOpen((v) => !v)}
-            collapsedSummary={collapsedSummary}
-            loading={extractLoading}
-            columns={extractProfiles}
-            selectedColumns={chosenColumns}
-            onColumnsChange={(next) =>
-              // 全部選んだら「全列」に戻す（元と同じ内容として扱う）。空は「なし」として残す
-              setExtractColumns(next.length === extractAllNames.length ? null : next)
-            }
-            conditions={extractConditions}
-            onConditionsChange={setExtractConditions}
-            sourceRows={extractTable ? extractTable.rows.length : 0}
-            resultRows={extractView ? extractView.rowCount : (extractTable?.rows.length ?? 0)}
-            columnCount={extractView ? extractView.headers.length : (extractTable?.headers.length ?? 0)}
-            sameAsSource={extractView === null}
-          />
-        )}
-
         {/* プレビュー（左: 生テキスト / 右: 変換結果） */}
         <div className="flex-1 min-h-0 grid grid-cols-2 gap-0 divide-x divide-border">
           <section className="flex flex-col min-h-0">
@@ -556,11 +535,40 @@ export function DataImportModal({
             </div>
           </section>
 
-          <section className="flex flex-col min-h-0">
-            <div className="px-4 py-1.5 text-[11px] text-muted-foreground border-b border-border">
-              {t("dataImport.tablePreview")}
+          <section className="flex flex-col min-h-0 overflow-hidden">
+            {/* 絞り込み。変換プレビューの上（右の列の中）。畳んだ状態が既定で、絞らなければ今までと変わらない */}
+            {canImport && (
+              <ExtractSection
+                open={extractOpen}
+                onToggle={() => setExtractOpen((v) => !v)}
+                collapsedSummary={collapsedSummary}
+                loading={extractLoading}
+                columns={extractProfiles}
+                selectedColumns={chosenColumns}
+                onColumnsChange={(next) =>
+                  // 全部選んだら「全列」に戻す（元と同じ内容として扱う）。空は「なし」として残す
+                  setExtractColumns(next.length === extractAllNames.length ? null : next)
+                }
+                conditions={extractConditions}
+                onConditionsChange={setExtractConditions}
+              />
+            )}
+            <div className="px-4 py-1.5 text-[11px] text-muted-foreground border-b border-border shrink-0 flex flex-wrap items-baseline gap-x-3">
+              <span>{t("dataImport.tablePreview")}</span>
+              {/* 絞り込みが入っているときだけ、絞った後の行数を見出しの右に常に出す */}
+              {extractView && (
+                <span className="ml-auto text-right">
+                  <ExtractSummary
+                    inline
+                    sourceRows={extractView.sourceRows}
+                    resultRows={extractView.rowCount}
+                    columnCount={extractView.headers.length}
+                    sameAsSource={false}
+                  />
+                </span>
+              )}
             </div>
-            <div className="flex-1 overflow-auto p-3">
+            <div className="flex-1 min-h-0 overflow-auto p-3">
               {canImport && shownHeaders.length > 0 ? (
                 <table className="text-[11px] border-collapse">
                   <thead>

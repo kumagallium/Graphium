@@ -148,7 +148,7 @@ export const ExtractCollapsed: Story = {
   args: { fileName: "oven-curves.csv", text: BREAD_CSV, onCancel: noop, onConfirm: noop },
 };
 
-/** 開いた状態。列を 3 つ選び、条件を 2 つ付けている。右のプレビューは絞った後の表 */
+/** 開いた状態。列を 3 つ選び、条件を 2 つ付けている。変換プレビューの上、右の列の中に段が入る。プレビューは絞った後の表 */
 export const ExtractOpen: Story = {
   name: "絞り込み（開いた状態・条件 2 つ）",
   args: {
@@ -202,7 +202,7 @@ export const ExtractManyColumns: Story = {
 export const ExtractLoadingLargeFile: Story = {
   name: "大きなファイルで段を開いた直後（読んでいる間）",
   render: () => (
-    <div className="bg-background border border-border rounded-lg w-[900px] max-w-full overflow-hidden">
+    <div className="bg-background border border-border rounded-lg w-[450px] max-w-full overflow-hidden">
       <ExtractSection
         open
         onToggle={noop}
@@ -213,10 +213,6 @@ export const ExtractLoadingLargeFile: Story = {
         onColumnsChange={noop}
         conditions={[]}
         onConditionsChange={noop}
-        sourceRows={0}
-        resultRows={0}
-        columnCount={0}
-        sameAsSource
       />
       <div className="flex items-center justify-end gap-2 px-4 py-3">
         <button

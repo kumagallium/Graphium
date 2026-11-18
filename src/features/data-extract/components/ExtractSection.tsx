@@ -13,7 +13,6 @@ import { t, useLocaleSubscription } from "../../../i18n";
 import type { ColumnProfile, ExtractCondition } from "../types";
 import { ColumnChooser } from "./ColumnChooser";
 import { ConditionRow } from "./ConditionRow";
-import { ExtractSummary } from "./ExtractSummary";
 
 // 取り込み画面の設定の「調整」ボタンなどと同じ書式
 const ACTION =
@@ -39,10 +38,6 @@ export function ExtractSection({
   onColumnsChange,
   conditions,
   onConditionsChange,
-  sourceRows,
-  resultRows,
-  columnCount,
-  sameAsSource,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -59,10 +54,6 @@ export function ExtractSection({
   onColumnsChange: (selected: string[]) => void;
   conditions: ExtractCondition[];
   onConditionsChange: (next: ExtractCondition[]) => void;
-  sourceRows: number;
-  resultRows: number;
-  columnCount: number;
-  sameAsSource: boolean;
 }) {
   useLocaleSubscription();
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -70,7 +61,7 @@ export function ExtractSection({
     onConditionsChange([...conditions, { column: columns[0]?.name ?? "", op: "eq", value: "" }]);
 
   return (
-    <div className="px-4 py-2 border-b border-border">
+    <div className="px-4 py-2 border-b border-border shrink-0">
       <button
         type="button"
         onClick={onToggle}
@@ -93,7 +84,7 @@ export function ExtractSection({
       </button>
 
       {open && (
-        <div className="mt-2 flex flex-col gap-3 max-h-[40vh] overflow-y-auto">
+        <div className="mt-2 flex flex-col gap-2">
           {loading ? (
             <ExtractLoading />
           ) : (
@@ -104,10 +95,17 @@ export function ExtractSection({
                 onChange={onColumnsChange}
               />
               <div>
-                <div className="text-[11px] font-medium text-foreground mb-1.5">
-                  {t("dataExtract.condition")}
+                {/* 見出しの右隣に置く。条件の行が増えても押せるよう、行の外に出してある */}
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-[11px] font-medium text-foreground mr-1">
+                    {t("dataExtract.condition")}
+                  </span>
+                  <button type="button" className={ACTION} onClick={addCondition}>
+                    {t("dataExtract.addCondition")}
+                  </button>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                {/* スクロールするのは条件の行だけ */}
+                <div className="flex flex-col gap-1.5 max-h-16 overflow-y-auto">
                   {conditions.map((c, i) => (
                     <ConditionRow
                       key={i}
@@ -119,19 +117,8 @@ export function ExtractSection({
                       onRemove={() => onConditionsChange(conditions.filter((_, j) => j !== i))}
                     />
                   ))}
-                  <div>
-                    <button type="button" className={ACTION} onClick={addCondition}>
-                      {t("dataExtract.addCondition")}
-                    </button>
-                  </div>
                 </div>
               </div>
-              <ExtractSummary
-                sourceRows={sourceRows}
-                resultRows={resultRows}
-                columnCount={columnCount}
-                sameAsSource={sameAsSource}
-              />
             </>
           )}
         </div>

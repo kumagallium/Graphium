@@ -7,8 +7,8 @@
 import { t, useLocaleSubscription } from "../../../i18n";
 import type { ColumnProfile } from "../types";
 
-/** チェックの並びの最大の高さ（約 4 行）。超えたら中でスクロールする */
-const MAX_HEIGHT = "max-h-24";
+/** チェックの並びの最大の高さ（約 3 行）。超えたら中でスクロールする */
+const MAX_HEIGHT = "max-h-16";
 
 const ACTION =
   "px-2.5 py-1 text-[11px] rounded border border-border text-muted-foreground hover:bg-muted transition-colors";

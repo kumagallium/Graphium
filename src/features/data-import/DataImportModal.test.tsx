@@ -239,7 +239,7 @@ describe("DataImportModal / 絞り込む", () => {
       initialExtract: { columns: [], conditions: [{ column: "value", op: "lt", value: "10" }] },
     });
     fireEvent.click(screen.getByRole("button", { name: /絞り込む/ }));
-    expect(screen.getByText(/value < 10（120 行のうち \d+ 行）/)).toBeTruthy();
+    expect(screen.getByText(/120 行のうち \d+ 行: value < 10/)).toBeTruthy();
     fireEvent.click(confirm());
     expect((onConfirm.mock.calls[0][0] as DataImportResult).extract).toBeDefined();
   });

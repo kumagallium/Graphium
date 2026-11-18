@@ -28,11 +28,11 @@ export function describeSpec(spec: ExtractSpec, t: T): string {
 }
 
 /**
- * 表の上の「条件の 1 行」。条件の文に行数を添える:
- * 「temp_c ≥ 200 かつ dough = baguette（120 行のうち 30 行）」
+ * 表の上の「条件の 1 行」。行数を先に、条件の文を後に出す:
+ * 「120 行のうち 30 行: temp_c ≥ 200 かつ dough = baguette」。長くて省略されるのは条件の側で、行数は必ず見える
  *
  * 列だけ選んで条件が無いときは、列名を並べず個数で言う（長くなって 1 行に収まらないため）:
- * 「3 列を選択（120 行のうち 120 行）」。何も絞っていない来歴は「全列・全行」
+ * 「120 行のうち 120 行: 3 列を選択」。何も絞っていない来歴は「全列・全行」
  */
 export function describeDerivation(derivation: TableDerivation, t: T): string {
   const parts: string[] = [];

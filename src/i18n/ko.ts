@@ -4630,7 +4630,7 @@ export const ko: Record<string, string> = {
   "dataExtract.describe.columns": "열: {columns}",
   "dataExtract.describe.all": "모든 열·모든 행",
   "dataExtract.describe.columnCount": "{count}개 열 선택",
-  "dataExtract.describe.withRows": "{spec}({total}행 중 {rows}행)",
+  "dataExtract.describe.withRows": "{total}행 중 {rows}행: {spec}",
   "dataExtract.rowsOf": "{total}행 중 {rows}행",
   "dataExtract.zeroColumns": "열을 하나 이상 선택하세요",
   "dataExtract.sectionTitle": "걸러내기",

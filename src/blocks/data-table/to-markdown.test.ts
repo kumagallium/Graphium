@@ -101,7 +101,7 @@ describe("dataTableToMarkdown", () => {
     expect(out).toHaveLength(3);
     expect(out[1].type).toBe("paragraph");
     expect(out[1].content[0].styles.italic).toBe(true);
-    expect(out[1].content[0].text).toBe("絞り込み: temp_c ≥ 185（120 行のうち 10 行）");
+    expect(out[1].content[0].text).toBe("絞り込み: 120 行のうち 10 行: temp_c ≥ 185");
     expect(out[2].type).toBe("table");
   });
 

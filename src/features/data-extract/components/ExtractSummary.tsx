@@ -10,12 +10,15 @@ export function ExtractSummary({
   resultRows,
   columnCount,
   sameAsSource,
+  inline = false,
 }: {
   sourceRows: number;
   resultRows: number;
   columnCount: number;
   /** 条件が 1 つも無く全列（＝元と同じ内容）か */
   sameAsSource: boolean;
+  /** 見出しの行の右に置くとき true。注記を改行せず横に続ける */
+  inline?: boolean;
 }) {
   useLocaleSubscription();
   // 列が 1 つも無いときは行の数に関わらず確定できないので、その理由を先に出す
@@ -36,7 +39,12 @@ export function ExtractSummary({
           cols: String(columnCount),
         })}
       </span>
-      {note && <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>}
+      {note &&
+        (inline ? (
+          <span className="ml-2 text-[11px] text-muted-foreground">{note}</span>
+        ) : (
+          <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>
+        ))}
     </div>
   );
 }

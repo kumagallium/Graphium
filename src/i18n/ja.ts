@@ -4671,7 +4671,7 @@ export const ja: Record<string, string> = {
   "dataExtract.describe.columns": "列: {columns}",
   "dataExtract.describe.all": "全列・全行",
   "dataExtract.describe.columnCount": "{count} 列を選択",
-  "dataExtract.describe.withRows": "{spec}（{total} 行のうち {rows} 行）",
+  "dataExtract.describe.withRows": "{total} 行のうち {rows} 行: {spec}",
   "dataExtract.rowsOf": "{total} 行のうち {rows} 行",
   "dataExtract.zeroColumns": "列を 1 つ以上選んでください",
   "dataExtract.sectionTitle": "絞り込む",

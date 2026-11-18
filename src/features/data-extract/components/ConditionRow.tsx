@@ -46,12 +46,12 @@ export function ConditionRow({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex items-center gap-1.5">
       <select
         value={condition.column}
         aria-label={t("dataExtract.column")}
         onChange={(e) => changeColumn(e.target.value)}
-        className={`${FIELD} max-w-[160px]`}
+        className={`${FIELD} min-w-0 max-w-[40%]`}
       >
         {condition.column === "" && <option value="">{t("dataExtract.column")}</option>}
         {columns.map((c) => (
@@ -64,7 +64,7 @@ export function ConditionRow({
         value={condition.op}
         aria-label={t("dataExtract.condition")}
         onChange={(e) => changeOp(e.target.value as ExtractOperator)}
-        className={FIELD}
+        className={`${FIELD} shrink-0`}
       >
         {operators.map((op) => (
           <option key={op} value={op}>
@@ -81,7 +81,7 @@ export function ConditionRow({
             placeholder={t("dataExtract.value")}
             aria-label={t("dataExtract.value")}
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
-            className={`${FIELD} w-40`}
+            className={`${FIELD} w-24 min-w-0 flex-1`}
           />
           {showCandidates && (
             <datalist id={listId}>
@@ -96,7 +96,7 @@ export function ConditionRow({
         type="button"
         onClick={onRemove}
         aria-label={t("dataExtract.removeCondition")}
-        className="w-6 h-6 rounded border border-border text-[11px] text-muted-foreground hover:bg-muted transition-colors"
+        className="w-6 h-6 shrink-0 rounded border border-border text-[11px] text-muted-foreground hover:bg-muted transition-colors"
       >
         ✕
       </button>

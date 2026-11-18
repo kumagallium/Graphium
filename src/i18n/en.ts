@@ -4669,7 +4669,7 @@ export const en: Record<string, string> = {
   "dataExtract.describe.columns": "Columns: {columns}",
   "dataExtract.describe.all": "All columns, all rows",
   "dataExtract.describe.columnCount": "{count} columns selected",
-  "dataExtract.describe.withRows": "{spec} ({rows} of {total} rows)",
+  "dataExtract.describe.withRows": "{rows} of {total} rows: {spec}",
   "dataExtract.rowsOf": "{rows} of {total} rows",
   "dataExtract.zeroColumns": "Choose at least one column",
   "dataExtract.sectionTitle": "Filter",
