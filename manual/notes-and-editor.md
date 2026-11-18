@@ -524,7 +524,7 @@ Lines like `Device Model: ENV-MONITOR-X9` from the preamble are **kept alongside
 
 An imported table carries its **source** next to its name. Press it to reopen the same screen and rebuild the table with a corrected range or delimiter — the table keeps its place and its name. The file itself stays as a **Data** asset, so the numbers lead back to the raw output. Importing the same file twice does not add a second asset.
 
-A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no row limit (importing, viewing, editing the note and reopening have been tried with 230,000 rows, 188 MB, in the web version; see the [record of the measurement](/evaluations/large-data-tables)) — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
+A long note table is cut off with a "show N more rows" button at its foot, so a note does not fill up with data; press it to see all of it. By default, though, a file becomes a [data table](#data-tables), which has no row limit (importing, viewing, editing the note and reopening have been tried with 230,000 rows, 188 MB, in the web version and the desktop app; see the [record of the measurement](/evaluations/large-data-tables)) — choose **Table in the note** on the import screen when you want an editable table instead (warned above 200 rows, refused above 1,000).
 
 A file does not have to become a table to be plotted — a chart can read a data asset directly (see [charts](#the-time-series-table-and-charts) above), which keeps a note free of tables that exist only to be drawn.
 

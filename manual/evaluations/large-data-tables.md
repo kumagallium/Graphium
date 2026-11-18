@@ -87,3 +87,26 @@ Before the fix, four things froze the screen.
 - **The wait for the first save before inserting a data table is gone.** It is no longer needed.
 - **A chart over 233,000 rows froze for 45 seconds or more while it was drawn.** Measured with a 4-column version of the same synthetic data (233,000 rows), read through the chart's **From a data asset**. The cost was drawing every point, not parsing, and once drawn, typing one character in the note took 52–153 seconds. A series with more than 4,000 points is now thinned for drawing only, and editing the note no longer redraws the chart. Confirming until the chart is drawn went from 45.3–50.0 seconds to 1.2 seconds (longest stall 0.4 seconds), and the delay per character is 0.064 seconds at most. Charts of 500 and 3,000 rows draw every point as before. Stacking and normalisation are computed from every point.
 - **The asset preview rendered all rows of a 233,000 × 16 table at once.** It now renders the first 1,000 rows and 200 columns and states the size of the whole table. Sorting works on all rows. Opening took 3.3 seconds and sorting a text column 0.6–1.1 seconds (not measured before the change).
+
+## Measured in the desktop app
+
+After the measurements above, the same synthetic data (233,000 rows × 16 columns, 188 MB) was run through the desktop app, in a build with every fix so far. The desktop app before the fixes was not measured.
+
+| | |
+|---|---|
+| Hardware | Apple M1 Max, 64 GB, macOS 27.2 |
+| Build | Built with the same optimisation as a release. Only the identifier and the internal port were changed, to keep it apart from the installed app. Storage was a temporary folder |
+| Driving it | A small hook, present only in this verification build, creates the synthetic data in the page and performs the drop, confirm, typing, save and reload by itself |
+| Runs | 1 |
+
+| Step | Time taken | Longest single stall |
+|---|---|---|
+| Dropping the file until the import screen opens | 0.7 s | 0.5 s |
+| Confirming until the data table appears | 6.1 s | 1.0 s |
+| Then typing 31 characters in the body | — | 0.01 s |
+| Reloading until the data table appears | 6.0 s | 1.1 s |
+
+- With 23,300 rows (19 MB), confirming until the table appears took 0.6 seconds and reloading until the table appears 0.8 seconds.
+- The memory of the process that draws the window peaked at 3.2 GB during the import and was 2.1 GB after reopening.
+- Confirming and reopening are slower than in the web version because saving and reading back an asset passes the whole file as a base64 string. For the 188 MB asset, reading back took 0.5 seconds to receive, 0.4 seconds to decode and 0.2 seconds to copy into bytes; saving took 0.6 seconds to encode and 0.9 seconds to send. The screen stalls during the decoding, copying and encoding.
+- In an unoptimised development build, confirming until the table appears took 9.3 seconds and reloading 15.3 seconds. Numbers from a development build do not indicate what a release does.
