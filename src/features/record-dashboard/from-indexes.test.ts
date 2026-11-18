@@ -246,25 +246,12 @@ describe("buildRecords", () => {
   });
 });
 
-describe("フォルダとチェックリスト", () => {
-  it("ノートのフォルダと、チェックリストの数（まだの数・全体）を写す", () => {
-    const r = noteToRecord(
-      note({
-        noteContexts: ["食パンの試作"],
-        checklist: [
-          { blockId: "b1", text: "粉を量る", checked: true },
-          { blockId: "b2", text: "温度を測る", checked: false },
-        ],
-      }),
-      new Set(),
-    );
-    expect(r.folders).toEqual(["食パンの試作"]);
-    expect(r.checklist).toEqual({ open: 1, total: 2 });
+describe("フォルダ", () => {
+  it("ノート・素材・メモのフォルダを写す", () => {
+    expect(noteToRecord(note({ noteContexts: ["食パンの試作"] }), new Set()).folders).toEqual(["食パンの試作"]);
   });
 
-  it("フォルダもチェックリストも無いノートは、どちらの項目も持たない", () => {
-    const r = noteToRecord(note(), new Set());
-    expect("folders" in r).toBe(false);
-    expect("checklist" in r).toBe(false);
+  it("フォルダの無いノートは項目を持たない", () => {
+    expect("folders" in noteToRecord(note(), new Set())).toBe(false);
   });
 });

@@ -83,8 +83,6 @@ export type RecordItem = {
   trace?: RecordTrace;
   /** 入っているフォルダ — ノート・素材・メモの noteContexts（1 つの記録が複数のフォルダに入ることがある） */
   folders?: readonly string[];
-  /** チェックリストの項目の数 — ノートの checklist（open はまだチェックの付いていない数）。項目が無ければ持たない */
-  checklist?: { open: number; total: number };
 };
 
 /** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */

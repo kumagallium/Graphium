@@ -4636,11 +4636,8 @@ export const en: Record<string, string> = {
   "records.calMore": "More",
   "records.showingFrom": "Showing from {date}",
   "records.backToLatest": "Back to the latest",
-  "records.folders": "By folder",
+  "records.folder": "Folder",
+  "records.allFolders": "All folders",
   "records.noFolder": "Not in a folder",
-  "records.unchecked": "{open} of {total} unchecked",
-  "records.allChecked": "All {total} checked",
-  "records.lastDays": "Last {n} days",
-  "records.moreFolders": "{n} more folders",
   "records.seeInRecords": "See \"{query}\" in Home",
 };

@@ -90,7 +90,6 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
   const isWiki = entry.source === "ai";
   const headings = entry.headings.map((h) => h.text.trim()).filter(Boolean).slice(0, DETAIL_HEADINGS);
   const sources = entry.derivedFromNotes?.length ?? 0;
-  const checklist = entry.checklist ?? [];
   return {
     id: `note:${entry.noteId}`,
     kind: isWiki ? "wiki" : "note",
@@ -101,7 +100,6 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
     ...(headings.length > 0 ? { detail: headings.join(" · ") } : {}),
     ...(isWiki && sources > 0 ? { trace: { type: "sources" as const, count: sources } } : {}),
     ...foldersOf(entry.noteContexts),
-    ...(checklist.length > 0 ? { checklist: { open: checklist.filter((c) => !c.checked).length, total: checklist.length } } : {}),
   };
 }
 

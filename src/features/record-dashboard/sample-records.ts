@@ -351,7 +351,7 @@ export const SAMPLE_FOLDERS: Record<SampleLocale, { loaf: string; classroom: str
 };
 
 /**
- * フォルダに入れた仮データ。3 か月分の記録に、フォルダとチェックリストの数を足す。
+ * フォルダに入れた仮データ。3 か月分の記録に、フォルダを足す。
  * 「今週の振り返り」と 11 月の覚え書きは、どのフォルダにも入れていない。
  */
 export function folderRecords(locale: SampleLocale): RecordItem[] {
@@ -362,11 +362,6 @@ export function folderRecords(locale: SampleLocale): RecordItem[] {
     r02: [f.classroom, f.loaf], r08: [f.classroom],
     r11: [f.curry], r13: [f.curry],
   };
-  const checklist: Record<string, { open: number; total: number }> = {
-    r02: { open: 3, total: 5 },
-    r09: { open: 2, total: 6 },
-    r11: { open: 0, total: 4 },
-  };
   return longHistoryRecords(locale).map((item): RecordItem => {
     const long = /^long-(\d+)-(\d+)-/.exec(item.id);
     const folders = long
@@ -376,11 +371,11 @@ export function folderRecords(locale: SampleLocale): RecordItem[] {
           ? [item.kind === "media" ? f.copies : f.loaf]
           : undefined
       : byId[item.id];
-    return { ...item, ...(folders ? { folders } : {}), ...(checklist[item.id] ? { checklist: checklist[item.id] } : {}) };
+    return { ...item, ...(folders ? { folders } : {}) };
   });
 }
 
-/** フォルダの多い仮データ。たたんだ見え方を確かめるのに使う */
+/** フォルダの多い仮データ。メニューが長くなったときの見え方を確かめるのに使う */
 export function manyFolderRecords(locale: SampleLocale): RecordItem[] {
   const ja = locale === "ja";
   const names = ja

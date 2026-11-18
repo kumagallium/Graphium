@@ -242,65 +242,27 @@ describe("カレンダー", () => {
 });
 
 describe("summarizeFolders", () => {
-  const NOW = "2026-11-17T22:00:00";
   const item = (id: string, at: string, extra: Partial<RecordItem> = {}): RecordItem => ({
     id, kind: "note", at, origin: "written", who: { type: "self" }, title: id, ...extra,
   });
 
   it("新しく動いたフォルダを上に、フォルダなしを最後に並べる", () => {
-    const out = summarizeFolders(
-      [
-        item("a", "2026-11-10T10:00:00", { folders: ["古い"] }),
-        item("b", "2026-11-17T09:00:00"),
-        item("c", "2026-11-16T10:00:00", { folders: ["新しい"] }),
-      ],
-      NOW,
-    );
+    const out = summarizeFolders([
+      item("a", "2026-11-10T10:00:00", { folders: ["古い"] }),
+      item("b", "2026-11-17T09:00:00"),
+      item("c", "2026-11-16T10:00:00", { folders: ["新しい"] }),
+    ]);
     expect(out.map((f) => f.name)).toEqual(["新しい", "古い", null]);
   });
 
   it("複数のフォルダに入っている記録は、それぞれで数える。大文字・小文字の違いは同じフォルダ", () => {
-    const out = summarizeFolders(
-      [item("a", "2026-11-17T10:00:00", { folders: ["Bread", "Class"] }), item("b", "2026-11-16T10:00:00", { folders: ["bread"] })],
-      NOW,
-    );
-    expect(out.find((f) => f.name === "Bread")?.count).toBe(2);
+    const out = summarizeFolders([
+      item("a", "2026-11-17T10:00:00", { folders: ["Bread", "Class"] }),
+      item("b", "2026-11-16T10:00:00", { folders: ["bread"] }),
+    ]);
+    expect(out.find((f) => f.name === "Bread")).toEqual({ name: "Bread", count: 2, lastAt: "2026-11-17T10:00:00" });
     expect(out.find((f) => f.name === "Class")?.count).toBe(1);
     expect(out).toHaveLength(2);
-  });
-
-  it("直近の日ごとの件数は古い日から並び、最後が今日。期間より前の記録は升に入れない", () => {
-    const [f] = summarizeFolders(
-      [
-        item("a", "2026-11-17T10:00:00", { folders: ["x"] }),
-        item("b", "2026-11-17T11:00:00", { folders: ["x"] }),
-        item("c", "2026-11-15T10:00:00", { folders: ["x"] }),
-        item("d", "2026-10-01T10:00:00", { folders: ["x"] }),
-      ],
-      NOW,
-      7,
-    );
-    expect(f.days).toEqual([0, 0, 0, 0, 1, 0, 2]);
-    expect(f.count).toBe(4);
-    expect(f.lastAt).toBe("2026-11-17T11:00:00");
-  });
-
-  it("残した人とチェックリストの数をまとめる", () => {
-    const [f] = summarizeFolders(
-      [
-        item("a", "2026-11-17T10:00:00", { folders: ["x"], checklist: { open: 2, total: 5 } }),
-        item("b", "2026-11-16T10:00:00", { folders: ["x"], who: { type: "selfWithAi" }, checklist: { open: 0, total: 3 } }),
-        item("c", "2026-11-15T10:00:00", { folders: ["x"], who: { type: "other", name: "みなと" } }),
-      ],
-      NOW,
-    );
-    expect(f.who).toEqual({ self: true, ai: true, other: true });
-    expect(f.checklist).toEqual({ open: 2, total: 8 });
-  });
-
-  it("チェックリストの無いフォルダは数を持たない", () => {
-    const [f] = summarizeFolders([item("a", "2026-11-17T10:00:00", { folders: ["x"] })], NOW);
-    expect(f.checklist).toBeUndefined();
   });
 });
 

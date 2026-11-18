@@ -1544,6 +1544,8 @@
 
 @container rd (max-width: 720px) {
   .rd-stage {
+    /* 上の横並びの指定（2 列）が後から効くので、狭い幅の 1 列をここで言い直す */
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 
@@ -1924,183 +1926,131 @@
   }
 }
 
-/* ── フォルダごとの動き ───────────────────────────── */
-.rd-folders {
-  padding: 14px 8px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: var(--color-card);
-  box-shadow: var(--shadow-1);
+/* ── フォルダでの絞り込み ───────────────────────────── */
+.rd-folder-filter {
+  position: relative;
+  flex: none;
+  max-width: 100%;
 }
 
-.rd-folders-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 12px 6px;
-}
-
-.rd-folders-head h3 {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 28px;
-  color: var(--ink);
-}
-
-.rd-folders-head span {
-  font-size: 13px;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-
-.rd-folders ul {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.rd-folder {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: var(--r-3);
-  background: transparent;
-  text-align: left;
-  color: var(--ink);
-  transition: background-color 200ms;
-}
-
-.rd-folder:hover {
-  background: var(--paper);
-}
-
-.rd-folder[aria-pressed="true"] {
-  background: var(--forest-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--forest) 30%, transparent);
-}
-
-.rd-folder:focus-visible,
-.rd-folders-more:focus-visible {
-  outline: 2px solid var(--forest);
-  outline-offset: 2px;
-}
-
-.rd-folder-top {
-  display: flex;
+.rd-folder-button {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-3);
+  background: var(--color-card);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: border-color 200ms;
 }
 
-.rd-folder-top svg {
+.rd-folder-button:hover {
+  border-color: var(--ink-4);
+  color: var(--ink);
+}
+
+.rd-folder-button svg {
   flex: none;
   color: var(--ink-3);
 }
 
-.rd-folder[aria-pressed="true"] .rd-folder-top svg {
+/* 絞っているあいだは、色と太さの両方で知らせる */
+.rd-folder-button[data-on="true"] {
+  border-color: color-mix(in oklch, var(--forest) 40%, transparent);
+  background: var(--forest-soft);
+  font-weight: 600;
   color: var(--forest-ink);
 }
 
-.rd-folder-name {
-  flex: 1;
+.rd-folder-button[data-on="true"] svg {
+  color: var(--forest-ink);
+}
+
+.rd-folder-button > span {
   min-width: 0;
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rd-folder-last {
-  flex: none;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
+.rd-folder-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(360px, calc(100cqw - 24px));
+  max-height: 360px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-3);
+  background: var(--color-card);
+  box-shadow: var(--shadow-3);
+  list-style: none;
 }
 
-.rd-folder-mid {
+.rd-folder-option {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-left: 24px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  font-size: 14px;
+  text-align: left;
+  color: var(--ink);
 }
 
-/* 直近の日ごとの件数。升はカレンダーと同じ濃淡 */
-.rd-folder-days {
-  display: grid;
+.rd-folder-option:hover {
+  background: var(--paper);
+}
+
+.rd-folder-option[aria-selected="true"] {
+  background: var(--forest-soft);
+  font-weight: 600;
+  color: var(--forest-ink);
+}
+
+.rd-folder-option svg {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.rd-folder-option-name {
   flex: 1;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-  gap: 2px;
-  max-width: 168px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rd-folder-days .rd-cal-swatch {
-  width: auto;
-  height: 12px;
-  margin: 0;
-  border-radius: 3px;
-}
-
-.rd-folder-days .rd-cal-swatch[data-level="0"] {
-  background: color-mix(in oklch, var(--ink) 7%, transparent);
-}
-
-.rd-folder-who {
-  display: inline-flex;
+.rd-folder-option-meta {
   flex: none;
-  align-items: center;
-  gap: 4px;
-}
-
-.rd-folder-count {
-  flex: none;
-  margin-left: auto;
   font-size: 13px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
 
-.rd-folder-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 24px;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--ink-3);
+.rd-folder-menu li[data-sep="true"] {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
 }
 
-.rd-folder-check[data-open="true"] {
-  color: var(--ink-2);
-}
-
-.rd-folder-check svg {
-  flex: none;
-}
-
-.rd-folders-more {
-  display: block;
-  width: 100%;
-  margin-top: 2px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: var(--r-3);
-  background: transparent;
-  font-size: 14px;
-  font-weight: 500;
-  text-align: left;
-  color: var(--forest-ink);
-}
-
-.rd-folders-more:hover {
-  background: var(--paper);
+.rd-folder-button:focus-visible,
+.rd-folder-option:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
 }

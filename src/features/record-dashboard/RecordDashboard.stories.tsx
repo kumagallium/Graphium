@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { buildRecords } from "./from-indexes";
 import { RecordDashboard, type RecordDashboardLayout } from "./RecordDashboard";
 import { SAMPLE_SOURCES } from "./sample-indexes";
-import { busyDayRecords, longHistoryRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { busyDayRecords, folderRecords, longHistoryRecords, manyFolderRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
 import { StoryFrame } from "./story-frame";
 import type { SampleLocale, WhoFilter } from "./types";
 
@@ -24,15 +24,17 @@ type Args = {
   busy?: boolean;
   /** true のとき、3 か月にわたる仮データを出す（カレンダーで月をまたぐ） */
   long?: boolean;
+  /** フォルダに入れた仮データを出す（"many" はフォルダの多い仮データ） */
+  folders?: boolean | "many";
 };
 
-function Screen({ layout, locale, width, searching, who, fromIndexes, busy, long }: Args) {
+function Screen({ layout, locale, width, searching, who, fromIndexes, busy, long, folders }: Args) {
   return (
     <StoryFrame width={width} locale={locale}>
       <RecordDashboard
         // 言語や初めの条件を切り替えたら、中の状態ごと作り直す
-        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}-${long}`}
-        items={fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : long ? longHistoryRecords(locale) : SAMPLE_RECORDS[locale]}
+        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}-${long}-${folders}`}
+        items={folders === "many" ? manyFolderRecords(locale) : folders ? folderRecords(locale) : fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : long ? longHistoryRecords(locale) : SAMPLE_RECORDS[locale]}
         now={SAMPLE_NOW}
         layout={layout}
         initialQuery={searching ? SAMPLE_QUERY[fromIndexes ? "ja" : locale] : ""}
@@ -73,6 +75,11 @@ export const BFindBusyDayNarrow: Story = { args: { layout: "find", busy: true, w
 // 3 か月分の記録: 右上のカレンダーで日を押すと、その日からの記録に移る
 export const BFindLongHistory: Story = { args: { layout: "find", long: true } };
 export const BFindLongHistoryNarrow: Story = { args: { layout: "find", long: true, width: 375 } };
+// フォルダで絞る: 「すべて｜自分｜AI｜共有の作者」の隣のボタンから選ぶ。一覧・件数・カレンダー・見つかった記録がそのフォルダだけになる
+export const BFindFolders: Story = { args: { layout: "find", folders: true } };
+export const BFindFoldersEnglish: Story = { args: { layout: "find", folders: true, locale: "en" } };
+export const BFindManyFolders: Story = { args: { layout: "find", folders: "many" } };
+export const BFindFoldersNarrow: Story = { args: { layout: "find", folders: true, width: 375 } };
 
 // A（比較用）: 1 本の流れ。上で絞って、下を読む
 export const AStream: Story = { args: { layout: "stream" } };
