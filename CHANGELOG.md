@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.141.1](https://github.com/kumagallium/Graphium/compare/v0.141.0...v0.141.1) - 2026-11-18
+
+- fix(data-table): keep the app responsive with large delimited files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1726
+- fix(editor): keep the editor when a new note gets its id by @kumagallium in https://github.com/kumagallium/Graphium/pull/1730
+- perf(data-table): stop re-reading a data table with computed columns on every edit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1728
+- fix(chart): draw large series thinned and stop redrawing on every edit by @kumagallium in https://github.com/kumagallium/Graphium/pull/1732
+- feat(landing): hero says readable by you and by AI, with a three-step picture by @kumagallium in https://github.com/kumagallium/Graphium/pull/1737
+
 ## [v0.141.0](https://github.com/kumagallium/Graphium/compare/v0.140.1...v0.141.0) - 2026-11-18
 
 - feat(mcp): export the whole knowledge layer for Asterism (export_asterism_knowledge) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1731
