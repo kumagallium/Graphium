@@ -305,6 +305,15 @@ describe("resolveSourceText - chat: / 出典として扱えない ID", () => {
   });
 });
 
+describe("resolveSourceText - リンクした素材", () => {
+  it("置き場の URL は再取得せず unreadable で返す", async () => {
+    const fetchUrlText = vi.fn();
+    const result = await resolveSourceText("url:graphium-place://place-1/docs/a.pdf", baseDeps({ fetchUrlText }));
+    expect(result).toEqual({ ok: false, kind: "url", reason: "unreadable" });
+    expect(fetchUrlText).not.toHaveBeenCalled();
+  });
+});
+
 describe("resolveSourceText - conversation:（AI との会話の素材）", () => {
   const FILE_ID = "conv-claude-code-11111111-2222-4333-8444-555555555555";
   const BODY = "- 私（09:00）: 全粒粉は 2 割までにする。3 割だと生地がだれたので\n";

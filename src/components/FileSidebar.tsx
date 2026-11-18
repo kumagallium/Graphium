@@ -17,6 +17,7 @@ import { ExperimentalMark } from "../ui/experimental-mark";
 import { BrandLockup } from "../ui/brand-lockup";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
+import { displayTypeOf } from "../features/linked-files/display-type";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
 import { useScrollMoreBelow } from "./use-scroll-more-below";
@@ -381,7 +382,7 @@ export function FileSidebar({
   const voiceNoteHandler = isTauri() ? onNewVoiceNote : undefined;
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
-  const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
+  const mediaCounts = mediaIndex ? countByType(mediaIndex, displayTypeOf) : null;
 
   // セクション右上に出す件数バッジの集計（メモは独立セクションに移したので含めない）
   const dataCount = useMemo(() => {

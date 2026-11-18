@@ -169,3 +169,14 @@ describe("shareReference — error paths", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("shareReference — リンクした素材", () => {
+  it("置き場のファイルを指す素材は共有しない（何も書かない）", async () => {
+    const r = await shareReference(
+      makeUrlEntry({ url: "graphium-place://place-1/docs/a.pdf", urlMeta: { domain: "共有ドライブ", description: "docs/a.pdf" } }),
+      { sharedRoot: "/tmp/shared", author },
+    );
+    expect(r.ok).toBe(false);
+    expect(fs.entries.size).toBe(0);
+  });
+});

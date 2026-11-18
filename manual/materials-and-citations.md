@@ -17,6 +17,7 @@ Inside the gallery you can:
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | In **Images**, **Data**, **Videos** and **Audio**: upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
 | **Add URL** | In **URLs**: register a web page as a URL bookmark |
+| **Link a file from a data place** | In the image, document, data, video, audio and URL galleries, desktop app only: link a file that lives in a registered data place without copying it — see [Link a file without copying it](#linked-files) |
 | **Add PDF** / **Add Word** | In **Documents**, under the **⋯** menu at the top right: add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
@@ -78,6 +79,7 @@ There are several routes, all ending in the same library:
 | Gallery buttons | **Upload** (Images, Data, Videos, Audio), **Add URL** (URLs), and **Add PDF** / **Add Word** under the **⋯** menu in Documents — add materials without touching any note |
 | Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
 | Bring in AI conversations | In the desktop app, your Claude Code conversations can be kept as materials — see [Bring in AI conversations](#bring-in-ai-conversations) below |
+| Link a file from a data place | Desktop app only. Keep a file where it is (an organization's synced folder, say) and add only a record of its location to the library — see [Link a file without copying it](#linked-files) |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
@@ -164,6 +166,49 @@ A file that is already in your library is reused rather than registered a second
 Two cases are left as they were. An archived material is never reused: if you retired it from the gallery, a fresh upload registers a new material instead of quietly bringing the old one back. Files above roughly 128 MB are registered without the check, because reading one end to end to compare it costs more than the duplicate does.
 
 Materials registered before v0.37.0 are read once in the background after you sign in, to give them the mark the check relies on. Until that pass reaches a given material, bringing it in again still adds a copy. A large library takes a while, and closing the app is safe — the next launch picks up where it left off.
+
+## Link a file without copying it {#linked-files}
+
+Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied, and Graphium never reads what is inside. This is for the desktop app only.
+
+### Set it up and link a file
+
+1. Open Settings → **Storage** and, under **Data places**, press **Register a folder**. Pick the folder (for example the synced folder). See [Data places](/settings#data-places).
+2. Open a gallery (images, documents, data, videos, audio or URLs) and press **Link a file from a data place**.
+3. Pick the file. It has to be inside a registered data place; if it is not, a message says so — register that folder first, or use the regular import.
+4. The linked file is listed by its kind: a PDF or an Office file under documents, a CSV under data, a picture under images. A kind Graphium does not recognise is listed under URLs.
+
+The file appears in the gallery with a **Link** mark. Linking the same file again does not add a second material; it finds the one you already have.
+
+### What you see
+
+Open a linked file and you see its **Data place**, **Location in the place**, **Size**, **Modified**, **Recorded** and **Status**. Graphium compares the size and modified time with the record to decide the status. In the gallery, a mark appears only when the status is not **No change**.
+
+| Status | What it means | What to do |
+|---|---|---|
+| **No change** | The size and modified time match what was recorded. | Nothing. |
+| **The original has changed** | The size or modified time differs. The file may have been edited. | Compare the two columns (**Recorded** and **Current**). If the new version is the one you want to keep citing, press **Record the current state**; the earlier record stays in the history (the latest 20 are kept). |
+| **The original can't be found** | The place is reachable but the file is not there. It may have been moved or renamed. | Look for the file in the place. If it moved, link it again from its new location. |
+| **Can't reach the place** | The folder can't be reached right now. | Check that the drive or sync is connected, then press **Check again**. |
+| **Not registered on this device** | This device does not have that place registered. | Register the place in Settings. The folder is matched by the marker file Graphium leaves in it (below), so registering the same folder again reconnects the links. |
+
+With the status **No change** or **The original has changed**, **Open the original** opens the file in your computer's own app, and **Show in folder** shows it in Finder or Explorer. **Open the original** works only for a fixed set of kinds — documents, spreadsheets, slides, text and CSV, images, audio, video and PDF. For other kinds, use **Show in folder**.
+
+Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
+
+### Good to know
+
+- Where a place is on a computer is kept on that computer only. The notes and the library hold the place's id and the path inside it, never the full path on your disk. When Graphium can, it also leaves a small file named `.graphium-place.json` in the folder, so a colleague who registers the same folder on their own computer gets the same place. If it can't write there, the place works on this device only.
+- The provenance export of a note lists a linked file with its place id, its path in the place, its size and its modified time. The full path on your disk is not included.
+- This has not been checked on Windows, nor with synced folders whose files are not downloaded to the computer yet. Treat both as untested.
+
+### What it can't do
+
+- Search inside a linked file, preview it, or use it in a table or chart. Graphium does not read the contents.
+- Read it with AI: no importing it as knowledge, extracting steps, or translating.
+- Share the linked file itself. Sharing and the shared folder skip it.
+- Link several files, or a whole folder, at once. One file at a time.
+- Turn a link into a copy in Graphium. If you want a copy, bring the file in the usual way.
 
 ## Reading materials: side peek and reader view <Badge type="tip" text="Added in v0.9.2 (2026-05-26)" />
 
@@ -291,7 +336,13 @@ How much this aligns is in the [evaluation record](/evaluations/papers-to-proced
 
 Graphium can read the text inside any image — instrument screenshots, plots, photos of labels — entirely on your device. No LLM is involved and no AI setup is needed; the image never leaves your machine.
 
-<Badge type="tip" text="Changed in v0.142.0 (2026-11-18)" /> The desktop app reads images with PP-OCRv6 small, an on-device model (about 31 MB). It is downloaded automatically in the background the first time an image is read, from the model's official Hugging Face repository, with no prompt. Until the download finishes, if the download or a read fails, and in the browser version, Graphium reads with the same Tesseract engine as before. Photos of paper or screens, tables and vertical text are read more accurately than before, and vertical text is read from the right-hand column first. Handwriting is still hard: dates and numbers are sometimes picked up, but sentences often are not. Images that were already read are not read again; run **Read text from image** once more to re-read one with the newer engine. To turn it off, or to download or delete the model yourself, open Settings → AI → **Model for reading text in images** (desktop app only). Turn off **Read with an on-device model** and Graphium reads with Tesseract only and never downloads the model; the switch is on by default. The row shows whether the model is downloaded (about 31 MB) and has **Download**, **Cancel** and **Delete** buttons. If you delete the model while the switch is on, it is downloaded again the next time an image is read. On macOS, the desktop app also keeps a second reading from the operating system's own text recognition, only for search; what is shown, copied and exported does not change. The measurements are in [OCR engines compared](/evaluations/ocr-engines).
+<Badge type="tip" text="Changed in v0.142.0 (2026-11-18)" /> The desktop app reads images with PP-OCRv6 small, an on-device model (about 31 MB). It is downloaded automatically in the background the first time an image is read, from the model's official Hugging Face repository, with no prompt. Until the download finishes, if the download or a read fails, and in the browser version, Graphium reads with the same Tesseract engine as before. Photos of paper or screens, tables and vertical text are read more accurately than before, and vertical text is read from the right-hand column first. Handwriting is still hard: dates and numbers are sometimes picked up, but sentences often are not. Images that were already read are not read again; run **Read text from image** once more to re-read one with the newer engine.
+
+<Badge type="tip" text="Added in v0.145.0 (2026-11-18)" /> To turn it off, or to download or delete the model yourself, open Settings → AI → **Model for reading text in images** (desktop app only). Turn off **Read with an on-device model** and Graphium reads with Tesseract only and never downloads the model; the switch is on by default. The row shows whether the model is downloaded (about 31 MB) and has **Download**, **Cancel** and **Delete** buttons. If you delete the model while the switch is on, it is downloaded again the next time an image is read.
+
+<Badge type="tip" text="Added in v0.145.0 (2026-11-18)" /> On macOS, the desktop app also keeps a second reading from the operating system's own text recognition, only for search; what is shown, copied and exported does not change.
+
+The measurements are in [OCR engines compared](/evaluations/ocr-engines).
 
 Three ways in:
 

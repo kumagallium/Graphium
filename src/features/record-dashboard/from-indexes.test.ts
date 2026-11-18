@@ -248,6 +248,14 @@ describe("buildRecords", () => {
   });
 });
 
+describe("リンクした素材の分類", () => {
+  it("置き場の URL の素材は Web クリップでなく、取り込んだファイルと同じ分類", () => {
+    const linked = media({ type: "url", url: "graphium-place://place-1/docs/a.xlsx", name: "a.xlsx" });
+    expect(deriveMediaOrigin(linked)).toBe("file");
+    expect(mediaToRecord(linked).origin).toBe("file");
+  });
+});
+
 describe("録音の素材と、録音を持つノート", () => {
   const usedIn = (noteId: string) => [{ noteId, noteTitle: "打ち合わせ", blockId: "b1" }];
   const recNotes = new Set(["n1"]);
