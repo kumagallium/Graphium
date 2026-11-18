@@ -6,6 +6,7 @@
 // 値はすべて文字列のまま返す。数値・日時の解釈はチャート側（chart-data.ts）が
 // 既に持っているので、ここで型を推定して壊すことはしない。
 
+import { yieldToEventLoop } from "./large-file";
 import type { DelimitedImportOptions, ParsedDelimited } from "./types";
 
 /** 改行コードの違い（CRLF / CR / LF）を吸収して行に割る */
@@ -109,6 +110,54 @@ function modeWidth(widths: number[]): number {
   return best;
 }
 
+/** 範囲・区切りの解決結果。同期版・非同期版・件数・標本で同じ規則を使うための共通部分 */
+type Plan = {
+  headerLines: string[];
+  footerLines: string[];
+  /** 区切りが無い・範囲が不正なときは null（表にならない） */
+  body: { delimiter: string; headerIdx: number; endIdx: number } | null;
+};
+
+function planParse(lines: string[], options: DelimitedImportOptions): Plan {
+  const delimiter = resolveDelimiter(options);
+  const headerIdx = Math.max(0, options.headerRow - 1);
+  const endIdx = Math.min(lines.length - 1, options.endRow - 1);
+
+  const headerLines = lines.slice(0, headerIdx);
+  const footerLines = endIdx + 1 < lines.length ? lines.slice(endIdx + 1) : [];
+
+  if (delimiter === null || headerIdx > endIdx || headerIdx >= lines.length) {
+    return { headerLines, footerLines, body: null };
+  }
+  return { headerLines, footerLines, body: { delimiter, headerIdx, endIdx } };
+}
+
+/** 見出しと生の行を、列数を揃えた結果にする（全変換・標本で共通） */
+function assemble(plan: Plan, rawHeaders: string[], rawRows: string[][]): ParsedDelimited {
+  const width = Math.max(
+    rawHeaders.length,
+    modeWidth(rawRows.map((r) => r.length))
+  );
+  // 列数がすでに合っている行は作り直さない（中身は同じ。数十万行で配列をもう 1 組
+  // 作ると、最後の一息で固まり、メモリも倍になる）
+  const fit = (cells: string[]) =>
+    cells.length === width ? cells : Array.from({ length: width }, (_, c) => cells[c] ?? "");
+
+  return {
+    headers: fit(rawHeaders),
+    rows: rawRows.map(fit),
+    headerLines: plan.headerLines,
+    footerLines: plan.footerLines,
+  };
+}
+
+const emptyParsed = (plan: Plan): ParsedDelimited => ({
+  headers: [],
+  rows: [],
+  headerLines: plan.headerLines,
+  footerLines: plan.footerLines,
+});
+
 /**
  * 設定に従って本文を表に変換する。
  *
@@ -124,17 +173,17 @@ export function parseDelimited(
   text: string,
   options: DelimitedImportOptions
 ): ParsedDelimited {
-  const lines = splitLines(text);
-  const delimiter = resolveDelimiter(options);
-  const headerIdx = Math.max(0, options.headerRow - 1);
-  const endIdx = Math.min(lines.length - 1, options.endRow - 1);
+  return parseDelimitedLines(splitLines(text), options);
+}
 
-  const headerLines = lines.slice(0, headerIdx);
-  const footerLines = endIdx + 1 < lines.length ? lines.slice(endIdx + 1) : [];
-
-  if (delimiter === null || headerIdx > endIdx || headerIdx >= lines.length) {
-    return { headers: [], rows: [], headerLines, footerLines };
-  }
+/** 分割済みの行から変換する版。大きな本文を何度も割り直さないために分けてある */
+export function parseDelimitedLines(
+  lines: string[],
+  options: DelimitedImportOptions
+): ParsedDelimited {
+  const plan = planParse(lines, options);
+  if (!plan.body) return emptyParsed(plan);
+  const { delimiter, headerIdx, endIdx } = plan.body;
 
   const rawHeaders = splitLine(lines[headerIdx], delimiter, options.collapseConsecutive);
   const rawRows: string[][] = [];
@@ -144,18 +193,79 @@ export function parseDelimited(
     if (line.trim() === "") continue;
     rawRows.push(splitLine(line, delimiter, options.collapseConsecutive));
   }
+  return assemble(plan, rawHeaders, rawRows);
+}
 
-  const width = Math.max(
-    rawHeaders.length,
-    modeWidth(rawRows.map((r) => r.length))
-  );
-  const fit = (cells: string[]) =>
-    Array.from({ length: width }, (_, c) => cells[c] ?? "");
+/** 非同期変換で、時間を見に行く間隔（行数）。performance.now() を毎行呼ばないため */
+const ASYNC_CHECK_EVERY = 500;
 
-  return {
-    headers: fit(rawHeaders),
-    rows: rawRows.map(fit),
-    headerLines,
-    footerLines,
-  };
+/**
+ * parseDelimitedLines と同じ結果を、描画に順番を譲りながら返す。
+ *
+ * 数十万行を一息で変換すると、その間アプリが固まる。一定行数ごとに経過時間を見て、
+ * sliceMs を超えていたら譲る。結果は同期版と完全に同じ。
+ */
+export async function parseDelimitedLinesAsync(
+  lines: string[],
+  options: DelimitedImportOptions,
+  opts?: { sliceMs?: number }
+): Promise<ParsedDelimited> {
+  const sliceMs = opts?.sliceMs ?? 24;
+  const plan = planParse(lines, options);
+  if (!plan.body) return emptyParsed(plan);
+  const { delimiter, headerIdx, endIdx } = plan.body;
+
+  const rawHeaders = splitLine(lines[headerIdx], delimiter, options.collapseConsecutive);
+  const rawRows: string[][] = [];
+  let sliceStart = performance.now();
+  for (let i = headerIdx + 1; i <= endIdx; i++) {
+    const line = lines[i];
+    if (line.trim() !== "") {
+      rawRows.push(splitLine(line, delimiter, options.collapseConsecutive));
+    }
+    if ((i - headerIdx) % ASYNC_CHECK_EVERY === 0 && performance.now() - sliceStart > sliceMs) {
+      await yieldToEventLoop();
+      sliceStart = performance.now();
+    }
+  }
+  return assemble(plan, rawHeaders, rawRows);
+}
+
+/**
+ * 範囲内（見出し行の次〜終了行）の空でない行の数。セルには割らない。
+ * parseDelimitedLines(...).rows.length と必ず一致する。区切りが無い・範囲が不正なら 0
+ */
+export function countDataRows(lines: string[], options: DelimitedImportOptions): number {
+  const plan = planParse(lines, options);
+  if (!plan.body) return 0;
+  const { headerIdx, endIdx } = plan.body;
+  let count = 0;
+  for (let i = headerIdx + 1; i <= endIdx; i++) {
+    if (lines[i].trim() !== "") count++;
+  }
+  return count;
+}
+
+/**
+ * 範囲の先頭から maxRows 行だけ変換する（大きなファイルのプレビュー用）。
+ * 列数はその標本から決める。headerLines / footerLines は全体の変換と同じ
+ * （範囲の外の行なので、標本でも欠けない）。
+ */
+export function parseDelimitedSample(
+  lines: string[],
+  options: DelimitedImportOptions,
+  maxRows: number
+): ParsedDelimited {
+  const plan = planParse(lines, options);
+  if (!plan.body) return emptyParsed(plan);
+  const { delimiter, headerIdx, endIdx } = plan.body;
+
+  const rawHeaders = splitLine(lines[headerIdx], delimiter, options.collapseConsecutive);
+  const rawRows: string[][] = [];
+  for (let i = headerIdx + 1; i <= endIdx && rawRows.length < maxRows; i++) {
+    const line = lines[i];
+    if (line.trim() === "") continue;
+    rawRows.push(splitLine(line, delimiter, options.collapseConsecutive));
+  }
+  return assemble(plan, rawHeaders, rawRows);
 }

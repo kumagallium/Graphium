@@ -4041,6 +4041,8 @@ export const ja: Record<string, string> = {
   "dataImport.tablePreview": "変換プレビュー",
   "dataImport.truncated": "…ほか {count} 行",
   "dataImport.moreRows": "…ほか {count} 行を取り込みます",
+  "dataImport.sampledNotice": "大きなファイルのため、設定は先頭の {lines} 行から推定し、プレビューは先頭だけを表示しています",
+  "dataImport.sampledPreviewNotice": "大きなファイルのため、プレビューは先頭だけを表示しています",
   "dataImport.noTable": "変換できる表がありません",
   "assetData.tabsLabel": "データの表示",
   "assetData.tabTable": "表",

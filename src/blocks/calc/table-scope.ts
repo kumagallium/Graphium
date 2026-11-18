@@ -23,7 +23,8 @@
 
 import { matchNumericPrefix, normalizeNumericText, parseNumeric } from "../chart/chart-data";
 import { readCellText } from "../../features/table-meta/table-cells";
-import { peekDataTableFromBlock } from "../data-table/data";
+import { peekDataTableFromBlock, registerLargeTablePreparer } from "../data-table/data";
+import { yieldToEventLoop } from "../../features/data-import/large-file";
 import { linkedColumnsFor, mergeLinkedColumns } from "../data-table/linked";
 import { computeTableDisplayNames } from "../../features/table-meta/auto-name";
 import type {
@@ -91,28 +92,108 @@ export function columnsFromText(headers: string[], body: string[][]): Map<string
   headers.forEach((header: string, col: number) => {
     const name = header.trim();
     if (!name || columns.has(name)) return;
-    const values: (number | null)[] = [];
-    const units: string[] = [];
-    let unit: string | undefined;
-    let unitConsistent = true;
-    for (const row of rows) {
-      const raw = row[col] ?? "";
-      const value = parseNumeric(raw);
-      values.push(value);
-      const u = value === null ? "" : unitTextOf(raw);
-      units.push(u);
-      if (value === null) continue;
-      if (unit === undefined) unit = u;
-      else if (unit !== u) unitConsistent = false;
-    }
-    const data: TableColumnData = { values };
-    // 数値の読めた全セルで単位表記が一致したときだけ単位として扱う。
-    // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので列としては素の数値に落とす。
-    // 1 セルだけを読む cell() にはセルごとの単位を残す（試薬表の「量」列は g と mL が混ざる）
-    if (unitConsistent && unit) data.unit = unit;
-    else if (units.some((u) => u !== "")) data.cellUnits = units;
-    columns.set(name, data);
+    const acc = newColumnAcc();
+    for (const row of rows) addCell(acc, row[col] ?? "");
+    columns.set(name, finishColumn(acc));
   });
+  return columns;
+}
+
+/** 1 列ぶんの読み取りの途中経過（同期版と小分け版で同じ規則を使うための共通部分） */
+type ColumnAcc = {
+  values: (number | null)[];
+  units: string[];
+  unit: string | undefined;
+  unitConsistent: boolean;
+};
+
+function newColumnAcc(): ColumnAcc {
+  return { values: [], units: [], unit: undefined, unitConsistent: true };
+}
+
+function addCell(acc: ColumnAcc, raw: string): void {
+  const value = parseNumeric(raw);
+  acc.values.push(value);
+  const u = value === null ? "" : unitTextOf(raw);
+  acc.units.push(u);
+  if (value === null) return;
+  if (acc.unit === undefined) acc.unit = u;
+  else if (acc.unit !== u) acc.unitConsistent = false;
+}
+
+function finishColumn(acc: ColumnAcc): TableColumnData {
+  const data: TableColumnData = { values: acc.values };
+  // 数値の読めた全セルで単位表記が一致したときだけ単位として扱う。
+  // 混在（"1 g" と "2 kg"）は誤変換の方が怖いので列としては素の数値に落とす。
+  // 1 セルだけを読む cell() にはセルごとの単位を残す（試薬表の「量」列は g と mL が混ざる）
+  if (acc.unitConsistent && acc.unit) data.unit = acc.unit;
+  else if (acc.units.some((u) => u !== "")) data.cellUnits = acc.units;
+  return data;
+}
+
+/** 小分け版で、時間を見に行く間隔（行数） */
+const WARM_CHECK_EVERY = 2000;
+
+/**
+ * 大きなデータ表の列と行の名前を、描画に順番を譲りながら先に読んでおく。
+ *
+ * 列の読み取りは 23 万行 × 16 列で 1.4 秒かかる。データ表が読めた直後の列の配布
+ * （publishTableColumns）でこれが同期に走ると、取り込みの直後とノートを開くたびに
+ * 固まる。data-table/data.ts が大きな素材を変換し終えたところでこれを呼び、結果を
+ * 下のキャッシュ（columnsFromTextCached / rowNamesFromTextCached と同じもの）に
+ * 入れてから「読めた」と知らせる。結果は columnsFromText / rowNamesFromText と同じ
+ */
+export async function warmDataTableColumns(
+  headers: string[],
+  body: string[][],
+  opts?: { sliceMs?: number },
+): Promise<void> {
+  const columns = await columnsFromTextAsync(headers, body, opts);
+  columnsCache.set(body, { headers, columns });
+  rowNamesCache.set(body, rowNamesFromText(body));
+}
+
+/** columnsFromText と同じ結果を、描画に順番を譲りながら返す */
+export async function columnsFromTextAsync(
+  headers: string[],
+  body: string[][],
+  opts?: { sliceMs?: number },
+): Promise<Map<string, TableColumnData>> {
+  const sliceMs = opts?.sliceMs ?? 24;
+  const columns = new Map<string, TableColumnData>();
+  const rows = dataRows(body);
+  let sliceStart = performance.now();
+  for (let col = 0; col < headers.length; col++) {
+    const name = headers[col].trim();
+    if (!name || columns.has(name)) continue;
+    const acc = newColumnAcc();
+    for (let r = 0; r < rows.length; r++) {
+      addCell(acc, rows[r][col] ?? "");
+      if (r % WARM_CHECK_EVERY === WARM_CHECK_EVERY - 1 && performance.now() - sliceStart > sliceMs) {
+        await yieldToEventLoop();
+        sliceStart = performance.now();
+      }
+    }
+    columns.set(name, finishColumn(acc));
+  }
+  return columns;
+}
+
+/**
+ * columnsFromText の結果を、行配列（rows）の同一性で覚えておく版。
+ *
+ * データ表の rows は data-table/data.ts のキャッシュが同じ配列を返し続ける。数十万行の
+ * 列の読み取りは 1.6 秒かかり、publishTableColumns は本文を編集するたび（250ms 後）に
+ * 走るので、素材が変わらないかぎり読み直さない。headers の参照も一致するときだけ使う。
+ * 返す Map（と中の列データ）も同じ参照になるので、setTableColumns の比較が参照一致で済む
+ */
+const columnsCache = new WeakMap<string[][], { headers: string[]; columns: Map<string, TableColumnData> }>();
+
+function columnsFromTextCached(headers: string[], body: string[][]): Map<string, TableColumnData> {
+  const hit = columnsCache.get(body);
+  if (hit && hit.headers === headers) return hit.columns;
+  const columns = columnsFromText(headers, body);
+  columnsCache.set(body, { headers, columns });
   return columns;
 }
 
@@ -127,8 +208,8 @@ export function collectTableColumns(
   calcWritebacks?: Record<string, unknown[]> | null,
 ): TableColumns {
   const tables: TableColumns = new Map();
-  forEachTableText(blocks, displayNames, calcWritebacks, (name, headers, body) => {
-    tables.set(name, columnsFromText(headers, body));
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, headers, body, cacheable) => {
+    tables.set(name, cacheable ? columnsFromTextCached(headers, body) : columnsFromText(headers, body));
   });
   return tables;
 }
@@ -143,10 +224,22 @@ export function collectTableRowNames(
   calcWritebacks?: Record<string, unknown[]> | null,
 ): TableRowNamesIndex {
   const index: TableRowNamesIndex = {};
-  forEachTableText(blocks, displayNames, calcWritebacks, (name, _headers, body) => {
-    index[name] = rowNamesFromText(body);
+  forEachTableText(blocks, displayNames, calcWritebacks, (name, _headers, body, cacheable) => {
+    index[name] = cacheable ? rowNamesFromTextCached(body) : rowNamesFromText(body);
   });
   return index;
+}
+
+// 行の名前も、列と同じ理由で行配列の同一性で覚える（数十万行を編集のたびに
+// 読み直さない。同じ配列を返すので setTableRowNames の比較も参照一致で済む）
+const rowNamesCache = new WeakMap<string[][], string[]>();
+
+function rowNamesFromTextCached(body: string[][]): string[] {
+  const hit = rowNamesCache.get(body);
+  if (hit) return hit;
+  const names = rowNamesFromText(body);
+  rowNamesCache.set(body, names);
+  return names;
 }
 
 /** 文書中の表を文書順に辿り、表示名と見出し・本文のテキストを渡す */
@@ -154,7 +247,8 @@ function forEachTableText(
   blocks: any[],
   displayNames: Map<string, string>,
   calcWritebacks: Record<string, unknown[]> | null | undefined,
-  onTable: (name: string, headers: string[], body: string[][]) => void,
+  /** cacheable: body が data-table のキャッシュ由来で、同一性で結果を覚えてよい */
+  onTable: (name: string, headers: string[], body: string[][], cacheable: boolean) => void,
 ): void {
   const seen = new Set<string>();
   const visit = (list: any[]) => {
@@ -165,7 +259,7 @@ function forEachTableText(
         if (name && !seen.has(name)) {
           seen.add(name);
           const { headers, body } = readTableText(b);
-          onTable(name, headers, body);
+          onTable(name, headers, body, false);
         }
       } else if (b?.type === "dataTable" && typeof b.id === "string") {
         // データ表は素材が読めてから配る（読めるまでは無いものとして扱う。
@@ -176,7 +270,9 @@ function forEachTableText(
         const merged = raw ? mergeLinkedColumns(raw, linkedColumnsFor(b.id, calcWritebacks)) : null;
         if (name && merged) {
           seen.add(name);
-          onTable(name, merged.data.headers, merged.data.rows);
+          // 計算列が無いときは merged.data が元の data のまま返る = rows の同一性が保たれる。
+          // 計算列があるときは毎回新しい配列になるので覚えられない（今回の範囲外。毎回計算する）
+          onTable(name, merged.data.headers, merged.data.rows, merged.data === raw);
         }
       }
       if (Array.isArray(b?.children)) visit(b.children);
@@ -241,3 +337,7 @@ export function publishTableColumns(
   // 切り替えるため、どれがデータ表かをピッカーに教える
   store.setDataTableBlockIds?.([...collectDataTableBlockIds(doc)]);
 }
+
+// 大きな素材の変換が終わったら、知らせる前に列と行の名前を先に読んでおいてもらう
+// （data-table/data.ts は calc を知らないので、こちらから登録する）
+registerLargeTablePreparer((data) => warmDataTableColumns(data.headers, data.rows));

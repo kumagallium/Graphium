@@ -13,6 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { tableColumnsEqual, tableRowNamesEqual } from "./columns-equal";
 import {
   hasColumnType as metaHasColumnType,
   isTableMetaEmpty,
@@ -104,18 +105,16 @@ export function TableMetaStoreProvider({ children }: { children: ReactNode }) {
   const [tableColumns, setTableColumnsState] = useState<TableColumnsIndex | null>(null);
   const setTableColumns = useCallback(
     (columns: TableColumnsIndex) => {
-      // 中身が同じなら参照も変えない（calc の再評価を無駄に起こさない）
-      setTableColumnsState((prev) =>
-        prev && JSON.stringify(prev) === JSON.stringify(columns) ? prev : columns
-      );
+      // 中身が同じなら参照も変えない（calc の再評価を無駄に起こさない）。
+      // 丸ごと JSON 化せず、同じ参照の大きな列は参照比較で済ませる
+      setTableColumnsState((prev) => (prev && tableColumnsEqual(prev, columns) ? prev : columns));
     },
     []
   );
   const [tableRowNames, setTableRowNamesState] = useState<TableRowNamesIndex | null>(null);
   const setTableRowNames = useCallback((rows: TableRowNamesIndex) => {
-    setTableRowNamesState((prev) =>
-      prev && JSON.stringify(prev) === JSON.stringify(rows) ? prev : rows
-    );
+    // 列と同じく、同じ参照の大きな並びは参照比較で済ませる
+    setTableRowNamesState((prev) => (prev && tableRowNamesEqual(prev, rows) ? prev : rows));
   }, []);
   const [tableBlockIds, setTableBlockIdsState] = useState<Record<string, string> | null>(null);
   const setTableBlockIds = useCallback((ids: Record<string, string>) => {

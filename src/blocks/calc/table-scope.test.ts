@@ -9,9 +9,11 @@ import {
   rowNamesFromText,
   publishTableColumns,
   readTableColumns,
+  warmDataTableColumns,
+  columnsFromTextAsync,
 } from "./table-scope";
 import { primeAssetText, clearAssetTextCache } from "../../features/data-import/asset-text";
-import { clearDataTableCache } from "../data-table/data";
+import { clearDataTableCache, peekDataTableFromBlock } from "../data-table/data";
 import { serializeDataTableSource } from "../data-table/source";
 import type { TableColumnData } from "../../features/table-meta/types";
 import type { TableSource } from "../../lib/document-types";
@@ -116,6 +118,46 @@ describe("collectTableColumns", () => {
     const blocks = [dataTable("dt", "oven-log")];
     const tables = collectTableColumns(blocks as any, new Map([["dt", "oven-log"]]));
     expect(tables.get("oven-log")?.get("temp_c")).toEqual({ values: [180.0, 181.5, 183.0] });
+  });
+
+  it("同じデータ表を 2 回集めると列データは同じ参照（編集のたびに読み直さない）", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const names = new Map([["dt", "oven-log"]]);
+    const first = collectTableColumns(blocks as any, names).get("oven-log");
+    const second = collectTableColumns(blocks as any, names).get("oven-log");
+    expect(second).toBe(first);
+    expect(second?.get("temp_c")).toBe(first?.get("temp_c"));
+  });
+
+  it("同じデータ表を 2 回集めると行の名前も同じ参照", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const names = new Map([["dt", "oven-log"]]);
+    const first = collectTableRowNames(blocks as any, names)["oven-log"];
+    const second = collectTableRowNames(blocks as any, names)["oven-log"];
+    expect(first.length).toBeGreaterThan(0);
+    expect(second).toBe(first);
+  });
+
+  it("計算列があるときは毎回計算する（値は正しい）", () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const names = new Map([["dt", "oven-log"]]);
+    const wb = { calc1: [{ tableBlockId: "dt", column: "d", texts: ["1", "2", "3"] }] };
+    const first = collectTableColumns(blocks as any, names, wb).get("oven-log");
+    const second = collectTableColumns(blocks as any, names, wb).get("oven-log");
+    expect(second?.get("d")).toEqual({ values: [1, 2, 3] });
+    expect(second).not.toBe(first);
+  });
+
+  it("本文の表は今までどおり毎回読む", () => {
+    const blocks = [table("t", [["v"], ["1"]])];
+    const names = new Map([["t", "表"]]);
+    const first = collectTableColumns(blocks as any, names).get("表");
+    const second = collectTableColumns(blocks as any, names).get("表");
+    expect(second).not.toBe(first);
+    expect(second).toEqual(first);
   });
 
   it("dataTable が未 prime なら列は出ない", () => {
@@ -309,5 +351,43 @@ describe("buildTableIndex", () => {
     // 空白入りの名前も落とさない（文字列キーなので書ける）
     expect(index["秤量表"]["備考 2"]).toEqual({ values: [3] });
     expect(index["表 1"]["値"]).toEqual({ values: [9] });
+  });
+});
+
+describe("大きなデータ表の列の先読み", () => {
+  // 単位の一致・混在・数値でないセル・同名の列・空の見出し・末尾の空行を含む表
+  const headers = ["name", "mass", "amount", "note", "mass", ""];
+  const body = [
+    ["flour", "250 g", "1 g", "x", "9", "z"],
+    ["water", "175 g", "2 mL", "", "8", "z"],
+    ["salt", "5 g", "n/a", "y", "7", "z"],
+    ["", "", "", "", "", ""],
+  ];
+
+  it("columnsFromTextAsync は columnsFromText と同じ結果を返す（譲る回数に関係なく）", async () => {
+    const expected = [...columnsFromText(headers, body).entries()];
+    expect(expected.length).toBeGreaterThan(0);
+    expect([...(await columnsFromTextAsync(headers, body)).entries()]).toEqual(expected);
+    expect([...(await columnsFromTextAsync(headers, body, { sliceMs: 0 })).entries()]).toEqual(expected);
+  });
+
+  it("行数が多くても同じ結果（途中で譲る）", async () => {
+    const big = Array.from({ length: 5000 }, (_, i) => [String(i), `${i * 2} g`, i % 3 === 0 ? "" : "x"]);
+    const h = ["i", "mass", "flag"];
+    const expected = [...columnsFromText(h, big).entries()];
+    expect([...(await columnsFromTextAsync(h, big, { sliceMs: 0 })).entries()]).toEqual(expected);
+  });
+
+  it("warmDataTableColumns の後は、同じ rows のデータ表を集めても読み直さない", async () => {
+    primeAssetText("asset-1", CSV);
+    const blocks = [dataTable("dt", "oven-log")];
+    const names = new Map([["dt", "oven-log"]]);
+    const data = peekDataTableFromBlock(blocks[0])!;
+    await warmDataTableColumns(data.headers, data.rows);
+    const first = collectTableColumns(blocks as any, names).get("oven-log")!;
+    const second = collectTableColumns(blocks as any, names).get("oven-log")!;
+    expect(second).toBe(first);
+    expect([...first.entries()]).toEqual([...columnsFromText(data.headers, data.rows).entries()]);
+    expect(collectTableRowNames(blocks as any, names)["oven-log"]).toEqual(rowNamesFromText(data.rows));
   });
 });

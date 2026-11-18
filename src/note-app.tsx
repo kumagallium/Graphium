@@ -135,6 +135,7 @@ import {
 import { ToolApprovalHost } from "./features/ai-assistant/ToolApprovalDialog";
 import type { IngesterOutput } from "./server/services/wiki-ingester";
 import { primeAssetText } from "./features/data-import/asset-text";
+import { settleFirstSave } from "./lib/settle-first-save";
 import {
   csvFileNameFor,
   noteTableToRows,
@@ -2728,6 +2729,19 @@ function NoteEditorInner({
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
 
+  // 非同期の結果を本文へ書き戻す前に呼ぶ。新しいノートは最初の保存で ID が付くと
+  // エディタが作り直され（下の key={fileId || "new"}）、その保存が飛んでいる最中の
+  // 書き戻しは消える。保存と作り直しが済むまで待つ（既存のノートでは何もしない）。
+  // 読むのは ref だけ — どれもこの位置より後で宣言されるので、呼ばれた時点で読む
+  const waitFirstSave = () =>
+    settleFirstSave({
+      getFileId: () => fileIdRef.current,
+      hasUnsaved: () => hasUnsavedRef.current(),
+      saveNow: () => saveNowRef.current?.(),
+      pendingSaves: () => pendingSavesRef.current(),
+      getLiveEditor: () => liveEditorRef.current,
+    });
+
   // データ表として取り込む → 素材を正として、ノートには参照（dataTable ブロック）だけを置く。
   //
   // 文書の表と違い、行の実体は素材にある。素材未登録のファイル（スラッシュ・ドロップ
@@ -2744,6 +2758,10 @@ function NoteEditorInner({
       },
       result: DataImportResult
     ) => {
+      // カーソルのあったブロックは、待つ前に ID で覚えておく。素材の登録や最初の保存を
+      // 待つ間にエディタが作り直されても、作り直された後のエディタで引き直せる
+      const anchorId: string | undefined =
+        liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
       let fileId = file.fileId;
       if (!fileId) {
         const rawFile = file.file;
@@ -2758,8 +2776,14 @@ function NoteEditorInner({
       if (!fileId) return;
       // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）
       if (file.text !== undefined) primeAssetText(fileId, file.text);
-      // 登録を待つ間にノートを切り替えていることがあるので、挿す先は今生きているエディタ
-      const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
+      // 新しいノートは最初の保存で ID が付くとエディタが作り直され、その保存が飛んでいる
+      // 最中に挿した表は消える（作り直しは保存した時点の本文から始まる）。素材の登録を
+      // 待つ間にちょうど最初の自動保存が走りやすいので、保存と作り直しが済んでから挿す
+      await waitFirstSave();
+      // 登録を待つ間にノートを切り替えていることがあるので、挿す先は今生きているエディタ。
+      // 作り直された直後は editorRef が一瞬だけ前のインスタンスを指すので liveEditorRef を先に見る
+      const editor =
+        liveEditor(pickerEditorRef.current) ?? liveEditor(liveEditorRef.current) ?? editorRef.current;
       if (!editor) return;
       const source = buildTableSource({
         fileName: file.fileName,
@@ -2784,7 +2808,8 @@ function NoteEditorInner({
         tableMetaStore.setSource(existing.id, undefined);
         editor.replaceBlocks([existing], [{ type: "dataTable", props: { ...props, caption } }]);
       } else {
-        const currentBlock = editor.getTextCursorPosition()?.block;
+        const currentBlock =
+          (anchorId ? editor.getBlock(anchorId) : undefined) ?? editor.getTextCursorPosition()?.block;
         const anchor = currentBlock ?? editor.document[editor.document.length - 1];
         if (!anchor) return;
         editor.insertBlocks([{ type: "dataTable", props }], anchor, "after");
@@ -2830,6 +2855,8 @@ function NoteEditorInner({
       // 注釈だけが共有ストアに残る）。DOM が繋がっている方を選ぶ。
       const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
       if (!editor) return;
+      // 文書の表は DOC_TABLE_HARD_MAX_ROWS で止まるので通常は常に全行。標本だけの結果で表を作らない（防御）
+      if (!result.rowsComplete) return;
       const block = toTableBlock(result.parsed);
       if (!block) return;
 
@@ -3047,7 +3074,8 @@ function NoteEditorInner({
             });
           }
           // 登録を待つ間にノートを切り替えていることがあるので、差し替え先は今生きているエディタ
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          await waitFirstSave();
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "table") return;
           removeBlockMetadata([blockId]);
@@ -3088,7 +3116,8 @@ function NoteEditorInner({
           if (data.rows.length > DOC_TABLE_HARD_MAX_ROWS) return;
           const spec = toTableBlock({ headers: data.headers, rows: data.rows, headerLines: [], footerLines: [] });
           if (!spec) return;
-          const live = liveEditor(editorRef.current) ?? editorRef.current;
+          await waitFirstSave();
+          const live = liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current) ?? editorRef.current;
           const current = live?.getBlock?.(blockId);
           if (!live || !current || current.type !== "dataTable") return;
           const { insertedBlocks } = live.replaceBlocks([current], [spec]);
@@ -3341,6 +3370,12 @@ function NoteEditorInner({
   // 賭けずその場で保存する（待っている間に何かがエディタを作り直すと丸ごと消える）。
   // markDirtyRef と同じく useAutoSave がこの位置より後で宣言されるため ref 経由。
   const saveNowRef = useRef<(() => void) | null>(null);
+  // 非同期の挿入（素材の登録を待ってからデータ表を置く）が、新しいノートの最初の保存と
+  // 重ならないよう待つための口（lib/settle-first-save.ts）。同じ理由で ref 経由
+  const hasUnsavedRef = useRef<() => boolean>(() => false);
+  const pendingSavesRef = useRef<() => Promise<void> | null>(() => null);
+  const fileIdRef = useRef(fileId);
+  fileIdRef.current = fileId;
 
   // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録。
   // 登録後は保存を予約して syncUsedIn を走らせる（オートセーブが先に完了して
@@ -4177,6 +4212,8 @@ function NoteEditorInner({
   }, [hasUnsaved, takeUnsaved, restoreUnsaved, pendingSaves, setDirty, trackSave]);
   markDirtyRef.current = markDirty;
   saveNowRef.current = saveNow;
+  hasUnsavedRef.current = hasUnsaved;
+  pendingSavesRef.current = pendingSaves;
   // サイドピークが保存できなかった編集を持ち込んで開いた。その編集はどこにも保存されて
   // いないので、「未保存」から始めて自動保存で書き直す（NoteEditor が決める）
   useEffect(() => {
