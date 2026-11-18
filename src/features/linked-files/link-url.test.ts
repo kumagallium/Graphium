@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPlaceUrl, parsePlaceUrl, isPlaceUrl, isLinkedEntry, PLACE_URL_SCHEME } from "./link-url";
+import { buildPlaceUrl, parsePlaceUrl, isPlaceUrl, isLinkedEntry, isValidMediaLink, sanitizeMediaLink, PLACE_URL_SCHEME } from "./link-url";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 
 describe("buildPlaceUrl / parsePlaceUrl", () => {
@@ -45,4 +45,41 @@ describe("isLinkedEntry", () => {
   it("link が無ければ false", () => expect(isLinkedEntry({ ...base, link: undefined })).toBe(false));
   it("Web の URL なら false", () => expect(isLinkedEntry({ ...base, url: "https://example.com/" })).toBe(false));
   it("type が url でなければ false", () => expect(isLinkedEntry({ ...base, type: "pdf" })).toBe(false));
+});
+
+describe("isLinkedEntry（細工した控えを通さない）", () => {
+  const good = { placeId: "p", relPath: "a.txt", size: 1, mtimeMs: 1, recordedAt: "x" };
+  const mk = (link: unknown, url = "graphium-place://p/a.txt") =>
+    ({ fileId: "u", name: "a", type: "url", mimeType: "text/x-uri", url, thumbnailUrl: "", uploadedAt: "", usedIn: [], link }) as unknown as MediaIndexEntry;
+  it("正しい控えは true", () => expect(isLinkedEntry(mk(good))).toBe(true));
+  it("link が {} なら false", () => expect(isLinkedEntry(mk({}))).toBe(false));
+  it("relPath が数値なら false", () => expect(isLinkedEntry(mk({ ...good, relPath: 5 }))).toBe(false));
+  it("size が NaN なら false", () => expect(isLinkedEntry(mk({ ...good, size: NaN }))).toBe(false));
+  it("URL と控えの relPath が食い違えば false", () =>
+    expect(isLinkedEntry(mk({ ...good, relPath: "b.txt" }))).toBe(false));
+  it("URL と控えの placeId が食い違えば false", () =>
+    expect(isLinkedEntry(mk({ ...good, placeId: "q" }))).toBe(false));
+  it("履歴の要素が壊れていれば false", () =>
+    expect(isLinkedEntry(mk({ ...good, history: [{ size: "x" }] }))).toBe(false));
+  it("isPlaceUrl は控えを見ない（Web として扱わない判定は変えない）", () =>
+    expect(isPlaceUrl("graphium-place://p/a.txt")).toBe(true));
+});
+
+describe("isValidMediaLink / sanitizeMediaLink", () => {
+  const good = { placeId: "p", relPath: "a.txt", size: 1, mtimeMs: 1, recordedAt: "x" };
+  const snap = (i: number) => ({ size: i, mtimeMs: i, recordedAt: String(i) });
+  it("履歴が配列でなければ無効", () => expect(isValidMediaLink({ ...good, history: "x" })).toBe(false));
+  it("placeId が空なら無効・null にする", () => {
+    expect(isValidMediaLink({ ...good, placeId: "" })).toBe(false);
+    expect(sanitizeMediaLink({ ...good, placeId: "" })).toBeNull();
+  });
+  it("壊れた履歴を落とし、20 件で切る", () => {
+    const history = [...Array.from({ length: 25 }, (_, i) => snap(i)), { size: "x" }, null];
+    const out = sanitizeMediaLink({ ...good, history })!;
+    expect(out.history).toHaveLength(20);
+    expect(out.history![0]).toEqual(snap(0));
+    const mixed = sanitizeMediaLink({ ...good, history: [{ bad: 1 }, snap(1)] })!;
+    expect(mixed.history).toEqual([snap(1)]);
+  });
+  it("履歴が無ければ付けない", () => expect(sanitizeMediaLink(good)).toEqual(good));
 });

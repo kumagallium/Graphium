@@ -1,4 +1,4 @@
-export { PLACE_URL_SCHEME, buildPlaceUrl, parsePlaceUrl, isPlaceUrl, isLinkedEntry } from "./link-url";
+export { PLACE_URL_SCHEME, buildPlaceUrl, parsePlaceUrl, isPlaceUrl, isLinkedEntry, isValidMediaLink, sanitizeMediaLink } from "./link-url";
 export {
   listPlaces,
   registerPlace,

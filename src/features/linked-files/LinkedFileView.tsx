@@ -8,13 +8,14 @@
 // 「変わっています」のときは、控えといまを並べて見せ、「いまの状態を控え直す」で控えを更新できる
 // （前の控えは履歴に積む）。
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { File as FileIcon, FolderSearch, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@ui/button";
 import { useT } from "../../i18n";
 import { formatBytes } from "../../lib/format-bytes";
 import { formatDateTime } from "../../lib/format-datetime";
 import { persistLinkPatch, type MediaIndexEntry, type MediaLink } from "../asset-browser/media-index";
+import { sanitizeMediaLink } from "./link-url";
 import { acceptLinkChange, linkState, type LinkState } from "./linked-entry";
 import { LinkedBadge, LinkStateBadge } from "./LinkStateBadge";
 import {
@@ -25,6 +26,9 @@ import {
   type LinkStat,
   type PlaceInfo,
 } from "./places";
+
+/** Rust 側 place_open が、開かない種類のファイルに返すエラー文字列の接頭辞 */
+export const PLACE_OPEN_NOT_ALLOWED_PREFIX = "PLACE_OPEN_NOT_ALLOWED:";
 
 export type LinkedFileViewProps = {
   entry: MediaIndexEntry;
@@ -50,8 +54,10 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   const persist = __test?.persistLinkPatch ?? persistLinkPatch;
 
   // 控え。控え直したら手元でも更新する（索引の再読み込みを待たずに表示へ反映）
-  const [link, setLink] = useState<MediaLink | undefined>(entry.link);
-  useEffect(() => setLink(entry.link), [entry.link]);
+  // 索引の値は細工されうるので、描く前に sanitizeMediaLink を通す（壊れていれば何も描かない）
+  const safeLink = useMemo(() => sanitizeMediaLink(entry.link) ?? undefined, [entry.link]);
+  const [link, setLink] = useState<MediaLink | undefined>(safeLink);
+  useEffect(() => setLink(safeLink), [safeLink]);
 
   const [current, setCurrent] = useState<LinkStat | null>(null);
   const [checking, setChecking] = useState(false);
@@ -63,12 +69,23 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
     [t],
   );
 
+  // 「元のファイルを開く」: 開かない種類のファイルは Rust 側が PLACE_OPEN_NOT_ALLOWED: で断る。
+  // invoke が投げる値は文字列のことも Error のこともある
+  const failOpen = useCallback(
+    (e: unknown) => {
+      const text = e instanceof Error ? e.message : String(e);
+      if (text.startsWith(PLACE_OPEN_NOT_ALLOWED_PREFIX)) setMessage(t("linkedFile.openNotAllowed"));
+      else fail(e);
+    },
+    [t, fail],
+  );
+
   const recheck = useCallback(async () => {
-    if (!entry.link) return;
+    if (!safeLink) return;
     setChecking(true);
     setMessage(null);
     try {
-      const [s] = await stat([{ placeId: entry.link.placeId, relPath: entry.link.relPath }]);
+      const [s] = await stat([{ placeId: safeLink.placeId, relPath: safeLink.relPath }]);
       setCurrent(s ?? { state: "unregistered" });
     } catch (e) {
       fail(e);
@@ -76,7 +93,7 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
       setChecking(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.link?.placeId, entry.link?.relPath, stat, fail]);
+  }, [safeLink?.placeId, safeLink?.relPath, stat, fail]);
 
   useEffect(() => {
     void recheck();
@@ -88,14 +105,14 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
     void places()
       .then((list) => {
         if (cancelled) return;
-        setPlaceName(list.find((p) => p.id === entry.link?.placeId)?.name ?? null);
+        setPlaceName(list.find((p) => p.id === safeLink?.placeId)?.name ?? null);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.link?.placeId, places]);
+  }, [safeLink?.placeId, places]);
 
   if (!link) return null;
 
@@ -103,12 +120,12 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   const canUse = state === "ok" || state === "changed";
   const shownPlace = placeName ?? entry.urlMeta?.domain ?? "";
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, onError: (e: unknown) => void = fail) => {
     setMessage(null);
     try {
       await fn();
     } catch (e) {
-      fail(e);
+      onError(e);
     }
   };
 
@@ -204,7 +221,7 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
           size="sm"
           variant="outline"
           disabled={!canUse}
-          onClick={() => void run(() => open(link.placeId, link.relPath))}
+          onClick={() => void run(() => open(link.placeId, link.relPath), failOpen)}
         >
           <ExternalLink />
           {t("linkedFile.open")}

@@ -4312,6 +4312,137 @@ const PLACE_REL_PATH_MAX_BYTES: usize = 4096;
 const PLACE_STAT_MAX_ITEMS: usize = 2000;
 /// 台帳のファイル名（app_config_dir 直下。端末ごと。データフォルダには置かない）
 const PLACE_LEDGER_FILE: &str = "places.json";
+/// 目印のファイルを読む最大バイト数
+const PLACE_MARKER_MAX_BYTES: u64 = 64 * 1024;
+/// 置き場の root に届くかの確認を待つ時間（止まった共有・NAS で全体を止めない）
+const PLACE_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// place_open が開いてよい種類（小文字）。ここに無いものは、実行ファイル・スクリプト・
+/// 設定を変えるファイルを含めて開かない（止める一覧ではなく許す一覧）。
+const PLACE_OPENABLE_EXTS: &[&str] = &[
+    "pdf", "txt", "md", "csv", "tsv", "rtf", "docx", "xlsx", "pptx", "odt", "ods", "odp", "png",
+    "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "mp3", "wav", "m4a", "flac", "ogg",
+    "mp4", "mov", "m4v", "webm",
+];
+
+/// place_open が種類を理由に断るときの Err の先頭。画面側がこの文字列で文言を振り分ける。
+/// 形は `PLACE_OPEN_NOT_ALLOWED:<拡張子か空>`
+const PLACE_OPEN_NOT_ALLOWED_PREFIX: &str = "PLACE_OPEN_NOT_ALLOWED";
+
+/// ファイル名の拡張子（末尾の `.` と空白を落としたあとの、小文字。無ければ空）
+fn place_name_ext(path: &Path) -> String {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return String::new() };
+    let name = name.trim_end_matches(['.', ' ']);
+    Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+/// 開いてよいか。許可リストに無い・名前の末尾が `.` や空白（Windows は落として別のファイルを
+/// 開く）・実行ビットが立っている、のいずれかなら断る。
+fn check_place_openable(path: &Path, executable: bool) -> Result<(), String> {
+    let ext = place_name_ext(path);
+    let raw_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let trailing = raw_name.ends_with(['.', ' ']);
+    if trailing || executable || !PLACE_OPENABLE_EXTS.contains(&ext.as_str()) {
+        return Err(format!("{PLACE_OPEN_NOT_ALLOWED_PREFIX}:{ext}"));
+    }
+    Ok(())
+}
+
+/// 実行ビット（unix のみ。Windows は常に false）
+fn place_meta_executable(meta: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        false
+    }
+}
+
+/// Windows の canonicalize が付ける `\\?\` を外す（`\\?\C:\x` → `C:\x`、
+/// `\\?\UNC\s\sh\x` → `\\s\sh\x`）。文字列だけの変換なので、どの OS でも試せる。
+#[cfg_attr(not(windows), allow(dead_code))]
+fn strip_verbatim_prefix(s: &str) -> String {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// OS へ渡すパスの形にする（Windows のみ `\\?\` を外す。unix はそのまま）
+fn place_os_path(p: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        PathBuf::from(strip_verbatim_prefix(&p.to_string_lossy()))
+    }
+    #[cfg(not(windows))]
+    {
+        p
+    }
+}
+
+/// 台帳の root（登録時の canonicalize 結果）と、いま canonicalize した結果が同じか。
+/// Windows の `\\?\` の有無で食い違わないよう、同じ形にそろえて比べる。
+fn same_place_root(ledger_root: &str, now: &Path) -> bool {
+    strip_verbatim_prefix(ledger_root) == strip_verbatim_prefix(&now.to_string_lossy())
+}
+
+/// 別スレッドで f を走らせ、結果を受け取る口を返す（呼び出し側が recv_timeout で待つ）
+fn spawn_probe<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+) -> std::sync::mpsc::Receiver<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx
+}
+
+/// 別スレッドで f を走らせ、timeout で打ち切る（時間切れは None。スレッドは放置する）
+#[cfg(test)]
+fn run_with_timeout<T: Send + 'static>(
+    timeout: Duration,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    spawn_probe(f).recv_timeout(timeout).ok()
+}
+
+/// 置き場として登録してよいフォルダか。根・ホーム・Graphium のデータフォルダ・アプリの設定
+/// フォルダ、その中、またはそれらを含む親フォルダは断る（引数は canonicalize 済みの想定）。
+fn check_place_root_allowed(
+    picked: &Path,
+    home: Option<&Path>,
+    data_dir: Option<&Path>,
+    config_dir: Option<&Path>,
+) -> Result<(), String> {
+    if picked.parent().is_none() {
+        return Err("ドライブやルートそのものは置き場にできません".to_string());
+    }
+    if let Some(h) = home {
+        // ホームそのもの・ホームを含む親（/Users など）
+        if h.starts_with(picked) {
+            return Err("ホームフォルダ（とその親）は広すぎるため置き場にできません".to_string());
+        }
+    }
+    for (dir, label) in [(data_dir, "Graphium のデータフォルダ"), (config_dir, "アプリの設定フォルダ")] {
+        if let Some(d) = dir {
+            if picked.starts_with(d) || d.starts_with(picked) {
+                return Err(format!("{label}（とその中・親）は置き場にできません"));
+            }
+        }
+    }
+    Ok(())
+}
 
 /// 台帳の 1 件。root は canonicalize 済みの絶対パス
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -4374,10 +4505,12 @@ struct PlaceState(Arc<Mutex<Option<Vec<Place>>>>);
 /// 相対パスの解決結果
 #[derive(Debug)]
 struct ResolvedPlaceFile {
-    /// root に相対パスを連結したパス（OS へ渡す用。実体は root の配下と確認済み）
+    /// canonicalize した実体のパス（OS へ渡す用。root の配下と確認済み。リンクの名前は残らない）
     path: PathBuf,
     size: u64,
     mtime_ms: i64,
+    /// 実行ビットが立っている（unix）。実体の metadata で見た値
+    executable: bool,
 }
 
 /// 相対パスの解決に失敗した理由
@@ -4452,6 +4585,7 @@ fn metadata_mtime_ms(meta: &fs::Metadata) -> i64 {
 /// - root の metadata が取れなければ「届かない」
 /// - 連結先が無い・シンボリックリンク・ファイルでないなら「見つからない」（リンクはたどらない）
 /// - 連結先を canonicalize し、root の配下でなければ断る（途中のフォルダが外へのリンクの場合）
+/// - 返す path は canonicalize した実体（root 自身が登録時のままかは resolve_in_places で見る）
 ///
 /// ファイルの中身は読まない（metadata だけ）。
 fn resolve_place_file(root: &Path, rel_path: &str) -> Result<ResolvedPlaceFile, PlaceResolveError> {
@@ -4479,7 +4613,17 @@ fn resolve_place_file(root: &Path, rel_path: &str) -> Result<ResolvedPlaceFile, 
     if !canon_file.starts_with(&canon_root) {
         return Err(PlaceResolveError::Missing);
     }
-    Ok(ResolvedPlaceFile { path: joined, size: meta.len(), mtime_ms: metadata_mtime_ms(&meta) })
+    // 種類の判定・OS へ渡すのは、ここで検査した実体（連結しただけの名前は差し替えられうる）
+    let real = fs::metadata(&canon_file).map_err(|_| PlaceResolveError::Missing)?;
+    if !real.is_file() {
+        return Err(PlaceResolveError::Missing);
+    }
+    Ok(ResolvedPlaceFile {
+        path: place_os_path(canon_file),
+        size: real.len(),
+        mtime_ms: metadata_mtime_ms(&real),
+        executable: place_meta_executable(&real),
+    })
 }
 
 /// 置き場の名前を整える。制御文字を除き、前後の空白を落とす。空は不可。
@@ -4582,10 +4726,26 @@ fn read_place_marker(root: &Path) -> PlaceMarker {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return PlaceMarker::Absent,
         Err(_) => return PlaceMarker::Invalid,
     };
-    if meta.file_type().is_symlink() || !meta.is_file() || meta.len() > 64 * 1024 {
+    if meta.file_type().is_symlink() || !meta.is_file() {
         return PlaceMarker::Invalid;
     }
-    let Ok(text) = fs::read_to_string(&path) else { return PlaceMarker::Invalid };
+    // 検査のあとに巨大なものへ差し替えられても読みすぎないよう、上限＋1 バイトで打ち切る。
+    // unix は O_NOFOLLOW で開き、リンクへの差し替えも断る
+    #[cfg(unix)]
+    let opened = {
+        use std::os::unix::fs::OpenOptionsExt;
+        fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&path)
+    };
+    #[cfg(not(unix))]
+    let opened = fs::File::open(&path);
+    let Ok(file) = opened else { return PlaceMarker::Invalid };
+    let mut buf = Vec::new();
+    if file.take(PLACE_MARKER_MAX_BYTES + 1).read_to_end(&mut buf).is_err()
+        || buf.len() as u64 > PLACE_MARKER_MAX_BYTES
+    {
+        return PlaceMarker::Invalid;
+    }
+    let Ok(text) = String::from_utf8(buf) else { return PlaceMarker::Invalid };
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
         return PlaceMarker::Invalid;
     };
@@ -4697,6 +4857,11 @@ fn resolve_in_places(
         .iter()
         .find(|p| p.id == place_id)
         .ok_or(PlaceResolveError::Unregistered)?;
+    // root 自体がリンクなどに差し替えられていないか（登録時の canonicalize 結果と同じか）
+    match fs::canonicalize(&place.root) {
+        Ok(now) if same_place_root(&place.root, &now) => {}
+        _ => return Err(PlaceResolveError::Unreachable),
+    }
     resolve_place_file(Path::new(&place.root), rel_path)
 }
 
@@ -4755,6 +4920,8 @@ async fn place_register(
     require_main_window(&window)?;
     let ledger = place_ledger_path(&app)?;
     let inner = state.0.clone();
+    let data_dir = graphium_root().ok();
+    let config_dir = app.path().app_config_dir().ok();
     let Some(picked) = pick_path_with_dialog(&app, true)? else {
         return Ok(None);
     };
@@ -4763,12 +4930,29 @@ async fn place_register(
         if !canon.is_dir() {
             return Err("フォルダを選んでください".to_string());
         }
+        let canon_or_raw = |p: PathBuf| fs::canonicalize(&p).unwrap_or(p);
+        check_place_root_allowed(
+            &canon,
+            home_dir_canonical().as_deref(),
+            data_dir.map(canon_or_raw).as_deref(),
+            config_dir.map(canon_or_raw).as_deref(),
+        )?;
+        let root = canon.to_string_lossy().to_string();
+        // 目印の読み書き（ファイル I/O）は台帳の Mutex の外で行う
+        let snapshot = read_places(&inner, &ledger, |p| p.to_vec());
+        if let Some(found) = snapshot.iter().find(|p| p.root == root) {
+            return Ok(Some(place_info(found)));
+        }
+        let (prepared, _shared) = prepare_place(&canon, &snapshot);
+        // Mutex を取り直したあとに、二重登録・id の重なりをもう一度確かめる
         let place = mutate_places(&inner, &ledger, |places| {
-            let root = canon.to_string_lossy().to_string();
             if let Some(found) = places.iter().find(|p| p.root == root) {
                 return Ok((found.clone(), false));
             }
-            let (place, _shared) = prepare_place(&canon, places);
+            let mut place = prepared;
+            if places.iter().any(|p| p.id == place.id) {
+                place.id = uuid::Uuid::new_v4().hyphenated().to_string();
+            }
             places.push(place.clone());
             Ok((place, true))
         })?;
@@ -4860,6 +5044,36 @@ async fn place_pick_file(
     .map_err(|e| format!("タスク失敗: {e}"))?
 }
 
+/// 件ごとの状態を同じ順で返す。置き場ごとに先に root へ届くかを別スレッドで確かめ
+/// （全体で timeout まで）、届かない・時間切れの置き場の件は個々を見ずに unreachable にする。
+fn stat_many_in_places(places: &[Place], items: &[LinkRef], timeout: Duration) -> Vec<LinkStat> {
+    let deadline = Instant::now() + timeout;
+    let mut probes: HashMap<&str, std::sync::mpsc::Receiver<bool>> = HashMap::new();
+    for it in items {
+        if probes.contains_key(it.place_id.as_str()) {
+            continue;
+        }
+        if let Some(p) = places.iter().find(|p| p.id == it.place_id) {
+            let root = PathBuf::from(&p.root);
+            probes.insert(p.id.as_str(), spawn_probe(move || fs::metadata(&root).is_ok()));
+        }
+    }
+    let reachable: HashMap<&str, bool> = probes
+        .into_iter()
+        .map(|(id, rx)| {
+            let left = deadline.saturating_duration_since(Instant::now());
+            (id, rx.recv_timeout(left).unwrap_or(false))
+        })
+        .collect();
+    items
+        .iter()
+        .map(|it| match reachable.get(it.place_id.as_str()) {
+            Some(false) => LinkStat::state_only("unreachable"),
+            _ => stat_in_places(places, it),
+        })
+        .collect()
+}
+
 /// 各件の状態を同じ順で返す。ファイルの中身は読まない（metadata だけ）
 #[tauri::command]
 async fn place_stat_many(
@@ -4876,7 +5090,7 @@ async fn place_stat_many(
     let inner = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let places = read_places(&inner, &ledger, |p| p.to_vec());
-        items.iter().map(|it| stat_in_places(&places, it)).collect()
+        stat_many_in_places(&places, &items, PLACE_PROBE_TIMEOUT)
     })
     .await
     .map_err(|e| format!("タスク失敗: {e}"))
@@ -4888,14 +5102,12 @@ async fn place_resolve_for_os(
     state: &PlaceState,
     place_id: String,
     rel_path: String,
-) -> Result<PathBuf, String> {
+) -> Result<ResolvedPlaceFile, String> {
     let ledger = place_ledger_path(app)?;
     let inner = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let places = read_places(&inner, &ledger, |p| p.to_vec());
-        resolve_in_places(&places, &place_id, &rel_path)
-            .map(|r| r.path)
-            .map_err(|e| e.message())
+        resolve_in_places(&places, &place_id, &rel_path).map_err(|e| e.message())
     })
     .await
     .map_err(|e| format!("タスク失敗: {e}"))?
@@ -4911,12 +5123,12 @@ async fn place_open(
     rel_path: String,
 ) -> Result<(), String> {
     require_main_window(&window)?;
-    let path = place_resolve_for_os(&app, &state, place_id, rel_path).await?;
-    // 実行ファイル・スクリプト・ショートカットは開かない
-    check_openable_ext(&path)?;
+    let resolved = place_resolve_for_os(&app, &state, place_id, rel_path).await?;
+    // 開いてよい種類の一覧にあるものだけ開く（実体のパス・実体の実行ビットで判定）
+    check_place_openable(&resolved.path, resolved.executable)?;
     use tauri_plugin_opener::OpenerExt;
     app.opener()
-        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .open_path(resolved.path.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| format!("アプリで開けませんでした: {e}"))
 }
 
@@ -4930,10 +5142,11 @@ async fn place_reveal(
     rel_path: String,
 ) -> Result<(), String> {
     require_main_window(&window)?;
-    let path = place_resolve_for_os(&app, &state, place_id, rel_path).await?;
+    // 種類は問わない（OS のファイル管理で場所を見せるだけ）。検査した実体のパスを使う
+    let resolved = place_resolve_for_os(&app, &state, place_id, rel_path).await?;
     use tauri_plugin_opener::OpenerExt;
     app.opener()
-        .reveal_item_in_dir(&path)
+        .reveal_item_in_dir(&resolved.path)
         .map_err(|e| format!("場所を表示できませんでした: {e}"))
 }
 
@@ -7022,6 +7235,176 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         assert!(r.mtime_ms > 0);
         let r = resolve_place_file(tmp.path(), "sub/日本語 と 空白.docx").unwrap();
         assert_eq!(r.size, 8);
+        assert!(!r.executable);
+    }
+
+    #[test]
+    fn place_openable_allowlist() {
+        let ok = |n: &str| check_place_openable(Path::new(n), false);
+        assert!(ok("report.pdf").is_ok());
+        assert!(ok("REPORT.PDF").is_ok());
+        assert!(ok("a.Docx").is_ok());
+        assert_eq!(ok("noext").unwrap_err(), "PLACE_OPEN_NOT_ALLOWED:");
+        assert_eq!(ok("evil.dylib").unwrap_err(), "PLACE_OPEN_NOT_ALLOWED:dylib");
+        assert_eq!(ok("run.command").unwrap_err(), "PLACE_OPEN_NOT_ALLOWED:command");
+        assert!(ok("a.html").is_err());
+        assert!(ok("macro.docm").is_err());
+        // 末尾の空白・ドットは断る（Windows は落として別のファイルを開く）
+        assert!(ok("x.PDF ").is_err());
+        assert!(ok("x.pdf.").is_err());
+        assert!(ok("x.pdf. .").is_err());
+        // 実行ビット付きは種類が許可でも断る
+        assert_eq!(
+            check_place_openable(Path::new("data.csv"), true).unwrap_err(),
+            "PLACE_OPEN_NOT_ALLOWED:csv"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_resolve_reports_executable_bit() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = place_fixture();
+        let f = tmp.path().join("data.csv");
+        fs::write(&f, b"a,b").unwrap();
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o755)).unwrap();
+        let r = resolve_place_file(tmp.path(), "data.csv").unwrap();
+        assert!(r.executable);
+        assert!(check_place_openable(&r.path, r.executable).is_err());
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o644)).unwrap();
+        let r = resolve_place_file(tmp.path(), "data.csv").unwrap();
+        assert!(check_place_openable(&r.path, r.executable).is_ok());
+    }
+
+    #[test]
+    fn place_strip_verbatim_prefix_forms() {
+        assert_eq!(strip_verbatim_prefix(r"\\?\C:\Users\a\b.pdf"), r"C:\Users\a\b.pdf");
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\x.pdf"),
+            r"\\server\share\x.pdf"
+        );
+        assert_eq!(strip_verbatim_prefix("/home/a/b.pdf"), "/home/a/b.pdf");
+        assert_eq!(strip_verbatim_prefix(r"C:\x"), r"C:\x");
+        // 台帳の root と現在の canonicalize が、\\?\ の有無だけ違っても一致する
+        assert!(same_place_root(r"C:\data", Path::new(r"\\?\C:\data")));
+        assert!(!same_place_root(r"C:\data", Path::new(r"\\?\C:\other")));
+    }
+
+    #[test]
+    fn place_run_with_timeout_helper() {
+        assert_eq!(run_with_timeout(Duration::from_secs(2), || 7), Some(7));
+        let t = Instant::now();
+        let r = run_with_timeout(Duration::from_millis(100), || {
+            thread::sleep(Duration::from_millis(1500));
+            1
+        });
+        assert_eq!(r, None);
+        assert!(t.elapsed() < Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn place_stat_many_marks_unreachable_roots() {
+        let tmp = place_fixture();
+        let places = vec![
+            Place {
+                id: "ok".into(),
+                name: "n".into(),
+                // 登録時と同じ canonicalize 済みの root（resolve_in_places の比較のため）
+                root: fs::canonicalize(tmp.path()).unwrap().to_string_lossy().to_string(),
+            },
+            Place {
+                id: "gone".into(),
+                name: "n".into(),
+                root: tmp.path().join("gone").to_string_lossy().to_string(),
+            },
+        ];
+        let item = |id: &str| LinkRef { place_id: id.into(), rel_path: "a.txt".into() };
+        let out = stat_many_in_places(
+            &places,
+            &[item("ok"), item("gone"), item("none")],
+            PLACE_PROBE_TIMEOUT,
+        );
+        assert_eq!(out[0].state, "ok");
+        assert_eq!(out[1].state, "unreachable");
+        assert_eq!(out[2].state, "unregistered");
+    }
+
+    #[test]
+    fn place_root_allowed_rejects_broad_and_internal() {
+        let home = Path::new("/Users/alice");
+        let data = Path::new("/Users/alice/Documents/Graphium");
+        let cfg = Path::new("/Users/alice/Library/Application Support/com.graphium.app");
+        let chk =
+            |p: &str| check_place_root_allowed(Path::new(p), Some(home), Some(data), Some(cfg));
+        assert!(chk("/").is_err());
+        assert!(chk("/Users").is_err());
+        assert!(chk("/Users/alice").is_err());
+        assert!(chk("/Users/alice/Documents/Graphium").is_err());
+        assert!(chk("/Users/alice/Documents/Graphium/notes").is_err());
+        // データフォルダを含む親
+        assert!(chk("/Users/alice/Documents").is_err());
+        assert!(chk("/Users/alice/Library/Application Support/com.graphium.app").is_err());
+        assert!(chk("/Users/alice/Library/Application Support/com.graphium.app/x").is_err());
+        assert!(chk("/Users/alice/Library").is_err());
+        assert!(chk("/Users/alice/Projects/shared").is_ok());
+        assert!(chk("/Volumes/nas/team").is_ok());
+        assert!(check_place_root_allowed(Path::new("/Users/alice/x"), None, None, None).is_ok());
+    }
+
+    #[test]
+    fn place_marker_over_limit_is_invalid_and_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let id = "123e4567-e89b-42d3-a456-426614174000";
+        let body = format!(r#"{{"id":"{id}","pad":"{}"}}"#, "x".repeat(64 * 1024));
+        assert!(body.len() as u64 > PLACE_MARKER_MAX_BYTES);
+        fs::write(root.join(PLACE_MARKER_FILE), &body).unwrap();
+        assert_eq!(read_place_marker(&root), PlaceMarker::Invalid);
+        let (place, shared) = prepare_place(&root, &[]);
+        assert!(!shared);
+        assert_ne!(place.id, id);
+        assert_eq!(fs::read_to_string(root.join(PLACE_MARKER_FILE)).unwrap(), body);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_resolve_returns_real_path_without_link_name() {
+        let tmp = place_fixture();
+        std::os::unix::fs::symlink(tmp.path().join("sub"), tmp.path().join("inner")).unwrap();
+        let r = resolve_place_file(tmp.path(), "inner/日本語 と 空白.docx").unwrap();
+        assert!(!r.path.to_string_lossy().contains("inner"));
+        assert_eq!(
+            r.path,
+            fs::canonicalize(tmp.path().join("sub").join("日本語 と 空白.docx")).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_root_swapped_to_symlink_is_unreachable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(tmp.path()).unwrap();
+        let root = base.join("place");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), b"hi").unwrap();
+        let places = vec![Place {
+            id: "p".into(),
+            name: "n".into(),
+            root: root.to_string_lossy().to_string(),
+        }];
+        assert!(resolve_in_places(&places, "p", "a.txt").is_ok());
+        // root をリンクに差し替える（登録時の実体とは別物）
+        let other = base.join("other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("a.txt"), b"evil").unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        std::os::unix::fs::symlink(&other, &root).unwrap();
+        assert_eq!(
+            resolve_in_places(&places, "p", "a.txt").unwrap_err(),
+            PlaceResolveError::Unreachable
+        );
+        let item = LinkRef { place_id: "p".into(), rel_path: "a.txt".into() };
+        assert_eq!(stat_in_places(&places, &item).state, "unreachable");
     }
 
     #[test]
@@ -7073,10 +7456,12 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
     #[test]
     fn place_stat_and_unregistered() {
         let tmp = place_fixture();
+        // 台帳の root は登録時に canonicalize 済み。resolve_in_places が現在の実体と比べるので、
+        // テストも canonicalize した root を使う（macOS の /var → /private/var など）
         let places = vec![Place {
             id: "p1".into(),
             name: "n".into(),
-            root: tmp.path().to_string_lossy().to_string(),
+            root: fs::canonicalize(tmp.path()).unwrap().to_string_lossy().to_string(),
         }];
         let item = |id: &str, rel: &str| LinkRef { place_id: id.into(), rel_path: rel.into() };
         let ok = stat_in_places(&places, &item("p1", "a.txt"));

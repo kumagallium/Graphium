@@ -100,4 +100,47 @@ describe("useLinkStates", () => {
     renderHook(() => useLinkStates([web]));
     expect(statLinksMock).not.toHaveBeenCalled();
   });
+
+  it("細工した控えのエントリが混ざっても、正しいエントリだけで statLinks を呼ぶ", async () => {
+    statLinksMock.mockResolvedValue([{ state: "ok", size: 10, mtimeMs: 1000 }]);
+    const bad1 = { ...linked("x", "x.txt"), link: {} } as unknown as MediaIndexEntry;
+    const bad2 = { ...linked("y", "y.txt"), link: { placeId: "p1", relPath: 5, size: 1, mtimeMs: 1, recordedAt: "" } } as unknown as MediaIndexEntry;
+    const bad3 = { ...linked("z", "z.txt"), url: buildPlaceUrl("p1", "other.txt") };
+    const entries = [bad1, linked("a", "a.xlsx"), bad2, bad3];
+    const { result } = renderHook(() => useLinkStates(entries));
+    await waitFor(() => expect(result.current.get("a")).toBe("ok"));
+    expect(statLinksMock).toHaveBeenCalledTimes(1);
+    expect(statLinksMock.mock.calls[0][0]).toEqual([{ placeId: "p1", relPath: "a.xlsx" }]);
+  });
+
+  it("進行中に 3 回フォーカスが戻っても、呼び出しは進行中の 1 回と終わったあとの 1 回だけ", async () => {
+    const resolvers: ((v: unknown) => void)[] = [];
+    statLinksMock.mockImplementation(() => new Promise((res) => resolvers.push(res)));
+    const entries = [linked("a", "a.xlsx")];
+    const { result } = renderHook(() => useLinkStates(entries));
+    expect(statLinksMock).toHaveBeenCalledTimes(1);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(statLinksMock).toHaveBeenCalledTimes(1);
+    await act(async () => resolvers[0]([{ state: "ok", size: 10, mtimeMs: 1000 }]));
+    await waitFor(() => expect(statLinksMock).toHaveBeenCalledTimes(2));
+    await act(async () => resolvers[1]([{ state: "missing" }]));
+    await waitFor(() => expect(result.current.get("a")).toBe("missing"));
+    expect(statLinksMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("アンマウント後に結果が届いても状態を更新せず、呼び直しもしない", async () => {
+    let resolve: (v: unknown) => void = () => {};
+    statLinksMock.mockImplementation(() => new Promise((res) => (resolve = res)));
+    const { unmount } = renderHook(() => useLinkStates([linked("a", "a.xlsx")]));
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    unmount();
+    await act(async () => resolve([{ state: "ok", size: 10, mtimeMs: 1000 }]));
+    expect(statLinksMock).toHaveBeenCalledTimes(1);
+  });
 });

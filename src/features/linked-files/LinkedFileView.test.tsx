@@ -133,4 +133,43 @@ describe("LinkedFileView", () => {
     await screen.findByText("No change");
     expect(screen.queryByTestId("linked-file-history")).toBeNull();
   });
+
+  it("PLACE_OPEN_NOT_ALLOWED: を受けたら（文字列で投げられても）専用の案内を出す", async () => {
+    const fns = setup({ state: "ok", size: 2048, mtimeMs: MTIME });
+    await screen.findByText("No change");
+    fns.openLinkedFile.mockRejectedValueOnce("PLACE_OPEN_NOT_ALLOWED:dylib" as never);
+    fireEvent.click(openBtn());
+    await screen.findByText(/doesn.t open this kind of file/);
+    expect(screen.queryByText(/Couldn.t complete that/)).toBeNull();
+  });
+
+  it("PLACE_OPEN_NOT_ALLOWED: が Error で届いても同じ案内", async () => {
+    const fns = setup({ state: "ok", size: 2048, mtimeMs: MTIME });
+    await screen.findByText("No change");
+    fns.openLinkedFile.mockRejectedValueOnce(new Error("PLACE_OPEN_NOT_ALLOWED:") as never);
+    fireEvent.click(openBtn());
+    await screen.findByText(/doesn.t open this kind of file/);
+  });
+
+  it("ほかのエラーは、ふつうの「うまくいきませんでした」", async () => {
+    const fns = setup({ state: "ok", size: 2048, mtimeMs: MTIME });
+    await screen.findByText("No change");
+    fns.openLinkedFile.mockRejectedValueOnce("boom" as never);
+    fireEvent.click(openBtn());
+    await screen.findByText("Couldn't complete that: boom");
+  });
+
+  it("link が壊れていても描画で落ちない（何も描かず statLinks も呼ばない）", () => {
+    const e = { ...entry(), link: {} } as unknown as MediaIndexEntry;
+    const { statLinks } = setup({ state: "ok", size: 1, mtimeMs: 1 }, e);
+    expect(screen.queryByTestId("linked-file-view")).toBeNull();
+    expect(statLinks).not.toHaveBeenCalled();
+  });
+
+  it("履歴が壊れていても落ちず、壊れた要素は出さない", async () => {
+    const e = entry({ history: [{ size: "x" }, { size: 1, mtimeMs: MTIME, recordedAt: RECORDED }] as never });
+    setup({ state: "ok", size: 2048, mtimeMs: MTIME }, e);
+    await screen.findByText("No change");
+    expect(screen.getByTestId("linked-file-history").querySelectorAll("li")).toHaveLength(1);
+  });
 });

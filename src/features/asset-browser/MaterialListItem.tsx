@@ -9,7 +9,7 @@ import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
-import { isLinkedEntry } from "../linked-files/link-url";
+import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
 import type { LinkState } from "../linked-files/linked-entry";
 import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
 
@@ -94,8 +94,8 @@ function ThumbCell({ entry }: { entry: MediaIndexEntry }) {
       </div>
     );
   }
-  // リンクした素材は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
-  if (isLinkedEntry(entry)) {
+  // リンクした素材（控えが壊れたものを含む）は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
+  if (entry.type === "url" && isPlaceUrl(entry.url)) {
     return (
       <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
         <FileIcon size={16} />

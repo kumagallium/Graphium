@@ -39,7 +39,7 @@ import { isSourceLookupTarget, runBulkSourceLookup, type BulkSourceLookupProgres
 import { readEntryBytes } from "./read-entry-bytes";
 import { startPreviewBackfill, usePreviewImage } from "./preview-image";
 import { Favicon } from "./favicon";
-import { isLinkedEntry } from "../linked-files/link-url";
+import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
 import type { LinkState } from "../linked-files/linked-entry";
 import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
 import { useLinkStates } from "../linked-files/use-link-states";
@@ -466,8 +466,8 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
       return <div className={cls}><FileText size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
     case "url":
-      // リンクした素材は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
-      if (isLinkedEntry(entry)) {
+      // リンクした素材（控えが壊れたものを含む）は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
+      if (isPlaceUrl(entry.url)) {
         const cls = compact
           ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
           : "w-full h-40 flex items-center justify-center bg-muted";

@@ -4695,4 +4695,6 @@ export const ja: Record<string, string> = {
   "linkedFile.compare.current": "いま",
   "linkedFile.history": "控え直しの履歴（{count} 件）",
   "linkedFile.actionFailed": "うまくいきませんでした：{message}",
+  "linkedFile.openNotAllowed": "この種類のファイルは Graphium からは開きません。「場所を表示」から開いてください。",
+  "linkedFile.brokenRecord": "このリンクの控えを読めません。",
 };

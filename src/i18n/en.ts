@@ -4693,4 +4693,6 @@ export const en: Record<string, string> = {
   "linkedFile.compare.current": "Current",
   "linkedFile.history": "History of records ({count})",
   "linkedFile.actionFailed": "Couldn't complete that: {message}",
+  "linkedFile.openNotAllowed": "Graphium doesn’t open this kind of file. Please open it from \"Show in folder\".",
+  "linkedFile.brokenRecord": "The record for this link can’t be read.",
 };

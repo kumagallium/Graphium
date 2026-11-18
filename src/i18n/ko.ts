@@ -4654,4 +4654,6 @@ export const ko: Record<string, string> = {
   "linkedFile.compare.current": "현재",
   "linkedFile.history": "다시 기록한 이력({count}건)",
   "linkedFile.actionFailed": "처리하지 못했습니다: {message}",
+  "linkedFile.openNotAllowed": "이 종류의 파일은 Graphium에서 열지 않습니다. \"위치 표시\"에서 열어 주세요.",
+  "linkedFile.brokenRecord": "이 링크의 기록을 읽을 수 없습니다.",
 };
