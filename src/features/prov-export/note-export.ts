@@ -79,6 +79,11 @@ export type AssetExportEntry = {
   sourceInfo?: SourceInfo;
   /** リンクした素材の控え（置き場の id と相対パス。絶対パスは持たない。履歴は出さない） */
   link?: { placeId: string; relPath: string; size: number; mtimeMs: number; recordedAt: string };
+  /**
+   * 派生元の素材の fileId（MediaIndexEntry.derivedFromAssets）。素材の索引にあるものだけ
+   * prov:wasDerivedFrom で出す（リンクした素材を「元データ」に指定した関係も、PDF から抽出した画像の親も同じ）。
+   */
+  derivedFrom?: string[];
 };
 
 export type ChatExportEntry = {
@@ -1045,9 +1050,15 @@ export function buildNoteProvGraph(input: NoteProvExportInput): W3CProvNode[] {
   }
 
   // ── 素材 Entity（参照されたものだけ本体を宣言）──
+  // 派生元の親は assetRef 経由で referencedAssets に加わる（Set は反復中の追加も辿る）ので、親の親も宣言される。
+  // 親が素材の索引に無いものは出さない
   for (const fileId of referencedAssets) {
     const a = assetsById.get(fileId);
-    if (a) declare(buildAssetNode(a));
+    if (!a) continue;
+    const node = buildAssetNode(a);
+    const parents = [...new Set(a.derivedFrom ?? [])].filter((id) => id !== a.fileId && assetsById.has(id));
+    if (parents.length > 0) node["prov:wasDerivedFrom"] = parents.map((id) => ref(assetRef(id, undefined)));
+    declare(node);
   }
 
   // ── ノート Entity の関係を確定 ──

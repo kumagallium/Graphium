@@ -72,6 +72,9 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
   const link = clean
     ? { placeId: clean.placeId, relPath: clean.relPath, size: clean.size, mtimeMs: clean.mtimeMs, recordedAt: clean.recordedAt }
     : null;
+  const derivedFrom = [
+    ...new Set((e.derivedFromAssets ?? []).filter((id): id is string => typeof id === "string" && id !== "" && id !== e.fileId)),
+  ];
   return {
     fileId: e.fileId,
     type: e.type,
@@ -80,6 +83,7 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
     ...(e.mimeType ? { mimeType: e.mimeType } : {}),
     ...(e.sourceInfo ? { sourceInfo: e.sourceInfo } : {}),
     ...(link ? { link } : {}),
+    ...(derivedFrom.length > 0 ? { derivedFrom } : {}),
   };
 }
 
@@ -292,10 +296,17 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
   }
   if (memos.length > 0) extras.memos = memos;
 
+  // 派生元（リンクした素材を元データに指定したものなど）も素材として添える。親の親までたどる
+  // （索引に無い親は出さない。Set への追加は反復中も辿られるので、循環していても止まる）
+  const assetIds = new Set([...referenced, ...extraAssets]);
   const assets: AssetExportEntry[] = [];
-  for (const fileId of new Set([...referenced, ...extraAssets])) {
+  for (const fileId of assetIds) {
     const entry = media.get(fileId);
-    if (entry) assets.push(toAssetEntry(entry));
+    if (!entry) continue;
+    assets.push(toAssetEntry(entry));
+    for (const parentId of entry.derivedFromAssets ?? []) {
+      if (typeof parentId === "string" && media.has(parentId)) assetIds.add(parentId);
+    }
   }
   if (assets.length > 0) extras.assets = assets;
 
