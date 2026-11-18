@@ -267,3 +267,65 @@ describe("DataImportModal / 絞り込む", () => {
     expect(r.extract!.sourceRows).toBe(total);
   }, 30_000);
 });
+
+describe("DataImportModal / showExtract", () => {
+  beforeEach(() => syncLocale("ja"));
+
+  it("showExtract={false} なら「絞り込む」の段が出ず、initialExtract も効かない", () => {
+    const onConfirm = vi.fn();
+    render(
+      <DataImportModal
+        fileName="spectrum.csv"
+        text={csv(120)}
+        rowLimit={null}
+        showExtract={false}
+        initialExtract={{ columns: [], conditions: [{ column: "value", op: "lt", value: "10" }] }}
+        confirmLabel="確定する"
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />
+    );
+    expect(screen.queryByRole("button", { name: /絞り込む/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "確定する" }));
+    const r = onConfirm.mock.calls[0][0] as DataImportResult;
+    expect("extract" in r).toBe(false);
+    expect(r.rowCount).toBe(120);
+  });
+});
+
+describe("DataImportModal / 全列の正規化", () => {
+  beforeEach(() => syncLocale("ja"));
+
+  function open(conditions: { column: string; op: "ge"; value: string }[]) {
+    const onConfirm = vi.fn();
+    render(
+      <DataImportModal
+        fileName="oven-curves.csv"
+        text={csv(120)}
+        initialTarget="dataTable"
+        rowLimit={null}
+        initialExtract={{ columns: ["time", "value"], conditions }}
+        confirmLabel="確定する"
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />
+    );
+    return onConfirm;
+  }
+
+  it("全列の配列＋条件ありのまま確定すると extract があり、spec.columns は全列扱い（空）", () => {
+    const onConfirm = open([{ column: "value", op: "ge", value: "50" }]);
+    fireEvent.click(screen.getByRole("button", { name: "確定する" }));
+    const r = onConfirm.mock.calls[0][0] as DataImportResult;
+    expect(r.extract).toBeDefined();
+    expect(r.extract!.spec.columns).toEqual([]);
+  });
+
+  it("全列の配列で開き、条件を消して確定すると extract が付かない", () => {
+    const onConfirm = open([{ column: "value", op: "ge", value: "50" }]);
+    fireEvent.click(screen.getByRole("button", { name: "この条件を消す" }));
+    fireEvent.click(screen.getByRole("button", { name: "確定する" }));
+    const r = onConfirm.mock.calls[0][0] as DataImportResult;
+    expect("extract" in r).toBe(false);
+  });
+});

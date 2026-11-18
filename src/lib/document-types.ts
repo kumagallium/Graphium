@@ -1553,6 +1553,8 @@ export type TableDerivation = {
   kind: "filter";
   fromFileId?: string;
   fromFileName: string;
+  /** 元のファイルをどう読んだか（行範囲・区切り）。開き直すとき、元の画面を同じ読み方で開くのに使う。古い記録には無い */
+  fromOptions?: TableSource["options"];
   columns: string[];
   conditions: ExtractCondition[];
   sourceRows: number;

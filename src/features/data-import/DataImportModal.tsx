@@ -87,7 +87,8 @@ export function DataImportModal({
   headerMetaLabel,
   showTargetChoice = true,
   initialTarget,
-  initialExtract,
+  initialExtract: initialExtractProp,
+  showExtract = true,
   onCancel,
   onConfirm,
 }: {
@@ -123,10 +124,16 @@ export function DataImportModal({
    * その条件と列を復元する
    */
   initialExtract?: ExtractSpec;
+  /**
+   * 「絞り込む」の段を出すか（既定 true）。表を作らない行き先（チャートが素材から直接読む）
+   * では、絞った結果を書き出す先が無いので段ごと出さない。false のとき initialExtract も無視する
+   */
+  showExtract?: boolean;
   onCancel: () => void;
   onConfirm: (result: DataImportResult) => void;
 }) {
   useLocaleSubscription();
+  const initialExtract = showExtract ? initialExtractProp : undefined;
   const lines = useMemo(() => splitLines(text), [text]);
   // 推定 → 上限で丸める、を初期値だけに適用する。再取り込み（initialOptions あり）は
   // 前回の設定が正なので触らない
@@ -252,6 +259,21 @@ export function DataImportModal({
     extractColumns === null ? extractAllNames : extractColumns.filter((n) => extractAllNames.includes(n));
   const noColumns = extractColumns !== null && chosenColumns.length === 0;
 
+  // 開き直しで渡された列が見出し全部だったときは「全列（null）」に戻す。見出しの一覧は
+  // 列の種類の読み込みが終わるまで分からないので、読み終わった時点で正規化する。
+  // 戻さないと、条件をすべて外しても「全列を選んだ絞り込み」が残り、
+  // 元の素材を参照するふつうの表に戻れない（列・条件を手で変えたときは onColumnsChange が同じ正規化をする）
+  useEffect(() => {
+    if (
+      extractColumns !== null &&
+      extractAllNames.length > 0 &&
+      extractColumns.length === extractAllNames.length &&
+      extractAllNames.every((n) => extractColumns.includes(n))
+    ) {
+      setExtractColumns(null);
+    }
+  }, [extractColumns, extractAllNames.join("\u0000")]);
+
   const extractView = useMemo(() => {
     if (!extractTable || !hasExtractSpec) return null;
     const names = extractTable.profiles.map((p) => p.name);
@@ -329,7 +351,7 @@ export function DataImportModal({
     >
       <div className="bg-background border border-border rounded-lg shadow-2xl w-[900px] max-w-full max-h-[85vh] flex flex-col overflow-hidden">
         {/* ヘッダー */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
           <h2 className="text-sm font-semibold text-foreground">{t("dataImport.title")}</h2>
           <span className="text-[11px] text-muted-foreground truncate">{fileName}</span>
           <button
@@ -340,6 +362,9 @@ export function DataImportModal({
           </button>
         </div>
 
+        {/* ヘッダーとフッターの間。短いウィンドウでは、ここがスクロールする
+            （変換プレビューを潰さずに、フッターのボタンは常に見せる） */}
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         {/* 推定の結果。設定はこの下に出しっぱなしにする */}
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/30">
           <span className="text-xs text-foreground">
@@ -499,7 +524,7 @@ export function DataImportModal({
         </div>
 
         {/* プレビュー（左: 生テキスト / 右: 変換結果） */}
-        <div className="flex-1 min-h-0 grid grid-cols-2 gap-0 divide-x divide-border">
+        <div className="flex-1 min-h-min grid grid-cols-2 gap-0 divide-x divide-border">
           <section className="flex flex-col min-h-0">
             <div className="px-4 py-1.5 text-[11px] text-muted-foreground border-b border-border">
               {t("dataImport.filePreview")}
@@ -535,9 +560,9 @@ export function DataImportModal({
             </div>
           </section>
 
-          <section className="flex flex-col min-h-0 overflow-hidden">
+          <section className="flex flex-col min-h-min overflow-hidden">
             {/* 絞り込み。変換プレビューの上（右の列の中）。畳んだ状態が既定で、絞らなければ今までと変わらない */}
-            {canImport && (
+            {canImport && showExtract && (
               <ExtractSection
                 open={extractOpen}
                 onToggle={() => setExtractOpen((v) => !v)}
@@ -568,7 +593,7 @@ export function DataImportModal({
                 </span>
               )}
             </div>
-            <div className="flex-1 min-h-0 overflow-auto p-3">
+            <div className="flex-1 min-h-[6rem] overflow-auto p-3">
               {canImport && shownHeaders.length > 0 ? (
                 <table className="text-[11px] border-collapse">
                   <thead>
@@ -632,8 +657,10 @@ export function DataImportModal({
           </div>
         )}
 
+        </div>
+
         {/* フッター */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
           <button
             type="button"
             onClick={onCancel}

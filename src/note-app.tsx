@@ -101,6 +101,7 @@ import {
 import {
   DataImportModal,
   buildTableSource,
+  extractHeaderMeta,
   toTableBlock,
   defaultCaption,
   isDelimitedDataFile,
@@ -111,6 +112,8 @@ import {
   type DelimitedImportOptions,
 } from "./features/data-import";
 import type { ImportTarget } from "./features/data-import/types";
+import { registerDerivedSource, reimportTargetOf } from "./features/data-extract/derive";
+import type { ExtractSpec, TableDerivation } from "./features/data-extract/types";
 import { applyFrameTitleResolution } from "./features/wiki/resolve-frame-titles";
 import { buildMemoNoteDoc } from "./features/wiki/memo-note-doc";
 import { DecisionRationaleDialog, type DecisionRationaleItem } from "./features/wiki/DecisionRationalePrompt";
@@ -2531,6 +2534,13 @@ function NoteEditorInner({
       initialOptions?: DelimitedImportOptions;
       /** 挿入形式の初期値（再取り込み時に元のブロック種別を渡す） */
       initialTarget?: ImportTarget;
+      /** 絞り込みの開き直しで復元する列と条件 */
+      initialExtract?: ExtractSpec;
+      /**
+       * 絞り込みの元の素材が読めず、写しを開いたときの来歴。絞り込み無しで確定しても
+       * 表の出所に残す（写しを読み直しただけで、どう絞ったかの記録を失わない）
+       */
+      keepDerivation?: TableDerivation;
     } | null
   >(null);
 
@@ -2742,6 +2752,7 @@ function NoteEditorInner({
         replaceBlockId?: string;
         file?: File;
         text?: string;
+        keepDerivation?: TableDerivation;
       },
       result: DataImportResult
     ) => {
@@ -2749,8 +2760,28 @@ function NoteEditorInner({
       // 言語の切り替えでエディタが作り直されても、同じ ID のブロックを引き直せる
       const anchorId: string | undefined =
         liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
+      let derivedSource: TableSource | undefined;
       let fileId = file.fileId;
-      if (!fileId) {
+      if (result.extract) {
+        // 絞り込み: 絞った結果を新しい小さな素材にして、表はその素材を読む。
+        // 元の素材は残し、どう絞ったかは出所（derivation）に持つ
+        if (!uploadAsset) return;
+        try {
+          derivedSource = await registerDerivedSource(
+            { uploadAsset, primeAssetText },
+            {
+              file,
+              fromOptions: result.options,
+              extract: result.extract,
+              meta: extractHeaderMeta(result.parsed.headerLines),
+            }
+          );
+        } catch (err) {
+          console.warn("絞り込んだデータの素材登録に失敗:", err);
+          return;
+        }
+        fileId = derivedSource?.fileId;
+      } else if (!fileId) {
         const rawFile = file.file;
         if (!rawFile || !uploadAsset) return;
         try {
@@ -2761,20 +2792,25 @@ function NoteEditorInner({
         }
       }
       if (!fileId) return;
-      // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）
-      if (file.text !== undefined) primeAssetText(fileId, file.text);
+      // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）。
+      // 絞り込みのときは写しの本文を registerDerivedSource が覚えさせている
+      if (!derivedSource && file.text !== undefined) primeAssetText(fileId, file.text);
       // 登録を待つ間にエディタが作り直される（言語の切り替え・ノートの切り替え）ことがあるので、
       // 挿す先は今生きているエディタ。作り直された直後は editorRef が一瞬だけ前の
       // インスタンスを指すので liveEditorRef を先に見る
       const editor =
         liveEditor(pickerEditorRef.current) ?? liveEditor(liveEditorRef.current) ?? editorRef.current;
       if (!editor) return;
-      const source = buildTableSource({
-        fileName: file.fileName,
-        fileId,
-        options: result.options,
-        parsed: result.parsed,
-      });
+      const source =
+        derivedSource ??
+        buildTableSource({
+          fileName: file.fileName,
+          fileId,
+          options: result.options,
+          parsed: result.parsed,
+        });
+      // 元の素材が読めず写しを開いたとき、絞り込まずに確定しても来歴は残す
+      if (!derivedSource && file.keepDerivation) source.derivation = file.keepDerivation;
       const props = {
         source: serializeDataTableSource(source),
         caption: defaultCaption(file.fileName),
@@ -2815,24 +2851,22 @@ function NoteEditorInner({
   // 「どのファイルの何行目を、どう区切って読んだか」と前置きの測定条件は
   // tableMeta.source に置く。ここを通さずに表だけ作ると、あとから
   // 「この数字はどの生データから来たのか」を辿る手段が無くなる。
-  const handleDataImportConfirm = useCallback(
+  // 文書の表として挿す／差し替える本体。derived があるときは、その出所（写しの素材を読む・
+  // derivation つき）を注釈に置く。無いときは今までどおり
+  const applyNoteTable = useCallback(
     (
       file: {
         fileName: string;
         fileId?: string;
         replaceBlockId?: string;
-        /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
         file?: File;
-        /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
         text?: string;
+        keepDerivation?: TableDerivation;
       },
-      result: DataImportResult
+      result: DataImportResult,
+      derived?: TableSource,
+      anchorId?: string
     ) => {
-      setDataImportFile(null);
-      if (result.target === "dataTable") {
-        void insertDataTable(file, result);
-        return;
-      }
       // ダイアログを開いてから確定するまでの間にノートを切り替えると、
       // pickerEditorRef はアンマウント済みのエディタを指したままになる。そこへ
       // 挿入すると「取り込んだのに何も出ない」（ブロックは死んだエディタに入り、
@@ -2840,8 +2874,13 @@ function NoteEditorInner({
       const editor = liveEditor(pickerEditorRef.current) ?? editorRef.current;
       if (!editor) return;
       // 文書の表は DOC_TABLE_HARD_MAX_ROWS で止まるので通常は常に全行。標本だけの結果で表を作らない（防御）
-      if (!result.rowsComplete) return;
-      const block = toTableBlock(result.parsed);
+      if (!derived && !result.rowsComplete) return;
+      const block = toTableBlock(
+        // 絞り込みの結果は絞った後の全行（大きなファイルでも標本ではない）
+        derived && result.extract
+          ? { headers: result.extract.result.headers, rows: result.extract.result.rows, headerLines: [], footerLines: [] }
+          : result.parsed
+      );
       if (!block) return;
 
       // 再取り込みは中身だけ差し替える（ブロック ID を保つので、そのテーブルを
@@ -2860,7 +2899,7 @@ function NoteEditorInner({
         editor.updateBlock(file.replaceBlockId, { content: block.content });
         blockId = file.replaceBlockId;
       } else {
-        currentBlock = editor.getTextCursorPosition()?.block;
+        currentBlock = (anchorId ? editor.getBlock(anchorId) : undefined) ?? editor.getTextCursorPosition()?.block;
         // カーソルが取れない（ドロップ直後など）ときは末尾に足す
         const anchor = currentBlock ?? editor.document[editor.document.length - 1];
         if (!anchor) return;
@@ -2874,15 +2913,17 @@ function NoteEditorInner({
         if (!tableMetaStore.getCaption(blockId)) {
           tableMetaStore.setCaption(blockId, defaultCaption(file.fileName));
         }
-        tableMetaStore.setSource(
-          blockId,
+        const builtSource =
+          derived ??
           buildTableSource({
             fileName: file.fileName,
             fileId: file.fileId,
             options: result.options,
             parsed: result.parsed,
-          })
-        );
+          });
+        // 元の素材が読めず写しを開いたとき、絞り込まずに確定しても来歴は残す
+        if (!derived && file.keepDerivation) builtSource.derivation = file.keepDerivation;
+        tableMetaStore.setSource(blockId, builtSource);
       }
 
       if (currentBlock && isSlashOnlyBlock(currentBlock)) {
@@ -2911,7 +2952,7 @@ function NoteEditorInner({
       // 数秒かかりうるので、表の挿入を待たせず後から source に fileId を足す
       // （URL 素材登録と同じ流儀）。
       const rawFile = file.file;
-      if (blockId && !file.fileId && rawFile && uploadAsset) {
+      if (!derived && blockId && !file.fileId && rawFile && uploadAsset) {
         const targetBlockId = blockId;
         void (async () => {
           try {
@@ -2929,7 +2970,58 @@ function NoteEditorInner({
         })();
       }
     },
-    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset, insertDataTable]
+    [tableMetaStore, isSlashOnlyBlock, removeBlockMetadata, uploadAsset]
+  );
+
+  // データ取り込みダイアログの確定。行き先ごとに、データ表は insertDataTable、文書の表は
+  // applyNoteTable へ振り分ける。絞り込み（result.extract）があるときは、絞った結果を新しい素材に
+  // 登録してから挿す。
+  const handleDataImportConfirm = useCallback(
+    (
+      file: {
+        fileName: string;
+        fileId?: string;
+        replaceBlockId?: string;
+        /** 素材未登録のファイル実体（スラッシュメニュー・ドロップ経由） */
+        file?: File;
+        /** ダイアログで読んだ本文（データ表はこれを描画に使い回す） */
+        text?: string;
+        keepDerivation?: TableDerivation;
+      },
+      result: DataImportResult
+    ) => {
+      setDataImportFile(null);
+      if (result.target === "dataTable") {
+        void insertDataTable(file, result);
+        return;
+      }
+      if (result.extract) {
+        // 絞り込み（文書の表）: 素材の登録を待つあいだにカーソルが動いても、挿す先は
+        // 確定したときのブロックにする。登録が済んでから本体（applyNoteTable）へ渡す
+        const anchorId: string | undefined =
+          liveEditor(pickerEditorRef.current)?.getTextCursorPosition?.()?.block?.id;
+        if (!uploadAsset) return;
+        void (async () => {
+          try {
+            const derived = await registerDerivedSource(
+              { uploadAsset, primeAssetText },
+              {
+                file,
+                fromOptions: result.options,
+                extract: result.extract!,
+                meta: extractHeaderMeta(result.parsed.headerLines),
+              }
+            );
+            applyNoteTable(file, result, derived, anchorId);
+          } catch (err) {
+            console.warn("絞り込んだデータの素材登録に失敗:", err);
+          }
+        })();
+        return;
+      }
+      applyNoteTable(file, result);
+    },
+    [uploadAsset, insertDataTable, applyNoteTable]
   );
 
   // 取り込み元バッジ → 元ファイルを読み直し、保存済みの設定でダイアログを開く。
@@ -2939,11 +3031,36 @@ function NoteEditorInner({
     (blockId: string, source: TableSource, target: ImportTarget = "table") => {
       if (!source.fileId) return;
       void (async () => {
-        try {
+        const readAsset = async (fileId: string) => {
           const provider = getActiveProvider();
-          const blobUrl = await provider.getMediaBlobUrl(source.fileId!);
+          const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
-          const text = await readDataFileText(blob);
+          return readDataFileText(blob);
+        };
+        // 絞り込みの表は、元の素材を条件つきで開く（条件を直せるように）。
+        // 元が読めない（消された）ときは、写しをふつうに開く
+        const back = reimportTargetOf(source);
+        if (back) {
+          try {
+            const text = await readAsset(back.fileId);
+            setDataImportFile({
+              fileName: back.fileName,
+              text,
+              fileId: back.fileId,
+              replaceBlockId: blockId,
+              initialOptions: back.initialOptions
+                ? { ...back.initialOptions, customDelimiter: back.initialOptions.customDelimiter }
+                : undefined,
+              initialExtract: back.initialExtract,
+              initialTarget: target,
+            });
+            return;
+          } catch {
+            // 元の素材が読めない → 下で写しを開く
+          }
+        }
+        try {
+          const text = await readAsset(source.fileId!);
           setDataImportFile({
             fileName: source.fileName,
             text,
@@ -2955,6 +3072,8 @@ function NoteEditorInner({
             },
             // 既定は元のブロック種別。ダイアログで切り替えれば相互に変換できる
             initialTarget: target,
+            // 写しを開き直しただけでは、どう絞ったかの記録を失わない
+            keepDerivation: source.derivation,
           });
         } catch {
           alert(tStatic("dataImport.readError"));
@@ -7137,6 +7256,7 @@ function NoteEditorInner({
           text={dataImportFile.text}
           initialOptions={dataImportFile.initialOptions}
           initialTarget={dataImportFile.initialTarget}
+          initialExtract={dataImportFile.initialExtract}
           onCancel={() => setDataImportFile(null)}
           onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />

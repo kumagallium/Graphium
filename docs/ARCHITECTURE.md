@@ -363,6 +363,16 @@ talks to LLM and embedding backends.
   settings from a leading sample for files over 5,000 lines and, over 20,000
   data rows, parses only the first 2,000 for the preview (constants in
   `src/features/data-import/large-file.ts`).
+  The import dialog can also keep only some columns and rows (the *Filter*
+  section; conditions are ANDed). The result is not stored in the note: it is
+  written as a new small CSV asset registered with the original in
+  `derivedFromAssets`, and the data table (or note table) reads that copy. How it
+  was filtered lives in `tableMeta.source.derivation` / the block's
+  `props.source`, which also lets the source badge reopen the dialog on the
+  original asset with the same conditions. Row limits apply to the filtered row
+  count. Code: `src/features/data-extract/` (`apply.ts` engine, `derive.ts` copy
+  and source building, `components/`), wired in `handleDataImportConfirm` /
+  `handleTableReimport` in `src/note-app.tsx`.
 - `chart` renders a table from the same note as a line / bar / scatter /
   histogram chart (Apache ECharts, SVG renderer, lazy-loaded on first
   paint so notes without charts pay nothing extra). The table stays the

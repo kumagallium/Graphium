@@ -467,6 +467,20 @@ type TableSource = {
     collapseConsecutive: boolean;          // treat runs of the delimiter as one
   };
   meta?: { key: string; value: string }[]; // `key: value` lines read from the preamble
+  derivation?: TableDerivation;            // only on a table made by filtering a file
+};
+
+type TableDerivation = {                   // how a filtered copy was made
+  kind: "filter";
+  fromFileId?: string;                     // media index ID of the original asset
+  fromFileName: string;                    // name of the original file
+  fromOptions?: TableSource["options"];    // how the original was read (absent in older records)
+  columns: string[];                       // columns kept (every header when all were kept)
+  conditions: { column: string; op: "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty"; value?: string }[];
+                                           // a row stays only when all of them hold
+  sourceRows: number;                      // data rows in the original, before filtering
+  resultRows: number;                      // data rows kept
+  createdAt: string;                       // ISO 8601
 };
 ```
 
@@ -501,6 +515,16 @@ type TableSource = {
   decision context in any domain.
   When the file was also registered as an asset, `fileId` links the table back to
   it and the import can be re-run with the stored settings.
+- **`source.derivation` is optional and only exists on filtered tables.** When
+  the import dialog filters a file (columns and conditions), the result is written
+  as a new small CSV asset (with the original in its `derivedFromAssets`) and the
+  table reads that copy: `source.fileName` / `fileId` / `options` describe the
+  copy, while `derivation` keeps the original file, how it was read
+  (`fromOptions`), the kept columns, the conditions and the row counts before and
+  after. Re-opening from the source badge restores them against the original
+  asset. Notes written before this field existed have no `derivation`, and a table
+  without it behaves exactly as before. Readers that ignore it still get a valid
+  source pointing at a real asset.
 - **Delimited imports become a `dataTable` block by default.** The block
   keeps no rows: `props.source` is the same object as `tableMeta.source`
   serialized as a JSON string (so the read settings and the preamble `meta`
