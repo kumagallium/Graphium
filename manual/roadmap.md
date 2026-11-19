@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 25 more in November
+::: details 26 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -385,6 +385,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.147.0** | 2026-11-18 | [Bring in AI conversations](/materials-and-citations#bring-in-ai-conversations) — on the desktop app, the **Bring in** sheet gets an **AI conversations** tab. Pick the working folders of your Claude Code conversations and each conversation becomes one material: your own messages in full, an excerpt of the AI's reply before each of them, and no tool calls or tool output. Bringing in calls no AI, and the same conversation never lands twice |
 | **v0.148.0** | 2026-11-19 | [Name a linked file as the source data](/materials-and-citations#source-data) — a small table or figure you brought in can record which linked raw file it came from, so the asset graph and the provenance export lead back to that file. Graphium does not read the raw file; the relationship is a record you set by hand. Several files in a data place can now be linked at once (up to 500) |
 | **v0.149.0** | 2026-11-19 | [Find a brought-in AI conversation by what was said, and make knowledge from it](/materials-and-citations#bring-in-ai-conversations) — a conversation is named after its title in Claude Code and dated by when it happened. `⌘K`, the conversation list and the MCP server find it by the words in it. After bringing conversations in, the ones where you wrote the most are offered for knowledge, with an estimate of the AI use; nothing is sent to an AI until you press the button |
+| **v0.151.0** | 2026-11-19 | [Let others update a shared note, one after another](/storage-and-sync#accept-updates) — the author of a note in a shared folder can accept updates from others. They edit their own copy and send it back; if someone updated the note first, nothing is overwritten and they are told. The last five versions are kept and can be restored |
 
 :::
 

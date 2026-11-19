@@ -288,7 +288,7 @@ From the proposer's side, the state badge changes to **Adopted**. Their note sta
 
 A note you created by forking shows a **Forked from: …** chip in its header; click it to open the original shared entry. The **Graph** panel on the right shows the same relationship as a dashed link, alongside any proposals aimed at your note (clickable too).
 
-### Let others update a note, one after another {#accept-updates}
+### Let others update a note, one after another <Badge type="tip" text="Added in v0.151.0 (2026-11-19)" /> {#accept-updates}
 
 Normally only the author can change a shared note; everyone else forks it or proposes changes. If the author wants to share the editing instead, they can let others update the shared note directly. Updates then happen **one after another**, never at the same moment.
 
