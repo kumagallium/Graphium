@@ -10478,12 +10478,30 @@ export function NoteApp() {
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
   // ノートに紐づかないチャットの横にグラフを並べているときも同じデータを使う
   const wantGlobalGraphData = showGlobalGraph || (showChatList && chatGraphVisible);
+  // 知見 → トピックの参照線に使う topicIds の写し（索引には無い）。wikiMetas は保存のたびに
+  // 作り直されるので、topicIds の中身が変わったときだけ別の Map にする（一括で結ぶ処理が
+  // 知見を 1 件ずつ保存しても、topicIds 以外の変化でグラフを組み直さない）
+  const claimTopicCacheRef = useRef<{ sig: string; map: Map<string, { kind: "claim"; topicIds: string[] }> } | null>(null);
+  const claimTopicMetas = useMemo(() => {
+    if (!wantGlobalGraphData) return null;
+    const map = new Map<string, { kind: "claim"; topicIds: string[] }>();
+    const parts: string[] = [];
+    for (const [id, meta] of fm.wikiMetas) {
+      if (meta.kind !== "claim" || !meta.topicIds?.length) continue;
+      map.set(id, { kind: "claim", topicIds: meta.topicIds });
+      parts.push(`${id}:${meta.topicIds.join(",")}`);
+    }
+    const sig = parts.join("|");
+    if (claimTopicCacheRef.current?.sig === sig) return claimTopicCacheRef.current.map;
+    claimTopicCacheRef.current = { sig, map };
+    return map;
+  }, [wantGlobalGraphData, fm.wikiMetas]);
   const globalGraphData = useMemo(
     () =>
       wantGlobalGraphData && fm.noteIndex
-        ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null)
+        ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null, claimTopicMetas)
         : { nodes: [], edges: [] },
-    [wantGlobalGraphData, fm.noteIndex, fm.mediaIndex],
+    [wantGlobalGraphData, fm.noteIndex, fm.mediaIndex, claimTopicMetas],
   );
   // チャットの横のグラフで「AI が探せる範囲」を印すためのページの集合（探すフォルダごと）。
   // 横断検索に渡す onlyIds と同じ関数で作るので、表示と実際の絞り込みがずれない。

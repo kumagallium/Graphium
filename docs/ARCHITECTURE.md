@@ -1238,8 +1238,11 @@ flowchart TB
   PG -.->|"same facts, as P-Plan"| EXP
 ```
 
-The global graph is built from the note index alone and never reads the PROV
-graph. The step graph and the plan graph read each note's PROV graph through
+The global graph is built from the note index and never reads the PROV
+graph. The one input outside the index is each Claim's `wikiMeta.topicIds`,
+read from the app's in-memory wiki metadata (saving only `topicIds` does not
+update the index), which adds a dashed Claim → Topic reference edge; MCP
+`show_knowledge_graph` reads the index only and does not draw these edges. The step graph and the plan graph read each note's PROV graph through
 the process index. The plan graph additionally uses the plan's table (rows,
 the "input from" column and the line names), and those table facts are
 exactly what the plan export turns into P-Plan terms. `trace_lineage` also

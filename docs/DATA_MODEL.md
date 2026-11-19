@@ -2313,7 +2313,13 @@ from", which is not what this link says. Answers are checked by machine before s
 the id is in the set that was sent, the Topic still lists the source, at most 3 per
 Claim — and an answer that fails is discarded and counted (`rejected`, recorded in the
 wiki log). A Claim that already has `topicIds` is never overwritten. The link does not
-change a page's body, so no revision is recorded. A failed or stopped judgment never
+change a page's body, so no revision is recorded. The graphs draw it as a
+Claim → Topic **reference** edge (dashed), not a derivation: the Topic was not made
+from the Claim. The Topic's neighbourhood graph reads it from the Claim documents; the
+global graph reads it from the app's in-memory wiki metadata, because `topicIds` is not
+mirrored into the note index (a save that only writes `topicIds` leaves the index
+untouched, so a mirror would go stale). Where a legacy `derivedFromClaims` link joins the
+same pair, the derivation edge is kept. A failed or stopped judgment never
 fails the ingest. When Topics are merged, Claims linked to an absorbed Topic are
 retargeted to the kept Topic before the absorbed page goes to Trash, in both the app
 and MCP `merge_topics`.

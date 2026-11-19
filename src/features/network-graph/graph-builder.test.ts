@@ -343,6 +343,33 @@ describe("buildNoteGraph — relation の分離（内部キーがラベルに混
     }
   });
 
+  it("知見の topicIds: トピックの周辺グラフに知見を参照の線で出す（旧形式の派生があれば派生が残る）", () => {
+    const wiki = (kind: string, extra: Record<string, unknown> = {}) =>
+      ({
+        title: kind,
+        source: "ai",
+        pages: [{ id: "p", title: kind, blocks: [] }],
+        wikiMeta: { kind, derivedFromNotes: [], derivedFromChats: [], ...extra },
+      }) as unknown as GraphiumDocument;
+    const docs = new Map<string, GraphiumDocument>([
+      ["topic-1", wiki("topic", { derivedFromClaims: ["claim-legacy"] })],
+      ["claim-1", wiki("claim", { topicIds: ["topic-1", "ghost"] })],
+      ["claim-2", wiki("claim", { topicIds: ["topic-1"] })],
+      ["claim-legacy", wiki("claim", { topicIds: ["topic-1"] })],
+    ]);
+    const graph = buildNoteGraph(
+      "topic-1",
+      ["topic-1", "claim-1", "claim-2", "claim-legacy"].map(file),
+      docs,
+      null,
+    );
+    const rel = (s: string) => graph.edges.filter((e) => e.source === s && e.target === "topic-1").map((e) => e.relation);
+    expect(rel("claim-1")).toEqual(["reference"]);
+    expect(rel("claim-2")).toEqual(["reference"]);
+    expect(rel("claim-legacy")).toEqual(["derived"]);
+    expect(graph.nodes.map((n) => n.id).sort()).toEqual(["claim-1", "claim-2", "claim-legacy", "topic-1"]);
+  });
+
   it("Atom の derivedFromClaims（旧 'atomize'）は relation=derived でラベルに 'atomize' が入らない", () => {
     const docs = new Map<string, GraphiumDocument>([
       [
