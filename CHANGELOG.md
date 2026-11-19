@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.152.1](https://github.com/kumagallium/Graphium/compare/v0.152.0...v0.152.1) - 2026-11-19
+
+- feat(docx-export): open the save dialog in the folder a Word file was last saved to by @kumagallium in https://github.com/kumagallium/Graphium/pull/1792
+- fix(world-grounding): retry a save declined by another save instead of dropping the verdict by @kumagallium in https://github.com/kumagallium/Graphium/pull/1793
+- [fix] MCP knowledge graph: draw it with the app's own GlobalGraphView by @kumagallium in https://github.com/kumagallium/Graphium/pull/1794
+
 ## [v0.152.0](https://github.com/kumagallium/Graphium/compare/v0.151.0...v0.152.0) - 2026-11-19
 
 - [fix] MCP graph view: fetch the graph by reference so it draws in Claude Desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1785
