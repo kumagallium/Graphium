@@ -103,6 +103,13 @@ export type LinkedReadPurpose = "preview" | "data";
 
 /** Rust 側 place_read_file が種類を理由に断るときの Err の接頭辞（形は `PLACE_READ_NOT_ALLOWED:<拡張子>`） */
 export const PLACE_READ_NOT_ALLOWED_PREFIX = "PLACE_READ_NOT_ALLOWED";
+/** 同時に読める数の上限に当たったときの Err */
+export const PLACE_READ_BUSY = "PLACE_READ_BUSY";
+/** 読みが時間切れになったときの Err */
+export const PLACE_READ_TIMEOUT = "PLACE_READ_TIMEOUT";
+/** TS 側の確認で、このノートが参照していない素材の読み直しを断るときの Err */
+export const PLACE_READ_NOT_REFERENCED = "PLACE_READ_NOT_REFERENCED";
+
 /** 大きすぎて断るときの Err の接頭辞（形は `PLACE_READ_TOO_LARGE:<上限バイト数>`） */
 export const PLACE_READ_TOO_LARGE_PREFIX = "PLACE_READ_TOO_LARGE";
 
@@ -135,6 +142,9 @@ export function readErrorMessageKey(e: unknown): { key: string; params?: Record<
       params: { max: Number.isFinite(max) ? String(Math.round(max / (1024 * 1024))) : "" },
     };
   }
+  if (text.startsWith(PLACE_READ_BUSY)) return { key: "linkedFile.read.busy" };
+  if (text.startsWith(PLACE_READ_TIMEOUT)) return { key: "linkedFile.read.timeout" };
+  if (text.startsWith(PLACE_READ_NOT_REFERENCED)) return { key: "linkedFile.read.notReferenced" };
   if (text.includes("届きません")) return { key: "linkedFile.read.unreachable" };
   if (text.includes("見つかりません")) return { key: "linkedFile.read.missing" };
   if (text.includes("登録されていません")) return { key: "linkedFile.read.unregistered" };

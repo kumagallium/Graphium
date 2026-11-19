@@ -82,6 +82,7 @@ export type DataImportResult = {
 
 export function DataImportModal({
   fileName,
+  readFromNote,
   text,
   initialOptions,
   rowLimit = DEFAULT_ROW_LIMIT,
@@ -95,6 +96,8 @@ export function DataImportModal({
   onConfirm,
 }: {
   fileName: string;
+  /** リンクした素材から読んだとき、どこから読んだか（確定の前に利用者が見られるように） */
+  readFromNote?: string;
   /** ファイルの中身（デコード済み） */
   text: string;
   /** 再取り込み時に前回の設定を渡す。未指定なら自動推定から始める */
@@ -375,6 +378,11 @@ export function DataImportModal({
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
           <h2 className="text-sm font-semibold text-foreground">{t("dataImport.title")}</h2>
           <span className="text-[11px] text-muted-foreground truncate">{fileName}</span>
+          {readFromNote && (
+            <span className="text-[11px] text-muted-foreground truncate" data-testid="data-import-read-from">
+              {readFromNote}
+            </span>
+          )}
           <button
             onClick={onCancel}
             className="ml-auto text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"

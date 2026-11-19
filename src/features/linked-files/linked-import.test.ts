@@ -72,3 +72,30 @@ describe("元データの変化", () => {
     expect(statLinks).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("findLinkOf: このノートが使っている素材だけ", () => {
+  const link = { placeId: "p", relPath: "d.csv", size: 1, mtimeMs: 1, recordedAt: "x" };
+  const entry = (usedIn: { noteId: string }[]) => ({
+    fileId: "L1",
+    type: "url",
+    url: "graphium-place://p/d.csv",
+    link,
+    usedIn,
+  });
+
+  it("noteId を渡したとき、そのノートが使っていなければ投げる", async () => {
+    const { findLinkOf } = await import("./linked-import");
+    readMediaIndex.mockResolvedValue({ media: [entry([{ noteId: "other" }])] });
+    await expect(findLinkOf("L1", "mine")).rejects.toThrow("PLACE_READ_NOT_REFERENCED");
+    readMediaIndex.mockResolvedValue({ media: [entry([{ noteId: "mine" }])] });
+    expect(await findLinkOf("L1", "mine")).toMatchObject({ placeId: "p", relPath: "d.csv" });
+  });
+
+  it("noteId なし・リンクでない素材は従来どおり", async () => {
+    const { findLinkOf } = await import("./linked-import");
+    readMediaIndex.mockResolvedValue({ media: [entry([])] });
+    expect(await findLinkOf("L1")).not.toBeNull();
+    readMediaIndex.mockResolvedValue({ media: [{ fileId: "A", type: "pdf", url: "x", usedIn: [] }] });
+    expect(await findLinkOf("A", "mine")).toBeNull();
+  });
+});

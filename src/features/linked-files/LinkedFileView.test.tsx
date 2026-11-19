@@ -241,11 +241,49 @@ describe("LinkedFileView: 中身を読む", () => {
     await screen.findByText("No change");
     fireEvent.click(screen.getByRole("button", { name: "Import as table" }));
     expect(requestImport).toHaveBeenCalledWith({
+      onSettled: expect.any(Function),
       fileId: "url_1",
       name: "run.csv",
       placeId: "p1",
       relPath: "Recipes/Dough hydration.xlsx",
     });
     expect(readLinkedFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("LinkedFileView: 二重起動の防止", () => {
+  const ok: LinkStat = { state: "ok", size: 2048, mtimeMs: MTIME };
+  const named = (name: string): MediaIndexEntry => ({ ...entry(), name });
+
+  it("表に取り込む: 読み込み中は押せず、onSettled で戻る。そのあいだ中身を表示も押せない", async () => {
+    let settle: (() => void) | undefined;
+    const requestImport = vi.fn((req: { onSettled?: () => void }) => {
+      settle = req.onSettled;
+    });
+    // csv は中身を表示の対象外なので、同じ画面に両方が出る pdf 名では確かめられない。取り込みボタンだけ確かめる
+    setup(ok, named("run.csv"), { requestImport });
+    await screen.findByText("No change");
+    const btn = () => screen.getByRole("button", { name: "Import as table" }) as HTMLButtonElement;
+    fireEvent.click(btn());
+    expect(btn().disabled).toBe(true);
+    fireEvent.click(btn());
+    expect(requestImport).toHaveBeenCalledTimes(1);
+    settle!();
+    await waitFor(() => expect(btn().disabled).toBe(false));
+  });
+
+  it("中身を表示: 読み込み中は読み込み中の表示（取り消し）に替わり、二重に読まない", async () => {
+    let finish: (b: ArrayBuffer) => void = () => {};
+    const readLinkedFile = vi.fn(() => new Promise<ArrayBuffer>((r) => (finish = r)));
+    URL.createObjectURL = () => "blob:z";
+    URL.revokeObjectURL = () => {};
+    setup(ok, named("pic.png"), { readLinkedFile });
+    await screen.findByText("No change");
+    fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
+    expect(screen.queryByRole("button", { name: "Show contents" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Reading…/ })).toBeTruthy();
+    expect(readLinkedFile).toHaveBeenCalledTimes(1);
+    finish(new ArrayBuffer(1));
+    await screen.findByTestId("linked-file-content");
   });
 });

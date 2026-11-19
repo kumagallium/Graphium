@@ -70,7 +70,13 @@ export type LinkedFileViewProps = {
     listPlaces?: () => Promise<PlaceInfo[]>;
     openLinkedFile?: (placeId: string, relPath: string) => Promise<void>;
     readLinkedFile?: (placeId: string, relPath: string, purpose: LinkedReadPurpose) => Promise<ArrayBuffer>;
-    requestImport?: (req: { fileId: string; name: string; placeId: string; relPath: string }) => void;
+    requestImport?: (req: {
+      fileId: string;
+      name: string;
+      placeId: string;
+      relPath: string;
+      onSettled?: () => void;
+    }) => void;
     revealLinkedFile?: (placeId: string, relPath: string) => Promise<void>;
     persistLinkPatch?: (fileId: string, link: MediaLink) => Promise<boolean>;
   };
@@ -100,6 +106,15 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   // 中身の表示。押したときだけ読み、閉じる・切り替え・取り消しで blob URL を返す（revoke）
   const [shown, setShown] = useState<{ url: string; kind: "pdf" | "image" } | null>(null);
   const [reading, setReading] = useState(false);
+  // 表への取り込みの読み込み中（note-app が読み終えたら onSettled で戻る）
+  const [importing, setImporting] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const readToken = useRef(0);
   const closeContent = useCallback(() => {
     readToken.current += 1;
@@ -310,7 +325,7 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
           {t("linkedFile.reveal")}
         </Button>
         {preview && !shown && !reading && (
-          <Button size="sm" variant="outline" disabled={!canUse} onClick={() => void showContent()}>
+          <Button size="sm" variant="outline" disabled={!canUse || importing} onClick={() => void showContent()}>
             <Eye />
             {t("linkedFile.read.show")}
           </Button>
@@ -331,12 +346,21 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
           <Button
             size="sm"
             variant="outline"
-            disabled={!canUse}
-            onClick={() =>
-              requestImport({ fileId: entry.fileId, name: entry.name, placeId: link.placeId, relPath: link.relPath })
-            }
+            disabled={!canUse || reading || importing}
+            onClick={() => {
+              setImporting(true);
+              requestImport({
+                fileId: entry.fileId,
+                name: entry.name,
+                placeId: link.placeId,
+                relPath: link.relPath,
+                onSettled: () => {
+                  if (mounted.current) setImporting(false);
+                },
+              });
+            }}
           >
-            <TableIcon />
+            {importing ? <Loader2 className="animate-spin" /> : <TableIcon />}
             {t("linkedFile.read.importTable")}
           </Button>
         )}

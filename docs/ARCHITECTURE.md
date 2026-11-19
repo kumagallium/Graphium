@@ -4233,6 +4233,17 @@ The same `src/` tree is built four different ways.
       right before opening) and then opens the file with `O_NOFOLLOW` and
       `O_NONBLOCK`, requires a regular file (a FIFO cannot hang it) and
       stops reading at the limit even if the file grows meanwhile.
+    - At most 2 reads run at once across the app (more return
+      `PLACE_READ_BUSY`), and a call that takes longer than 60 s (`preview`)
+      or 120 s (`data`) returns `PLACE_READ_TIMEOUT`. The slot is held by
+      the reading thread, so a stalled read cannot pile up past the limit.
+      The initial buffer is at most 8 MiB. On Windows the file is opened
+      with `FILE_FLAG_OPEN_REPARSE_POINT` and refused when the opened
+      handle has the reparse-point attribute; on every OS the path is
+      canonicalized again after opening and must still be inside the root,
+      have the same final name and an allowed extension. Relative paths with
+      a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9, with
+      or without an extension) are refused on every OS.
     - Only the `main` window may call it. The bytes go back to that caller
       only: Rust keeps no cache and writes nothing to disk, and the UI shows
       them through a `blob:` URL it revokes on close, or hands the decoded

@@ -28,4 +28,6 @@ export const PDFJS_DOC_OPTIONS = {
   cMapUrl: `${PDFJS_ASSET_BASE}cmaps/`,
   cMapPacked: true,
   standardFontDataUrl: `${PDFJS_ASSET_BASE}standard_fonts/`,
+  // PDF 内の式を eval で実行させない（置き場の PDF など、出所の分からないファイルも開くため）
+  isEvalSupported: false,
 } as const;

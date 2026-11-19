@@ -8,7 +8,8 @@ import { readDataFileText } from "../data-import/read-file";
 import { readMediaIndex, type MediaLink } from "../asset-browser/media-index";
 import type { TableSource } from "../../lib/document-types";
 import { sanitizeMediaLink } from "./link-url";
-import { readLinkedFile, statLinks } from "./places";
+import { PLACE_READ_NOT_REFERENCED, listPlaces, readLinkedFile, statLinks } from "./places";
+import { t } from "../../i18n";
 
 /** 表に取り込める拡張子（Rust 側 place_read_file の data 許可リストと同じ） */
 const IMPORTABLE_EXTS = ["csv", "tsv", "txt", "dat"];
@@ -22,7 +23,14 @@ export function isLinkedDataImportable(name: string): boolean {
 /** LinkedFileView → note-app への「取り込み画面を開いて」の合図（素材ピークは note-app の外にあるため） */
 export const LINKED_DATA_IMPORT_EVENT = "graphium:linked-data-import";
 
-export type LinkedImportRequest = { fileId: string; name: string; placeId: string; relPath: string };
+export type LinkedImportRequest = {
+  fileId: string;
+  name: string;
+  placeId: string;
+  relPath: string;
+  /** 受け付けた（読み終えた）・受け付けなかったときに呼ぶ。押したボタンを押せるように戻すため */
+  onSettled?: () => void;
+};
 
 export function requestLinkedDataImport(req: LinkedImportRequest): void {
   if (typeof window === "undefined") return;
@@ -42,11 +50,30 @@ export async function readLinkedText(placeId: string, relPath: string): Promise<
   return { text, size: stat?.size ?? buf.byteLength, mtimeMs: stat?.mtimeMs ?? 0 };
 }
 
-/** 素材の fileId がリンクした素材ならその控えを返す。普通の素材・見つからないときは null */
-export async function findLinkOf(fileId: string): Promise<MediaLink | null> {
+/**
+ * 素材の fileId がリンクした素材ならその控えを返す。普通の素材・見つからないときは null。
+ * noteId を渡すと、そのノートが使っている素材（usedIn に載っている）のときだけ返し、そうでなければ投げる
+ * （表の出所の fileId は共有されたノートなどで書き換えられうる。別のリンクを読み直させない）
+ */
+export async function findLinkOf(fileId: string, noteId?: string): Promise<MediaLink | null> {
   const index = await readMediaIndex();
   const entry = index?.media.find((m) => m.fileId === fileId);
-  return entry ? sanitizeMediaLink(entry.link) : null;
+  const link = entry ? sanitizeMediaLink(entry.link) : null;
+  if (link && noteId !== undefined && !entry!.usedIn.some((u) => u.noteId === noteId)) {
+    throw new Error(PLACE_READ_NOT_REFERENCED);
+  }
+  return link;
+}
+
+/** 取り込み画面に出す「読んだファイル: 置き場の名前 / 場所」。置き場の名前が引けなければ id を出す */
+export async function readFromLabel(placeId: string, relPath: string): Promise<string> {
+  let place = placeId;
+  try {
+    place = (await listPlaces()).find((p) => p.id === placeId)?.name ?? placeId;
+  } catch {
+    // 名前が引けなくても、場所は出す
+  }
+  return t("linkedFile.read.readFrom", { place, path: relPath });
 }
 
 /** 表の出所が覚えている、取り込んだ時点の元ファイルの大きさ・更新日時（リンクした素材から取り込んだときだけ） */

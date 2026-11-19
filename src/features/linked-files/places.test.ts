@@ -142,3 +142,11 @@ describe("readErrorMessageKey", () => {
     expect(readErrorMessageKey("なぞのエラー").key).toBe("linkedFile.read.failed");
   });
 });
+
+describe("readErrorMessageKey: 同時実行・時間切れ・参照外", () => {
+  it("BUSY / TIMEOUT / NOT_REFERENCED を文言キーにする", () => {
+    expect(readErrorMessageKey("PLACE_READ_BUSY").key).toBe("linkedFile.read.busy");
+    expect(readErrorMessageKey(new Error("PLACE_READ_TIMEOUT")).key).toBe("linkedFile.read.timeout");
+    expect(readErrorMessageKey(new Error("PLACE_READ_NOT_REFERENCED")).key).toBe("linkedFile.read.notReferenced");
+  });
+});

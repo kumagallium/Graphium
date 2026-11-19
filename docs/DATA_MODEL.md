@@ -4443,7 +4443,15 @@ table so a later change can be flagged: `source.derivation.fromSize` /
 otherwise. Both are optional (absent in older notes and on tables not made
 from a linked file); when the file's current size or modified time differs,
 the table's source badge shows "The original data has changed". Re-importing
-reads the linked file again.
+reads the linked file again, and only when the material is one this note
+already uses (`usedIn` lists the note); otherwise nothing is read. The import
+dialog shows "File read: <place name> / <path>" before the user confirms.
+
+**A filtered copy is an ordinary asset.** When the import dialog filters a
+linked file (columns and conditions), the small result CSV is registered as a
+normal material with the linked file in its `derivedFromAssets`. That copy is
+stored like any other asset, so search, AI ingest and sharing can reach it.
+The linked original is never copied or kept, but the filtered rows are.
 
 **Not part of this feature.** Searching or extracting the contents of a
 linked file; using one directly in a chart (a table imported from it can be

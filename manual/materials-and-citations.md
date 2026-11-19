@@ -217,6 +217,10 @@ Graphium reads a linked file only while you ask for it. Nothing is copied or kep
 - **Show contents** (PDF and pictures: PNG, JPEG, GIF, WebP, BMP, HEIC, AVIF; up to 100 MB). Press it to read the file and show it in place. **Hide contents** closes it; press **Cancel** while it is reading to stop. SVG is not shown.
 - **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
 
+Graphium shows "File read: (data place) / (location)" at the top of the import dialog, so you can check which file is being imported before you confirm. Only one read runs at a time; the buttons can't be pressed again until it finishes.
+
+If you narrow the table with conditions, the small filtered CSV that is made is kept in the library as an ordinary material, so search, AI and sharing can reach it. The linked original itself is still never copied.
+
 Both buttons are available while the status is **No change** or **The original has changed**. If the file is too large, of another kind, or can't be reached, a message says why.
 
 The table remembers the size and modified time of the file when you imported it. If the original is edited later, the table's source badge shows **The original data has changed**. Pressing the badge reads the file again so you can re-import it.
