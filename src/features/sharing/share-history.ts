@@ -20,6 +20,14 @@ import type { AuthorIdentity } from "../document-provenance/types";
 /** 1 エントリに残す履歴の上限。超えたら古いものから落とす */
 export const SHARED_HISTORY_LIMIT = 50;
 
+/** extra.updatedBy が { name: 文字列, email: 文字列 } のときだけ返す（壊れた値・他人の細工は無視） */
+function updatedByOf(entry: SharedEntry): AuthorIdentity | undefined {
+  const v = entry.extra?.updatedBy;
+  if (!v || typeof v !== "object") return undefined;
+  const { name, email } = v as { name?: unknown; email?: unknown };
+  return typeof name === "string" && typeof email === "string" ? { name, email } : undefined;
+}
+
 /**
  * 既存エントリから「上書き後に持たせる履歴」を作る（純関数）。
  * 既存が無い（初回共有）なら undefined。
@@ -32,7 +40,7 @@ export function appendHistory(existing: SharedEntry | null | undefined): History
       hash: existing.hash,
       updated_at: existing.updated_at,
       // 他の人が更新した版（受け付け中のノート）は、その人の名前を残す。無ければ作者
-      updated_by: (existing.extra?.updatedBy as AuthorIdentity | undefined) ?? existing.author,
+      updated_by: updatedByOf(existing) ?? existing.author,
       change_kind: "minor",
     },
   ];

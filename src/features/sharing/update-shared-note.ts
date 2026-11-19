@@ -146,7 +146,13 @@ export async function updateSharedNoteFromCopy(
     const body = new TextEncoder().encode(bodyJson);
 
     // 既存の blob の参照も残す（GC が、まだ本文が指している blob を消さないように）
-    const prevBlobs = (existing.extra?.blobs as BlobRef[] | undefined) ?? [];
+    const rawBlobs: unknown = existing.extra?.blobs;
+    const prevBlobs = Array.isArray(rawBlobs)
+      ? rawBlobs.filter(
+          (b): b is BlobRef =>
+            !!b && typeof b === "object" && typeof (b as { hash?: unknown }).hash === "string",
+        )
+      : [];
     const blobs = [...prevBlobs];
     for (const b of prepared.blobs) {
       if (!blobs.some((x) => x.hash === b.hash)) blobs.push(b);
@@ -164,7 +170,8 @@ export async function updateSharedNoteFromCopy(
       extra: {
         ...existing.extra,
         title,
-        ...(blobs.length > 0 ? { blobs } : {}),
+        // 既存の extra.blobs が壊れていても引き継がない（形の合う要素だけを上で集めている）
+        blobs: blobs.length > 0 ? blobs : undefined,
         updatedBy: { name: options.author.name, email: options.author.email },
       },
     };
@@ -185,11 +192,18 @@ export async function updateSharedNoteFromCopy(
 
     // 読める写し（失敗しても更新は成功のまま。結果として返す）。
     // 作者名は共有の作者のまま。履歴・メモの痕跡は共有コピーと同じ範囲で落とす
-    const provDoc = stripMemoTraces(stripPrivateHistory({ ...doc, title }));
+    // 来歴（.prov.jsonld）にも、更新した人の手元の関係（forkedFrom / sharedRef / フォルダ名）は出さない
+    const provBase: GraphiumDocument = { ...doc, title };
+    delete provBase.forkedFrom;
+    delete provBase.sharedRef;
+    if (existingDoc.noteContexts !== undefined) provBase.noteContexts = existingDoc.noteContexts;
+    else delete provBase.noteContexts;
+    const provDoc = stripMemoTraces(stripPrivateHistory(provBase));
     const readableCopy = (
       await syncReadableCopy({
         root: options.root,
         authorEmail: options.author.email,
+        entryHash: hash,
         sharedId: existing.id,
         title,
         entryDoc,
@@ -230,6 +244,10 @@ export async function restoreSharedVersion(
     const { entry: current } = await provider.read(sharedId);
     const { entry: previous, body } = await provider.readVersion(sharedId, versionName);
     if (previous.id !== current.id) return { ok: false, error: "The version does not belong to this note." };
+    // 前の版のファイルは共有フォルダの中にあるので、書き換えられていないか hash で確かめる
+    if ((await computeSharedEntryHash(previous, body)) !== previous.hash) {
+      return { ok: false, error: "The previous version does not match its recorded hash." };
+    }
     if (current.type !== "note") return { ok: false, error: "Only notes have previous versions." };
 
     const now = new Date().toISOString();

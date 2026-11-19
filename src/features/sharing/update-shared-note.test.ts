@@ -19,6 +19,7 @@ import {
 } from "./update-shared-note";
 import { shareNote } from "./share-note";
 import { forkSharedNote } from "./fork-note";
+import { createSharedFolder, setSharedFolders } from "../../lib/storage/shared/config";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
@@ -32,6 +33,8 @@ class FakeFs {
   /** 前の版: key = `${id}/${name}` */
   versions = new Map<string, string>();
   writes: any[] = [];
+  /** shared_readable_sync の呼び出しの記録 */
+  readable: any[] = [];
   install() {
     invokeMock.mockReset();
     invokeMock.mockImplementation(async (cmd: string, args: any) => {
@@ -78,6 +81,7 @@ class FakeFs {
         case "shared_conflict_copies":
           return [];
         case "shared_readable_sync":
+          this.readable.push(args);
           return null;
         default:
           throw new Error(`unmocked: ${cmd}`);
@@ -365,5 +369,59 @@ describe("restoreSharedVersion", () => {
     });
     const r = await restoreSharedVersion(id, name, { root: ROOT, author: owner });
     expect(r).toEqual({ ok: false, conflict: true, currentHash: "sha256:moved" });
+  });
+});
+
+describe("点検で出た指摘の回帰", () => {
+  it("読める写しの来歴に、更新した人の手元の関係（forkedFrom / フォルダ名）を出さず、entryHash を渡す", async () => {
+    setSharedFolders([{ ...createSharedFolder(ROOT), readableCopies: true }]);
+    const { id } = await ownerShares(true);
+    const doc = await bobForks(id, "v2");
+    const mine: GraphiumDocument = { ...doc, noteContexts: ["bob-private-folder"] as any };
+    const r = await updateSharedNoteFromCopy(mine, { root: ROOT, author: bob, readable: { noteId: "note-b" } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.readableCopy).toBe("written");
+    const call = last(fs.readable.filter((a) => a.markdown !== null));
+    expect(call.prov).not.toContain("bob-private-folder");
+    expect(call.prov).not.toContain(doc.forkedFrom!.authorEmail);
+    expect(call.markdown).not.toContain("bob-private-folder");
+    expect(call.entryHash).toBe(fs.entry(id).hash);
+    expect(call.authorEmail).toBe("bob@x.co");
+  });
+
+  it("restoreSharedVersion は、書き換えられた前の版を断る", async () => {
+    const { id } = await ownerShares(true);
+    const doc = await bobForks(id, "v2");
+    await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
+    const key = [...fs.versions.keys()][0];
+    const stored = JSON.parse(fs.versions.get(key)!);
+    stored.body_base64 = btoa(JSON.stringify({ ...fs.bodyDoc(id), title: "tampered" }));
+    fs.versions.set(key, JSON.stringify(stored));
+    const before = fs.entries.get(`notes/${id}`);
+    const r = await restoreSharedVersion(id, key.split("/")[1], { root: ROOT, author: owner });
+    expect(r.ok).toBe(false);
+    expect((r as any).error).toMatch(/hash/);
+    expect(fs.entries.get(`notes/${id}`)).toBe(before);
+  });
+
+  it("extra.blobs が壊れていても更新でき、形の合う要素だけを引き継ぐ", async () => {
+    const { id } = await ownerShares(true);
+    const doc = await bobForks(id, "v2");
+    const tamper = (blobs: unknown) => {
+      const stored = JSON.parse(fs.entries.get(`notes/${id}`)!);
+      stored.entry.extra.blobs = blobs;
+      fs.entries.set(`notes/${id}`, JSON.stringify(stored));
+    };
+    tamper([{ hash: 1 }, "x", null, { hash: "sha256:ok", uri: "u" }]);
+    const r = await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
+    expect(r.ok).toBe(true);
+    expect(fs.entry(id).extra?.blobs).toEqual([{ hash: "sha256:ok", uri: "u" }]);
+
+    const doc2 = (r as any).doc as GraphiumDocument;
+    tamper("garbage");
+    const r2 = await updateSharedNoteFromCopy(doc2, { root: ROOT, author: bob });
+    expect(r2.ok).toBe(true);
+    expect(fs.entry(id).extra?.blobs).toBeUndefined();
   });
 });

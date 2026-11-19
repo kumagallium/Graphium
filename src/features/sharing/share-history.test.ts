@@ -104,6 +104,12 @@ describe("appendHistory", () => {
     expect(appendHistory(existing({ extra: { updatedBy: bob } }))![0].updated_by).toEqual(bob);
   });
 
+  it("extra.updatedBy が壊れているときは作者を更新者にする", () => {
+    for (const bad of [null, "bob", 1, {}, { email: "b@x" }, { name: "Bob", email: 1 }, { name: 2, email: "b@x" }]) {
+      expect(appendHistory(existing({ extra: { updatedBy: bad } }))![0].updated_by).toEqual(author);
+    }
+  });
+
   it("旧版の hash / 更新時刻 / 更新者を minor として 1 行積む", () => {
     expect(appendHistory(existing())).toEqual([
       {
