@@ -4405,12 +4405,23 @@ Key model choices:
   not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
-  share dialog's checkbox turn it back on per share. The memo links in
-  `pages[].memoQuotes` (§2.2) are always dropped, whatever that switch
-  says (`stripMemoQuotes` in the same file, at the same point in the
-  flow), because each one holds the memo's id and its text at the time
-  it was quoted. The `quote` block itself is note text and stays. A copy
-  shared before this rule keeps its links until the note is shared
+  share dialog's checkbox turn it back on per share. Whatever traces back
+  to a memo is always dropped, whatever that switch says
+  (`stripMemoTraces` in `src/features/sharing/strip-memo-traces.ts`, at
+  the same point in the flow): `pages[].memoQuotes` (§2.2), links whose
+  `targetNoteId` is `memo:<captureId>`, the `memo:` entries of
+  `documentProvenance.activities[].used` when the history is shared, and
+  in `wikiMeta` the `memo:` entries of `derivedFromNotes` and
+  `passageContexts`, the `[[source:memo:…]]` citations in `topicMarkdown`,
+  `evidenceSpan` and the decision, rule and observation frames when a
+  memo is among the sources (they copy source text word for word), and
+  the whole `sourceCheck` when a memo was checked (its overall verdict
+  includes the memo). A citation of a memo is shown as `@<first line of
+  the memo>`, so that label becomes the fixed word `@Memo` (`@メモ`). The
+  rest of the text in `blocks` is what the author chose to share and
+  stays, including a `quote` block. AI chats shared through the switch
+  are not rewritten.
+  A copy shared before this rule keeps these values until it is shared
   again. Everything else travels unchanged — the rest of `pages` (blocks,
   `labels`, `provLinks`), `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
   because the shared projection (§7.6) and the reverse links read them. The shared
