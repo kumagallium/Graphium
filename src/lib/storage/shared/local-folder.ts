@@ -20,6 +20,7 @@ import type {
   SharedEntryContent,
   SharedEntryType,
   SharedStorageProvider,
+  SharedWriteOptions,
   BlobRef,
   BlobStorageProvider,
 } from "./types";
@@ -91,6 +92,21 @@ export class AuthorMismatchError extends Error {
         `not ${callerEmail ?? "(unknown)"}. Fork it instead.`,
     );
     this.name = "AuthorMismatchError";
+  }
+}
+
+/** Rust が「先に更新されていた」ときに返すエラーの接頭辞。lib.rs の SHARED_CONFLICT_PREFIX と揃える */
+export const SHARED_CONFLICT_PREFIX = "SHARED_CONFLICT:";
+
+/** 読んだ版のあとに、共有の本体が更新されていた（または無くなっていた）。何も書いていない */
+export class SharedConflictError extends Error {
+  constructor(
+    public readonly entryId: string,
+    /** 今の版の hash。本体が無くなっていたときは空 */
+    public readonly currentHash: string,
+  ) {
+    super(`Shared entry ${entryId} was updated by someone else.`);
+    this.name = "SharedConflictError";
   }
 }
 
@@ -214,18 +230,24 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
     };
   }
 
-  async write(entry: SharedEntry, content: Uint8Array): Promise<void> {
+  async write(entry: SharedEntry, content: Uint8Array, options?: SharedWriteOptions): Promise<void> {
     if (!isValidSharedId(entry.id)) throw new Error(`Invalid shared id: ${entry.id}`);
     const folder = TYPE_TO_FOLDER[entry.type];
     if (!folder) throw new Error(`Unknown entry type: ${entry.type}`);
 
-    // author-owned 強制: 既存 entry の author email と一致するか確認
-    await this.assertCanModify(folder, entry.id);
-    // 新規 entry の author もこの identity と一致していなければエラー（他人名義での偽造防止）
-    if (this.identity && entry.author?.email !== this.identity.email) {
-      throw new Error(
-        `Entry author (${entry.author?.email ?? "(none)"}) does not match the current identity (${this.identity.email})`,
-      );
+    // author-owned 強制: 既存 entry の author email と一致するか確認。
+    // 受け付け中のノートへの更新（asContributor）は、この判定を Rust（shared_write）に任せる
+    // （受け付け中・作者や作成日時を変えていない・expectedHash 付きの条件をそこで確かめる）
+    if (options?.asContributor !== true) {
+      await this.assertCanModify(folder, entry.id);
+      // 新規 entry の author もこの identity と一致していなければエラー（他人名義での偽造防止）
+      if (this.identity && entry.author?.email !== this.identity.email) {
+        throw new Error(
+          `Entry author (${entry.author?.email ?? "(none)"}) does not match the current identity (${this.identity.email})`,
+        );
+      }
+    } else if (!this.identity) {
+      throw new Error("LocalFolderSharedProvider requires identity for write/delete.");
     }
 
     // hash を計算して entry にセット（呼び出し側が事前に計算していても上書き：データ整合性優先）
@@ -235,13 +257,22 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
       entry: finalEntry,
       body_base64: uint8ToBase64(content),
     };
-    await invoke<void>("shared_write", {
-      root: this.root,
-      entryType: folder,
-      id: entry.id,
-      content: JSON.stringify(stored),
-      authorEmail: this.identity?.email,
-    });
+    try {
+      await invoke<void>("shared_write", {
+        root: this.root,
+        entryType: folder,
+        id: entry.id,
+        content: JSON.stringify(stored),
+        authorEmail: this.identity?.email,
+        ...(options?.expectedHash !== undefined ? { expectedHash: options.expectedHash } : {}),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.startsWith(SHARED_CONFLICT_PREFIX)) {
+        throw new SharedConflictError(entry.id, message.slice(SHARED_CONFLICT_PREFIX.length));
+      }
+      throw e;
+    }
   }
 
   async delete(id: string): Promise<void> {
@@ -272,6 +303,28 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
       authorEmail: this.identity?.email,
       tombstoneContent: JSON.stringify(tombstone),
     });
+  }
+
+  /** 前の版（受け付け中のノートの上書き前の控え）のファイル名。新しい順 */
+  async listVersions(id: string): Promise<string[]> {
+    if (!isValidSharedId(id)) throw new Error(`Invalid shared id: ${id}`);
+    return invoke<string[]>("shared_versions_list", { root: this.root, id });
+  }
+
+  /** 前の版を 1 つ読む（name は listVersions が返したファイル名） */
+  async readVersion(id: string, name: string): Promise<SharedEntryContent> {
+    if (!isValidSharedId(id)) throw new Error(`Invalid shared id: ${id}`);
+    const json = await invoke<string>("shared_version_read", { root: this.root, id, name });
+    const parsed = parseStored(json);
+    return { entry: parsed.entry, body: base64ToUint8(parsed.body_base64) };
+  }
+
+  /** クラウド同期の競合コピー（`<id>` で始まる別名の .json）のファイル名。中身は返さない */
+  async conflictCopies(type: SharedEntryType, id: string): Promise<string[]> {
+    if (!isValidSharedId(id)) throw new Error(`Invalid shared id: ${id}`);
+    const folder = TYPE_TO_FOLDER[type];
+    if (!folder) throw new Error(`Unknown entry type: ${type}`);
+    return invoke<string[]>("shared_conflict_copies", { root: this.root, entryType: folder, id });
   }
 
   async verifyHash(id: string): Promise<boolean> {

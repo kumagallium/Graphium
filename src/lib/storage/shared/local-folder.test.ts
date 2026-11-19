@@ -14,6 +14,7 @@ import {
   LocalFolderSharedProvider,
   LocalFolderBlobProvider,
   AuthorMismatchError,
+  SharedConflictError,
 } from "./local-folder";
 import type { SharedEntry } from "./types";
 import { newSharedId } from "./id";
@@ -50,9 +51,21 @@ class FakeFs {
           return v;
         }
         case "shared_write": {
-          this.entries.set(`${args.entryType}/${args.id}`, args.content);
+          const key = `${args.entryType}/${args.id}`;
+          if (args.expectedHash !== undefined) {
+            const existing = this.entries.get(key);
+            const current = existing ? JSON.parse(existing).entry.hash : "";
+            if (current !== args.expectedHash) throw `SHARED_CONFLICT:${current}`;
+          }
+          this.entries.set(key, args.content);
           return null;
         }
+        case "shared_versions_list":
+          return [`1700000000002-${"b".repeat(16)}.json`, `1700000000001-${"a".repeat(16)}.json`];
+        case "shared_version_read":
+          return [...this.entries.values()][0];
+        case "shared_conflict_copies":
+          return [`${args.id} (conflicted copy).json`];
         case "shared_delete": {
           this.entries.delete(`${args.entryType}/${args.id}`);
           this.tombstones.set(args.id, args.tombstoneContent);
@@ -150,6 +163,32 @@ describe("LocalFolderSharedProvider — write / read", () => {
   it("不正な id は弾く", async () => {
     const provider = new LocalFolderSharedProvider("/tmp/shared", { email: author.email });
     await expect(provider.read("not-a-uuid")).rejects.toThrow(/Invalid shared id/);
+  });
+});
+
+describe("LocalFolderSharedProvider — 読んだ版の確認", () => {
+  const body = (s: string) => new TextEncoder().encode(s);
+
+  it("読んだ版のままなら書ける", async () => {
+    const provider = new LocalFolderSharedProvider("/shared", { email: author.email });
+    const entry = makeEntry();
+    await provider.write(entry, body("one"));
+    const { entry: read } = await provider.read(entry.id);
+    await provider.write(entry, body("two"), { expectedHash: read.hash });
+    expect(new TextDecoder().decode((await provider.read(entry.id)).body)).toBe("two");
+  });
+
+  it("先に更新されていたら SharedConflictError で、本体は変わらない", async () => {
+    const provider = new LocalFolderSharedProvider("/shared", { email: author.email });
+    const entry = makeEntry();
+    await provider.write(entry, body("one"));
+    const { entry: first } = await provider.read(entry.id);
+    await provider.write(entry, body("two"));
+    const { entry: current } = await provider.read(entry.id);
+    const err = await provider.write(entry, body("three"), { expectedHash: first.hash }).catch((e) => e);
+    expect(err).toBeInstanceOf(SharedConflictError);
+    expect(err.currentHash).toBe(current.hash);
+    expect(new TextDecoder().decode((await provider.read(entry.id)).body)).toBe("two");
   });
 });
 
@@ -291,6 +330,30 @@ describe("LocalFolderSharedProvider — author-owned enforcement", () => {
     // 中身が書き換わっていないことも確認
     const after = await adaProv.read(entry.id);
     expect(new TextDecoder().decode(after.body)).toBe("ada-version");
+  });
+
+  it("asContributor のときは手元の作者チェックをせず、判定は Rust に任せる", async () => {
+    const adaProv = new LocalFolderSharedProvider("/tmp/shared", { email: ada.email });
+    const entry = makeEntry({ author: ada });
+    await adaProv.write(entry, new TextEncoder().encode("v1"));
+    const malloryProv = new LocalFolderSharedProvider("/tmp/shared", { email: mallory.email });
+    // 作者のままの entry を、作者でない identity で書ける（FakeFs は Rust の判定をしない）
+    await malloryProv.write(entry, new TextEncoder().encode("v2"), { asContributor: true });
+    expect(new TextDecoder().decode((await adaProv.read(entry.id)).body)).toBe("v2");
+    // identity なしは asContributor でも拒否
+    const none = new LocalFolderSharedProvider("/tmp/shared");
+    await expect(none.write(entry, new TextEncoder().encode("x"), { asContributor: true })).rejects.toThrow(/identity/);
+  });
+
+  it("前の版・競合コピーの一覧を Rust のコマンドから取れる", async () => {
+    const provider = new LocalFolderSharedProvider("/tmp/shared", { email: ada.email });
+    const entry = makeEntry({ author: ada });
+    await provider.write(entry, new TextEncoder().encode("v1"));
+    expect(await provider.listVersions(entry.id)).toHaveLength(2);
+    const v = await provider.readVersion(entry.id, `1700000000002-${"b".repeat(16)}.json`);
+    expect(v.entry.id).toBe(entry.id);
+    expect(await provider.conflictCopies("note", entry.id)).toEqual([`${entry.id} (conflicted copy).json`]);
+    await expect(provider.listVersions("bad")).rejects.toThrow(/Invalid shared id/);
   });
 
   it("entry.author と identity が一致しないと write できない（自分名義以外で書けない）", async () => {

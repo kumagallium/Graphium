@@ -62,6 +62,13 @@ export {
   type ResolvedProposalBase,
 } from "./proposal-base";
 export {
+  UpdateSharedNoteDialog,
+  UpdateConflictDialog,
+  useSharedNoteAcceptsUpdates,
+  type UpdateSharedNoteDialogProps,
+  type UpdateConflictDialogProps,
+} from "./UpdateSharedNoteDialog";
+export {
   ProposeChangesDialog,
   type ProposeChangesDialogProps,
 } from "./ProposeChangesDialog";

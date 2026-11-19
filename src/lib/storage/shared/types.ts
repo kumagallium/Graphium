@@ -124,6 +124,17 @@ export type ReviewRequest = {
   state: "open" | "merged" | "closed";
 };
 
+/** 書き込みの条件 */
+export type SharedWriteOptions = {
+  /** 読んだ版の hash。今の版と違えば書かない（先に更新されていた） */
+  expectedHash?: string;
+  /**
+   * true のとき、作者でない人が「他の人の更新を受け付けている」ノートへ書く。
+   * 作者の一致チェックを手元では行わず、Rust（shared_write）が条件を判定する
+   */
+  asContributor?: boolean;
+};
+
 /**
  * Shared テキスト/メタデータ用 Provider。
  *
@@ -150,7 +161,7 @@ export interface SharedStorageProvider {
    * （history に旧 hash を 1 行追加）。major 改訂は呼び出し側が新 id を生成し、
    * `entry.supersedes` に旧 id をセットして write する。
    */
-  write(entry: SharedEntry, content: Uint8Array): Promise<void>;
+  write(entry: SharedEntry, content: Uint8Array, options?: SharedWriteOptions): Promise<void>;
 
   /**
    * tombstone 化（実体削除はしない）。誤共有リカバリ用。

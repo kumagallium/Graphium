@@ -7,6 +7,7 @@ export type {
   Lock,
   ReviewRequest,
   SharedStorageProvider,
+  SharedWriteOptions,
   BlobRef,
   BlobStorageProvider,
 } from "./types";
@@ -22,6 +23,7 @@ export {
   LocalFolderSharedProvider,
   LocalFolderBlobProvider,
   AuthorMismatchError,
+  SharedConflictError,
   type ProviderIdentity,
 } from "./local-folder";
 export {

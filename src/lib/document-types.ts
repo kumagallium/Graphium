@@ -1184,6 +1184,8 @@ export type GraphiumDocument = {
     sharedAt: string;
     /** 共有時の SharedEntry.hash（変更検知用） */
     hash: string;
+    /** 共有時の本文 bytes の SHA-256（entry.extra.bodyHash と同じ値。本文が変わっていないかの確認用。古いノートには無い） */
+    bodyHash?: string;
   };
   /**
    * team-shared エントリを fork して作られたローカルノートの起源情報（Phase 2c）。
