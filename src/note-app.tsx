@@ -509,7 +509,8 @@ import { setAgentProgress, clearAgentProgress } from "./features/ai-assistant/ag
 import { setProvGraphData } from "./features/ai-assistant/prov-graph-tools";
 import { useLexicalIndexSync } from "./features/lexical-search";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
-import { attachValidity, checkValidity } from "./features/world-grounding";
+import { checkValidity } from "./features/world-grounding";
+import { saveWorldValidity } from "./features/world-grounding/save";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument, collectLabelVocabulary, collectLabelInventory, alignExtractedBlocks, type ProvIngesterBlock } from "./features/url-to-prov";
 import { planFromAnswer } from "./features/url-to-prov/plan-from-answer-api";
 import { appendPlanCheckSection, buildPlanDocument, buildRunBlocks, linkRunsInPlan, procedureStepNames, resolveAnswerReferences } from "./features/url-to-prov/plan-note-builder";
@@ -10599,13 +10600,14 @@ export function NoteApp() {
           // LLM 判定時の rationale を現在のロケールで書かせる
           language: getGenerationLanguage(),
         });
-        const next: GraphiumDocument = {
-          ...doc,
-          wikiMeta: attachValidity(doc.wikiMeta, validity),
-          modifiedAt: new Date().toISOString(),
-        };
-        // activityType 無しで保存 — document-provenance に phantom revision を作らない（PR 2A 方針 §2）
-        await fm.handleSaveWikiFile(wikiId, next);
+        // activityType 無しで保存 — document-provenance に phantom revision を作らない（PR 2A 方針 §2）。
+        // ほかの保存の最中で断られたら待ってやり直し、最新の文書に判定だけを付ける
+        //（LLM を待つあいだのエディタの保存を巻き戻さない）。書けなければ例外で下の catch へ
+        await saveWorldValidity(wikiId, () => validity, {
+          getCachedDoc: fm.getCachedDoc,
+          loadDoc: fm.loadDoc,
+          saveWikiFile: fm.handleSaveWikiFile,
+        });
         // activeDoc は handleSaveWikiFile では更新されないので、現在開いているノートなら再同期する
         if (fm.activeFileId === `wiki:${wikiId}`) {
           fm.handleOpenWikiFile(wikiId);
@@ -10682,14 +10684,17 @@ export function NoteApp() {
       // 既に dismissed だけの状態なら何もしない（無駄な保存を避ける）
       const v = doc.wikiMeta.grounding.validity;
       if (v.dismissed && !v.verdict && !v.checkedAt) return;
-      const next: GraphiumDocument = {
-        ...doc,
-        wikiMeta: attachValidity(doc.wikiMeta, { dismissed: true }),
-        modifiedAt: new Date().toISOString(),
-      };
-      // 照合と同じく activityType 無しで保存（phantom revision を作らない）
-      await fm.handleSaveWikiFile(wikiId, next);
-      if (fm.activeFileId === `wiki:${wikiId}`) {
+      // 照合と同じく activityType 無しで保存（phantom revision を作らない）。断られたら待ってやり直す
+      const saved = await saveWorldValidity(
+        wikiId,
+        (meta) => {
+          const cur = meta.grounding?.validity;
+          if (!cur || (cur.dismissed && !cur.verdict && !cur.checkedAt)) return null;
+          return { dismissed: true };
+        },
+        { getCachedDoc: fm.getCachedDoc, loadDoc: fm.loadDoc, saveWikiFile: fm.handleSaveWikiFile },
+      );
+      if (saved && fm.activeFileId === `wiki:${wikiId}`) {
         fm.handleOpenWikiFile(wikiId);
       }
     },
