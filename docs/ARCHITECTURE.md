@@ -3476,6 +3476,24 @@ The same `src/` tree is built four different ways.
   the Welcome dialog is skipped, `features.claims`/`insights` read as on,
   and the server-storage probe is not run, so the person's own notes are
   never touched. Only ids listed in `DEMO_IDS` are accepted (`curry-ja`, `bread-en`: the Japanese sample is a curry notebook, the English one a bread notebook).
+- **Content Security Policy.** Static hosts such as GitHub Pages cannot set
+  response headers, so the build injects the CSP as a
+  `<meta http-equiv="Content-Security-Policy">` into both entry HTML files
+  (`index.html`, `app/index.html`; `scripts/vite-csp-plugin.ts`, build only,
+  skipped for Tauri and the dev server). It is as strict as the desktop one
+  (`script-src 'self' 'wasm-unsafe-eval'`, no `unsafe-eval`/`unsafe-inline`
+  for scripts). The only additions are Google Identity Services for the Drive
+  sign-in (`accounts.google.com/gsi/…` in `script-src` / `style-src` /
+  `frame-src`) and a `sha256-…` hash for each inline `<script>` left in the
+  HTML (the returning-visitor redirect in `index.html`). `object-src` and
+  `frame-src` also allow `blob:` so the shared library's PDF preview
+  (`<embed>` of a blob URL) works: Chrome's PDF viewer checks the embed
+  against `frame-src`, not only `object-src`. `connect-src` /
+  `img-src` stay open to `https:` (user-configured AI endpoints, bookmark
+  images); `upgrade-insecure-requests` is omitted so a LAN `http` self-host
+  keeps working. `pnpm csp:check` (`scripts/check-csp.mjs`) verifies the
+  built `dist`, and `e2e/csp-smoke.mjs` opens it in a browser and fails on
+  any violation. The desktop app's CSP lives in `tauri.conf.json` (§4.2).
 - **No external timestamps.** The PWA has no sidecar, and the public timestamp
   services refuse cross-origin browser requests (CORS), so a sealed snapshot
   can be frozen but cannot get an RFC 3161 / OpenTimestamps proof there

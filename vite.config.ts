@@ -9,6 +9,7 @@ import { rewriteDevProxyOrigin } from "./src/lib/dev-proxy-origin";
 import { execSync } from "node:child_process";
 import { writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
+import { cspPlugin, shouldInjectCsp } from "./scripts/vite-csp-plugin";
 
 // pdfjs-dist の実体ディレクトリを解決する。pnpm は node_modules/pdfjs-dist を
 // .pnpm 配下への symlink にするため、package.json を resolve して実パスを得る。
@@ -217,6 +218,8 @@ export default defineConfig({
     tesseractAssetsPlugin(),
     tailwindcss(),
     react(),
+    // Web 版の入口 HTML に CSP の <meta> を入れる。Tauri は tauri.conf.json の CSP が担当
+    shouldInjectCsp(process.env) && cspPlugin(),
     // PWA: スタンドアローン対応（ホーム画面追加時にオフラインでもアプリシェルを表示）
     !isTauri && VitePWA({
       registerType: "autoUpdate",
