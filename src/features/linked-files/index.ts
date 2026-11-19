@@ -5,13 +5,14 @@ export {
   registerPlace,
   renamePlace,
   removePlace,
-  pickPlaceFile,
+  pickPlaceFiles,
   statLinks,
   openLinkedFile,
   revealLinkedFile,
   STAT_CHUNK,
   type PlaceInfo,
   type PickedFile,
+  type PickedFiles,
   type LinkStat,
 } from "./places";
 export {
@@ -19,6 +20,7 @@ export {
   buildLinkedEntry,
   acceptLinkChange,
   addLinkedEntry,
+  addLinkedEntries,
   withPlaceName,
   withPlaceNameInIndex,
   persistPlaceName,
@@ -26,3 +28,14 @@ export {
   type LinkState,
 } from "./linked-entry";
 export { displayTypeOf, displayMimeOf, isInMediaList } from "./display-type";
+export { linkFilesNotice, linkFilesErrorNotice, type LinkFilesOutcome } from "./link-notice";
+export {
+  canHaveLinkedOrigin,
+  listOriginCandidates,
+  linkedOriginsOf,
+  linkedOriginPlace,
+  changeLinkedOrigins,
+  addLinkedOrigin,
+  removeLinkedOrigin,
+  persistLinkedOrigins,
+} from "./link-origin";

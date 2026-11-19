@@ -105,6 +105,25 @@ describe("exportAsterismKnowledge", () => {
     expect(b.files["claims.json"].map((r) => r.id)).toEqual(["c1", "c2"]);
   });
 
+  it("索引が読めないときは、隠したページを出さないよう error で止める", () => {
+    writeFileSync(join(root, "appdata", "note-index.json"), "");
+    expect(exportAsterismKnowledge({}, AT, root)).toEqual({ error: expect.stringContaining("INDEX_UNREADABLE") });
+  });
+
+  it("索引に Wiki の行が 1 つも無いときは error で止める", () => {
+    writeFileSync(
+      join(root, "appdata", "note-index.json"),
+      JSON.stringify({ version: 1, notes: [{ noteId: "note-only" }] }),
+    );
+    expect(exportAsterismKnowledge({}, AT, root)).toEqual({ error: expect.stringContaining("INDEX_INCOMPLETE") });
+  });
+
+  it("索引にまだ載っていない新しいページは出す", () => {
+    writeFileSync(join(root, "appdata", "note-index.json"), JSON.stringify({ version: 1, notes: [{ noteId: "c1" }] }));
+    const b = ok(exportAsterismKnowledge({}, AT, root));
+    expect(b.files["claims.json"].map((r) => r.id)).toEqual(["c1", "c2"]);
+  });
+
   it("台帳は読まない（壊れていても出せる）", () => {
     writeFileSync(join(root, "appdata", "asterism-sent.json"), "{broken");
     expect(exportAsterismKnowledge({}, AT, root)).not.toHaveProperty("error");

@@ -19,6 +19,8 @@
 // - 剥がすのはこの 2 つだけ。provLinks / labels / noteContexts / forkedFrom /
 //   templateFrom / sharedRef / wikiMeta は共有側の投影・逆引きが使うので残す
 // - 共有フォーマットの版は変えない（フィールドが無いだけ。読む側は optional）
+// - メモをたどれる値（メモの id・メモから写した抜粋）は、上のスイッチに関係なく常に載せない
+//   （strip-memo-traces.ts）。本文の引用ブロックはノートの本文なので、そのまま出る
 //
 // 設計: docs/internal/team-shared-storage-design.md §3 / §12 Phase 2c / §24
 
@@ -38,6 +40,7 @@ import {
   type FetchMediaBytes,
 } from "./auto-blob";
 import { historyForUpdate } from "./share-history";
+import { stripMemoTraces } from "./strip-memo-traces";
 import { collectAdoptedProposals } from "./proposal-apply";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
@@ -200,6 +203,10 @@ export async function shareGraphiumDocument(
       entryDoc = stripPrivateHistory(entryDoc);
     }
 
+    // ── メモをたどれる値は常に落とす（includePrivateHistory が真でも載せない） ──
+    // これも hash 計算の前。読める写しの Markdown もこの entryDoc から組む
+    entryDoc = stripMemoTraces(entryDoc);
+
     const provider = new LocalFolderSharedProvider(options.root, {
       email: options.author.email,
     });
@@ -245,7 +252,7 @@ export async function shareGraphiumDocument(
     // 写しの失敗で共有は失敗にしない（結果として返す）
     let readableCopy: ReadableCopyStatus | undefined;
     if (entryType === "note") {
-      const provDoc = stripPrivateHistory(doc);
+      const provDoc = stripMemoTraces(stripPrivateHistory(doc));
       readableCopy = (
         await syncReadableCopy({
           root: options.root,
@@ -262,7 +269,7 @@ export async function shareGraphiumDocument(
     }
 
     // 手元に保存し直す doc は「剥がしていない元の doc」がベース。
-    // ここで entryDoc を使うと、共有した瞬間に手元のチャットと編集来歴が消える
+    // ここで entryDoc を使うと、共有した瞬間に手元のチャット・編集来歴・メモの紐づけが消える
     const updatedDoc: GraphiumDocument = {
       ...doc,
       sharedRef: {

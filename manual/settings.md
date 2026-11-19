@@ -49,6 +49,8 @@ Changing **Where your notes are saved** does not move existing notes automatical
 
 Desktop app only. A data place is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is; it does not copy the file or read what is inside.
 
+![Two data places as rows. "Whole bakery" (/Volumes/Bakery/Shared) has a green dot. "Sourdough team" (/Volumes/Bakery/Sourdough) has an orange dot and is opened to show that the folder can't be reached right now, with its folder location. Register a folder sits below.](/screenshots/settings-data-places.png)
+
 - **Register a folder** opens your computer's folder picker. Pick the folder that holds the files — the synced folder, the NAS share. Graphium names the place after the folder.
 - Each place is a row with its name, its state (**Reachable** or **Can't reach it right now**) and a **Show details** button that shows the folder's location. The row's menu has **Rename** and **Unregister**. Renaming changes the name shown on the linked files that belong to the place.
 - **Unregister** removes the place from this device. The linked files stay in Graphium and the original files are not touched; until you register the folder again, the links show **Not registered on this device**. Registering the same folder again reconnects them.

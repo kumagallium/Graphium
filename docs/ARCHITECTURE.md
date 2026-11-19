@@ -1297,6 +1297,7 @@ without knowing Graphium's internals.
 | A note the body points at (`@`, pasted link, table-row link) | `Entity` stub (the real note `Entity` in a plan export) | `dcterms:references` from the note. It carries no derivation direction |
 | The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
 | A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
+| Source data named on a material (a summary made from a linked raw file) | the material `Entity` | `prov:wasDerivedFrom` the linked file's `Entity`, which is declared with `graphium:placeId` and the rest. Taken from the linked parents in `MediaIndexEntry.derivedFromAssets`; other parents (the PDF an image was extracted from, say) are not written, and neither is a parent the media index no longer has. The readable copy in a shared folder leaves source data out (`includeSourceData: false`), so a file the note does not cite is not named to the people who share that folder. |
 | The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
 | An AI chat (only when requested) | `prov:Collection` of message `Entity`s | `prov:value`, `graphium:role` |
 | Who edited what, when, by human or AI | named `prov:Bundle` | the note's `graphium:provenanceBundle` |
@@ -3476,6 +3477,24 @@ The same `src/` tree is built four different ways.
   the Welcome dialog is skipped, `features.claims`/`insights` read as on,
   and the server-storage probe is not run, so the person's own notes are
   never touched. Only ids listed in `DEMO_IDS` are accepted (`curry-ja`, `bread-en`: the Japanese sample is a curry notebook, the English one a bread notebook).
+- **Content Security Policy.** Static hosts such as GitHub Pages cannot set
+  response headers, so the build injects the CSP as a
+  `<meta http-equiv="Content-Security-Policy">` into both entry HTML files
+  (`index.html`, `app/index.html`; `scripts/vite-csp-plugin.ts`, build only,
+  skipped for Tauri and the dev server). It is as strict as the desktop one
+  (`script-src 'self' 'wasm-unsafe-eval'`, no `unsafe-eval`/`unsafe-inline`
+  for scripts). The only additions are Google Identity Services for the Drive
+  sign-in (`accounts.google.com/gsi/…` in `script-src` / `style-src` /
+  `frame-src`) and a `sha256-…` hash for each inline `<script>` left in the
+  HTML (the returning-visitor redirect in `index.html`). `object-src` and
+  `frame-src` also allow `blob:` so the shared library's PDF preview
+  (`<embed>` of a blob URL) works: Chrome's PDF viewer checks the embed
+  against `frame-src`, not only `object-src`. `connect-src` /
+  `img-src` stay open to `https:` (user-configured AI endpoints, bookmark
+  images); `upgrade-insecure-requests` is omitted so a LAN `http` self-host
+  keeps working. `pnpm csp:check` (`scripts/check-csp.mjs`) verifies the
+  built `dist`, and `e2e/csp-smoke.mjs` opens it in a browser and fails on
+  any violation. The desktop app's CSP lives in `tauri.conf.json` (§4.2).
 - **No external timestamps.** The PWA has no sidecar, and the public timestamp
   services refuse cross-origin browser requests (CORS), so a sealed snapshot
   can be frozen but cannot get an RFC 3161 / OpenTimestamps proof there
@@ -4064,14 +4083,14 @@ The same `src/` tree is built four different ways.
 - **Data places** (linked files; shape in DATA_MODEL.md §6.5) are eight
   commands that point at files without copying or reading them:
   `place_list`, `place_register`, `place_rename`, `place_remove`,
-  `place_pick_file`, `place_stat_many`, `place_open` and `place_reveal`.
+  `place_pick_files`, `place_stat_many`, `place_open` and `place_reveal`.
   The wrapper is `src/features/linked-files/places.ts`; the Rust side is
   the `place_*` block in `src-tauri/src/lib.rs`. The guards:
   - **JavaScript never supplies a filesystem path.** A place is added only
     through a native folder dialog opened by Rust (`place_register`), and a
     file is chosen only through a native file dialog opened by Rust
-    (`place_pick_file`, which answers with a place id and a relative path,
-    or "outside every place"). Everything else takes a place id and a
+    (`place_pick_files`, up to 500 files at a time, which answers with a
+    place id and a relative path for each, or "outside every place"). Everything else takes a place id and a
     relative path. The absolute path of each place lives only in Rust's
     per-device ledger (`places.json` under `app_config_dir`).
   - **The relative path is checked first.** It must be non-empty, at most

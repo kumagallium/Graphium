@@ -82,9 +82,9 @@ jobs:
 
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.platform }}
-    # 署名鍵と Apple の証明書は Environment「release」に置く。main と v* タグからの実行で、
-    # 承認を通ったものだけが読める（ほかのブランチのワークフローからは読めない）。
-    # 同じ名前の秘密がリポジトリ側にもある間は Environment 側が優先される。
+    # 署名鍵と Apple の証明書は Environment「release」に置く。main と v* タグからの実行
+    # だけが読める（ほかのブランチのワークフローからは読めない）。ビルドは承認なしで進み、
+    # 人の承認は利用者に届く直前の generate-updater-json（Environment「publish」）で 1 回だけ行う。
     environment: release
 
     steps:
@@ -302,8 +302,10 @@ jobs:
   generate-updater-json:
     needs: [resolve-release, build]
     runs-on: ubuntu-latest
-    # 自動更新の署名鍵を使うので、ビルドと同じ Environment を通す
-    environment: release
+    # 利用者に届く直前の関所。Environment「publish」は開発者の承認を必須にしていて、
+    # 承認されるまで自動更新の署名も latest.json の公開も動かない。
+    # 自動更新の署名鍵はこの Environment にも置く。
+    environment: publish
     steps:
       # 署名に使う CLI はアプリと同じ版に固定する（未指定だとその日の最新が入る）。
       # --app-version を受け付けるのは 2.12 以降。起動した ref（タグ push ならそのタグ、

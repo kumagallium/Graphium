@@ -54,7 +54,7 @@ import { countUserTemplatesReferencingAsset } from "../features/template/user-te
 import { registerPendingOcrFile } from "../features/media-ocr";
 // 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
 import { clearForkBase } from "../features/sharing/fork-base";
-import { addLinkedEntry, buildLinkedEntry, listPlaces, pickPlaceFile } from "../features/linked-files";
+import { addLinkedEntries, listPlaces, pickPlaceFiles, type LinkFilesOutcome } from "../features/linked-files";
 import {
   addForkedProcess,
   buildNoteGraph,
@@ -1034,10 +1034,18 @@ export function useFileManager(authenticated: boolean) {
     (async () => {
       // 先行読み込みの結果を取得（listFiles と並行して既に読み込み済み）
       const prefetched = prefetchedIndexRef.current ? await prefetchedIndexRef.current : undefined;
+      // 2 回目以降の組み直しは、起動時の写しではなくセッション中の索引を元にする。起動時の写しは
+      // 古いまま残るので、アプリの更新で索引の版が上がった回は、保存のたびに全件再構築へ入ってしまう。
+      // 空の索引（一覧の取得に失敗した直後など）は元にせず、起動時の写しのフラグを守る
+      const sessionIndex = noteIndexRef.current;
+      const baseIndex = sessionIndex && sessionIndex.notes.length > 0 ? sessionIndex : prefetched;
       // ノートのインデックスを構築
-      const index = files.length > 0
-        ? await ensureIndex(files, docCacheRef.current, prefetched)
+      const ensuredIndex = files.length > 0
+        ? await ensureIndex(files, docCacheRef.current, baseIndex)
         : { version: 4, updatedAt: new Date().toISOString(), notes: [] } as GraphiumIndex;
+      // ensureIndex は渡した索引をそのまま返すことがある。下で notes を差し替えるので写しを使う
+      // （そのまま書き換えると、Wiki を読み直すあいだセッション中の索引から Wiki の行が消える）
+      const index: GraphiumIndex = { ...ensuredIndex };
 
       // Wiki ファイルのインデックスエントリを追加
       // 既存インデックスから古い Wiki エントリを除去し、最新の wikiFiles から再構築する
@@ -3078,31 +3086,27 @@ export function useFileManager(authenticated: boolean) {
 
   // 置き場のファイルをリンクする（リンクした素材。索引では type: "url"）。
   // 流れは handleAddUrlBookmark と同じ（索引の更新 → 状態へ反映 → 保存）。
-  // 「どの置き場の中でもないファイル」は何も足さず "outside" を返す（知らせるのは呼び出し側の画面）。
-  // すでに同じファイルがリンク済みなら足さず、それを返す。
-  const handleLinkPlaceFile = useCallback(async (): Promise<{
-    status: "cancelled" | "outside" | "linked" | "existing";
-    entry?: MediaIndexEntry;
-  }> => {
-    const picked = await pickPlaceFile();
-    if (!picked) return { status: "cancelled" };
-    if (picked.placeId === null || picked.relPath === null) return { status: "outside" };
-    const place = (await listPlaces()).find((p) => p.id === picked.placeId);
-    if (!place) return { status: "outside" };
+  // 複数選べる。何件選んでも索引の保存は 1 回。どの置き場の中でもないファイルと、
+  // すでにリンク済みのファイルは足さず、件数を返す（知らせるのは呼び出し側の画面）。
+  // キャンセルは null。
+  const handleLinkPlaceFiles = useCallback(async (): Promise<LinkFilesOutcome | null> => {
+    const picked = await pickPlaceFiles();
+    if (!picked) return null;
+    const places = await listPlaces();
     // 選んでいる間に索引が変わりうるので、最新の索引は待ったあとで読む
-    const current = mediaIndexRef.current ?? createEmptyIndex();
-    const built = buildLinkedEntry({
-      picked,
-      place,
+    const result = addLinkedEntries({
+      index: mediaIndexRef.current ?? createEmptyIndex(),
+      picked: picked.files,
+      places,
       now: new Date().toISOString(),
-      fileId: generateUrlBookmarkId(),
+      newFileId: generateUrlBookmarkId,
     });
-    const result = addLinkedEntry(current, built);
-    if (!result.added) return { status: "existing", entry: result.entry };
-    mediaIndexRef.current = result.index;
-    setMediaIndex(result.index);
-    saveMediaIndex(result.index).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-    return { status: "linked", entry: result.entry };
+    if (result.linked.length > 0) {
+      mediaIndexRef.current = result.index;
+      setMediaIndex(result.index);
+      saveMediaIndex(result.index).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+    }
+    return { linked: result.linked, existing: result.existing, outside: result.outside, failed: picked.failed };
   }, []);
 
   // --- Wiki ドキュメント操作 ---
@@ -4150,7 +4154,7 @@ export function useFileManager(authenticated: boolean) {
     remapMediaContextsEverywhere,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,
-    handleLinkPlaceFile,
+    handleLinkPlaceFiles,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
     handleSaveImportedDoc,

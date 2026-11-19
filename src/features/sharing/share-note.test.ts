@@ -351,6 +351,243 @@ describe("shareNote — 共有コピーに含めない情報", () => {
     expect(original.documentProvenance).toEqual(documentProvenance);
   });
 
+  // メモから引用したブロックを持つノート。紐づけ（memoQuotes）には、引用した時点のメモ本文と
+  // メモの id が入っている。本文の引用ブロックは、あとから書き換えてある（メモ本文とは別の文）
+  const memoQuotes = {
+    q1: {
+      captureId: "cap-1",
+      quotedAt: "2026-05-04T00:00:00Z",
+      quotedText: "発酵は 28 度で 60 分（まだ誰にも見せない下書き）",
+    },
+  };
+  const docWithMemoQuote = (overrides: Partial<GraphiumDocument> = {}) =>
+    makeDoc({
+      pages: [
+        {
+          id: "p1",
+          title: "Test note",
+          blocks: [
+            { id: "b1", type: "paragraph", content: [{ type: "text", text: "hi" }] },
+            { id: "q1", type: "quote", content: [{ type: "text", text: "発酵は 28 度で 60 分" }] },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+          memoQuotes,
+        },
+      ],
+      ...overrides,
+    });
+
+  it("共有 body にメモの紐づけ（memoQuotes）が無い。引用ブロックの本文は残る", async () => {
+    const r = await shareNote(docWithMemoQuote(), { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.pages[0].memoQuotes).toBeUndefined();
+    expect("memoQuotes" in body.pages[0]).toBe(false);
+    // 封筒ごと見ても、メモの id と、引用した時点のメモ本文は出ていない
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain("cap-1");
+    expect(raw).not.toContain("まだ誰にも見せない下書き");
+    // 引用ブロックはノートの本文なので、そのまま出る
+    expect(body.pages[0].blocks).toHaveLength(2);
+    expect((body.pages[0].blocks[1] as any).content[0].text).toBe("発酵は 28 度で 60 分");
+  });
+
+  it("includePrivateHistory: true でも memoQuotes は出ない（メモは常に共有しない）", async () => {
+    const r = await shareNote(docWithMemoQuote({ chats }), {
+      root: "/tmp/shared",
+      author,
+      includePrivateHistory: true,
+    });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(body.chats).toHaveLength(1);
+    expect(body.pages[0].memoQuotes).toBeUndefined();
+  });
+
+  it("手元の doc と戻り値の doc には memoQuotes が残る", async () => {
+    const original = docWithMemoQuote();
+    const r = await shareNote(original, { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(original.pages[0].memoQuotes).toEqual(memoQuotes);
+    expect(r.doc.pages[0].memoQuotes).toEqual(memoQuotes);
+  });
+
+  it("knowledge と proposal の共有 body からも memoQuotes を外す", async () => {
+    for (const type of ["knowledge", "proposal"] as const) {
+      fs = new FakeFs();
+      fs.install();
+      const r = await shareGraphiumDocument(docWithMemoQuote(), type, {}, { root: "/tmp/shared", author });
+      expect(r.ok).toBe(true);
+      expect(storedBody().pages[0].memoQuotes).toBeUndefined();
+    }
+  });
+
+  it("メモから作ったナレッジの共有 body に、メモの id と抜粋が残らない", async () => {
+    const original = makeDoc({
+      source: "ai",
+      pages: [
+        {
+          id: "main",
+          title: "Test note",
+          blocks: [
+            {
+              id: "b1",
+              type: "paragraph",
+              content: [
+                { type: "text", text: "低温で長く発酵させる " },
+                { type: "text", text: "@冷蔵庫で一晩寝かせる", styles: { textColor: "blue" } },
+                { type: "text", text: " " },
+                { type: "text", text: "@Flour note", styles: { textColor: "blue" } },
+              ],
+            },
+            {
+              id: "b2",
+              type: "bulletListItem",
+              content: [
+                { type: "text", text: "Source: ", styles: { bold: true } },
+                { type: "text", text: "@冷蔵庫で一晩寝かせる", styles: { textColor: "blue" } },
+              ],
+            },
+            {
+              id: "b3",
+              type: "bulletListItem",
+              content: [{ type: "text", text: "@Flour note", styles: { textColor: "blue" } }],
+            },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [
+            {
+              id: "l1",
+              sourceBlockId: "b1",
+              targetBlockId: "",
+              targetNoteId: "memo:cap-9",
+              type: "reference",
+              layer: "knowledge",
+              createdBy: "ai",
+              targetQuote: "冷蔵庫で一晩（下書きの抜粋）",
+            },
+            {
+              id: "l2",
+              sourceBlockId: "b1",
+              targetBlockId: "",
+              targetNoteId: "note-1",
+              type: "reference",
+              layer: "knowledge",
+              createdBy: "ai",
+            },
+            {
+              id: "l3",
+              sourceBlockId: "b2",
+              targetBlockId: "",
+              targetNoteId: "memo:cap-9",
+              type: "reference",
+              layer: "knowledge",
+              createdBy: "ai",
+            },
+            {
+              id: "l4",
+              sourceBlockId: "b3",
+              targetBlockId: "",
+              targetNoteId: "note-1",
+              type: "reference",
+              layer: "knowledge",
+              createdBy: "ai",
+            },
+          ] as any,
+        },
+      ],
+      wikiMeta: {
+        kind: "topic",
+        derivedFromNotes: ["memo:cap-9", "note-1"],
+        derivedFromChats: [],
+        generatedAt: "2026-05-04T00:00:00Z",
+        generatedBy: { model: "m", version: "1" },
+        language: "ja",
+        evidenceSpan: "冷蔵庫で一晩（下書きの抜粋）",
+        ruleFrame: {
+          conditions: [{ item: "温度", span: "冷蔵庫で一晩（下書きの抜粋）" }],
+          consequences: [],
+          reviewState: "extracted",
+        },
+        decisionFrame: { triggerClaimIds: [], action: "冷蔵庫で一晩（下書きの抜粋）", rationale: null, reviewState: "extracted" },
+        observationFrame: { results: [{ item: "膨らみ", span: "冷蔵庫で一晩（下書きの抜粋）" }], reviewState: "extracted" },
+        topicMarkdown:
+          "低温で長く発酵させる[[source:memo:cap-9|冷蔵庫で一晩（下書きの抜粋）]]。粉は強力粉[[source:note-1|強力粉]]。",
+        passageContexts: [
+          { sourceId: "memo:cap-9", passage: "冷蔵庫で一晩（下書きの抜粋）", after: "翌朝に焼く（下書きの抜粋）" },
+          { sourceId: "note-1", passage: "強力粉" },
+        ],
+        sourceCheck: {
+          verdict: "supported",
+          entries: [
+            {
+              sourceId: "memo:cap-9",
+              sourceKind: "memo",
+              verdict: "supported",
+              rationale: "ok",
+              quote: "冷蔵庫で一晩（下書きの抜粋）",
+            },
+          ],
+          checkedAt: "2026-05-04T00:00:00Z",
+          checkedBy: "local",
+          claimHash: "h",
+        },
+      } as any,
+    });
+    const before = JSON.stringify(original);
+
+    const r = await shareKnowledge(original, { root: "/tmp/shared", author });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const body = storedBody();
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain("cap-9");
+    expect(raw).not.toContain("下書きの抜粋");
+    // 引用の題はメモの先頭行なので、固定の語に置き換わる
+    expect(raw).not.toContain("冷蔵庫");
+    // メモ以外の出典と、ページの文章は残る
+    expect(body.wikiMeta!.derivedFromNotes).toEqual(["note-1"]);
+    expect(body.wikiMeta!.topicMarkdown).toBe("低温で長く発酵させる。粉は強力粉[[source:note-1|強力粉]]。");
+    expect(body.wikiMeta!.passageContexts).toEqual([{ sourceId: "note-1", passage: "強力粉" }]);
+    expect(body.pages[0].knowledgeLinks.map((l) => l.targetNoteId)).toEqual(["note-1", "note-1"]);
+    expect((body.pages[0].blocks[0] as any).content.map((c: any) => c.text)).toEqual([
+      "低温で長く発酵させる ",
+      "@メモ",
+      " ",
+      "@Flour note",
+    ]);
+    expect((body.pages[0].blocks[1] as any).content[1].text).toBe("@メモ");
+    // 手元のページは変えない
+    expect(JSON.stringify(original)).toBe(before);
+    expect(r.doc.wikiMeta!.derivedFromNotes).toContain("memo:cap-9");
+  });
+
+  it("履歴を含めて共有しても、編集の来歴の used にメモの id が残らない", async () => {
+    const provenance = {
+      revisions: [],
+      agents: [],
+      activities: [
+        { id: "a1", type: "wiki_merge", used: ["memo:cap-9", "note-1"] },
+        { id: "a2", type: "wiki_merge", used: ["memo:cap-9"] },
+      ],
+    } as unknown as NonNullable<GraphiumDocument["documentProvenance"]>;
+    const r = await shareNote(makeDoc({ documentProvenance: provenance }), {
+      root: "/tmp/shared",
+      author,
+      includePrivateHistory: true,
+    });
+    expect(r.ok).toBe(true);
+    const body = storedBody();
+    expect(JSON.stringify(body)).not.toContain("cap-9");
+    expect(body.documentProvenance!.activities[0].used).toEqual(["note-1"]);
+    expect("used" in body.documentProvenance!.activities[1]).toBe(false);
+  });
+
   it("hash は剥がした後の本文から計算される", async () => {
     const input = docWithHistory();
     const r = await shareNote(input, { root: "/tmp/shared", author });

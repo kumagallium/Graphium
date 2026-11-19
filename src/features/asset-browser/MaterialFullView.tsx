@@ -345,6 +345,8 @@ export function MaterialFullView({
                   onNavigateNote={onNavigateNote}
                   onRename={onRename}
                   variant="plain"
+                  mediaIndex={mediaIndex}
+                  onSwitchAsset={onSwitchAsset}
                 />
               )}
               {rightTab === "memos" && (

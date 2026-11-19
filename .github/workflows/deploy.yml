@@ -76,6 +76,9 @@ jobs:
           key: jp-fonts-${{ runner.os }}-${{ hashFiles('scripts/fetch-fonts.mjs') }}
 
       - run: pnpm build
+      # Web 版の入口 HTML に CSP の meta が入り、インラインの script が全部ハッシュに載っていることを確かめる
+      # （載っていないまま配ると、そのスクリプトがブラウザで止められる）
+      - run: pnpm run csp:check
 
       # ユーザーマニュアル（VitePress）を /Graphium/manual/ 配下として同梱する
       - run: pnpm manual:build
