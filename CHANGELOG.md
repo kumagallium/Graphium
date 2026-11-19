@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.148.1](https://github.com/kumagallium/Graphium/compare/v0.148.0...v0.148.1) - 2026-11-19
+
+- fix: keep archive and trash flags in the note index during rebuilds by @kumagallium in https://github.com/kumagallium/Graphium/pull/1774
+
 ## [v0.148.0](https://github.com/kumagallium/Graphium/compare/v0.147.1...v0.148.0) - 2026-11-19
 
 - fix: keep memo text out of the shared copy of a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1767
