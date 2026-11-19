@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.148.0](https://github.com/kumagallium/Graphium/compare/v0.147.1...v0.148.0) - 2026-11-19
+
+- fix: keep memo text out of the shared copy of a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1767
+- docs: add manual figures for Word export, readable copies, linked files and data places by @kumagallium in https://github.com/kumagallium/Graphium/pull/1768
+- feat: link several files from a data place at once by @kumagallium in https://github.com/kumagallium/Graphium/pull/1766
+- feat: name a linked file as the source data of a small result by @kumagallium in https://github.com/kumagallium/Graphium/pull/1771
+- fix(security): add a Content-Security-Policy to the web build by @kumagallium in https://github.com/kumagallium/Graphium/pull/1694
+- fix(sharing): keep memo ids and excerpts out of shared Knowledge pages by @kumagallium in https://github.com/kumagallium/Graphium/pull/1773
+
 ## [v0.147.1](https://github.com/kumagallium/Graphium/compare/v0.147.0...v0.147.1) - 2026-11-18
 
 - [docs] Manual: badge and roadmap row for bringing in AI conversations (v0.147.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1762
