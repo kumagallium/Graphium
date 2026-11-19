@@ -823,9 +823,11 @@ try {
 }
 
 if (USE_BUNDLE) {
-  // bundle に UI 側の依存（react-dom）が紛れ込んでいないこと
-  const text = readFileSync(bundlePath, "utf8");
-  check("bundle に react-dom が含まれない", !text.includes("react-dom"));
+  // サーバーのコードに UI 側の依存（react-dom）が紛れ込んでいないこと。
+  // 会話の中の画面（全体グラフはアプリの React の部品で描く）は HTML の文字列として埋め込むので、
+  // その文字列（'<!doctype html>…'）を除いてから見る
+  const text = readFileSync(bundlePath, "utf8").replace(/'<!doctype html>(?:[^'\\]|\\.)*'/g, "''");
+  check("bundle（埋め込んだ画面を除く）に react-dom が含まれない", !text.includes("react-dom"));
   console.log(`  bundle サイズ: ${(statSync(bundlePath).size / 1024).toFixed(0)} KB`);
   rmSync(bundleDir, { recursive: true, force: true });
 }
