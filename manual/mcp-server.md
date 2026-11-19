@@ -181,7 +181,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
-| `start_claim_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | "Turn this note into claims" (the assistant writes the claims itself; see [below](#having-your-assistant-make-claims)) |
+| `start_claim_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | "Turn this note (or a brought-in AI conversation) into claims" (the assistant writes the claims itself; see [below](#having-your-assistant-make-claims)) |
 | `submit_claims` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant after `start_claim_task`, with the claims it wrote |
 | `find_claims_for_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to look for more existing claims it might add to |
 | `submit_rewrite` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to tidy a claim it added to (optional) |
@@ -190,7 +190,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `submit_insight_review` <Badge type="tip" text="Added in v0.98.0 (2026-10-27)" /> | Called by the assistant with the review's answers. The insights are saved here |
 | `start_procedure_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Turn this paper into a procedure note" (the assistant writes the steps itself; see [below](#procedure-notes-from-your-assistant)) |
 | `submit_procedure` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with the steps it wrote. The procedure note is created here |
-| `start_topic_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Make topics from this paper" (the assistant writes the topics itself; see [below](#topics-from-your-assistant)) |
+| `start_topic_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | "Make topics from this paper (or a brought-in AI conversation)" (the assistant writes the topics itself; see [below](#topics-from-your-assistant)) |
 | `submit_topic_routes` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with which topics to revise and which to create |
 | `get_topic_write_task` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant to get what it needs to write one topic |
 | `submit_topic_page` <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> | Called by the assistant with one topic's text. Each topic is saved here, one at a time |
@@ -325,7 +325,7 @@ The changes show up the next time you start Graphium. Two things catch up only l
 
 ### Having your assistant make claims <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> {#having-your-assistant-make-claims}
 
-Your assistant can make [claims](/knowledge-layer) from a note, a memo or a material (PDF, Word `.docx`, or a web page you registered) — the same thing **Add to knowledge** does in the app, but with the assistant's own model instead of the one set up in Graphium. If you already pay for a strong model in Claude or another assistant, Graphium does not need an AI of its own for this.
+Your assistant can make [claims](/knowledge-layer) from a note, a memo or a material (PDF, Word `.docx`, a web page you registered, or an [AI conversation](/materials-and-citations#bring-in-ai-conversations) you brought in) — the same thing **Add to knowledge** does in the app, but with the assistant's own model instead of the one set up in Graphium. If you already pay for a strong model in Claude or another assistant, Graphium does not need an AI of its own for this.
 
 The assistant does not write claim pages freely. It takes part in Graphium's own step:
 

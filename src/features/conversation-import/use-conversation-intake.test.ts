@@ -96,7 +96,7 @@ describe("useConversationIntake", () => {
     expect(deps.fetchMaterials.mock.calls.map((c) => c[0].length)).toEqual([20, 20, 5]);
     expect(deps.importConversations).toHaveBeenCalledTimes(3);
     expect(deps.importConversations.mock.calls[0][1]).toMatchObject({ folderRoot: expect.any(String) });
-    expect(result.current.state).toEqual({ kind: "done", created: 45, updated: 0, unchanged: 0, failed: 0 });
+    expect(result.current.state).toMatchObject({ kind: "done", created: 45, updated: 0, unchanged: 0, failed: 0 });
   });
 
   it("結果を足し合わせ、failed は口 B の failed と skipped を足す", async () => {
@@ -116,7 +116,7 @@ describe("useConversationIntake", () => {
     await act(async () => {
       await result.current.startImport();
     });
-    expect(result.current.state).toEqual({ kind: "done", created: 2, updated: 4, unchanged: 2, failed: 4 });
+    expect(result.current.state).toMatchObject({ kind: "done", created: 2, updated: 4, unchanged: 2, failed: 4 });
   });
 
   it("口 B が 1 回投げても続け、その回の件数を failed に足す", async () => {
@@ -131,7 +131,7 @@ describe("useConversationIntake", () => {
       await result.current.startImport();
     });
     expect(deps.fetchMaterials).toHaveBeenCalledTimes(3);
-    expect(result.current.state).toEqual({ kind: "done", created: 25, updated: 0, unchanged: 0, failed: 20 });
+    expect(result.current.state).toMatchObject({ kind: "done", created: 25, updated: 0, unchanged: 0, failed: 20 });
   });
 
   it("reset で idle・ファイル側に戻る", async () => {

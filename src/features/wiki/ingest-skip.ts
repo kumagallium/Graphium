@@ -14,6 +14,7 @@
 // 最大値が、そのノートを最後に取り込んだ時刻になる。資料ごとに正確で、新しい保存先も要らない。
 
 import type { GraphiumDocument } from "../../lib/document-types";
+import { conversationSourceId, parseConversationFileId } from "../../lib/conversation/types";
 import { isPlaceUrl } from "../linked-files/link-url";
 
 /**
@@ -78,6 +79,7 @@ export function mediaKnowledgeSourceId(entry: {
     return entry.url ? `url:${entry.url}` : undefined;
   }
   if (!entry.fileId) return undefined;
+  if (entry.type === "conversation") return parseConversationFileId(entry.fileId) ? conversationSourceId(entry.fileId) : undefined;
   if (entry.type === "pdf") return `pdf:${entry.fileId}`;
   if (entry.type === "document" && entry.mimeType === WORD_DOCX_MIME) return `document:${entry.fileId}`;
   return undefined;

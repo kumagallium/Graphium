@@ -12,6 +12,7 @@ import {
   rebuildTopicFromSources, type RebuildTopicFromSourcesDeps,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
+  collectSourceRefs,
 } from "./topic-stage";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 
@@ -2211,5 +2212,15 @@ describe("トピックの種類（topicType）の付与", () => {
     expect(result).toMatchObject({ updated: 1, failed: 0 });
     expect(routeCalls).toBe(2);
     expect(docs.get("wiki:t1")?.wikiMeta?.topicType).toBe("method");
+  });
+});
+
+describe("collectSourceRefs の AI との会話", () => {
+  it("読めない会話の id は落とさない（ほかの読めない id は落とす）", async () => {
+    const refs = await collectSourceRefs(["conversation:conv-claude-code-s1", "n-gone"], {
+      resolveSource: async () => undefined,
+      resolveSourceTitle: () => undefined,
+    });
+    expect(refs.map((r) => r.id)).toEqual(["conversation:conv-claude-code-s1"]);
   });
 });

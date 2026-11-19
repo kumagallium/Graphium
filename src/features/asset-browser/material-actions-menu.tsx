@@ -259,7 +259,7 @@ export function MaterialActionsMenu({
   // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
   // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
   const isDocxEntry = isWordDocxEntry(entry);
-  const canIngest = !!onIngest && !isLinked && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  const canIngest = !!onIngest && !isLinked && (entry.type === "url" || entry.type === "pdf" || entry.type === "conversation" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && !isLinked && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   // 全文翻訳は PDF と URL（Reader 本文）が対象。Knowledge / PROV と動線を揃える。
   const canTranslate = !!onTranslatePdf && !isLinked && (entry.type === "pdf" || entry.type === "url");

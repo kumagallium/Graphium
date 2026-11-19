@@ -165,6 +165,7 @@ import {
 import { buildSavedPageFields, buildSavedForm } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
 import { useConversationIntake } from "./features/conversation-import/use-conversation-intake";
+import { conversationIngestCandidates } from "./features/conversation-import/ingest-candidates";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
@@ -447,7 +448,7 @@ import { useHashRouter, readPeekFromHash, type AppRoute, type RouteActions } fro
 import {
   WikiListView, WikiLogView, WikiLintView, type WikiLintTab, WikiBanner, WikiContextDrawer, findRelatedBySharedSources,
   IngestToast, stampIngestTimings, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
-  ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
+  ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromConversation, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
@@ -12298,7 +12299,7 @@ export function NoteApp() {
           handleOpenMemoSource(ext.key);
           return;
         }
-        if (ext.kind === "pdf" || ext.kind === "document") {
+        if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "conversation") {
           const entry = fm.mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (!entry) return;
           // PDF は照合済みの抜粋の文へ送る（無ければページへ。どちらも無ければ頭から）
@@ -13778,6 +13779,12 @@ export function NoteApp() {
         }
         showStep(tStatic("ingest.stepLoadingFile"));
         const provider = getActiveProvider();
+        if (entry.type === "conversation") {
+          const body = await provider.loadMediaText?.(entry.fileId);
+          if (body === undefined) throw new Error(tStatic("ingest.conversationNoText"));
+          showStep(readingStep);
+          return ingestFromConversation(body, entry.name, sourceNoteId, existingWikis, getGenerationLanguage(), knowledgeSchema, claimsOn, signal);
+        }
         // Word はプロバイダの URL から実体の fileId を引き直す（従来どおり）
         const fileId = entry.type === "document" ? provider.extractFileId(entry.url) ?? entry.fileId : entry.fileId;
         const blobUrl = await provider.getMediaBlobUrl(fileId);
@@ -13966,7 +13973,8 @@ export function NoteApp() {
       if (!sourceId) continue; // 対応外の種類は何もしない（従来どおり）
       // PDF・Word は中身が違えば別の素材になるので、登録時刻より後に取り込んでいれば変わっていない。
       // URL は登録後にページが変わっても分からないので、取り込み直しは 1 件ずつの「ナレッジ化」で行う
-      if (await isUnchangedSinceLastIngest(sourceId, entry.uploadedAt, knowledgeMap.get(sourceId), loadKnowledgeDoc)) {
+      // AI との会話は伸びるので、登録時刻でなく最後に本文を差し替えた時刻と比べる
+      if (await isUnchangedSinceLastIngest(sourceId, entry.conversation?.importedAt ?? entry.uploadedAt, knowledgeMap.get(sourceId), loadKnowledgeDoc)) {
         skippedUnchanged++;
         continue;
       }
@@ -13993,6 +14001,24 @@ export function NoteApp() {
     void ingestNoteIds(noteIds);
     ingestMediaFileIds(mediaFileIds);
   }, [ingestNoteIds, ingestMediaFileIds]);
+
+  // 会話の取り込みの完了画面の申し出。候補を数えるだけで、押されるまで AI は呼ばない
+  const conversationIntakeState = conversationIntake.state;
+  const conversationOfferEntries = useMemo(() => {
+    if (conversationIntakeState.kind !== "done") return null;
+    const knowledge = buildKnowledgeMap(fm.noteIndex ?? null);
+    const media = fm.mediaIndex?.media ?? [];
+    const entries = conversationIngestCandidates(
+      conversationIntakeState.importedIds,
+      new Set(conversationIntakeState.changedIds),
+      media,
+      (sourceId) => (knowledge.get(sourceId)?.length ?? 0) > 0,
+    );
+    // 候補が全部ナレッジ化済みのときは、申し出の行そのものを出さない
+    //（「発言が多い会話が無い」と出すと事実と違う）
+    if (entries.length === 0 && conversationIngestCandidates(conversationIntakeState.importedIds, new Set(), media, () => false).length > 0) return null;
+    return entries;
+  }, [conversationIntakeState, fm.noteIndex, fm.mediaIndex]);
 
   // カード選択時のハンドラ:
   // - "ingest-current-note" は現ノートを直接 enqueueIngest して composer を閉じる（プロンプトには流さない）
@@ -18659,6 +18685,17 @@ export function NoteApp() {
             setSidebarOpen(false);
             router.navigate({ view: "assets", mediaType: "conversation" });
           },
+          offer: standardUiEnabled && conversationOfferEntries && conversationIntake.state.kind === "done"
+            ? {
+                total: conversationIntake.state.importedIds.length,
+                candidates: conversationOfferEntries.length,
+                onIngest: () => {
+                  intake.closeIntake();
+                  conversationIntake.reset();
+                  void ingestMediaEntries(conversationOfferEntries);
+                },
+              }
+            : undefined,
         }}
         onSearch={() => { intake.closeIntake(); showNoteList(); setFocusSearchSignal((n) => n + 1); }}
         onShowGraph={() => { intake.closeIntake(); showGlobalGraphView(); }}

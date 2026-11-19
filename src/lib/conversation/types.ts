@@ -112,6 +112,11 @@ export function conversationSourceId(fileId: string): string {
   return `${CONVERSATION_SOURCE_PREFIX}${fileId}`;
 }
 
+/** 出典 id が AI との会話を指すか */
+export function isConversationSourceId(id: unknown): boolean {
+  return typeof id === "string" && id.startsWith(CONVERSATION_SOURCE_PREFIX);
+}
+
 /**
  * ナレッジ化の費用の見込み: 会話 1 本の知見の作成に、測定でおよそ 7〜9 万トークンかかった
  * （2026-11-18）。トピックの作成は含まない。

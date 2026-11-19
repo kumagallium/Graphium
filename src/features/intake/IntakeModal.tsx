@@ -16,6 +16,7 @@ import { IntakeReceptacle } from "./IntakeReceptacle";
 import { IntakeSectionTabs, type IntakeSection } from "./IntakeSectionTabs";
 import { ConversationWorkdirList } from "./ConversationWorkdirList";
 import { ConversationUnavailableNote } from "./ConversationUnavailableNote";
+import { ConversationIngestOffer } from "./ConversationIngestOffer";
 import type { ConversationIntakeState } from "../conversation-import/use-conversation-intake";
 import type { IntakeFile, IntakeSelectionExtra, IntakeSource } from "./types";
 
@@ -96,6 +97,14 @@ export type IntakeConversationProps = {
   onRetry: () => void;
   /** 完了画面の「素材で見る」 */
   onViewMaterials: () => void;
+  /** 完了画面の「まとめてナレッジ化」の申し出。押さなければ AI は呼ばれない */
+  offer?: {
+    /** 今回取り込んだ会話の本数 */
+    total: number;
+    /** 候補の本数 */
+    candidates: number;
+    onIngest: () => void;
+  };
 };
 
 type IntakeModalProps = {
@@ -119,6 +128,7 @@ type IntakeModalProps = {
   /** 「AI との会話」の区画 */
   conversation?: IntakeConversationProps;
 };
+
 
 export function IntakeModal({
   open,
@@ -262,7 +272,15 @@ export function IntakeModal({
                     </dd>
                   </div>
                 </dl>
+                {conversation.offer && (
+                  <ConversationIngestOffer total={conversation.offer.total} candidates={conversation.offer.candidates} />
+                )}
                 <div className="flex flex-wrap gap-2">
+                  {conversation.offer && conversation.offer.candidates > 0 && (
+                    <Button variant="outline" size="sm" onClick={conversation.offer.onIngest} data-tooltip={t("intake.ingestAllHint")}>
+                      {t("intake.ingestAll")}
+                    </Button>
+                  )}
                   <Button variant="primary" size="sm" onClick={conversation.onViewMaterials}>
                     {t("intake.conversation.viewMaterials")}
                   </Button>

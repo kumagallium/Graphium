@@ -1829,6 +1829,12 @@ type ConversationMeta = {
   the device that brought the conversation in. The text is fixed at that
   moment and is what quoted passages are checked against; it is not rebuilt
   on read.
+- **Making Knowledge from it.** The stored text is the source for claim
+  extraction and topics (ARCHITECTURE.md §3.4). The Knowledge page keeps
+  `conversation:<fileId>` in `derivedFromNotes`, and its source list opens the
+  conversation. Only the first 80,000 characters of one conversation reach claim
+  extraction. A Claim or Topic with such a source is not written to the Asterism
+  export (§3.9).
 - **What counts as the user's line** (Claude Code records;
   `src/lib/conversation/claude-code-reader.ts`): a `user` record that is not
   `isMeta` / `isCompactSummary` / `isSidechain`, carries no `tool_result`,
@@ -1926,8 +1932,8 @@ type WikiMeta = {
   //   "memo:<captureId>"       ingested from a memo (capture) — no note is created
   //   "conversation:<mediaFileId>" an AI conversation kept as a material (§2.7). Not the same
   //                            as "chat:": a chat stub carries no reference back to its text,
-  //                            while this one resolves to the stored text. Nothing writes it
-  //                            yet — ingesting a conversation is not open
+  //                            while this one resolves to the stored text. Written when
+  //                            Knowledge is made from a conversation
   // Lineage / graph views resolve these prefixes to external source nodes
   // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
@@ -3373,6 +3379,9 @@ per Claim type, and one-row-per-term child files for the nested parts. The
 Asterism side registers each file as its own dataset, so one file means one kind.
 It is separate from the PROV-JSON-LD export (§2.7 and ARCHITECTURE.md §3.2): the Asterism bundle is flat JSON for RML, the PROV export is a graph.
 The column names are the contract: the RML mapping refers to them.
+A Claim or Topic whose `derivedFromNotes` holds a `conversation:` id (§2.7) is never
+exported: `buildAsterismBundle` skips it with reason `conversation-source`, since a
+conversation holds the person's own judgments and names as they were said.
 
 `buildAsterismBundle` (`src/features/wiki/asterism-export.ts`) is a pure function
 shared by the in-app export and the MCP tool `export_asterism_claims`;

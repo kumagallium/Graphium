@@ -3531,6 +3531,7 @@ export const ja: Record<string, string> = {
   "ingest.claimsSavedMerged": "知見 {count} 件（うち統合 {merged}）",
   "ingest.pdfNoText": "PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）",
   "ingest.docxNoText": "Word から十分なテキストを抽出できませんでした",
+  "ingest.conversationNoText": "会話の本文を読めませんでした。取り込み直すと戻ります",
   "ingest.noSources": "ソースが 1 件もありません",
 
   // Markdown インポート

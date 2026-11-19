@@ -3142,7 +3142,11 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   cancel). `claimBaseIri` defaults to `https://kumagallium.github.io/Graphium/claim/`.
   Entry points: the "Export for Asterism" item of the Claim list "..." menu (also
   without AI, only while linking is on) and the MCP tool. The
-  PROV-JSON-LD export is separate and unchanged. See
+  PROV-JSON-LD export is separate and unchanged. A Claim or Topic whose sources
+  include a `conversation:` id is left out of the export
+  (`hasConversationSource` in `asterism-export.ts`, skip reason
+  `conversation-source`), because a conversation carries the person's own
+  judgments and names as they were said. See
   [DATA_MODEL.md §3.9](DATA_MODEL.md).
 
 **Maintenance operations a person starts are recorded and can be
@@ -3304,10 +3308,36 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   not written again unless its stored text has gone missing. If the index
   cannot be saved, the texts of conversations that were new in that run are
   removed again, so no text is left on disk without an entry to delete it
-  from. **It never calls an AI.** Turning a conversation into Knowledge is a
-  separate step the user starts, and that entry point is not open yet:
-  `start_claim_task`, `start_topic_task` and `start_procedure_task` refuse a
-  `conversation:` id.
+  from. **Bringing in never calls an AI.** Turning a conversation into
+  Knowledge is a separate step the user starts, and it has three entry points:
+  - The final screen of the bring-in sheet offers **Add all to knowledge**
+    (`ConversationIngestOffer`, candidates from `conversationIngestCandidates`
+    in `ingest-candidates.ts`). A candidate is a conversation with at least
+    300 characters of the user's own lines
+    (`CONVERSATION_CANDIDATE_MIN_OWN_CHARS`). A conversation that is new or has
+    grown in this run is a candidate; an unchanged one is a candidate only
+    while it has no Knowledge yet. The estimate shown is 70,000–90,000
+    tokens per conversation (`CONVERSATION_INGEST_TOKENS_PER_SESSION`).
+    Nothing calls an AI until the button is pressed, and when every candidate
+    already has Knowledge the offer line is not shown.
+  - The **AI conversations** list in Materials: the menu of one conversation,
+    or a multiple selection. The 300-character condition does not apply here.
+  - The MCP tools `start_claim_task` and `start_topic_task` accept a
+    `conversation:<fileId>` id (`src/mcp/claim-source.ts`). `start_procedure_task`
+    still refuses it.
+
+  The stored text is read with `loadMediaText` and turned into the ingest input by
+  `buildConversationIngestInput` (`ingestFromConversation`). At most 80,000
+  characters of one conversation go to claim extraction
+  (`capForSingleCall`). For a conversation source only, the claim extraction prompt gets
+  `CONVERSATION_SOURCE_BLOCK` (`src/server/services/wiki-ingester.ts`): harvest
+  the points that come from the user's own lines first, and write a point whose
+  only ground is an AI line as the AI's assessment, kept apart from the user's
+  points. The measurement is in `manual/evaluations/ai-conversation-claims.md`.
+  "Unchanged since last time" for a conversation compares against the time its
+  text was last replaced (`conversation.importedAt`), because a conversation
+  keeps growing. Source check runs against the stored text, and the source list
+  of a Claim or Topic opens the original conversation.
 - **Source id.** `conversation:<fileId>` (`external-source.ts`). Source
   check, the MCP's `get_source_text` and the graph views resolve it to the
   stored text and the material. It is a separate prefix from `chat:`, which

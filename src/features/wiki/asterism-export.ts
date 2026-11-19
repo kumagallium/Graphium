@@ -5,6 +5,7 @@
 
 import type { FrameReviewState, FrameValue, WikiMeta } from "../../lib/document-types";
 import type { AsterismSettings } from "../settings/store";
+import { isConversationSourceId } from "../../lib/conversation/types";
 import { classifyVocabTerm } from "./asterism-link";
 
 /** 既定の Graphium アプリ URL（mobile-capture/inbox/app-url.ts の GRAPHIUM_PUBLIC_APP_URL と同じ値。DOM 依存を避けるため複製） */
@@ -101,7 +102,16 @@ export type AsterismBundle = {
 };
 
 /** unknown-type: 型の語が設定の 4 語のどれにも一致しない */
-export type AsterismSkipReason = "not-claim" | "untyped" | "inferred" | "unknown-type" | "already-sent";
+export type AsterismSkipReason = "not-claim" | "untyped" | "inferred" | "unknown-type" | "already-sent" | "conversation-source";
+
+/**
+ * AI との会話を出典に持つページか。会話には本人の判断や人名がそのまま入るので、
+ * 外の知識基盤（Asterism）への書き出しの対象にしない
+ */
+export function hasConversationSource(meta: Pick<WikiMeta, "derivedFromNotes">): boolean {
+  const sources: unknown = meta.derivedFromNotes;
+  return Array.isArray(sources) && sources.some(isConversationSourceId);
+}
 
 export type AsterismExportOptions = {
   /** 型が無い知見も含める（untyped.json） */
@@ -311,6 +321,10 @@ export function buildAsterismBundle(
   const topicItems: { id: string; meta: WikiMeta; title?: string }[] = [];
   const exportedClaimIds = new Set<string>();
   for (const { id, meta, title } of items) {
+    if (hasConversationSource(meta)) {
+      skipped.push({ id, reason: "conversation-source" });
+      continue;
+    }
     if (meta.kind === "topic" && opts.includeTopics) {
       topicItems.push({ id, meta, title });
       continue;
