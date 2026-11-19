@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.150.0](https://github.com/kumagallium/Graphium/compare/v0.149.0...v0.150.0) - 2026-11-19
+
+- feat(wiki): 既存の知見をトピックへ結ぶ一括処理を手入れに足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/1777
+
 ## [v0.149.0](https://github.com/kumagallium/Graphium/compare/v0.148.1...v0.149.0) - 2026-11-19
 
 - [infra] Ask for one release approval, right before users get the update by @kumagallium in https://github.com/kumagallium/Graphium/pull/1778
