@@ -308,7 +308,11 @@ function claimsLinkedToTopics(root: string, topicIds: string[]): { id: string; d
     if (!file.endsWith(".json")) continue;
     const id = file.slice(0, -".json".length);
     const doc = readWikiDoc(root, id);
-    if (doc?.wikiMeta?.kind === "claim" && doc.wikiMeta.topicIds?.some((t) => wanted.has(t))) claims.push({ id, doc });
+    // 共有フォルダなどから壊れた値が来ても、統合と無関係な 1 件で全体を止めない
+    const linked: unknown = doc?.wikiMeta?.topicIds;
+    if (doc?.wikiMeta?.kind === "claim" && Array.isArray(linked) && linked.some((t) => wanted.has(t as string))) {
+      claims.push({ id, doc });
+    }
   }
   return claims;
 }
@@ -406,7 +410,9 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
       }
 
       // 吸収されるトピックに結ばれた知見を、ゴミ箱へ移す前に残す側へ付け替える
-      for (const claim of claimsLinkedToTopics(root, absorbIds)) {
+      const linkedClaims = claimsLinkedToTopics(root, absorbIds);
+      await lock.refresh();
+      for (const claim of linkedClaims) {
         let meta = claim.doc.wikiMeta!;
         for (const id of absorbIds) meta = retargetClaimTopicId(meta, id, keepId);
         const claimSaved = await op.save(claim.id, { ...claim.doc, wikiMeta: meta });

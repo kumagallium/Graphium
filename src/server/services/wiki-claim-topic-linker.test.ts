@@ -98,6 +98,16 @@ describe("parseClaimTopicLinkerOutput", () => {
     });
   });
 
+  it("__proto__ という id の知見も普通の鍵として返す", () => {
+    const parsed = parseClaimTopicLinkerOutput(
+      JSON.stringify({ links: [{ claim: "C1", topics: ["T1"] }] }),
+      [{ id: "__proto__", title: "知見" }],
+      topics,
+    );
+    expect(Object.keys(parsed!.links)).toEqual(["__proto__"]);
+    expect(JSON.parse(JSON.stringify(parsed!.links))).toEqual(JSON.parse('{"__proto__":["topic-1"]}'));
+  });
+
   it("壊れた JSON と links の無い答えは undefined", () => {
     expect(parseClaimTopicLinkerOutput("not json", claims, topics)).toBeUndefined();
     expect(parse({ result: [] })).toBeUndefined();

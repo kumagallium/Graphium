@@ -105,7 +105,8 @@ export function parseClaimTopicLinkerOutput(
   }
   if (!Array.isArray(raw)) return undefined;
 
-  const links: Record<string, string[]> = {};
+  // id を鍵にするので、__proto__ のような id でも普通の鍵になるよう素の入れ物にする
+  const links: Record<string, string[]> = Object.create(null);
   const seenClaims = new Set<number>();
   let rejected = 0;
   for (const entry of raw) {

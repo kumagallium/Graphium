@@ -248,12 +248,13 @@ export async function applyTopicMerges(
       const trashAbsorbedTopic = async (sourceId: string) => {
         try {
           for (const claimId of deps.claimIdsLinkedToTopic?.(sourceId) ?? []) {
-            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
-            if (claimDoc?.wikiMeta?.kind !== "claim") continue;
-            const nextMeta = retargetClaimTopicId(claimDoc.wikiMeta, sourceId, targetId);
-            if (nextMeta === claimDoc.wikiMeta) continue;
-            const saved = await saveWikiWithRetry(groupDeps.handleSaveWikiFile, claimId, { ...claimDoc, wikiMeta: nextMeta });
-            if (!saved) throw new Error(`failed to retarget claim ${claimId}`);
+            const outcome = await saveWikiWithRetry(groupDeps.handleSaveWikiFile, claimId, async () => {
+              const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+              if (claimDoc?.wikiMeta?.kind !== "claim") return null;
+              const nextMeta = retargetClaimTopicId(claimDoc.wikiMeta, sourceId, targetId);
+              return nextMeta === claimDoc.wikiMeta ? null : { ...claimDoc, wikiMeta: nextMeta };
+            });
+            if (outcome === "failed") throw new Error(`failed to retarget claim ${claimId}`);
           }
           await groupDeps.handleDeleteWikiFile(sourceId);
           result.merged++;

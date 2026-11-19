@@ -192,6 +192,18 @@ describe("linkClaimsToTopicsForSource", () => {
     expect(context.handleSaveWikiFile).toHaveBeenCalledTimes(1);
   });
 
+  it("保存を待つあいだに topicIds が付いたら上書きしない", async () => {
+    const context = setup();
+    context.judge.mockImplementation(async () => ({ links: { c1: ["t1"] }, rejected: 0 }));
+    context.handleSaveWikiFile.mockImplementationOnce(async () => {
+      context.docs.set("wiki:c1", makeDoc("知見 1", { topicIds: ["manual"] }));
+      return false;
+    });
+    const result = await linkClaimsToTopicsForSource(SOURCE, context.deps);
+    expect(result).toMatchObject({ alreadyLinked: 1, linkedClaims: 0, saveFailed: 0 });
+    expect(context.docs.get("wiki:c1")?.wikiMeta?.topicIds).toEqual(["manual"]);
+  });
+
   it("保存できなかった知見を数え、残りは続ける", async () => {
     const context = setup();
     context.handleSaveWikiFile.mockImplementation(async (id, doc) => {
@@ -207,17 +219,26 @@ describe("linkClaimsToTopicsForSource", () => {
 describe("saveWikiWithRetry", () => {
   const doc = makeDoc("知見", {});
 
-  it("他の保存と重なって false が返ったら、やり直して書く", async () => {
+  it("他の保存と重なって false が返ったら、中身を作り直してやり直す", async () => {
+    const edited = makeDoc("待つあいだに編集された知見", {});
     const save = vi.fn<(id: string, d: GraphiumDocument) => Promise<boolean>>()
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
-    expect(await saveWikiWithRetry(save, "c1", doc, 0)).toBe(true);
+    const build = vi.fn<() => GraphiumDocument>().mockReturnValueOnce(doc).mockReturnValueOnce(edited);
+    expect(await saveWikiWithRetry(save, "c1", build, 0)).toBe("saved");
     expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith("c1", edited);
   });
 
-  it("最後まで書けなければ false", async () => {
+  it("書く必要が無くなったら書かない", async () => {
+    const save = vi.fn(async () => true);
+    expect(await saveWikiWithRetry(save, "c1", () => null, 0)).toBe("skipped");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("最後まで書けなければ failed", async () => {
     const save = vi.fn(async () => false);
-    expect(await saveWikiWithRetry(save, "c1", doc, 0)).toBe(false);
+    expect(await saveWikiWithRetry(save, "c1", () => doc, 0)).toBe("failed");
     expect(save).toHaveBeenCalledTimes(6);
   });
 });

@@ -73,19 +73,22 @@ const DEFAULT_SAVE_RETRY_DELAY_MS = 250;
 
 /**
  * 保存する。handleSaveWikiFile は他の保存の最中だと書かずに false を返すので、少し待ってやり直す。
- * 最後まで書けなければ false。
+ * 待つあいだに利用者が編集しても古い版で上書きしないよう、書く中身は試すたびに build で作り直す。
+ * build が null を返したら書く必要が無くなったので "skipped"。最後まで書けなければ "failed"。
  */
 export async function saveWikiWithRetry(
   save: (wikiId: string, doc: GraphiumDocument) => Promise<boolean | void>,
   wikiId: string,
-  doc: GraphiumDocument,
+  build: () => Promise<GraphiumDocument | null> | GraphiumDocument | null,
   delayMs: number = DEFAULT_SAVE_RETRY_DELAY_MS,
-): Promise<boolean> {
+): Promise<"saved" | "skipped" | "failed"> {
   for (let attempt = 0; attempt <= SAVE_RETRIES; attempt++) {
-    if ((await save(wikiId, doc)) !== false) return true;
+    const doc = await build();
+    if (!doc) return "skipped";
+    if ((await save(wikiId, doc)) !== false) return "saved";
     if (attempt < SAVE_RETRIES) await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
   }
-  return false;
+  return "failed";
 }
 
 /** 資料から結ぶ候補を選ぶ（topicIds が空の知見と、同じ資料のトピック）。AI は呼ばない */
@@ -183,26 +186,32 @@ export async function linkClaimsToTopicsForSource(
       }
       if (topicIds.length === 0) continue;
 
-      // 判定のあいだに変わっていないか、保存の直前に実物で確かめる
-      const claimDoc = await docOf(claimId);
-      if (!isClaimOfSource(claimDoc) || !claimDoc?.wikiMeta) {
-        result.rejected++;
-        continue;
-      }
-      if ((claimDoc.wikiMeta.topicIds?.length ?? 0) > 0) {
-        result.alreadyLinked++;
-        continue;
-      }
+      // 判定のあいだに変わっていないか、書く直前に毎回実物で確かめる
+      let skippedAs: "rejected" | "alreadyLinked" | undefined;
       try {
-        const saved = await saveWikiWithRetry(
+        const outcome = await saveWikiWithRetry(
           deps.handleSaveWikiFile,
           claimId,
-          { ...claimDoc, wikiMeta: { ...claimDoc.wikiMeta, topicIds } },
+          async () => {
+            const claimDoc = await docOf(claimId);
+            if (!isClaimOfSource(claimDoc) || !claimDoc?.wikiMeta) {
+              skippedAs = "rejected";
+              return null;
+            }
+            if ((claimDoc.wikiMeta.topicIds?.length ?? 0) > 0) {
+              skippedAs = "alreadyLinked";
+              return null;
+            }
+            return { ...claimDoc, wikiMeta: { ...claimDoc.wikiMeta, topicIds } };
+          },
           deps.saveRetryDelayMs,
         );
-        if (saved) {
+        if (outcome === "saved") {
           result.linkedClaims++;
           result.links += topicIds.length;
+        } else if (outcome === "skipped") {
+          if (skippedAs === "alreadyLinked") result.alreadyLinked++;
+          else result.rejected++;
         } else {
           result.saveFailed++;
           log("知見の topicIds を保存できなかった:", claimId);

@@ -269,6 +269,21 @@ describe("merge_topics", () => {
     expect(readJson(p("wiki", "c1.json")).wikiMeta.topicIds).toEqual(["t2", "other"]);
   });
 
+  it("topicIds が壊れた知見があっても統合を止めない", async () => {
+    const broken = { ...topicDoc("壊れた知見", "本文", "claim", false) };
+    broken.wikiMeta = { ...broken.wikiMeta, topicIds: "t2" } as unknown as typeof broken.wikiMeta;
+    writeFileSync(p("wiki", "c2.json"), JSON.stringify(broken));
+
+    const reply = await mergeTopics(
+      { keepId: "t1", absorbIds: ["t2"], body: `統合後 [[source:${NOTE}]]` },
+      ctx,
+      root,
+    );
+    expect(reply).toContain("統合しました");
+    expect(entryOf("t2").deletedAt).toBeTruthy();
+    expect(readJson(p("wiki", "c2.json")).wikiMeta.topicIds).toBe("t2");
+  });
+
   it("検査: 自分自身・旧形式・answer", async () => {
     expect(await mergeTopics({ keepId: "t1", absorbIds: ["t1"], body: "x" }, ctx, root)).toMatch(/^INVALID_ARGUMENT/);
     expect(await mergeTopics({ keepId: "t1", absorbIds: ["old"], body: "x" }, ctx, root)).toMatch(/^OLD_FORMAT/);

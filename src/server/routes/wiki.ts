@@ -1006,7 +1006,9 @@ app.post("/link-claims-to-topics", async (c) => {
   if (!Array.isArray(body.claims) || body.claims.length === 0 || !body.claims.every(isRef)) {
     return c.json({ error: "claims are required" }, 400);
   }
-  if (!Array.isArray(body.topics) || body.topics.length === 0 || !body.topics.every(isRef)) {
+  const isTopicRef = (v: unknown) =>
+    isRef(v) && ["string", "undefined"].includes(typeof (v as { oneLiner?: unknown }).oneLiner);
+  if (!Array.isArray(body.topics) || body.topics.length === 0 || !body.topics.every(isTopicRef)) {
     return c.json({ error: "topics are required" }, 400);
   }
   if (body.claims.length > CLAIM_LINK_MAX_CLAIMS || body.topics.length > CLAIM_LINK_MAX_TOPICS) {
