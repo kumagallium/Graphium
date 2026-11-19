@@ -18,6 +18,7 @@ import {
   LocalFolderSharedProvider,
   SharedConflictError,
   computeSharedEntryHash,
+  computeBlobHash,
   type BlobRef,
   type SharedEntry,
 } from "../../lib/storage/shared";
@@ -30,7 +31,7 @@ import {
   type ShareNoteOptions,
 } from "./share-note";
 import { stripMemoTraces } from "./strip-memo-traces";
-import { syncReadableCopy, type ReadableCopyStatus } from "./readable-copy";
+import { syncReadableCopy, type ReadableCopyContext, type ReadableCopyStatus } from "./readable-copy";
 
 export { canUpdateSharedNote };
 
@@ -38,6 +39,8 @@ export { canUpdateSharedNote };
 export type SharedUpdateOptions = {
   root: string;
   author: AuthorIdentity;
+  /** 読める写しの材料（restoreSharedVersion が、戻した版の写しを置くのに使う。無ければ写しは置かず古い写しを消す） */
+  readable?: ReadableCopyContext;
 };
 
 export type UpdateSharedNoteOptions = ShareNoteOptions & {
@@ -84,7 +87,13 @@ export async function setAcceptsUpdates(
     const entry: SharedEntry = {
       ...current,
       hash: "", // provider.write が再計算する
-      extra: { ...current.extra, acceptsUpdates: value },
+      // 本文は変わらないので bodyHash を引き継ぐ（古い共有で無ければ今の本文から作る）
+      extra: {
+        ...current.extra,
+        acceptsUpdates: value,
+        bodyHash:
+          typeof current.extra?.bodyHash === "string" ? current.extra.bodyHash : await computeBlobHash(body),
+      },
     };
     const hash = await computeSharedEntryHash(entry, body);
     try {
@@ -173,6 +182,7 @@ export async function updateSharedNoteFromCopy(
         // 既存の extra.blobs が壊れていても引き継がない（形の合う要素だけを上で集めている）
         blobs: blobs.length > 0 ? blobs : undefined,
         updatedBy: { name: options.author.name, email: options.author.email },
+        bodyHash: await computeBlobHash(body),
       },
     };
     const hash = await computeSharedEntryHash(entry, body);
@@ -238,7 +248,7 @@ export async function restoreSharedVersion(
   sharedId: string,
   versionName: string,
   options: SharedUpdateOptions,
-): Promise<{ ok: true; entry: SharedEntry } | { ok: false; conflict: true; currentHash: string } | { ok: false; conflict?: false; error: string }> {
+): Promise<{ ok: true; entry: SharedEntry; readableCopy?: ReadableCopyStatus } | { ok: false; conflict: true; currentHash: string } | { ok: false; conflict?: false; error: string }> {
   try {
     const provider = new LocalFolderSharedProvider(options.root, { email: options.author.email });
     const { entry: current } = await provider.read(sharedId);
@@ -264,6 +274,7 @@ export async function restoreSharedVersion(
         // 受け付けのスイッチは今の状態を保つ（前の版が切り替え前のものでも戻らない）
         acceptsUpdates: current.extra?.acceptsUpdates,
         updatedBy: { name: options.author.name, email: options.author.email },
+        bodyHash: await computeBlobHash(body),
       },
     };
     const hash = await computeSharedEntryHash(entry, body);
@@ -279,7 +290,33 @@ export async function restoreSharedVersion(
       }
       throw e;
     }
-    return { ok: true, entry: { ...entry, hash } };
+    const written: SharedEntry = { ...entry, hash };
+
+    // 読める写しを戻した版に合わせる（失敗しても戻すのは成功のまま。結果として返す）。
+    // 共有の本文は履歴・手元の関係を落とした形なので、そのまま写しの材料にできる
+    let readableCopy: ReadableCopyStatus;
+    try {
+      const entryDoc = JSON.parse(new TextDecoder().decode(body)) as GraphiumDocument;
+      const title = entryDoc.title || (typeof entry.extra?.title === "string" ? entry.extra.title : "");
+      const provDoc = stripMemoTraces(stripPrivateHistory(entryDoc));
+      readableCopy = (
+        await syncReadableCopy({
+          root: options.root,
+          authorEmail: options.author.email,
+          entryHash: hash,
+          sharedId: current.id,
+          title,
+          entryDoc,
+          provDoc,
+          author: current.author,
+          context: options.readable,
+          sharedAt: now,
+        })
+      ).status;
+    } catch {
+      readableCopy = "failed";
+    }
+    return { ok: true, entry: written, readableCopy };
   } catch (e) {
     return { ok: false, error: errorMessage(e) };
   }

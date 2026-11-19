@@ -32,6 +32,7 @@ import {
   SharedConflictError,
   newSharedId,
   computeSharedEntryHash,
+  computeBlobHash,
   type SharedEntry,
   type BlobRef,
 } from "../../lib/storage/shared";
@@ -264,6 +265,17 @@ export async function shareGraphiumDocument(
     // （その間に誰かが更新していたら上書きせず、衝突として返す）。受け付けていないノートは従来どおり
     const accepting = entryType === "note" && existingEntry !== undefined && canUpdateSharedNote(existingEntry);
 
+    const bodyHash = await computeBlobHash(body);
+    // 受け付け中に渡す「読んだ版」。共有の本文が手元で最後に共有したときのままなら、
+    // スイッチの切り替えなどで entry の hash だけが動いていても衝突にしない。
+    // 本文が変わっていた（他の人が更新した）なら、従来どおり手元の古い hash を渡して衝突させる
+    const sameBody =
+      !!existingEntry &&
+      typeof existingEntry.extra?.bodyHash === "string" &&
+      !!doc.sharedRef?.bodyHash &&
+      existingEntry.extra.bodyHash === doc.sharedRef.bodyHash;
+    const expectedHash = sameBody ? existingEntry!.hash : (doc.sharedRef?.hash ?? "");
+
     const baseEntry: SharedEntry = {
       id,
       type: entryType,
@@ -282,6 +294,8 @@ export async function shareGraphiumDocument(
         ...(blobs.length > 0 ? { blobs } : {}),
         // 再共有で受け付けのスイッチを落とさない（切り替えは setAcceptsUpdates だけ）
         ...(accepting ? { acceptsUpdates: true } : {}),
+        // 本文だけの指紋（スイッチの切り替えで entry の hash が動いても、本文が同じかを見分ける）
+        bodyHash,
       },
     };
 
@@ -291,7 +305,7 @@ export async function shareGraphiumDocument(
       await provider.write(
         baseEntry,
         body,
-        accepting ? { expectedHash: doc.sharedRef?.hash ?? "" } : undefined,
+        accepting ? { expectedHash } : undefined,
       );
     } catch (e) {
       if (e instanceof SharedConflictError) {
@@ -332,6 +346,7 @@ export async function shareGraphiumDocument(
         type: entryType,
         sharedAt: now,
         hash,
+        bodyHash,
       },
     };
 

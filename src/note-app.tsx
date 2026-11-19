@@ -4526,8 +4526,15 @@ function NoteEditorInner({
   // 移した先の更新履歴は 1 から数え直す（履歴は元のフォルダの封筒にしか無い）。
   const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
   const [moveFromRoot, setMoveFromRoot] = useState<string | null>(null);
+  // 他の人の更新を受け付け中のノートは移せない（移した先では受け付けが落ち、前の版も他の人の更新も
+  // 引き継がれず、作者の手元の本文で置き換わってしまう）。スイッチを切ってから移してもらう
+  const moveBlockedByAccepting = useSharedNoteAcceptsUpdates(sharedRefState?.id);
   const openMoveShared = useCallback(async () => {
     if (!sharedRefState) return;
+    if (moveBlockedByAccepting) {
+      window.alert(t("share.move.blockedAccepting"));
+      return;
+    }
     await ensureSharedEntryRoots();
     const from = getSharedLibrarySnapshot().entryRoots[sharedRefState.id] ?? null;
     if (!from) {
@@ -4536,9 +4543,14 @@ function NoteEditorInner({
     }
     setMoveFromRoot(from);
     setMoveFolderDialogOpen(true);
-  }, [sharedRefState, t]);
+  }, [sharedRefState, t, moveBlockedByAccepting]);
   const handleMoveShared = useCallback(async (toRoot: string) => {
     if (!sharedRefState || !sharedAuthor || !moveFromRoot || toRoot === moveFromRoot) return;
+    if (moveBlockedByAccepting) {
+      setMoveFolderDialogOpen(false);
+      window.alert(t("share.move.blockedAccepting"));
+      return;
+    }
     setShareBusy(true);
     try {
       const baseDoc = await buildDocument();
@@ -4575,7 +4587,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。

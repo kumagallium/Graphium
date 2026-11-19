@@ -297,21 +297,31 @@ describe("updateSharedNoteFromCopy", () => {
 });
 
 describe("作者の再共有", () => {
-  it("受け付け中なら expectedHash を渡し、受け付けのスイッチを保つ", async () => {
+  it("スイッチの切り替えのあとは、本文が同じなら衝突せず、受け付けも保たれる", async () => {
     const { id, ownerDoc } = await ownerShares(true);
-    // setAcceptsUpdates で hash が動いているので、作者の手元の sharedRef.hash は古い
-    const stale = await shareNote(makeDoc("v3", { sharedRef: ownerDoc.sharedRef }), { root: ROOT, author: owner });
-    expect(stale.ok).toBe(false);
-    expect((stale as any).conflict).toBe(true);
-    expect((stale as any).currentHash).toBe(fs.entry(id).hash);
-    // 今の hash を持っていれば通り、受け付けも保たれる
-    const fresh = await shareNote(
-      makeDoc("v3", { sharedRef: { ...ownerDoc.sharedRef!, hash: fs.entry(id).hash } }),
-      { root: ROOT, author: owner },
-    );
-    expect(fresh.ok).toBe(true);
+    // setAcceptsUpdates で entry の hash は動いたが、本文は変わっていない
+    expect(fs.entry(id).hash).not.toBe(ownerDoc.sharedRef!.hash);
+    expect(fs.entry(id).extra?.bodyHash).toBe(ownerDoc.sharedRef!.bodyHash);
+    const r = await shareNote(makeDoc("v3", { sharedRef: ownerDoc.sharedRef }), { root: ROOT, author: owner });
+    expect(r.ok).toBe(true);
     expect(fs.entry(id).extra?.acceptsUpdates).toBe(true);
     expect(last(fs.writes).expectedHash).toBeDefined();
+    // 共有に成功したら、手元の sharedRef にも新しい本文の bodyHash が入る
+    if (r.ok) expect(r.doc.sharedRef?.bodyHash).toBe(fs.entry(id).extra?.bodyHash);
+  });
+
+  it("restoreSharedVersion のあとも、本文が同じなら作者の再共有は衝突しない", async () => {
+    const { id, ownerDoc } = await ownerShares(true);
+    const doc = await bobForks(id, "bob");
+    expect((await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob })).ok).toBe(true);
+    // 作者が再共有（Bob の更新は本文が違うので衝突する）→ 戻すと本文は v1 に戻る
+    const provider = await import("../../lib/storage/shared").then((m) => new m.LocalFolderSharedProvider(ROOT, owner));
+    const names = await provider.listVersions(id);
+    const rr = await restoreSharedVersion(id, names[0], { root: ROOT, author: owner });
+    expect(rr.ok).toBe(true);
+    expect(fs.entry(id).extra?.bodyHash).toBe(ownerDoc.sharedRef!.bodyHash);
+    const r = await shareNote(makeDoc("v1", { sharedRef: ownerDoc.sharedRef }), { root: ROOT, author: owner });
+    expect(r.ok).toBe(true);
   });
 
   it("他の人が更新したあとの作者の再共有は衝突になり、上書きしない", async () => {
@@ -319,8 +329,11 @@ describe("作者の再共有", () => {
     const doc = await bobForks(id, "bob");
     const upd = await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
     expect(upd.ok).toBe(true);
-    const r = await shareNote(makeDoc("mine", { sharedRef: { ...ownerDoc.sharedRef!, hash: fs.entry(id).hash.replace(/.$/, "0") } }), { root: ROOT, author: owner });
+    // 他の人が本文を変えたので、bodyHash が違う → 手元の古い hash を渡して衝突する
+    expect(fs.entry(id).extra?.bodyHash).not.toBe(ownerDoc.sharedRef!.bodyHash);
+    const r = await shareNote(makeDoc("mine", { sharedRef: ownerDoc.sharedRef }), { root: ROOT, author: owner });
     expect((r as any).conflict).toBe(true);
+    expect((r as any).currentHash).toBe(fs.entry(id).hash);
     expect(JSON.stringify(fs.bodyDoc(id).pages)).toContain("bob");
   });
 
@@ -351,6 +364,25 @@ describe("restoreSharedVersion", () => {
     expect(fs.entry(id).extra?.acceptsUpdates).toBe(true);
     expect(fs.entry(id).extra?.updatedBy).toEqual({ name: "Ada", email: "ada@x.co" });
     expect((await provider.listVersions(id)).length).toBeGreaterThanOrEqual(names.length);
+  });
+
+  it("戻したあと、読める写しを戻した版に合わせる（作者以外は entryHash 付き）", async () => {
+    setSharedFolders([{ ...createSharedFolder(ROOT), readableCopies: true }]);
+    const { id } = await ownerShares(true);
+    const doc = await bobForks(id, "bad edit");
+    expect((await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob })).ok).toBe(true);
+    fs.readable.length = 0;
+    const provider = await import("../../lib/storage/shared").then((m) => new m.LocalFolderSharedProvider(ROOT, bob));
+    const names = await provider.listVersions(id);
+    const r = await restoreSharedVersion(id, names[0], { root: ROOT, author: bob, readable: { noteId: id } });
+    expect(r.ok).toBe(true);
+    expect(fs.readable.length).toBe(1);
+    const call = fs.readable[0];
+    expect(call.id).toBe(id);
+    expect(call.authorEmail).toBe("bob@x.co");
+    expect(call.entryHash).toBe(fs.entry(id).hash);
+    expect(call.markdown).toContain("v1");
+    expect(call.prov).toBeTruthy();
   });
 
   it("読み込み後に更新されていたら書かない", async () => {

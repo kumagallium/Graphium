@@ -3039,6 +3039,7 @@ export const en: Record<string, string> = {
   "share.move.dialogTitle": "Which shared folder should this move to?",
   "share.move.label": "Move to",
   "share.move.note": "It is shared again in the new folder and unshared from the old one. Other people's citations and forks keep working. Comments and proposals stay in the old folder, and the update count starts over in the new one.",
+  "share.move.blockedAccepting": "A note that is accepting updates cannot be moved. Turn the switch off first, then move it; the moved copy will contain your local version.",
   "share.move.confirm": "Move",
   "share.move.success": "Moved to the other shared folder.",
   "share.move.oldRemains": "Shared to the new folder, but it could not be unshared from the old one ({error}). Unshare the old copy from the shared folder view.",

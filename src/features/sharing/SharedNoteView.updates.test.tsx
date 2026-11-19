@@ -217,6 +217,43 @@ describe("SharedNoteView: 他の人の更新", () => {
     expect(line.textContent).toContain(OTHER.name);
   });
 
+  it("updatedBy.name が文字列でない細工したノートでも画面が落ちない", async () => {
+    renderView(
+      noteEntry({ acceptsUpdates: true, updatedBy: { name: { evil: 1 }, email: ["x"] } }),
+      AUTHOR,
+      makeOps(),
+    );
+    openVersionTab();
+    await screen.findByTestId("shared-note-versions");
+    expect(screen.queryByTestId("shared-note-updated-by")).toBeNull();
+  });
+
+  it("受け付けていないノートでは前の版を読みに行かない", async () => {
+    const ops = makeOps();
+    renderView(noteEntry(), AUTHOR, ops);
+    openVersionTab();
+    await waitFor(() => expect(ops.conflictCopies).toHaveBeenCalled());
+    expect(ops.listVersions).not.toHaveBeenCalled();
+  });
+
+  it("前の版は先頭 5 件だけ読む", async () => {
+    const names = Array.from({ length: 8 }, (_, i) => `${Date.UTC(2026, 10, 20 - i)}-aaaa.json`);
+    const ops = makeOps({
+      listVersions: vi.fn(async () => names),
+      readVersionInfo: vi.fn(async (_r: string, _i: string, name: string) => ({
+        name,
+        ok: true,
+        at: "2026-10-20T03:00:00.000Z",
+        by: "x",
+      })),
+    });
+    renderView(noteEntry({ acceptsUpdates: true }), AUTHOR, ops);
+    openVersionTab();
+    const list = await screen.findByTestId("shared-note-versions");
+    expect(list.querySelectorAll("li").length).toBe(5);
+    expect(ops.readVersionInfo).toHaveBeenCalledTimes(5);
+  });
+
   it("前の版を新しい順に並べる", async () => {
     renderView(noteEntry({ acceptsUpdates: true }), OTHER, makeOps());
     openVersionTab();

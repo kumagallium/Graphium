@@ -77,6 +77,7 @@ import {
   ConflictCopiesNotice,
   SharedNoteUpdatePanel,
   useSharedNoteVersions,
+  readUpdatedByName,
   type SharedNoteUpdateOps,
 } from "./SharedNoteUpdates";
 import { canUpdateSharedNote } from "./update-shared-note";
@@ -242,7 +243,7 @@ function SharedNoteViewInner({
   // 前の版と競合コピーは、このエントリがある共有フォルダから読む
   const entryRoot = getSharedEntryRoot(entry.id) ?? sharedRoot;
   const acceptsUpdates = canUpdateSharedNote(entry);
-  const updatedByName = (entry.extra?.updatedBy as { name?: string } | undefined)?.name;
+  const updatedByName = readUpdatedByName(entry);
   const noteVersions = useSharedNoteVersions(entry, entryRoot, updateOps);
 
   // 「更新あり」「新着コメント N」は開いた瞬間の控えで判定する。
@@ -543,8 +544,8 @@ function SharedNoteViewInner({
                 <AcceptsUpdatesBadge accepting={acceptsUpdates} />
               </h2>
               <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                {entry.author?.name ?? uiT("library.unknownAuthor")}
-                {entry.author?.email ? ` · ${entry.author.email}` : ""}
+                {typeof entry.author?.name === "string" ? entry.author.name : uiT("library.unknownAuthor")}
+                {typeof entry.author?.email === "string" && entry.author.email ? ` · ${entry.author.email}` : ""}
                 {" · "}
                 {formatDate(entry.updated_at)}
                 {` · v${entry.version ?? 1}`}

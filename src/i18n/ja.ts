@@ -3037,6 +3037,7 @@ export const ja: Record<string, string> = {
   "share.move.dialogTitle": "どの共有フォルダへ移しますか？",
   "share.move.label": "移す先",
   "share.move.note": "移した先で共有し直し、元の共有フォルダでは共有を解除します。他の人の引用や複製はそのまま辿れます。元のフォルダに付いたコメントと提案は元のフォルダに残り、更新の回数は移した先で数え直します。",
+  "share.move.blockedAccepting": "受け付け中のノートは移せません。スイッチを切ってから移すと、移した先にはあなたの手元の内容が入ります。",
   "share.move.confirm": "移す",
   "share.move.success": "別の共有フォルダへ移しました。",
   "share.move.oldRemains": "移した先には共有しましたが、元の共有フォルダで共有を解除できませんでした（{error}）。共有フォルダの画面から元の方を共有解除してください。",

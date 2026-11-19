@@ -3675,8 +3675,13 @@ The same `src/` tree is built four different ways.
   to `_meta/versions/<id>/<ms13>-<hash16>.json` and keeps the newest 5, always
   including the one just copied (a failed copy cancels the write; a version
   with the same hash part is not copied twice; names more than 24 hours in the
-  future are deleted without counting); `_meta`, `versions` and `<id>` must
-  not be symbolic links. Read-side commands: `shared_versions_list(root, id)`,
+  future are deleted without counting; a write whose `body_base64` equals the
+  current one, such as flipping the switch, is not copied); `_meta`,
+  `versions` and `<id>` must not be symbolic links. Graphium checks the
+  consistency of a previous version itself (the id matches, and the recorded
+  hash matches its contents before restoring), but this cannot stop someone
+  who can write to the shared folder directly from replacing a previous
+  version together with its hash. Read-side commands: `shared_versions_list(root, id)`,
   `shared_version_read(root, id, name)` (only names matching
   `^\d{13}-[0-9a-f]{16}\.json$`) and `shared_conflict_copies(root, entry_type,
   id)` (file names in the entry folder that start with the id, end in `.json`

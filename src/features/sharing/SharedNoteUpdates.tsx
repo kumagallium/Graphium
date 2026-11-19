@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, History, Loader2, RotateCcw } from "lucide-react";
 import { useT } from "../../i18n";
 import type { AuthorIdentity } from "../document-provenance/types";
+import type { ReadableCopyContext } from "./readable-copy";
 import { LocalFolderSharedProvider, type SharedEntry } from "../../lib/storage/shared";
 import { formatDateTime } from "../../lib/format-datetime";
 import { confirmAction } from "../../ui/confirm-dialog";
@@ -25,6 +26,15 @@ import {
 } from "./update-shared-note";
 import { notifySharedLibraryChanged } from "./shared-library-store";
 import { sharedEntryTitle } from "./shared-entry-parts";
+
+/**
+ * extra.updatedBy から表示に使える名前だけを取り出す。共有フォルダのファイルは誰でも書き換えられるので、
+ * name が文字列でないもの（オブジェクトなど）は使わない（React の子にそのまま置くと画面が落ちる）
+ */
+export function readUpdatedByName(entry: SharedEntry): string | undefined {
+  const u = entry.extra?.updatedBy as { name?: unknown } | undefined;
+  return u && typeof u.name === "string" && u.name ? u.name : undefined;
+}
 
 /** 共有フォルダへの読み書き。既定は実物。Storybook / テストで差し替える */
 /**
@@ -41,6 +51,9 @@ export type SharedVersionInfo = {
   by: string | null;
 };
 
+/** 前の版を画面で読む件数の上限（Rust 側が控えるのも 5 件） */
+const MAX_VERSIONS_SHOWN = 5;
+
 export type SharedNoteUpdateOps = {
   listVersions: (root: string, id: string) => Promise<string[]>;
   /** 前の版の中身から、作った日時と人を読む（読めなければ ok=false） */
@@ -55,12 +68,12 @@ export const defaultSharedNoteUpdateOps: SharedNoteUpdateOps = {
   readVersionInfo: async (root, id, name) => {
     try {
       const { entry } = await new LocalFolderSharedProvider(root).readVersion(id, name);
-      const updatedBy = entry.extra?.updatedBy as { name?: string } | undefined;
+      const authorName = typeof entry.author?.name === "string" ? entry.author.name : null;
       return {
         name,
         ok: true,
         at: entry.updated_at,
-        by: updatedBy?.name || entry.author?.name || null,
+        by: readUpdatedByName(entry) || authorName,
       };
     } catch {
       return { name, ok: false, at: null, by: null };
@@ -81,17 +94,20 @@ export function useSharedNoteVersions(
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [tick, setTick] = useState(0);
   const isNote = entry.type === "note";
+  // 前の版は受け付け中のノートだけ読む（受け付けていなければ一覧は出さない）
+  const accepting = isNote && canUpdateSharedNote(entry);
 
   useEffect(() => {
     if (!isNote) return;
     let cancelled = false;
     void (async () => {
       // 読めなくても画面は壊さない（一覧が空のまま）
-      const [names, c] = await Promise.all([
-        ops.listVersions(root, entry.id).catch(() => [] as string[]),
+      const [allNames, c] = await Promise.all([
+        accepting ? ops.listVersions(root, entry.id).catch(() => [] as string[]) : Promise.resolve([] as string[]),
         ops.conflictCopies(root, entry.id).catch(() => [] as string[]),
       ]);
-      // 並びは listVersions のまま（新しい順）。各版の中身から日時と人を読む
+      // 並びは listVersions のまま（新しい順）。画面で読むのは先頭 5 件まで。各版の中身から日時と人を読む
+      const names = allNames.slice(0, MAX_VERSIONS_SHOWN);
       const v = await Promise.all(
         names.map((name) =>
           ops
@@ -108,7 +124,7 @@ export function useSharedNoteVersions(
     };
     // ops は呼び出し側が固定で渡す前提（依存に入れると毎回読み直す）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNote, root, entry.id, entry.hash, tick]);
+  }, [isNote, accepting, root, entry.id, entry.hash, tick]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
   return { versions, conflicts, reload };
@@ -168,6 +184,8 @@ export type SharedNoteUpdatePanelProps = {
   onReload: () => void;
   /** 自分が書いた版の hash を知らせる（自分で戻した直後に「更新あり」を出さないため） */
   onSelfWrite?: (hash: string) => void;
+  /** 戻したあとに読める写しを置く材料。渡さなければ共有 id だけの最小の材料を使う */
+  readable?: ReadableCopyContext;
   ops?: SharedNoteUpdateOps;
 };
 
@@ -180,6 +198,7 @@ export function SharedNoteUpdatePanel({
   versions,
   onReload,
   onSelfWrite,
+  readable,
   ops = defaultSharedNoteUpdateOps,
 }: SharedNoteUpdatePanelProps) {
   const t = useT();
@@ -229,6 +248,9 @@ export function SharedNoteUpdatePanel({
         const result = await ops.restoreSharedVersion(entry.id, name, {
           root,
           author: currentIdentity,
+          // 読める写しの設定（共有フォルダごとのスイッチ）は syncReadableCopy が root から引く。
+          // ここでは来歴の中でノートを指す名前だけ渡す（共有されたノートには手元の id が無いので共有 id）
+          readable: readable ?? { noteId: entry.id },
         });
         if (result.ok) {
           setLocal(null);
@@ -237,6 +259,7 @@ export function SharedNoteUpdatePanel({
           // 本文は entry.hash が変わると読み直される
           notifySharedLibraryChanged();
           onReload();
+          if (result.readableCopy === "failed") setMessage(t("share.readableCopyFailed"));
         } else if (result.conflict) {
           setMessage(t("sharedNote.versions.restoreConflict"));
         } else {
@@ -246,11 +269,11 @@ export function SharedNoteUpdatePanel({
         setBusy(false);
       }
     },
-    [currentIdentity, entry, onReload, onSelfWrite, ops, root, t],
+    [currentIdentity, entry, onReload, onSelfWrite, ops, readable, root, t],
   );
 
   if (entry.type !== "note" || entry.status === "unshared") return null;
-  const updatedBy = entry.extra?.updatedBy as { name?: string; email?: string } | undefined;
+  const updatedByName = readUpdatedByName(entry);
 
   return (
     <div className="space-y-3" data-testid="shared-note-updates">
@@ -289,9 +312,9 @@ export function SharedNoteUpdatePanel({
         <>
           <div className="flex items-center gap-2 flex-wrap">
             <AcceptsUpdatesBadge accepting />
-            {updatedBy?.name && (
+            {updatedByName && (
               <span className="text-[11px] text-muted-foreground" data-testid="shared-note-updated-by">
-                {t("sharedNote.updates.lastUpdatedBy")}: {updatedBy.name}
+                {t("sharedNote.updates.lastUpdatedBy")}: {updatedByName}
                 {" · "}
                 {formatDateTime(entry.updated_at)}
               </span>

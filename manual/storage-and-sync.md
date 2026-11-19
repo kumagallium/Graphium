@@ -310,6 +310,10 @@ Normally only the author can change a shared note; everyone else forks it or pro
 ::: warning Limits
 - **Two people updating at almost the same moment** can end up as a conflict copy made by your sync software (a file with a name like "conflicted copy"). Graphium shows a notice with the file names when it finds one, but it does not merge it into the note. Open the files and decide yourself
 - **The name is self-declared.** The author identity is what each person typed in, not a verified login. It is a record for people, not proof of who made the change
+- **Writing straight to a NAS without sync software**: when two people update at almost the same moment, no conflict copy is made, and one of the updates may not remain
+- **Stopping sharing deletes the previous versions** along with the note
+- **Turning the switch off** hides the list of previous versions (it comes back when you turn it on again)
+- **The date of a previous version** comes from the clock of the computer that wrote it
 - **An author on an old version of the app** who shares again will overwrite the note **without the check**, so updates by others can be lost. Update the app for everyone who shares into this folder (the previous versions above are the way back)
 :::
 

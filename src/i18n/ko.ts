@@ -2993,6 +2993,7 @@ export const ko: Record<string, string> = {
   "share.move.dialogTitle": "어느 공유 폴더로 옮길까요?",
   "share.move.label": "옮길 위치",
   "share.move.note": "옮긴 위치에서 다시 공유하고, 원래 공유 폴더에서는 공유를 해제합니다. 다른 사람의 인용과 복제는 그대로 따라갈 수 있습니다. 원래 폴더에 달린 댓글과 제안은 원래 폴더에 남고, 갱신 횟수는 옮긴 위치에서 다시 셉니다.",
+  "share.move.blockedAccepting": "업데이트를 받는 중인 노트는 옮길 수 없습니다. 스위치를 끈 뒤에 옮기면, 옮긴 위치에는 내 기기에 있는 내용이 들어갑니다.",
   "share.move.confirm": "옮기기",
   "share.move.success": "다른 공유 폴더로 옮겼습니다.",
   "share.move.oldRemains": "새 폴더에는 공유했지만 원래 공유 폴더에서 공유를 해제하지 못했습니다({error}). 공유 폴더 화면에서 원래 사본을 공유 해제해 주세요.",

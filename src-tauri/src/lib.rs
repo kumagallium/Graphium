@@ -3383,7 +3383,8 @@ fn shared_list(root: String, entry_type: String) -> Result<Vec<String>, String> 
         if validate_id(stem).is_err() {
             continue;
         }
-        let content = fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+        // リンクを辿らず・FIFO で固まらず・上限つきで読む。読めないファイルは飛ばす（一覧全体は失敗させない）
+        let Ok(content) = read_shared_file(&path) else { continue };
         // 中身の entry.id がファイル名（stem）と違うものは、別の entry を装ったファイルなので返さない。
         // 壊れた JSON も一覧に出さない（TS 側でも読めずに捨てられるもの）
         let id_matches = serde_json::from_str::<serde_json::Value>(&content)
@@ -3403,7 +3404,7 @@ fn shared_read(root: String, entry_type: String, id: String) -> Result<String, S
     validate_id(&id)?;
     let dir = shared_type_dir_ro(&root, &entry_type)?;
     let path = dir.join(format!("{id}.json"));
-    fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))
+    read_shared_file(&path)
 }
 
 /// 共有の本体・前の版として読むファイルの大きさの上限（これを超えたらエラー）
@@ -3663,9 +3664,26 @@ const SHARED_VERSION_FUTURE_LIMIT_MS: u128 = 24 * 60 * 60 * 1000;
 /// - 同じ hash 部分の版がすでにあれば控えない（本体の書き込みが失敗し続けても、別々の
 ///   前の版が押し出されない）
 /// - 今控えた版は剪定で必ず残す
-fn snapshot_previous_version(root: &str, id: &str, current_path: &Path) -> Result<(), String> {
+/// - 新しい内容と今の内容の本文（body_base64）が同じなら控えない（受け付けのスイッチの切り替えなど
+///   本文が変わらない書き込みで、前の版の枠を使わない）
+fn snapshot_previous_version(
+    root: &str,
+    id: &str,
+    current_path: &Path,
+    new_content: &str,
+) -> Result<(), String> {
     let content =
         read_shared_file(current_path).map_err(|e| format!("前の版の控えに失敗（読み取り）: {e}"))?;
+    let body_of = |s: &str| -> Option<String> {
+        serde_json::from_str::<serde_json::Value>(s)
+            .ok()
+            .and_then(|v| v.get("body_base64")?.as_str().map(str::to_string))
+    };
+    if let (Some(a), Some(b)) = (body_of(&content), body_of(new_content)) {
+        if a == b {
+            return Ok(());
+        }
+    }
     let hash = serde_json::from_str::<serde_json::Value>(&content)
         .ok()
         .and_then(|v| v.get("entry")?.get("hash")?.as_str().map(str::to_string))
@@ -3821,7 +3839,7 @@ fn shared_write(
     assert_expected_hash(&path, &expected_hash)?;
     // 受け付け中のノートは、上書きする直前の中身を前の版として控える。控えられなければ上書きしない
     if accepting {
-        snapshot_previous_version(&root, &id, &path)?;
+        snapshot_previous_version(&root, &id, &path, &content)?;
     }
     write_shared_entry_file(&path, &content)
 }
@@ -7570,7 +7588,7 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         }
         let extra = if extra.is_empty() { String::new() } else { format!(r#","extra":{{{}}}"#, extra.join(",")) };
         format!(
-            r#"{{"entry":{{"id":"{AU_ID}","type":"note","author":{{"name":"A","email":"{author}"}},"created_at":"2026-01-01T00:00:00Z","hash":"{hash}"{extra}{extra_entry}}},"body_base64":""}}"#
+            r#"{{"entry":{{"id":"{AU_ID}","type":"note","author":{{"name":"A","email":"{author}"}},"created_at":"2026-01-01T00:00:00Z","hash":"{hash}"{extra}{extra_entry}}},"body_base64":"{hash}"}}"#
         )
     }
 
@@ -7799,6 +7817,19 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         std::thread::sleep(Duration::from_millis(3));
         au_write(&root, au_json(H2, Some(true), "a@x", ""), "a@x", Some(H1)).unwrap();
         assert_eq!(shared_versions_list(root, AU_ID.into()).unwrap(), first);
+    }
+
+    #[test]
+    fn versions_do_not_use_a_slot_when_only_the_switch_changes() {
+        // 本文（body_base64）が同じで entry だけ変わる書き込み（スイッチの切り替え）は控えない
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        let same_body = au_json(H2, Some(false), "a@x", "").replace(&format!(r#""body_base64":"{H2}""#), &format!(r#""body_base64":"{H1}""#));
+        au_write(&root, same_body, "a@x", Some(H1)).unwrap();
+        assert!(shared_versions_list(root.clone(), AU_ID.into()).unwrap().is_empty());
+        // 本文が変わる書き込みは今までどおり控える
+        let (_t, root2) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        au_write(&root2, au_json(H2, Some(true), "a@x", ""), "a@x", Some(H1)).unwrap();
+        assert_eq!(shared_versions_list(root2, AU_ID.into()).unwrap().len(), 1);
     }
 
     #[test]

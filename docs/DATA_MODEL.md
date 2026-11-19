@@ -4559,8 +4559,20 @@ email addresses are self-declared.
   `author`.
 - A re-share by the author keeps `acceptsUpdates` on and carries no
   `updatedBy`. While the switch is on, the author's re-share also passes the
-  `hash` it last read as `expectedHash`, so it does not overwrite a newer
-  update (it reports a conflict instead).
+  `hash` it last read as `expectedHash` (see `bodyHash` below), so it does not
+  overwrite a newer update (it reports a conflict instead).
+- `extra.bodyHash?: string` — SHA-256 of the body bytes alone (`sha256:<hex>`,
+  the same function as `BlobRef.hash`). `entry.hash` also covers `extra`, so
+  flipping the switch or restoring changes it even when the body is the same;
+  `bodyHash` tells whether the body itself changed. Every path that writes the
+  body sets it (the author's share, a contributor's update, a restore); the
+  switch change carries it over. The matching `sharedRef.bodyHash?` on the
+  author's note (optional; absent on older notes) records the value from the
+  last successful share. On the author's re-share of an accepting note, when
+  the current entry's `extra.bodyHash` equals `sharedRef.bodyHash`, nobody else
+  changed the body, so the current `entry.hash` is passed as `expectedHash`;
+  otherwise the stale `sharedRef.hash` is passed and the write reports a
+  conflict.
 - A contributor's copy (made with `forkSharedNote`) records the version it
   was read from in `forkedFrom.hash`; an update is written with that value
   as `expectedHash`. The shared body never carries `forkedFrom` or
