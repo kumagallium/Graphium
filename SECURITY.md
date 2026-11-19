@@ -13,8 +13,12 @@ If you discover a security vulnerability in Graphium, please report it responsib
 ### How to Report
 
 1. **Do NOT open a public issue** for security vulnerabilities
-2. Email: **kumagallium@gmail.com**
-3. Include:
+2. Preferred: use GitHub's private reporting — open the repository's
+   **Security** tab and choose **Report a vulnerability**
+   (https://github.com/kumagallium/Graphium/security/advisories/new).
+   The report stays private between you and the maintainer.
+3. Alternatively, email: **kumagallium@gmail.com**
+4. Include:
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
