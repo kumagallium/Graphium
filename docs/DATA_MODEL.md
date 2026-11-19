@@ -4321,6 +4321,33 @@ linked material, `graphium:placeId`, `graphium:relPath`,
 `graphium:fileSize` and `graphium:fileModified` (an `xsd:dateTime`). The
 absolute path and the history are not exported.
 
+**Source data.** A small material made by analysis (a summary table, a
+figure) can name a linked file as its **source data**: a 40 GB `raw.csv` is
+linked, `summary.csv` is imported, and `summary.csv` gets `raw.csv` as its
+source data. The parent's `fileId` goes into the existing
+`MediaIndexEntry.derivedFromAssets`; there is no new field and the media
+index version is not bumped. Rules (`src/features/linked-files/link-origin.ts`):
+
+- A parent must be a linked file (`isLinkedEntry`). Linked files are
+  `type: "url"`, so they never trip `hasExtractedImages` /
+  `hasExpandedOffice`, which read "some material has this one in
+  `derivedFromAssets`" as "already extracted". Naming a PDF or an Office
+  file as a parent would make it look extracted when it was not.
+- A child must not be a linked file, and its `type` is `image`, `pdf`,
+  `document`, `data`, `video` or `audio` (not a memo, an AI conversation or a
+  URL bookmark). Parent is always linked and child never is, so there is no cycle.
+- Other derived-from ids (such as the PDF an extracted image came from) are
+  kept; the UI removes only linked parents. Archived linked files are not
+  offered as candidates, and an id the index no longer has is not shown.
+- Writes re-read the index, save only when something changed, and fire
+  `MEDIA_INDEX_CHANGED_EVENT`.
+
+Graphium does not read the source data to check the relationship. It is a
+record a person made. The note's PROV-JSON-LD export writes it as
+`prov:wasDerivedFrom` from the material to the linked file's `Entity`
+(which carries the `graphium:placeId` fields above), when the parent is in
+the media index.
+
 **Not part of this feature.** Searching, previewing or extracting the
 contents of a linked file; using one in a table or chart; AI ingest or
 translation; sharing a linked file itself (it is skipped in bulk share and

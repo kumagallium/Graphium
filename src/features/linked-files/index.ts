@@ -29,3 +29,13 @@ export {
 } from "./linked-entry";
 export { displayTypeOf, displayMimeOf, isInMediaList } from "./display-type";
 export { linkFilesNotice, linkFilesErrorNotice, type LinkFilesOutcome } from "./link-notice";
+export {
+  canHaveLinkedOrigin,
+  listOriginCandidates,
+  linkedOriginsOf,
+  linkedOriginPlace,
+  changeLinkedOrigins,
+  addLinkedOrigin,
+  removeLinkedOrigin,
+  persistLinkedOrigins,
+} from "./link-origin";

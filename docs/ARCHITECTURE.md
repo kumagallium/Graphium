@@ -1297,6 +1297,7 @@ without knowing Graphium's internals.
 | A note the body points at (`@`, pasted link, table-row link) | `Entity` stub (the real note `Entity` in a plan export) | `dcterms:references` from the note. It carries no derivation direction |
 | The plan this paper belongs to | stub (no plan type) | `dcterms:isPartOf` from the note |
 | A memo (on a note, block, material, or a quote) | `oa:Annotation` and `Entity` | `oa:hasBody` / `oa:hasTarget` / `oa:motivatedBy` |
+| Source data named on a material (a summary made from a linked raw file) | the material `Entity` | `prov:wasDerivedFrom` the linked file's `Entity`, which is declared with `graphium:placeId` and the rest. Taken from the linked parents in `MediaIndexEntry.derivedFromAssets`; other parents (the PDF an image was extracted from, say) are not written, and neither is a parent the media index no longer has. The readable copy in a shared folder leaves source data out (`includeSourceData: false`), so a file the note does not cite is not named to the people who share that folder. |
 | The source of a material (authors, year, venue, DOI) | the material `Entity` | `dc:creator`, `dc:date`, `dc:publisher`, `dc:identifier`, `rdfs:seeAlso` |
 | An AI chat (only when requested) | `prov:Collection` of message `Entity`s | `prov:value`, `graphium:role` |
 | Who edited what, when, by human or AI | named `prov:Bundle` | the note's `graphium:provenanceBundle` |
