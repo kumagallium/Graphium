@@ -114,6 +114,8 @@ What Graphium puts in a shared folder is in its own format, so it cannot be read
 - **It is a setting for this device:** it applies to the notes you share. Copies of someone else's notes follow that person's setting. Notes you shared before turning it on get their copies the next time you re-share them. If you turn it off and re-share a note, its old copies are removed.
 - **Notes only.** Knowledge pages and other entries do not get copies.
 
+![The opened row of the shared folder "Whole bakery" (/Volumes/Bakery/Shared) with its Location and Large files folder, and below them the ticked checkbox Also keep readable copies, which explains that a Markdown file and its provenance are placed in the readable/notes folder when you share or re-share a note.](/screenshots/readable-copies-setting.png)
+
 The shared copy is still the original; these files are extra copies for reading. Graphium does not read them back.
 
 ### Publish and unpublish
@@ -305,6 +307,8 @@ Markdown is lossy by design: what a block *means* survives, how it *looks* does 
 ### Export to Word <Badge type="tip" text="Added in v0.140.0 (2026-11-17)" /> {#export-to-word}
 
 **Word (.docx)** in the note menu, and in the menu of a note opened in the side peek, saves the note as a Word file. Headings, spacing and tables are styled in the file itself.
+
+![The note menu with its Export group: Print / PDF, Markdown (.md), Word (.docx), highlighted, and Provenance (PROV-JSON-LD).](/screenshots/note-menu-word.png)
 
 The Word file carries headings, paragraphs, bullet, numbered and check lists, quotes, code, tables (merged cells included), images stored in Graphium, and the charts of the note you have open (as pictures). Formulas, both formula blocks and formulas inside a sentence, arrive as Word equations that you can go on editing in Word: fractions, superscripts and subscripts, roots, Greek letters, sums, integrals, brackets, function names and text. A formula that uses something outside that range, such as a matrix, several aligned lines, an equation number or a box, arrives as its LaTeX text instead. This is decided formula by formula, and a formula is never left half converted. Some things arrive as text: a calculation as its lines, a data table as its first 50 rows, and a PDF or bookmark as its name (with its link when it points at a web address). Check and toggle items keep their mark as a character, and links to other notes arrive as plain text. The page is A4 portrait, with the note's title at the top. A chart picture keeps its caption and the blocks nested under it, and a very tall picture is scaled down to fit the page. Images from an external URL arrive as a link only, and the graphs of labels and provenance are not included.
 

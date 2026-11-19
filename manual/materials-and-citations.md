@@ -184,6 +184,8 @@ The file appears in the gallery with a **Link** mark. Linking the same file agai
 
 Open a linked file and you see its **Data place**, **Location in the place**, **Size**, **Modified**, **Recorded** and **Status**. Graphium compares the size and modified time with the record to decide the status. In the gallery, a mark appears only when the status is not **No change**.
 
+![The linked file "Dough hydration.xlsx" with a Link mark. It lists the data place Whole bakery, the location Recipes/Dough hydration.xlsx, size, modified and recorded times, and the status The original has changed. A Recorded and current table compares 47.1 KB with 50.7 KB, above the Record the current state, Open the original, Show in folder and Check again buttons.](/screenshots/linked-file-details.png)
+
 | Status | What it means | What to do |
 |---|---|---|
 | **No change** | The size and modified time match what was recorded. | Nothing. |
