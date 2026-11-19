@@ -41,7 +41,7 @@ export {
   type CheckSourcesApiResult,
   type CheckSourcesApiResultItem,
 } from "./api";
-export { saveSourceCheckResult, saveSourceCheckResults, type SaveSourceCheckDeps } from "./save";
+export { saveSourceCheckChange, saveSourceCheckResult, saveSourceCheckResults, type SaveSourceCheckDeps } from "./save";
 export { pickNextUncheckedSource, useAutoSourceCheck } from "./use-auto-source-check";
 export {
   buildNeedsReviewList,
