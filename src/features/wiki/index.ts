@@ -22,7 +22,7 @@ export {
   promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
   extractBodyPreview,
-  extractTopicOneLiner, consolidateTopics, retargetClaimTopicId,
+  extractTopicOneLiner, consolidateTopics, retargetClaimTopicId, judgeClaimTopicLinks,
   // Lint（自動実行用）
   lintWikis, buildWikiSnapshots, mergeMissingSourceIssues,
   // 機械的な自動アーカイブ（LLM 不要）
@@ -86,5 +86,7 @@ export type {
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
   TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";
+export { linkClaimsToTopicsForSource, selectClaimTopicLinkCandidates } from "./claim-topic-link";
+export type { ClaimTopicLinkDeps, ClaimTopicLinkEntry, ClaimTopicLinkResult } from "./claim-topic-link";
 export { mergeAtomsExplicit } from "./atom-merge";
 export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

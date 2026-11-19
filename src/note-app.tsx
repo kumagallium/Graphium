@@ -485,6 +485,7 @@ import {
   mergeTopicsExplicit, normalizeTopicTitle,
   mergeAtomsExplicit,
   runSourceTopicStage, mergeSourceTopicStageResults, type SourceTopicStageInput, type SourceTopicStageResult,
+  linkClaimsToTopicsForSource, judgeClaimTopicLinks, type ClaimTopicLinkEntry, type ClaimTopicLinkResult,
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -12440,6 +12441,54 @@ export function NoteApp() {
   const sourceDriftTitleOf = (sourceId: string) =>
     fm.noteIndex?.notes.find((n) => n.noteId === sourceId)?.title ?? sourceId;
 
+  // 知見とトピックを結ぶ段の候補の一覧。取り込みの途中でも新しい状態を見るよう fmRef から読む。
+  // ゴミ箱・アーカイブは除く（Asterism への書き出しと同じ範囲）
+  const listClaimTopicLinkEntries = useCallback((): ClaimTopicLinkEntry[] => {
+    const cur = fmRef.current;
+    const hidden = new Set(
+      (cur.rawNoteIndex?.notes ?? []).filter((n) => n.deletedAt || n.archivedAt).map((n) => n.noteId),
+    );
+    const entries: ClaimTopicLinkEntry[] = [];
+    for (const [id, meta] of cur.wikiMetas) {
+      if (hidden.has(id) || (meta.kind !== "claim" && meta.kind !== "topic")) continue;
+      entries.push({ id, kind: meta.kind, derivedFromNotes: meta.derivedFromNotes, topicIds: meta.topicIds });
+    }
+    return entries;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // そのトピックに結ばれた知見（統合のとき統合先へ付け替える対象）
+  const claimIdsLinkedToTopic = useCallback((topicId: string): string[] => {
+    const ids: string[] = [];
+    for (const [id, meta] of fmRef.current.wikiMetas) {
+      if (meta.kind === "claim" && meta.topicIds?.includes(topicId)) ids.push(id);
+    }
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 結ぶ段の結果を操作ログに残す（検査で捨てた答えの数もここに残る）
+  const recordClaimTopicLinkResult = useCallback((linkResult: ClaimTopicLinkResult, sourceTitle: string) => {
+    if (linkResult.calls === 0 || linkResult.aborted) return;
+    if (linkResult.failureError !== undefined) {
+      console.warn("知見とトピックを結べなかった:", sourceTitle, linkResult.failureError);
+      return;
+    }
+    if (linkResult.linkedClaims === 0 && linkResult.rejected === 0 && linkResult.saveFailed === 0) return;
+    wikiLog.append(
+      "cross-update",
+      [],
+      `Linked ${linkResult.linkedClaims}/${linkResult.claimsJudged} claim(s) to topics from source "${sourceTitle}"`,
+      {
+        sourceId: linkResult.sourceId,
+        links: linkResult.links,
+        rejected: linkResult.rejected,
+        alreadyLinked: linkResult.alreadyLinked,
+        saveFailed: linkResult.saveFailed,
+      },
+    ).catch(() => {});
+  }, []);
+
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
   // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
@@ -12537,6 +12586,23 @@ export function NoteApp() {
           log: (...args: unknown[]) => console.warn(...args),
         });
         for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
+        // トピックの段のあとに、その資料の知見をトピックへ結ぶ（同じ列の中で 1 件ずつ）。
+        // 失敗しても取り込みは失敗にしない（linkClaimsToTopicsForSource は例外を投げない）
+        for (const source of sources) {
+          if (options?.signal?.aborted) break;
+          const linkResult = await linkClaimsToTopicsForSource(source.id, {
+            listEntries: listClaimTopicLinkEntries,
+            loadDoc: fm.loadDoc,
+            getCachedDoc: fm.getCachedDoc,
+            // topicIds だけの保存。索引の組み直し（全 Wiki の読み直し）を起こさない
+            handleSaveWikiFile: (wikiId, doc) => fm.handleSaveWikiFile(wikiId, doc, { metadataOnly: true }),
+            judge: (claims, topics, signal) => judgeClaimTopicLinks(claims, topics, undefined, signal),
+            extraTopicIds: result.touchedTopicIds,
+            signal: options?.signal,
+            log: (...args: unknown[]) => console.warn(...args),
+          });
+          recordClaimTopicLinkResult(linkResult, source.title);
+        }
         return result;
       });
       topicStageQueueRef.current = run.then(() => undefined, () => undefined);
@@ -15341,6 +15407,7 @@ export function NoteApp() {
         getCachedDoc: fm.getCachedDoc,
         handleSaveWikiFile: fm.handleSaveWikiFile,
         handleDeleteWikiFile: fm.handleDeleteWikiFile,
+        claimIdsLinkedToTopic,
         resolveSource,
         resolveSourceTitle,
         noteIndex: buildNoteIndex(fm.noteIndex),
@@ -18511,6 +18578,7 @@ export function NoteApp() {
               resolveSource,
               resolveSourceTitle,
               handleDeleteWikiFile: fm.handleDeleteWikiFile,
+              claimIdsLinkedToTopic,
               noteIndex: buildNoteIndex(fm.noteIndex),
               locale: getGenerationLanguage(),
               // テーマどうしの統合可否は軽い処理（デフォルトモデル）で判断する（2026-11-07 の測定で 10B 級でも 4/4）

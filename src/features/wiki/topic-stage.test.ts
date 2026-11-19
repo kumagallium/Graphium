@@ -1935,6 +1935,61 @@ describe("applyTopicMerges の groupScope", () => {
     });
   }
 
+  describe("吸収される話題に結ばれた知見（topicIds）の付け替え", () => {
+    function seedNewFormat() {
+      const docs = new Map<string, GraphiumDocument>();
+      for (const [id, title] of [["t1", "残す話題"], ["t2", "吸収される話題"]] as const) {
+        const doc = makeTopicDoc(id, title, []);
+        doc.wikiMeta!.topicMarkdown = `## 定義\n${title}の本文`;
+        doc.wikiMeta!.derivedFromNotes = ["s1"];
+        docs.set(`wiki:${id}`, doc);
+      }
+      docs.set("wiki:c1", makeClaimDoc("c1", "知見1", ["t2", "t3"]));
+      const topics: ExistingTopicForMerge[] = [
+        { id: "t1", title: "残す話題", memberClaimIds: [] },
+        { id: "t2", title: "吸収される話題", memberClaimIds: [] },
+      ];
+      (global.fetch as any).mockImplementation(async (url: string) => {
+        if (String(url).includes("/merge-topics")) {
+          return { ok: true, json: async () => ({ body: "## 定義\n統合後の本文 [[source:s1]]" }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+      return { docs, topics };
+    }
+
+    it("ゴミ箱へ送る前に統合先へ付け替える", async () => {
+      const { docs, topics } = seedNewFormat();
+      const deps = makeDeps(docs, { claimIdsLinkedToTopic: (id) => (id === "t2" ? ["c1"] : []) });
+      const result = await mergeTopicsExplicit("t1", ["t2"], topics, deps);
+
+      expect(result).toMatchObject({ merged: 1, failed: 0 });
+      expect(docs.get("wiki:c1")!.wikiMeta!.topicIds).toEqual(["t3", "t1"]);
+      expect(deps.handleDeleteWikiFile).toHaveBeenCalledWith("t2");
+    });
+
+    it("付け替えられなければ、吸収される話題をゴミ箱へ送らない", async () => {
+      vi.useFakeTimers();
+      try {
+        const { docs, topics } = seedNewFormat();
+        const save = vi.fn(async (wikiId: string, doc: GraphiumDocument) => {
+          if (wikiId === "c1") return false;
+          docs.set(`wiki:${wikiId}`, doc);
+          return true;
+        });
+        const deps = makeDeps(docs, { handleSaveWikiFile: save, claimIdsLinkedToTopic: () => ["c1"] });
+        const running = mergeTopicsExplicit("t1", ["t2"], topics, deps);
+        await vi.runAllTimersAsync();
+        const result = await running;
+
+        expect(result).toMatchObject({ merged: 0, failed: 1 });
+        expect(deps.handleDeleteWikiFile).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it("groupScope があると、組の保存・ゴミ箱送りは scope の関数が使われ、end が 1 回呼ばれる", async () => {
     const { docs, topics } = seedOldFormat();
     mockReviseOk();

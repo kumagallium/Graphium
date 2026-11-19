@@ -1944,8 +1944,10 @@ type WikiMeta = {
   derivedFromClaims?: string[];
 
   // Claim-only. IDs of the topic (`kind: "topic"`) pages this Claim belongs to
-  // (no count limit — usually 1). Paired bidirectionally with the topic's
-  // `derivedFromClaims` above.
+  // (usually 1). On a legacy Topic this is paired with the topic's
+  // `derivedFromClaims` above. New-format Topics have no member list: the link
+  // lives here only, is chosen per source (0–3 per Claim, §3.1b) and never
+  // overwrites links that already exist.
   topicIds?: string[];
 
   // Topic/Answer, new format (2026-09 onwards). Canonical Markdown body kept
@@ -2258,6 +2260,29 @@ page's own "Regenerate" action; (2) the Lint view's "legacy-format
 topics" section, which rebuilds every topic still awaiting migration in
 one confirmed batch; (3) the Lint view's per-issue "Rebuild from
 sources" fix action on a `missing-source` finding.
+
+**Linking Claims to Topics: `topicIds`.** New-format Topics are written from the
+source, so a Claim and a Topic made from the same source are not connected by
+anything the Topic stage does. A separate step connects them after the Topic stage,
+once per source (`linkClaimsToTopicsForSource`,
+`src/features/wiki/claim-topic-link.ts`; `POST /api/wiki/link-claims-to-topics`, light
+tier): one AI call receives that source's Claims that have no `topicIds` yet (title
+only) and the Topics that list the source in `derivedFromNotes` (title plus the
+opening of the definition), and picks 0–3 Topics per Claim that are what the Claim is
+mainly about — a Topic whose word merely appears does not qualify, and an empty answer
+is valid. Claims and Topics are numbered in the prompt (`C1`, `T1`), so the model never
+copies ids.
+
+The result is written to the Claim's `wikiMeta.topicIds` only. `derivedFromClaims` is
+never written here: on a legacy Topic it means "the material the body was generated
+from", which is not what this link says. Answers are checked by machine before saving —
+the id is in the set that was sent, the Topic still lists the source, at most 3 per
+Claim — and an answer that fails is discarded and counted (`rejected`, recorded in the
+wiki log). A Claim that already has `topicIds` is never overwritten. The link does not
+change a page's body, so no revision is recorded. A failed or stopped judgment never
+fails the ingest. When Topics are merged, Claims linked to an absorbed Topic are
+retargeted to the kept Topic before the absorbed page goes to Trash, in both the app
+and MCP `merge_topics`.
 
 Re-ingesting a source also re-checks topics that already cite it, not
 just the ones the router names: `runSourceTopicStage` unions the
