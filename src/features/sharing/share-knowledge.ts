@@ -10,7 +10,8 @@
 //   extra.wikiKind に持たせる。WikiKind は流動的な分類なので共有フォーマットの
 //   語彙（フォルダ構造）には焼き込まない（前方互換、詳細は shared/types.ts）
 // - derivedFromNotes 等のローカル ID は body にそのまま残る（コピー semantics）。
-//   受け手の環境で解決できない問題は fork 側（fork-knowledge.ts）でリセットして吸収する
+//   受け手の環境で解決できない問題は fork 側（fork-knowledge.ts）でリセットして吸収する。
+//   例外はメモ由来の `memo:<id>` で、共有の共通処理が外す（strip-memo-traces.ts）
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import {
