@@ -233,6 +233,14 @@ export function buildNoteGraph(
         }
       }
     }
+    // 知見の topicIds: 知見 → トピックの「参照」。AI が「この知見は主にこのトピックの話」と
+    // 結んだもので、トピックの材料（derivedFromClaims）ではないので派生にはしない
+    // （DATA_MODEL §3.1b）。同じ組に旧形式の派生があれば、重複除去で派生が残る
+    if (doc.source === "ai" && doc.wikiMeta?.kind === "claim" && doc.wikiMeta.topicIds) {
+      for (const topicId of doc.wikiMeta.topicIds) {
+        if (fileIds.has(topicId)) addEdge(fileId, topicId, "reference");
+      }
+    }
     // 通常ノートの top-level sourceUrl（url-to-prov 由来）→ 外部 URL ノードへのエッジ
     if (doc.source !== "ai" && doc.sourceUrl) {
       addEdge(`url:${doc.sourceUrl}`, fileId, "used");
@@ -486,10 +494,14 @@ const RELATION_PRIORITY: Record<EdgeRelation, number> = {
  *
  * @param index     GraphiumIndex（ensureIndex で常時メモリにある想定）
  * @param mediaIndex 外部ソース（pdf:/url:）の表示名解決に使う。null なら ID から仮の名前を作る。
+ * @param wikiMetas  ページ ID → wikiMeta の写し（知見の topicIds を読む）。索引には topicIds を
+ *                   写していない（topicIds だけの保存は索引を更新しないので、写すと古くなる）ため、
+ *                   アプリが常に持っている写しから「知見 → トピック」の参照線を張る。省略すると張らない。
  */
 export function buildGlobalGraph(
   index: GraphiumIndex,
   mediaIndex: MediaIndex | null = null,
+  wikiMetas: ReadonlyMap<string, { kind?: string; topicIds?: readonly string[] }> | null = null,
 ): NoteGraphData {
   // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
   // （2ホップグラフの files 集合＝trash 除外、と揃える）。
@@ -562,6 +574,16 @@ export function buildGlobalGraph(
     if (e.derivedFromClaims) {
       for (const claimId of e.derivedFromClaims) {
         if (validIds.has(claimId)) addEdge(claimId, e.noteId, "derived");
+      }
+    }
+    // 知見の topicIds: 知見 → トピックの参照（周辺グラフと同じ意味。派生にはしない）。
+    // 保管・ゴミ箱のトピックは validIds に無いので線を張らない
+    if (wikiMetas && e.wikiKind === "claim") {
+      const meta = wikiMetas.get(e.noteId);
+      if (meta?.kind === "claim" && meta.topicIds) {
+        for (const topicId of meta.topicIds) {
+          if (validIds.has(topicId)) addEdge(e.noteId, topicId, "reference");
+        }
       }
     }
   }

@@ -72,6 +72,52 @@ describe("buildGlobalGraph — インデックス起点の全ノードグラフ"
     expect(g.edges.every((e) => e.relation === "derived")).toBe(true);
   });
 
+  it("知見の topicIds: 知見 → トピックを参照の線で結ぶ。保管・ゴミ箱・存在しないトピックには張らない", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "c1", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "c2", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "c-archived", source: "ai", wikiKind: "claim", archivedAt: "2026-01-01" }),
+        entry({ noteId: "t1", source: "ai", wikiKind: "topic" }),
+        entry({ noteId: "t2", source: "ai", wikiKind: "topic" }),
+        entry({ noteId: "t-trashed", source: "ai", wikiKind: "topic", deletedAt: "2026-01-01" }),
+        entry({ noteId: "t-archived", source: "ai", wikiKind: "topic", archivedAt: "2026-01-01" }),
+      ]),
+      null,
+      new Map([
+        ["c1", { kind: "claim", topicIds: ["t1", "t2", "t-trashed", "ghost"] }],
+        ["c2", { kind: "claim", topicIds: ["t1", "t-archived"] }],
+        ["c-archived", { kind: "claim", topicIds: ["t1"] }],
+      ]),
+    );
+    const key = (e: { source: string; target: string }) => `${e.source}->${e.target}`;
+    expect(g.edges.map(key).sort()).toEqual(["c1->t1", "c1->t2", "c2->t1"]);
+    expect(g.edges.every((e) => e.relation === "reference")).toBe(true);
+  });
+
+  it("知見の topicIds と旧形式の derivedFromClaims が同じ組を指すときは派生の 1 本に畳む", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "c1", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "t1", source: "ai", wikiKind: "topic", derivedFromClaims: ["c1"] }),
+      ]),
+      null,
+      new Map([["c1", { kind: "claim", topicIds: ["t1"] }]]),
+    );
+    expect(g.edges).toHaveLength(1);
+    expect(g.edges[0]).toMatchObject({ source: "c1", target: "t1", relation: "derived" });
+  });
+
+  it("wikiMetas を渡さないときは topicIds の線を張らない（索引だけの呼び出し元）", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "c1", source: "ai", wikiKind: "claim" }),
+        entry({ noteId: "t1", source: "ai", wikiKind: "topic" }),
+      ]),
+    );
+    expect(g.edges).toHaveLength(0);
+  });
+
   it("存在しない（除外された）ノートへのリンクは捨てる", () => {
     const g = buildGlobalGraph(
       index([
