@@ -4214,6 +4214,7 @@ export const ko: Record<string, string> = {
   "sharedNote.updates.forkHint": "업데이트를 받는 노트입니다. 사본을 만들어 편집하고 공유에 반영할 수 있습니다.",
   "sharedNote.versions.title": "이전 버전",
   "sharedNote.versions.empty": "이전 버전이 아직 없습니다.",
+  "sharedNote.versions.unreadable": "읽을 수 없는 버전",
   "sharedNote.versions.restore": "이 버전으로 되돌리기",
   "sharedNote.versions.restoreConfirm": "\"{title}\"을(를) {date} 버전으로 되돌릴까요?\n\n지금 버전도 이전 버전으로 남으므로 나중에 다시 되돌릴 수 있습니다.",
   "sharedNote.versions.restoreFailed": "되돌리지 못했습니다: {error}",

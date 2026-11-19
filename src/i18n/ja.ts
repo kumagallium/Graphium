@@ -4268,6 +4268,7 @@ export const ja: Record<string, string> = {
   "sharedNote.updates.forkHint": "更新を受け付けています。写しを作って編集し、共有に反映できます。",
   "sharedNote.versions.title": "前の版",
   "sharedNote.versions.empty": "前の版はまだありません。",
+  "sharedNote.versions.unreadable": "読めない版",
   "sharedNote.versions.restore": "この版に戻す",
   "sharedNote.versions.restoreConfirm": "「{title}」を {date} の版に戻しますか？\n\n今の版も前の版として残るので、あとでまた戻せます。",
   "sharedNote.versions.restoreFailed": "戻せませんでした: {error}",

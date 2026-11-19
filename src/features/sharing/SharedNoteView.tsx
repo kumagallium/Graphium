@@ -248,11 +248,15 @@ function SharedNoteViewInner({
   // 「更新あり」「新着コメント N」は開いた瞬間の控えで判定する。
   // 下の markSeen が控えを進めてしまうので、進む前の値を握っておく
   const [seenAtOpen] = useState(() => readSeenStore());
+  // 自分で戻した・切り替えた版の hash。自分の書き込みを「更新あり」にしない
+  const [selfWrittenHash, setSelfWrittenHash] = useState<string | null>(null);
   const commentTotal = useMemo(
     () => countCommentsFor(entry.id, allEntries),
     [entry.id, allEntries],
   );
-  const wasUpdated = isUpdatedSince(entry, currentIdentity?.email ?? null, seenAtOpen);
+  const wasUpdated =
+    entry.hash !== selfWrittenHash &&
+    isUpdatedSince(entry, currentIdentity?.email ?? null, seenAtOpen);
   const newComments = newCommentCount(entry.id, commentTotal, seenAtOpen);
 
   // 開いた＝読んだ、とみなして控えを更新する（一覧の印を消す）。
@@ -697,6 +701,7 @@ function SharedNoteViewInner({
                 root={entryRoot}
                 versions={noteVersions.versions}
                 onReload={noteVersions.reload}
+                onSelfWrite={setSelfWrittenHash}
                 ops={updateOps}
               />
               <div className="space-y-1.5">

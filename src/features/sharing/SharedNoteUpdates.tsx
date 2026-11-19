@@ -27,8 +27,24 @@ import { notifySharedLibraryChanged } from "./shared-library-store";
 import { sharedEntryTitle } from "./shared-entry-parts";
 
 /** 共有フォルダへの読み書き。既定は実物。Storybook / テストで差し替える */
+/**
+ * 前の版 1 件の表示用の情報。ファイル名の時刻は「上書きされて控えに回った時刻」なので使わず、
+ * 版の中身（updated_at と updatedBy / author）から「その版を作った日時と人」を出す。
+ * 読めなかった版は ok=false（戻すボタンを出さない）
+ */
+export type SharedVersionInfo = {
+  name: string;
+  ok: boolean;
+  /** その版を作った日時（ISO）。読めなければ null */
+  at: string | null;
+  /** その版を作った人の名前。分からなければ null */
+  by: string | null;
+};
+
 export type SharedNoteUpdateOps = {
   listVersions: (root: string, id: string) => Promise<string[]>;
+  /** 前の版の中身から、作った日時と人を読む（読めなければ ok=false） */
+  readVersionInfo: (root: string, id: string, name: string) => Promise<SharedVersionInfo>;
   conflictCopies: (root: string, id: string) => Promise<string[]>;
   setAcceptsUpdates: typeof setAcceptsUpdates;
   restoreSharedVersion: typeof restoreSharedVersion;
@@ -36,16 +52,24 @@ export type SharedNoteUpdateOps = {
 
 export const defaultSharedNoteUpdateOps: SharedNoteUpdateOps = {
   listVersions: (root, id) => new LocalFolderSharedProvider(root).listVersions(id),
+  readVersionInfo: async (root, id, name) => {
+    try {
+      const { entry } = await new LocalFolderSharedProvider(root).readVersion(id, name);
+      const updatedBy = entry.extra?.updatedBy as { name?: string } | undefined;
+      return {
+        name,
+        ok: true,
+        at: entry.updated_at,
+        by: updatedBy?.name || entry.author?.name || null,
+      };
+    } catch {
+      return { name, ok: false, at: null, by: null };
+    }
+  },
   conflictCopies: (root, id) => new LocalFolderSharedProvider(root).conflictCopies("note", id),
   setAcceptsUpdates,
   restoreSharedVersion,
 };
-
-/** 前の版のファイル名の先頭 13 桁は UTC ミリ秒。読めなければ null */
-export function versionTime(name: string): number | null {
-  const ms = Number(name.slice(0, 13));
-  return Number.isFinite(ms) && ms > 0 ? ms : null;
-}
 
 /** 前の版の一覧（新しい順）と、同期の競合コピーのファイル名。note 以外は読まない */
 export function useSharedNoteVersions(
@@ -53,7 +77,7 @@ export function useSharedNoteVersions(
   root: string,
   ops: SharedNoteUpdateOps = defaultSharedNoteUpdateOps,
 ) {
-  const [versions, setVersions] = useState<string[]>([]);
+  const [versions, setVersions] = useState<SharedVersionInfo[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [tick, setTick] = useState(0);
   const isNote = entry.type === "note";
@@ -63,10 +87,18 @@ export function useSharedNoteVersions(
     let cancelled = false;
     void (async () => {
       // 読めなくても画面は壊さない（一覧が空のまま）
-      const [v, c] = await Promise.all([
+      const [names, c] = await Promise.all([
         ops.listVersions(root, entry.id).catch(() => [] as string[]),
         ops.conflictCopies(root, entry.id).catch(() => [] as string[]),
       ]);
+      // 並びは listVersions のまま（新しい順）。各版の中身から日時と人を読む
+      const v = await Promise.all(
+        names.map((name) =>
+          ops
+            .readVersionInfo(root, entry.id, name)
+            .catch(() => ({ name, ok: false, at: null, by: null }) as SharedVersionInfo),
+        ),
+      );
       if (cancelled) return;
       setVersions(v);
       setConflicts(c);
@@ -131,9 +163,11 @@ export type SharedNoteUpdatePanelProps = {
   currentIdentity: AuthorIdentity | null;
   /** 書き込み先（このエントリがある共有フォルダ） */
   root: string;
-  versions: string[];
+  versions: SharedVersionInfo[];
   /** 切り替え・戻したあとに版の一覧を読み直す */
   onReload: () => void;
+  /** 自分が書いた版の hash を知らせる（自分で戻した直後に「更新あり」を出さないため） */
+  onSelfWrite?: (hash: string) => void;
   ops?: SharedNoteUpdateOps;
 };
 
@@ -145,6 +179,7 @@ export function SharedNoteUpdatePanel({
   root,
   versions,
   onReload,
+  onSelfWrite,
   ops = defaultSharedNoteUpdateOps,
 }: SharedNoteUpdatePanelProps) {
   const t = useT();
@@ -165,6 +200,7 @@ export function SharedNoteUpdatePanel({
       const result = await ops.setAcceptsUpdates(entry.id, next, { root, author: currentIdentity });
       if (result.ok) {
         setLocal({ hash: result.entry.hash, value: next });
+        onSelfWrite?.(result.entry.hash);
         notifySharedLibraryChanged();
         onReload();
       } else if (result.conflict) {
@@ -175,13 +211,14 @@ export function SharedNoteUpdatePanel({
     } finally {
       setBusy(false);
     }
-  }, [accepting, currentIdentity, entry.id, onReload, ops, root, t]);
+  }, [accepting, currentIdentity, entry.id, onReload, onSelfWrite, ops, root, t]);
 
   const handleRestore = useCallback(
-    async (name: string) => {
-      if (!currentIdentity) return;
-      const ms = versionTime(name);
-      const date = ms !== null ? formatDateTime(ms) : name;
+    async (version: SharedVersionInfo) => {
+      if (!currentIdentity || !version.ok) return;
+      const name = version.name;
+      // 一覧と同じ値（その版を作った日時）を確認文にも使う
+      const date = version.at ? formatDateTime(version.at) : name;
       const ok = await confirmAction(
         t("sharedNote.versions.restoreConfirm", { title: sharedEntryTitle(entry, t), date }),
       );
@@ -195,6 +232,9 @@ export function SharedNoteUpdatePanel({
         });
         if (result.ok) {
           setLocal(null);
+          onSelfWrite?.(result.entry.hash);
+          // 開いているエントリと本文を読み直す（共有ライブラリの再読み込み）。
+          // 本文は entry.hash が変わると読み直される
           notifySharedLibraryChanged();
           onReload();
         } else if (result.conflict) {
@@ -206,7 +246,7 @@ export function SharedNoteUpdatePanel({
         setBusy(false);
       }
     },
-    [currentIdentity, entry, onReload, ops, root, t],
+    [currentIdentity, entry, onReload, onSelfWrite, ops, root, t],
   );
 
   if (entry.type !== "note" || entry.status === "unshared") return null;
@@ -267,28 +307,37 @@ export function SharedNoteUpdatePanel({
               <p className="text-[11px] text-muted-foreground">{t("sharedNote.versions.empty")}</p>
             ) : (
               <ul className="space-y-1" data-testid="shared-note-versions">
-                {versions.map((name) => {
-                  const ms = versionTime(name);
-                  return (
-                    <li
-                      key={name}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2 py-1.5"
-                    >
-                      <span className="text-[11px] text-foreground">
-                        {ms !== null ? formatDateTime(ms) : name}
+                {versions.map((v) => (
+                  <li
+                    key={v.name}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2 py-1.5"
+                  >
+                    {v.ok && v.at ? (
+                      <span className="text-[11px] text-foreground min-w-0">
+                        {formatDateTime(v.at)}
+                        {v.by ? ` · ${v.by}` : ""}
                       </span>
+                    ) : (
+                      <span
+                        className="text-[11px] text-muted-foreground"
+                        data-testid="shared-note-version-unreadable"
+                      >
+                        {t("sharedNote.versions.unreadable")}
+                      </span>
+                    )}
+                    {v.ok && (
                       <button
                         type="button"
-                        onClick={() => void handleRestore(name)}
+                        onClick={() => void handleRestore(v)}
                         disabled={busy || !currentIdentity}
-                        className="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted text-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+                        className="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted text-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50 shrink-0"
                       >
                         <RotateCcw size={11} />
                         {t("sharedNote.versions.restore")}
                       </button>
-                    </li>
-                  );
-                })}
+                    )}
+                  </li>
+                ))}
               </ul>
             )}
           </div>

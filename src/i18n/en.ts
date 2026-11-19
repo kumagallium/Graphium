@@ -4266,6 +4266,7 @@ export const en: Record<string, string> = {
   "sharedNote.updates.forkHint": "This note accepts updates. Make a copy, edit it, and apply it back to the shared note.",
   "sharedNote.versions.title": "Previous versions",
   "sharedNote.versions.empty": "There are no previous versions yet.",
+  "sharedNote.versions.unreadable": "Unreadable version",
   "sharedNote.versions.restore": "Restore this version",
   "sharedNote.versions.restoreConfirm": "Restore \"{title}\" to the version from {date}?\n\nThe current version is kept as a previous version, so you can come back to it later.",
   "sharedNote.versions.restoreFailed": "Could not restore: {error}",

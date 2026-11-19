@@ -1155,6 +1155,12 @@ const updateOpsFor = (conflicts: string[] = []) => ({
     `${Date.now() - 3 * 86400_000}-d4e5f6.json`,
     `${Date.now() - 6 * 86400_000}-g7h8i9.json`,
   ],
+  readVersionInfo: async (_root: string, _id: string, name: string) => ({
+    name,
+    ok: true,
+    at: new Date(Number(name.slice(0, 13)) - 3600_000).toISOString(),
+    by: STUDENT_A.name,
+  }),
   conflictCopies: async () => conflicts,
   setAcceptsUpdates: async (_id: string, value: boolean) => ({
     ok: true as const,

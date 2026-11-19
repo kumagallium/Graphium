@@ -24,6 +24,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { LocaleProvider, t } from "../../i18n";
 import { SharedNoteView } from "./SharedNoteView";
 import { createEmptySharedProjection } from "./shared-projection";
+import { formatDateTime } from "../../lib/format-datetime";
 import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import type { SharedNoteUpdateOps } from "./SharedNoteUpdates";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -65,9 +66,21 @@ function noteEntry(extra: Record<string, unknown> = {}): SharedEntry {
 const V1 = `${Date.UTC(2026, 10, 2)}-aaaa.json`;
 const V2 = `${Date.UTC(2026, 10, 1)}-bbbb.json`;
 
+// 版の中身から読む「その版を作った日時と人」。ファイル名の時刻（上書きされた時刻）とは別の値にしてある
+const INFO: Record<string, { at: string; by: string }> = {
+  [V1]: { at: "2026-10-20T03:00:00.000Z", by: "Editor B" },
+  [V2]: { at: "2026-10-10T03:00:00.000Z", by: AUTHOR.name },
+};
+
 function makeOps(overrides: Partial<SharedNoteUpdateOps> = {}): SharedNoteUpdateOps {
   return {
     listVersions: vi.fn(async () => [V1, V2]),
+    readVersionInfo: vi.fn(async (_root: string, _id: string, name: string) => ({
+      name,
+      ok: true,
+      at: INFO[name].at,
+      by: INFO[name].by,
+    })),
     conflictCopies: vi.fn(async () => []),
     setAcceptsUpdates: vi.fn(async (_id, value) => ({
       ok: true as const,
@@ -213,6 +226,42 @@ describe("SharedNoteView: 他の人の更新", () => {
     expect(rows[0].textContent).toContain(t("sharedNote.versions.restore"));
   });
 
+  it("一覧と確認文には、ファイル名の時刻ではなく、その版を作った日時と人を出す", async () => {
+    const confirmSpy = vi.fn(async () => false);
+    __setConfirmResponderForTest(confirmSpy);
+    renderView(noteEntry({ acceptsUpdates: true }), OTHER, makeOps());
+    openVersionTab();
+    const list = await screen.findByTestId("shared-note-versions");
+    const rows = list.querySelectorAll("li");
+    expect(rows[0].textContent).toContain("Editor B");
+    expect(rows[1].textContent).toContain(AUTHOR.name);
+    // ファイル名の時刻（2026-11-02 / 11-01）は出さない
+    expect(rows[0].textContent).not.toContain("2026-11");
+    fireEvent.click(rows[0].querySelector("button")!);
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    const message = (confirmSpy.mock.calls as unknown as string[][])[0][0];
+    expect(message).toContain(formatDateTime(INFO[V1].at));
+  });
+
+  it("読めない版は「読めない版」と出し、戻すボタンを出さない", async () => {
+    renderView(
+      noteEntry({ acceptsUpdates: true }),
+      OTHER,
+      makeOps({
+        readVersionInfo: vi.fn(async (_r: string, _i: string, name: string) => ({
+          name,
+          ok: false,
+          at: null,
+          by: null,
+        })),
+      }),
+    );
+    openVersionTab();
+    const list = await screen.findByTestId("shared-note-versions");
+    expect(list.querySelectorAll("[data-testid=shared-note-version-unreadable]").length).toBe(2);
+    expect(list.querySelectorAll("button").length).toBe(0);
+  });
+
   it("前の版が無ければ、その旨を出す", async () => {
     renderView(
       noteEntry({ acceptsUpdates: true }),
@@ -232,6 +281,8 @@ describe("SharedNoteView: 他の人の更新", () => {
     const list = await screen.findByTestId("shared-note-versions");
     fireEvent.click(list.querySelectorAll("button")[1]);
     await waitFor(() => expect(ops.restoreSharedVersion).toHaveBeenCalledTimes(1));
+    // 戻したあとは、共有ライブラリを読み直す通知を出し、前の版の一覧も読み直す
+    await waitFor(() => expect(ops.listVersions).toHaveBeenCalledTimes(2));
     expect((ops.restoreSharedVersion as ReturnType<typeof vi.fn>).mock.calls[0].slice(0, 2)).toEqual([
       "note-1",
       V2,
