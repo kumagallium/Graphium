@@ -5837,6 +5837,160 @@ async fn place_open(
     .map_err(|e| format!("タスク失敗: {e}"))?
 }
 
+/// place_read_file が読んでよい種類（小文字）。画面のプレビュー用（PDF・画像）。
+/// svg は中にスクリプトを持てるので入れない。
+const PLACE_READ_PREVIEW_EXTS: &[&str] =
+    &["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif"];
+/// place_read_file が読んでよい種類（小文字）。表への取り込み用（区切りファイル）。
+const PLACE_READ_DATA_EXTS: &[&str] = &["csv", "tsv", "txt", "dat"];
+/// プレビュー用に読む上限（100 MiB）
+const PLACE_READ_PREVIEW_MAX_BYTES: u64 = 100 * 1024 * 1024;
+/// 表への取り込み用に読む上限（200 MiB）
+const PLACE_READ_DATA_MAX_BYTES: u64 = 200 * 1024 * 1024;
+/// 種類を理由に断るときの Err の先頭。形は `PLACE_READ_NOT_ALLOWED:<拡張子か空>`
+const PLACE_READ_NOT_ALLOWED_PREFIX: &str = "PLACE_READ_NOT_ALLOWED";
+/// 大きすぎて断るときの Err の先頭。形は `PLACE_READ_TOO_LARGE:<上限バイト数>`
+const PLACE_READ_TOO_LARGE_PREFIX: &str = "PLACE_READ_TOO_LARGE";
+
+/// 読む目的。画面から文字列で受け、ここで 2 通りに絞る。
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlaceReadPurpose {
+    Preview,
+    Data,
+}
+
+impl PlaceReadPurpose {
+    fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "preview" => Ok(Self::Preview),
+            "data" => Ok(Self::Data),
+            _ => Err(format!("読む目的が不正です: {s}")),
+        }
+    }
+
+    fn exts(self) -> &'static [&'static str] {
+        match self {
+            Self::Preview => PLACE_READ_PREVIEW_EXTS,
+            Self::Data => PLACE_READ_DATA_EXTS,
+        }
+    }
+
+    fn max_bytes(self) -> u64 {
+        match self {
+            Self::Preview => PLACE_READ_PREVIEW_MAX_BYTES,
+            Self::Data => PLACE_READ_DATA_MAX_BYTES,
+        }
+    }
+}
+
+/// 目的に合う種類か。許可リストに無い（拡張子なしを含む）・名前の末尾が `.` や空白なら断る。
+fn check_place_readable(path: &Path, purpose: PlaceReadPurpose) -> Result<(), String> {
+    let ext = place_name_ext(path);
+    let raw_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if raw_name.ends_with(['.', ' ']) || !purpose.exts().contains(&ext.as_str()) {
+        return Err(format!("{PLACE_READ_NOT_ALLOWED_PREFIX}:{ext}"));
+    }
+    Ok(())
+}
+
+/// 通常ファイルだけを、リンクを辿らず・FIFO で固まらず、上限つきで読む。
+/// 開く前の大きさと、読んでいる途中の長さの両方で上限を見る（読み中に伸びても打ち切る）。
+fn read_regular_file_limited(path: &Path, max: u64) -> Result<Vec<u8>, String> {
+    let too_large = || format!("{PLACE_READ_TOO_LARGE_PREFIX}:{max}");
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err("通常のファイルではありません".to_string());
+    }
+    if meta.len() > max {
+        return Err(too_large());
+    }
+    let file = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+                .open(path)
+        }
+        #[cfg(not(unix))]
+        {
+            fs::File::open(path)
+        }
+    }
+    .map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    let opened = file.metadata().map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if !opened.is_file() {
+        return Err("通常のファイルではありません".to_string());
+    }
+    if opened.len() > max {
+        return Err(too_large());
+    }
+    let mut buf = Vec::with_capacity(opened.len().min(max) as usize);
+    file.take(max + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if buf.len() as u64 > max {
+        return Err(too_large());
+    }
+    Ok(buf)
+}
+
+/// 置き場の 1 ファイルの中身を読む（place_read_file の本体）。
+/// 相対パスの検証・置き場への到達確認（時間切れつき）・root の下の確認・リンクの拒否は
+/// resolve_in_places_probed が行う。そのあと種類と大きさを見て、読む直前に確かめ直す。
+/// 読んだ中身はどこにも書かない。
+fn read_place_file_in_places(
+    places: &[Place],
+    probes: &PlaceProbes,
+    place_id: &str,
+    rel_path: &str,
+    purpose: &str,
+    timeout: Duration,
+    probe: impl Fn(&str) -> bool + Clone + Send + 'static,
+) -> Result<Vec<u8>, String> {
+    let purpose = PlaceReadPurpose::parse(purpose)?;
+    let resolved = resolve_in_places_probed(places, probes, place_id, rel_path, timeout, probe)
+        .map_err(|e| e.message())?;
+    check_place_readable(&resolved.path, purpose)?;
+    if resolved.size > purpose.max_bytes() {
+        return Err(format!("{PLACE_READ_TOO_LARGE_PREFIX}:{}", purpose.max_bytes()));
+    }
+    recheck_place_target(&resolved.path).map_err(|e| e.message())?;
+    read_regular_file_limited(&resolved.path, purpose.max_bytes())
+}
+
+/// 利用者の操作で、置き場の 1 ファイルの中身をそのまま返す（コピー・キャッシュは作らない）
+#[tauri::command]
+async fn place_read_file(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PlaceState>,
+    place_id: String,
+    rel_path: String,
+    purpose: String,
+) -> Result<tauri::ipc::Response, String> {
+    require_main_window(&window)?;
+    let ledger = place_ledger_path(&app)?;
+    let inner = state.0.clone();
+    let probes = state.1.clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let places = read_places(&inner, &ledger, |p| p.to_vec());
+        read_place_file_in_places(
+            &places,
+            &probes,
+            &place_id,
+            &rel_path,
+            &purpose,
+            PLACE_PROBE_TIMEOUT,
+            fs_root_reachable,
+        )
+    })
+    .await
+    .map_err(|e| format!("タスク失敗: {e}"))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// 置き場のファイルを、OS のファイラーで選択した状態で表示する
 #[tauri::command]
 async fn place_reveal(
@@ -5976,6 +6130,7 @@ pub fn run() {
             place_pick_files,
             place_stat_many,
             place_open,
+            place_read_file,
             place_reveal,
             print_webview,
             set_background_work_active,
@@ -8491,6 +8646,131 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let r = resolve_place_file(tmp.path(), "run.sh").unwrap();
         assert!(check_place_openable(&r.path).is_err());
+    }
+
+    // --- place_read_file ---
+
+    fn read_fixture() -> (tempfile::TempDir, Vec<Place>) {
+        let tmp = place_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        fs::write(root.join("d.csv"), b"a,b\n1,2\n").unwrap();
+        fs::write(root.join("D.TSV"), b"a\tb").unwrap();
+        fs::write(root.join("p.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(root.join("i.PNG"), b"png").unwrap();
+        fs::write(root.join("v.svg"), b"<svg/>").unwrap();
+        fs::write(root.join("run.sh"), b"#!/bin/sh").unwrap();
+        fs::write(root.join("noext"), b"x").unwrap();
+        let places =
+            vec![Place { id: "p".into(), name: "n".into(), root: root.to_string_lossy().to_string() }];
+        (tmp, places)
+    }
+
+    fn read_in(places: &[Place], id: &str, rel: &str, purpose: &str) -> Result<Vec<u8>, String> {
+        read_place_file_in_places(
+            places,
+            &PlaceProbes::default(),
+            id,
+            rel,
+            purpose,
+            PLACE_PROBE_TIMEOUT,
+            fs_root_reachable,
+        )
+    }
+
+    #[test]
+    fn place_read_returns_bytes_for_allowed_kinds() {
+        let (_t, places) = read_fixture();
+        assert_eq!(read_in(&places, "p", "d.csv", "data").unwrap(), b"a,b\n1,2\n");
+        assert_eq!(read_in(&places, "p", "D.TSV", "data").unwrap(), b"a\tb");
+        assert_eq!(read_in(&places, "p", "a.txt", "data").unwrap(), b"hello");
+        assert_eq!(read_in(&places, "p", "p.pdf", "preview").unwrap(), b"%PDF-1.4");
+        assert_eq!(read_in(&places, "p", "i.PNG", "preview").unwrap(), b"png");
+    }
+
+    #[test]
+    fn place_read_allowlist_depends_on_purpose() {
+        let (_t, places) = read_fixture();
+        assert_eq!(read_in(&places, "p", "d.csv", "preview").unwrap_err(), "PLACE_READ_NOT_ALLOWED:csv");
+        assert_eq!(read_in(&places, "p", "p.pdf", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:pdf");
+        assert_eq!(read_in(&places, "p", "v.svg", "preview").unwrap_err(), "PLACE_READ_NOT_ALLOWED:svg");
+        assert_eq!(read_in(&places, "p", "run.sh", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:sh");
+        assert_eq!(read_in(&places, "p", "noext", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:");
+        assert!(read_in(&places, "p", "d.csv", "other").is_err());
+        for e in ["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif"] {
+            assert!(check_place_readable(Path::new(&format!("x.{e}")), PlaceReadPurpose::Preview).is_ok());
+        }
+        for e in ["csv", "tsv", "txt", "dat"] {
+            assert!(check_place_readable(Path::new(&format!("x.{e}")), PlaceReadPurpose::Data).is_ok());
+        }
+        // 末尾の空白・ドットは断る
+        assert!(check_place_readable(Path::new("x.csv "), PlaceReadPurpose::Data).is_err());
+        assert!(check_place_readable(Path::new("x.csv."), PlaceReadPurpose::Data).is_err());
+    }
+
+    #[test]
+    fn place_read_limits_are_fixed() {
+        assert_eq!(PlaceReadPurpose::Preview.max_bytes(), 100 * 1024 * 1024);
+        assert_eq!(PlaceReadPurpose::Data.max_bytes(), 200 * 1024 * 1024);
+    }
+
+    #[test]
+    fn place_read_refuses_over_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("big.csv");
+        fs::write(&f, vec![b'a'; 11]).unwrap();
+        assert_eq!(read_regular_file_limited(&f, 10).unwrap_err(), "PLACE_READ_TOO_LARGE:10");
+        assert_eq!(read_regular_file_limited(&f, 11).unwrap().len(), 11);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_read_refuses_links_and_fifo() {
+        let (tmp, places) = read_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.csv"), b"s").unwrap();
+        std::os::unix::fs::symlink(outside.path().join("secret.csv"), root.join("l.csv")).unwrap();
+        assert!(read_in(&places, "p", "l.csv", "data").is_err());
+        // 途中のフォルダが外へのリンク
+        std::os::unix::fs::symlink(outside.path(), root.join("outdir")).unwrap();
+        assert!(read_in(&places, "p", "outdir/secret.csv", "data").is_err());
+        // 読む関数へ直接リンクを渡しても読まない
+        assert!(read_regular_file_limited(&root.join("l.csv"), 100).is_err());
+        // FIFO は固まらず断る
+        let fifo = root.join("f.csv");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(read_in(&places, "p", "f.csv", "data").is_err());
+        assert!(read_regular_file_limited(&fifo, 100).is_err());
+    }
+
+    #[test]
+    fn place_read_refuses_bad_paths_and_unknown_places() {
+        let (_t, places) = read_fixture();
+        for bad in ["../x.csv", "/etc/passwd", "a//b.csv", "sub/../d.csv", "a\\b.csv", ""] {
+            assert!(read_in(&places, "p", bad, "data").is_err(), "{bad:?}");
+        }
+        assert_eq!(
+            read_in(&places, "nope", "d.csv", "data").unwrap_err(),
+            PlaceResolveError::Unregistered.message()
+        );
+        assert_eq!(
+            read_in(&places, "p", "missing.csv", "data").unwrap_err(),
+            PlaceResolveError::Missing.message()
+        );
+        // 置き場が時間内に届かなければ中身へ進まない
+        let (slow, _) = sleeping_probe(1500);
+        let err = read_place_file_in_places(
+            &places,
+            &PlaceProbes::default(),
+            "p",
+            "d.csv",
+            "data",
+            Duration::from_millis(100),
+            slow,
+        )
+        .unwrap_err();
+        assert_eq!(err, PlaceResolveError::Unreachable.message());
     }
 
     #[test]

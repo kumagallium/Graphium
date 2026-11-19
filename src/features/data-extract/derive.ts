@@ -67,6 +67,8 @@ export function buildDerivedSource(params: {
   fromFileId?: string;
   fromFileName: string;
   fromOptions: TableSource["options"];
+  /** 元がリンクした素材のとき、読んだ時点の元ファイルの大きさ・更新日時（変化の検知用） */
+  fromLinkedStat?: { size: number; mtimeMs: number };
   extract: DerivedExtract;
   /** 元の前置きから拾った測定条件（写しには前置きが無いので、出所に引き継ぐ） */
   meta?: { key: string; value: string }[];
@@ -88,6 +90,10 @@ export function buildDerivedSource(params: {
     createdAt: now,
   };
   if (params.fromFileId) derivation.fromFileId = params.fromFileId;
+  if (params.fromLinkedStat) {
+    derivation.fromSize = params.fromLinkedStat.size;
+    derivation.fromMtimeMs = params.fromLinkedStat.mtimeMs;
+  }
   const source: TableSource = {
     kind: "delimited-file",
     fileName: params.derivedFileName,
@@ -115,7 +121,8 @@ type UploadFn = (file: File, options?: { derivedFromAssets?: string[] }) => Prom
 export async function registerDerivedSource(
   deps: { uploadAsset: UploadFn; primeAssetText: (fileId: string, text: string) => void },
   params: {
-    file: { fileName: string; fileId?: string; file?: File };
+    // linked があるときの元はリンクした素材（fileId はそのリンクの素材）。元のファイルは登録しない
+    file: { fileName: string; fileId?: string; file?: File; linked?: { size: number; mtimeMs: number } };
     fromOptions: TableSource["options"];
     extract: DerivedExtract;
     meta?: { key: string; value: string }[];
@@ -136,6 +143,7 @@ export async function registerDerivedSource(
     fromFileId,
     fromFileName: params.file.fileName,
     fromOptions: params.fromOptions,
+    fromLinkedStat: params.file.linked,
     extract: params.extract,
     meta: params.meta,
   });

@@ -110,6 +110,15 @@ describe("registerDerivedSource", () => {
     expect(s.derivation!.fromFileId).toBe("orig9");
     expect(s.fileId).toBe("copy9");
   });
+  it("リンクした素材が元なら、元は登録せず、大きさ・更新日時を来歴に残す", async () => {
+    const uploadAsset = vi.fn(async () => ({ fileId: "copy2" }));
+    const s = await registerDerivedSource(
+      { uploadAsset, primeAssetText: vi.fn() },
+      { file: { fileName: "m.csv", fileId: "link1", linked: { size: 10, mtimeMs: 20 } }, fromOptions, extract }
+    );
+    expect(uploadAsset).toHaveBeenCalledTimes(1); // 写しだけ
+    expect(s.derivation).toMatchObject({ fromFileId: "link1", fromSize: 10, fromMtimeMs: 20 });
+  });
   it("登録に失敗したら投げる", async () => {
     await expect(
       registerDerivedSource(

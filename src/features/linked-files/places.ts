@@ -97,3 +97,46 @@ export async function revealLinkedFile(placeId: string, relPath: string): Promis
   if (!isTauri()) return desktopOnly();
   await invoke<void>("place_reveal", { placeId, relPath });
 }
+
+/** 読む目的。preview = PDF・画像を見せる、data = 区切りファイルを表に取り込む（Rust 側の許可リストと対） */
+export type LinkedReadPurpose = "preview" | "data";
+
+/** Rust 側 place_read_file が種類を理由に断るときの Err の接頭辞（形は `PLACE_READ_NOT_ALLOWED:<拡張子>`） */
+export const PLACE_READ_NOT_ALLOWED_PREFIX = "PLACE_READ_NOT_ALLOWED";
+/** 大きすぎて断るときの Err の接頭辞（形は `PLACE_READ_TOO_LARGE:<上限バイト数>`） */
+export const PLACE_READ_TOO_LARGE_PREFIX = "PLACE_READ_TOO_LARGE";
+
+/**
+ * 利用者が開いたときだけ、置き場の 1 ファイルの中身を読む（コピー・キャッシュは作らない）。
+ * 呼ぶのは「中身を表示」「表に取り込む」「取り込み直し」の操作の中だけ。自動では呼ばない。
+ */
+export async function readLinkedFile(
+  placeId: string,
+  relPath: string,
+  purpose: LinkedReadPurpose,
+): Promise<ArrayBuffer> {
+  if (!isTauri()) return desktopOnly();
+  return invoke<ArrayBuffer>("place_read_file", { placeId, relPath, purpose });
+}
+
+/**
+ * 読めなかった理由を、利用者向け文言のキーと差し込み値にする。
+ * 到達できない・見つからない・未登録は Rust 側の既存メッセージ（place_open と同じ）で見分ける。
+ */
+export function readErrorMessageKey(e: unknown): { key: string; params?: Record<string, string> } {
+  const text = e instanceof Error ? e.message : String(e);
+  if (text.startsWith(`${PLACE_READ_NOT_ALLOWED_PREFIX}:`)) {
+    return { key: "linkedFile.read.notAllowed", params: { ext: text.slice(PLACE_READ_NOT_ALLOWED_PREFIX.length + 1) } };
+  }
+  if (text.startsWith(`${PLACE_READ_TOO_LARGE_PREFIX}:`)) {
+    const max = Number(text.slice(PLACE_READ_TOO_LARGE_PREFIX.length + 1));
+    return {
+      key: "linkedFile.read.tooLarge",
+      params: { max: Number.isFinite(max) ? String(Math.round(max / (1024 * 1024))) : "" },
+    };
+  }
+  if (text.includes("届きません")) return { key: "linkedFile.read.unreachable" };
+  if (text.includes("見つかりません")) return { key: "linkedFile.read.missing" };
+  if (text.includes("登録されていません")) return { key: "linkedFile.read.unregistered" };
+  return { key: "linkedFile.read.failed" };
+}

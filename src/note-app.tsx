@@ -296,6 +296,13 @@ import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
 import { isPlaceUrl } from "./features/linked-files/link-url";
+import {
+  LINKED_DATA_IMPORT_EVENT,
+  findLinkOf,
+  readLinkedText,
+  type LinkedImportRequest,
+} from "./features/linked-files/linked-import";
+import { readErrorMessageKey } from "./features/linked-files/places";
 import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
@@ -2579,8 +2586,33 @@ function NoteEditorInner({
        * 表の出所に残す（写しを読み直しただけで、どう絞ったかの記録を失わない）
        */
       keepDerivation?: TableDerivation;
+      /**
+       * リンクした素材（データの置き場のファイル）から読んだとき、読んだ時点の元ファイルの大きさ・更新日時。
+       * あるとき fileId はリンクした素材を指し、元のファイルは素材として登録しない（コピーを作らない）
+       */
+      linked?: { size: number; mtimeMs: number };
     } | null
   >(null);
+
+  // リンクした素材の「表に取り込む」（素材ピークの LinkedFileView からの合図）。押されたときだけ読む
+  useEffect(() => {
+    const onRequest = (ev: Event) => {
+      const req = (ev as CustomEvent<LinkedImportRequest>).detail;
+      if (!req) return;
+      void (async () => {
+        try {
+          const { text, size, mtimeMs } = await readLinkedText(req.placeId, req.relPath);
+          pickerEditorRef.current = pickerEditorRef.current ?? editorRef.current;
+          setDataImportFile({ fileName: req.name, text, fileId: req.fileId, linked: { size, mtimeMs } });
+        } catch (e) {
+          const { key, params } = readErrorMessageKey(e);
+          alert(tStatic(key, params));
+        }
+      })();
+    };
+    window.addEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+    return () => window.removeEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+  }, []);
 
   // ── チャートの「素材のデータから」 ──
   // チャートブロックがピッカー（データ素材）→ 取り込みダイアログを求めてきたときの
@@ -2801,6 +2833,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult
     ) => {
@@ -2923,6 +2956,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult,
       derived?: TableSource,
@@ -2985,6 +3019,8 @@ function NoteEditorInner({
         // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
         const keep = derived ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
         if (keep) builtSource.derivation = keep;
+        // リンクした素材から絞り込まずに取り込んだとき: 取り込んだ時点の元ファイルの大きさ・更新日時を残す
+        if (!derived && file.linked) builtSource.linkedStat = { ...file.linked };
         tableMetaStore.setSource(blockId, builtSource);
       }
 
@@ -3050,6 +3086,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult
     ) => {
@@ -3104,21 +3141,28 @@ function NoteEditorInner({
     (blockId: string, source: TableSource, target: ImportTarget = "table") => {
       if (!source.fileId) return;
       void (async () => {
+        // リンクした素材は置き場から読み直す（素材にコピーが無い）。読めなければ例外（既存と同じ扱い）
         const readAsset = async (fileId: string) => {
+          const link = await findLinkOf(fileId);
+          if (link) {
+            const { text, size, mtimeMs } = await readLinkedText(link.placeId, link.relPath);
+            return { text, linked: { size, mtimeMs } };
+          }
           const provider = getActiveProvider();
           const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
-          return readDataFileText(blob);
+          return { text: await readDataFileText(blob), linked: undefined };
         };
         // 絞り込みの表は、元の素材を条件つきで開く（条件を直せるように）。
         // 元が読めない（消された）ときは、写しをふつうに開く
         const back = reimportTargetOf(source);
         if (back) {
           try {
-            const text = await readAsset(back.fileId);
+            const { text, linked } = await readAsset(back.fileId);
             setDataImportFile({
               fileName: back.fileName,
               text,
+              linked,
               fileId: back.fileId,
               replaceBlockId: blockId,
               initialOptions: back.initialOptions
@@ -3133,10 +3177,11 @@ function NoteEditorInner({
           }
         }
         try {
-          const text = await readAsset(source.fileId!);
+          const { text, linked } = await readAsset(source.fileId!);
           setDataImportFile({
             fileName: source.fileName,
             text,
+            linked,
             fileId: source.fileId,
             replaceBlockId: blockId,
             initialOptions: {
@@ -7411,6 +7456,8 @@ function NoteEditorInner({
           initialOptions={dataImportFile.initialOptions}
           initialTarget={dataImportFile.initialTarget}
           initialExtract={dataImportFile.initialExtract}
+          // リンクした素材は、元のファイルを素材にしないので、素材を読むデータ表にはしない（表に取り込む）
+          showTargetChoice={!dataImportFile.linked}
           onCancel={() => setDataImportFile(null)}
           onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />

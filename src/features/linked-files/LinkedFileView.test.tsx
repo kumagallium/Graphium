@@ -6,6 +6,11 @@
 // - 控え直しの履歴は折りたたみで出す
 
 import { describe, it, expect, afterEach, vi } from "vitest";
+
+// PDF ビューア（react-pdf）は jsdom で動かさない
+vi.mock("../asset-browser/PdfViewer", () => ({
+  PdfViewer: ({ entry }: { entry: { url: string } }) => <div data-testid="pdf-viewer" data-url={entry.url} />,
+}));
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
@@ -35,7 +40,7 @@ function entry(over: Partial<NonNullable<MediaIndexEntry["link"]>> = {}): MediaI
   };
 }
 
-function setup(stat: LinkStat, e: MediaIndexEntry = entry()) {
+function setup(stat: LinkStat, e: MediaIndexEntry = entry(), extra: NonNullable<LinkedFileViewProps["__test"]> = {}) {
   const fns = {
     statLinks: vi.fn(async (items: { placeId: string; relPath: string }[]) => items.map(() => stat)),
     listPlaces: vi.fn(async () => [{ id: "p1", name: "Whole bakery", root: "/x", reachable: true, shared: true }]),
@@ -45,7 +50,7 @@ function setup(stat: LinkStat, e: MediaIndexEntry = entry()) {
   } satisfies NonNullable<LinkedFileViewProps["__test"]>;
   render(
     <LocaleProvider>
-      <LinkedFileView entry={e} __test={fns} />
+      <LinkedFileView entry={e} __test={{ ...fns, ...extra }} />
     </LocaleProvider>,
   );
   return fns;
@@ -171,5 +176,76 @@ describe("LinkedFileView", () => {
     setup({ state: "ok", size: 2048, mtimeMs: MTIME }, e);
     await screen.findByText("No change");
     expect(screen.getByTestId("linked-file-history").querySelectorAll("li")).toHaveLength(1);
+  });
+});
+
+describe("LinkedFileView: 中身を読む", () => {
+  const named = (name: string): MediaIndexEntry => ({ ...entry(), name });
+  const ok: LinkStat = { state: "ok", size: 2048, mtimeMs: MTIME };
+
+  it("自動では読まない。PDF・画像・区切りファイル以外にはボタンを出さない", async () => {
+    const readLinkedFile = vi.fn(async () => new ArrayBuffer(1));
+    setup(ok, entry(), { readLinkedFile });
+    await screen.findByText("No change");
+    expect(readLinkedFile).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Show contents" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Import as table" })).toBeNull();
+  });
+
+  it("画像: 押すと preview で読み、閉じると blob URL を返す", async () => {
+    const readLinkedFile = vi.fn(async () => new ArrayBuffer(4));
+    const create = vi.fn(() => "blob:x");
+    const revoke = vi.fn();
+    URL.createObjectURL = create;
+    URL.revokeObjectURL = revoke;
+    setup(ok, named("pic.PNG"), { readLinkedFile });
+    await screen.findByText("No change");
+    fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
+    await screen.findByTestId("linked-file-content");
+    expect(readLinkedFile).toHaveBeenCalledWith("p1", "Recipes/Dough hydration.xlsx", "preview");
+    fireEvent.click(screen.getByRole("button", { name: "Hide contents" }));
+    expect(revoke).toHaveBeenCalledWith("blob:x");
+    expect(screen.queryByTestId("linked-file-content")).toBeNull();
+  });
+
+  it("PDF: ビューアに blob URL を渡す", async () => {
+    URL.createObjectURL = () => "blob:pdf";
+    URL.revokeObjectURL = () => {};
+    setup(ok, named("paper.pdf"), { readLinkedFile: async () => new ArrayBuffer(4) });
+    await screen.findByText("No change");
+    fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
+    expect((await screen.findByTestId("pdf-viewer")).getAttribute("data-url")).toBe("blob:pdf");
+  });
+
+  it("読めなかったときは理由を出す", async () => {
+    setup(ok, named("big.pdf"), {
+      readLinkedFile: async () => {
+        throw "PLACE_READ_TOO_LARGE:104857600";
+      },
+    });
+    await screen.findByText("No change");
+    fireEvent.click(screen.getByRole("button", { name: "Show contents" }));
+    await screen.findByText("This file is too large to read here (limit 100 MB).");
+  });
+
+  it("見つからないときは中身を表示を押せない", async () => {
+    setup({ state: "missing" }, named("paper.pdf"));
+    await screen.findByText("The original can't be found");
+    expect((screen.getByRole("button", { name: "Show contents" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("表に取り込む: 区切りファイルだけ。押すと取り込みの合図を出す（ここでは読まない）", async () => {
+    const requestImport = vi.fn();
+    const readLinkedFile = vi.fn(async () => new ArrayBuffer(1));
+    setup(ok, named("run.csv"), { requestImport, readLinkedFile });
+    await screen.findByText("No change");
+    fireEvent.click(screen.getByRole("button", { name: "Import as table" }));
+    expect(requestImport).toHaveBeenCalledWith({
+      fileId: "url_1",
+      name: "run.csv",
+      placeId: "p1",
+      relPath: "Recipes/Dough hydration.xlsx",
+    });
+    expect(readLinkedFile).not.toHaveBeenCalled();
   });
 });

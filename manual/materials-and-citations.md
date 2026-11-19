@@ -181,7 +181,7 @@ Materials registered before v0.37.0 are read once in the background after you si
 
 ## Link a file without copying it <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#linked-files}
 
-Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied, and Graphium never reads what is inside. This is for the desktop app only.
+Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied. Graphium reads the contents only when you ask it to (see [Show the contents or import it as a table](#linked-read)). This is for the desktop app only.
 
 ### Set it up and link a file
 
@@ -209,6 +209,17 @@ Open a linked file and you see its **Data place**, **Location in the place**, **
 With the status **No change** or **The original has changed**, **Open the original** opens the file in your computer's own app, and **Show in folder** shows it in Finder or Explorer. **Open the original** works only for a fixed set of kinds — documents, spreadsheets, slides, text and CSV, images, audio, video and PDF. For other kinds, use **Show in folder**.
 
 Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
+
+### Show the contents or import it as a table {#linked-read}
+
+Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
+
+- **Show contents** (PDF and pictures: PNG, JPEG, GIF, WebP, BMP, HEIC, AVIF; up to 100 MB). Press it to read the file and show it in place. **Hide contents** closes it; press **Cancel** while it is reading to stop. SVG is not shown.
+- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
+
+Both buttons are available while the status is **No change** or **The original has changed**. If the file is too large, of another kind, or can't be reached, a message says why.
+
+The table remembers the size and modified time of the file when you imported it. If the original is edited later, the table's source badge shows **The original data has changed**. Pressing the badge reads the file again so you can re-import it.
 
 ### Name a linked file as the source data <Badge type="tip" text="Added in v0.148.0 (2026-11-19)" /> {#source-data}
 

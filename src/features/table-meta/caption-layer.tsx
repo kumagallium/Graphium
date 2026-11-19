@@ -14,6 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarClock, Calculator, FileText, Lock, Maximize2 } from "lucide-react";
 import { t, useLocaleSubscription } from "../../i18n";
+import { LinkedSourceChangedNote } from "../linked-files/LinkedSourceChangedNote";
 import { computeTableDisplayNames } from "./auto-name";
 
 // 名前付きの表（キャプション行を持つブロック）の id。複数ブロック選択の塗りが、
@@ -795,6 +796,7 @@ export function TableCaptionLayer({
               </button>
             );
           })()}
+          {source && <LinkedSourceChangedNote source={source} />}
           {/* 行が多い表は編集のたびに文書全体が直列化されて重い。素材にしてデータ表へ
               置き換える入口を、重さの目安（200 行）を超えた表にだけ出す */}
           {onConvertToDataTable && pos.rowCount > DOC_TABLE_DEFAULT_MAX_ROWS && (

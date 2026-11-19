@@ -1548,6 +1548,12 @@ export type TableSource = {
    * あるとき fileName / fileId は取り出した結果（写し）を指し、元のファイルは derivation 側が持つ
    */
   derivation?: TableDerivation;
+  /**
+   * リンクした素材（データの置き場のファイル）から絞り込みなしで取り込んだときの、取り込んだ時点の
+   * 元ファイルの大きさ・更新日時。次に見たとき変わっていれば「元データが変わっています」と出す。
+   * 絞り込んだ表は derivation.fromSize / fromMtimeMs に持つ。任意なので既存のノートには影響しない
+   */
+  linkedStat?: { size: number; mtimeMs: number };
 };
 
 export type ExtractOperator = "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty";
@@ -1566,6 +1572,10 @@ export type TableDerivation = {
   fromFileName: string;
   /** 元のファイルをどう読んだか（行範囲・区切り）。開き直すとき、元の画面を同じ読み方で開くのに使う。古い記録には無い */
   fromOptions?: TableSource["options"];
+  /** 元がリンクした素材のとき、取り込んだ時点の元ファイルの大きさ（バイト）。元データの変化を知らせるのに使う */
+  fromSize?: number;
+  /** 元がリンクした素材のとき、取り込んだ時点の元ファイルの更新日時（ミリ秒） */
+  fromMtimeMs?: number;
   columns: string[];
   /** 元の列の数。columns と同じなら「全列」なので、条件の 1 行に列の句を出さない。古い記録には無い */
   sourceColumns?: number;
