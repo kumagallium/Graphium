@@ -28,6 +28,8 @@ export type NoteProvJsonLdTextInput = {
   planContext?: CollectNoteProvExtrasInput["planContext"];
   wikiEntities?: WikiEntityInfo[];
   options?: NoteProvExportInput["options"];
+  /** 素材に指定した元データを含めるか（既定は含める） */
+  includeSourceData?: boolean;
 };
 
 /** ノートの PROV-DM を JSON-LD の文字列（整形済み）で返す。ページが無ければ null */
@@ -54,6 +56,7 @@ export function buildNoteProvJsonLdText(
     identity: input.identity,
     noteIndex: input.noteIndex,
     planContext: input.planContext,
+    includeSourceData: input.includeSourceData,
   });
   const out = buildNoteProvJsonLd({
     provDoc,

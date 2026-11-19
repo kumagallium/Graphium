@@ -15,6 +15,7 @@ import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
 import { toAsciiJson } from "../../lib/ascii-json";
 import { TOPIC_TYPER_BATCH_SIZE } from "../../server/services/wiki-topic-writer";
+import type { ClaimLinkClaimRef, ClaimLinkTopicRef, ClaimTopicLinkAnswer } from "../../server/services/wiki-claim-topic-linker";
 import { aiErrorFromResponse, notifyEmbeddingFailure } from "../../lib/ai-error";
 import { embedTexts } from "../embedding/client";
 import { CodedError } from "../../lib/ai-error-codes";
@@ -3535,6 +3536,50 @@ export async function routeTopicsForSource(
   const types: Record<string, TopicType> = {};
   for (const [id, type] of Object.entries(data.types ?? {})) if (existingIds.has(id) && isTopicType(type)) types[id] = type;
   return { update, create, createTypes, types };
+}
+
+/** 知見とトピックを結ぶ判定 1 回の待ち時間の上限。取り込みの列を止め続けないために切る */
+export const LINK_CLAIMS_CALL_TIMEOUT_MS = 3 * 60_000;
+
+/**
+ * 資料 1 本の知見とトピックを渡し、知見ごとに結ぶトピックを AI に選ばせる
+ * （/api/wiki/link-claims-to-topics）。失敗は例外で返す（呼び出し側が件数にまとめる）。
+ * 外の signal の中断はそのまま中断として、時間切れは失敗として返す。
+ */
+export async function judgeClaimTopicLinks(
+  claims: ClaimLinkClaimRef[],
+  topics: ClaimLinkTopicRef[],
+  /** 使うモデルの表示名。未指定なら軽い処理の段の既定モデル */
+  model?: string,
+  signal?: AbortSignal,
+  timeoutMs: number = LINK_CLAIMS_CALL_TIMEOUT_MS,
+): Promise<ClaimTopicLinkAnswer> {
+  const { headers, body: modelBody } = wikiModelRequest("light", model);
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onOuterAbort = () => ctrl.abort();
+  if (signal?.aborted) ctrl.abort();
+  else signal?.addEventListener("abort", onOuterAbort);
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}/link-claims-to-topics`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ claims, topics, ...modelBody }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      throw await aiErrorFromResponse(res, `link-claims-to-topics failed (${res.status})`);
+    }
+    const data = await res.json() as { links?: Record<string, string[]>; rejected?: number };
+    return { links: data.links ?? {}, rejected: data.rejected ?? 0 };
+  } catch (err) {
+    if (timedOut && !signal?.aborted) throw new Error(`link-claims-to-topics timed out after ${timeoutMs} ms`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onOuterAbort);
+  }
 }
 
 // ── トピックの種類付け（設定の「トピックに種類を付ける」）──

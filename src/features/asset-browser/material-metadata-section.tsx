@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, GitBranch, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import type { MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
+import type { MediaIndex, MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
 import type { SourceInfo } from "./media-index";
 import { persistOcrTextPatch, persistSourceInfoPatch } from "./media-index";
 import {
@@ -24,6 +24,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { runOcrForImage } from "../media-ocr";
 import { readOcrEntry, sanitizeOcrText } from "../../lib/ocr-text";
 import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
+import { LinkedOriginSection, shouldShowLinkedOrigin } from "../linked-files/LinkedOriginSection";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -269,6 +270,10 @@ export type MaterialMetadataSectionProps = {
    *          MaterialFullView の右パネル内で使うとき向け。
    */
   variant?: "collapsible" | "plain";
+  /** 素材の索引。「元データ」の節（リンクした素材を元データに指定）に使う。未指定なら節は出ない */
+  mediaIndex?: MediaIndex | null;
+  /** 元データの行を押したとき、その素材へ移る */
+  onSwitchAsset?: (entry: MediaIndexEntry) => void;
 };
 
 export function MaterialMetadataSection({
@@ -277,6 +282,8 @@ export function MaterialMetadataSection({
   onRename,
   defaultOpen = true,
   variant = "collapsible",
+  mediaIndex,
+  onSwitchAsset,
 }: MaterialMetadataSectionProps) {
   const t = useT();
   const collapsible = variant === "collapsible";
@@ -526,6 +533,11 @@ export function MaterialMetadataSection({
                 <GitBranch size={11} />
                 {t("asset.derivedFromCount", { count: String(derivedCount) })}
               </span>
+            </MetaRow>
+          )}
+          {mediaIndex && shouldShowLinkedOrigin(entry, mediaIndex) && (
+            <MetaRow label={t("linkedFile.origin.title")}>
+              <LinkedOriginSection entry={entry} mediaIndex={mediaIndex} onSwitchAsset={onSwitchAsset} />
             </MetaRow>
           )}
         </div>
