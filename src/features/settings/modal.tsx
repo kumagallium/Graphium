@@ -220,6 +220,28 @@ export type WikiSummaryForSettings = {
 };
 
 /** 「トピックに種類を付ける」の実行結果 */
+/** 知見をトピックに結ぶ一括処理の計画（AI を呼ぶ前に回数を見せる） */
+export type ClaimTopicLinkBackfillSummary = { calls: number; claims: number; alreadyJudged: number };
+export type ClaimTopicLinkBackfillOutcome = {
+  done: number;
+  total: number;
+  linkedClaims: number;
+  calls: number;
+  failedSources: number;
+  aborted: boolean;
+  stoppedByFailures: boolean;
+  /** 失敗の理由（画面に出せる文） */
+  failureReason?: string;
+};
+export type ClaimTopicLinkBackfillHandlers = {
+  plan: () => Promise<ClaimTopicLinkBackfillSummary>;
+  /** AI が未設定などで始められないときは null */
+  run: (
+    onProgress: (progress: { done: number; total: number; linkedClaims: number }) => void,
+    signal: AbortSignal,
+  ) => Promise<ClaimTopicLinkBackfillOutcome | null>;
+};
+
 export type AssignTopicTypesResult = {
   /** 種類を付けて保存した件数 */
   assigned: number;
@@ -328,15 +350,16 @@ type SettingsModalProps = {
   onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
   /** 全 Wiki の embedding を再生成する。AI チャットでの引用検索（Retriever）の精度を回復させたい時に使う。 */
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
-  /** topicIds が空の知見に話題を割り当て直す（話題の段を一括実行）。ingest 経路を通らずに
-   *  作られた古い知見や、name-topics 補完前に作られた知見の救済に使う。 */
+  /** 同じ概念を指す既存トピックどうしを統合する（知見には触れない。知見を結ぶのは claimTopicLinkBackfill）。 */
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
   onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
+  /** トピックに結ばれていない既存の知見を、資料ごとにトピックへ結ぶ一括処理 */
+  claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
   /** 「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」。未指定なら 2 つのボタンは出さない */
   bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, bulkBodyWidth }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, claimTopicLinkBackfill, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -4607,6 +4630,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               onReembedAllWikis={onReembedAllWikis}
               onOrganizeTopics={onOrganizeTopics}
               onAssignTopicTypes={onAssignTopicTypes}
+              claimTopicLinkBackfill={claimTopicLinkBackfill}
             />
           </div>
         )}
@@ -4682,6 +4706,7 @@ type MaintenanceTabProps = {
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
   onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
+  claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
 };
 
 function MaintenanceTab({
@@ -4713,6 +4738,7 @@ function MaintenanceTab({
   onReembedAllWikis,
   onOrganizeTopics,
   onAssignTopicTypes,
+  claimTopicLinkBackfill,
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
   // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
@@ -4750,6 +4776,23 @@ function MaintenanceTab({
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [resolveCurrentEmbeddingModelId]);
+  // 知見をトピックに結ぶ一括処理。設定を閉じたら止める（控えがあるので続きから再開できる）
+  const [linkClaimsPlan, setLinkClaimsPlan] = useState<ClaimTopicLinkBackfillSummary | null>(null);
+  const [linkClaimsRunning, setLinkClaimsRunning] = useState(false);
+  const [linkClaimsProgress, setLinkClaimsProgress] = useState<{ done: number; total: number; linkedClaims: number } | null>(null);
+  const [linkClaimsOutcome, setLinkClaimsOutcome] = useState<ClaimTopicLinkBackfillOutcome | null>(null);
+  const [linkClaimsError, setLinkClaimsError] = useState<string | null>(null);
+  const linkClaimsAbortRef = useRef<AbortController | null>(null);
+  const refreshLinkClaimsPlan = useCallback(async () => {
+    if (!claimTopicLinkBackfill) return;
+    try {
+      setLinkClaimsPlan(await claimTopicLinkBackfill.plan());
+    } catch (err) {
+      setLinkClaimsError(err instanceof Error ? err.message : String(err));
+    }
+  }, [claimTopicLinkBackfill]);
+  useEffect(() => { void refreshLinkClaimsPlan(); }, [refreshLinkClaimsPlan]);
+  useEffect(() => () => linkClaimsAbortRef.current?.abort(), []);
   const [assignTypesRunning, setAssignTypesRunning] = useState(false);
   const [assignTypesProgress, setAssignTypesProgress] = useState<{ done: number; total: number } | null>(null);
   const [assignTypesResult, setAssignTypesResult] = useState<AssignTopicTypesResult | null>(null);
@@ -5016,6 +5059,103 @@ function MaintenanceTab({
               t("settings.maintenance.reembedRun", { count: String(wikiSummaries.length) })
             )}
           </Button>
+        </div>
+      )}
+
+      {/* トピックに結ばれていない既存の知見を、資料ごとに結ぶ（人が起動・回数を先に見せる・止められる・続きから再開できる）。
+          新しい取り込みは自動で結ぶので、ここは過去の分の手当て。対象が無くなったらカードごと消える。 */}
+      {claimTopicLinkBackfill && (linkClaimsRunning || linkClaimsOutcome || (linkClaimsPlan?.calls ?? 0) > 0) && (
+        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
+          <div>
+            <h3 className="text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.linkClaimsToTopics.title")}
+            </h3>
+            {linkClaimsPlan && linkClaimsPlan.calls > 0 && (
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {t("settings.maintenance.linkClaimsToTopics.help", { claims: String(linkClaimsPlan.claims) })}
+                {linkClaimsPlan.alreadyJudged > 0
+                  ? ` ${t("settings.maintenance.linkClaimsToTopics.resumeHelp", { judged: String(linkClaimsPlan.alreadyJudged) })}`
+                  : ""}
+              </p>
+            )}
+          </div>
+          {linkClaimsRunning && (
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div>
+                {t("settings.maintenance.linkClaimsToTopics.running", {
+                  done: String(linkClaimsProgress?.done ?? 0),
+                  total: String(linkClaimsProgress?.total ?? linkClaimsPlan?.calls ?? 0),
+                  linked: String(linkClaimsProgress?.linkedClaims ?? 0),
+                })}
+              </div>
+              <div>{t("settings.maintenance.linkClaimsToTopics.closeNote")}</div>
+            </div>
+          )}
+          {linkClaimsOutcome && !linkClaimsRunning && (
+            <div
+              className={
+                linkClaimsOutcome.failedSources > 0 || linkClaimsOutcome.aborted
+                  ? "text-xs text-amber-600 dark:text-amber-400"
+                  : "text-xs text-emerald-600 dark:text-emerald-400"
+              }
+            >
+              {linkClaimsOutcome.aborted
+                ? t("settings.maintenance.linkClaimsToTopics.stopped", {
+                    linked: String(linkClaimsOutcome.linkedClaims),
+                    done: String(linkClaimsOutcome.done),
+                    total: String(linkClaimsOutcome.total),
+                  })
+                : t("settings.maintenance.linkClaimsToTopics.done", {
+                    linked: String(linkClaimsOutcome.linkedClaims),
+                    calls: String(linkClaimsOutcome.calls),
+                  })}
+              {linkClaimsOutcome.failedSources > 0
+                ? ` · ${t("settings.maintenance.linkClaimsToTopics.failed", { count: String(linkClaimsOutcome.failedSources) })}`
+                : ""}
+              {linkClaimsOutcome.stoppedByFailures
+                ? ` · ${t("settings.maintenance.linkClaimsToTopics.stoppedByFailures")}`
+                : ""}
+              {linkClaimsOutcome.failureReason ? ` · ${linkClaimsOutcome.failureReason}` : ""}
+            </div>
+          )}
+          {linkClaimsError && (
+            <div className="text-xs text-red-600 dark:text-red-400">{linkClaimsError}</div>
+          )}
+          {linkClaimsRunning ? (
+            <Button size="sm" variant="outline" onClick={() => linkClaimsAbortRef.current?.abort()}>
+              {t("settings.maintenance.linkClaimsToTopics.stop")}
+            </Button>
+          ) : (linkClaimsPlan?.calls ?? 0) > 0 && (
+            <Button
+              size="sm"
+              onClick={async () => {
+                const plan = await claimTopicLinkBackfill.plan();
+                setLinkClaimsPlan(plan);
+                if (plan.calls === 0) return;
+                if (!(await confirmAction(t("settings.maintenance.linkClaimsToTopics.confirm", { claims: String(plan.claims), calls: String(plan.calls) })))) return;
+                const controller = new AbortController();
+                linkClaimsAbortRef.current = controller;
+                setLinkClaimsRunning(true);
+                setLinkClaimsOutcome(null);
+                setLinkClaimsError(null);
+                setLinkClaimsProgress({ done: 0, total: plan.calls, linkedClaims: 0 });
+                try {
+                  const outcome = await claimTopicLinkBackfill.run(setLinkClaimsProgress, controller.signal);
+                  if (outcome) setLinkClaimsOutcome(outcome);
+                } catch (err) {
+                  setLinkClaimsError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  linkClaimsAbortRef.current = null;
+                  setLinkClaimsRunning(false);
+                  void refreshLinkClaimsPlan();
+                }
+              }}
+            >
+              {t(linkClaimsPlan?.alreadyJudged
+                ? "settings.maintenance.linkClaimsToTopics.resume"
+                : "settings.maintenance.linkClaimsToTopics.run")}
+            </Button>
+          )}
         </div>
       )}
 

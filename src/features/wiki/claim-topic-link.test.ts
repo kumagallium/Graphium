@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GraphiumDocument, WikiMeta } from "../../lib/document-types";
 import {
+  emptyClaimTopicLinkCheckpoint,
   linkClaimsToTopicsForSource,
+  parseClaimTopicLinkCheckpoint,
+  planClaimTopicLinkBackfill,
+  runClaimTopicLinkBackfill,
   saveWikiWithRetry,
   selectClaimTopicLinkCandidates,
+  type ClaimTopicLinkCheckpoint,
   type ClaimTopicLinkDeps,
   type ClaimTopicLinkEntry,
 } from "./claim-topic-link";
@@ -240,5 +245,126 @@ describe("saveWikiWithRetry", () => {
     const save = vi.fn(async () => false);
     expect(await saveWikiWithRetry(save, "c1", () => doc, 0)).toBe("failed");
     expect(save).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("planClaimTopicLinkBackfill", () => {
+  const entries: ClaimTopicLinkEntry[] = [
+    { id: "c1", kind: "claim", derivedFromNotes: ["s1"] },
+    { id: "c2", kind: "claim", derivedFromNotes: ["s1", "s2"] },
+    { id: "c3", kind: "claim", derivedFromNotes: ["s3"] },
+    { id: "done", kind: "claim", derivedFromNotes: ["s4"], topicIds: ["t4"] },
+    { id: "t1", kind: "topic", derivedFromNotes: ["s1"] },
+    { id: "t2", kind: "topic", derivedFromNotes: ["s2"] },
+    { id: "t4", kind: "topic", derivedFromNotes: ["s4"] },
+  ];
+
+  it("空の知見があり同じ資料にトピックがある資料だけを、資料 1 本 1 回で数える", () => {
+    expect(planClaimTopicLinkBackfill(entries, emptyClaimTopicLinkCheckpoint())).toEqual({
+      sourceIds: ["s1", "s2"],
+      calls: 2,
+      claims: 2,
+      alreadyJudged: 0,
+    });
+  });
+
+  async function judgedCheckpoint(): Promise<ClaimTopicLinkCheckpoint> {
+    let saved = emptyClaimTopicLinkCheckpoint();
+    const { deps } = setup({ judge: vi.fn(async () => ({ links: {}, rejected: 0 })) });
+    const plan = planClaimTopicLinkBackfill(deps.listEntries(), saved);
+    await runClaimTopicLinkBackfill(plan, {
+      ...deps,
+      checkpoint: saved,
+      saveCheckpoint: async (next) => { saved = next; },
+    });
+    return saved;
+  }
+
+  it("判定済みの資料は、結ばれなかった知見があっても飛ばす（再開で AI を呼び直さない）", async () => {
+    const { deps } = setup();
+    const plan = planClaimTopicLinkBackfill(deps.listEntries(), await judgedCheckpoint());
+    expect(plan).toMatchObject({ calls: 0, alreadyJudged: 1 });
+  });
+
+  it("新しい知見かトピックが増えた資料は対象に戻す", async () => {
+    const checkpoint = await judgedCheckpoint();
+    const { deps } = setup();
+    const base = deps.listEntries();
+    expect(planClaimTopicLinkBackfill(
+      [...base, { id: "c9", kind: "claim", derivedFromNotes: [SOURCE] }],
+      checkpoint,
+    ).calls).toBe(1);
+    expect(planClaimTopicLinkBackfill(
+      [...base, { id: "t9", kind: "topic", derivedFromNotes: [SOURCE] }],
+      checkpoint,
+    ).calls).toBe(1);
+  });
+});
+
+describe("parseClaimTopicLinkCheckpoint", () => {
+  it("形の違う控えは空として扱い、壊れた行だけ落とす", () => {
+    expect(parseClaimTopicLinkCheckpoint(null)).toEqual(emptyClaimTopicLinkCheckpoint());
+    expect(parseClaimTopicLinkCheckpoint({ version: 2, judged: {} })).toEqual(emptyClaimTopicLinkCheckpoint());
+    expect(parseClaimTopicLinkCheckpoint({
+      version: 1,
+      judged: { ok: { topics: "a", claims: ["c", 1] }, bad: { topics: 1, claims: [] } },
+    }).judged).toEqual({ ok: { topics: "a", claims: ["c"] } });
+  });
+});
+
+describe("runClaimTopicLinkBackfill", () => {
+  function twoSources(overrides: Partial<ClaimTopicLinkDeps> = {}) {
+    const context = setup(overrides, {
+      "wiki:c3": makeDoc("知見 3", { derivedFromNotes: ["source-2"] }),
+      "wiki:t3": makeDoc("トピック 3", { kind: "topic", derivedFromNotes: ["source-2"] }),
+    });
+    context.judge.mockImplementation(async (claims, topics) => ({
+      links: Object.fromEntries(claims.map((c) => [c.id, [topics[0].id]])),
+      rejected: 0,
+    }));
+    const saved: ClaimTopicLinkCheckpoint[] = [];
+    const run = (checkpoint = emptyClaimTopicLinkCheckpoint()) => runClaimTopicLinkBackfill(
+      planClaimTopicLinkBackfill(context.deps.listEntries(), checkpoint),
+      { ...context.deps, checkpoint, saveCheckpoint: async (next) => { saved.push(next); } },
+    );
+    return { ...context, saved, run };
+  }
+
+  it("資料ごとに結び、1 本終わるごとに控えを保存する", async () => {
+    const { run, saved, judge } = twoSources();
+    const result = await run();
+    expect(result).toMatchObject({ done: 2, total: 2, calls: 2, linkedClaims: 3, failedSources: 0, aborted: false });
+    expect(judge).toHaveBeenCalledTimes(2);
+    expect(saved).toHaveLength(2);
+    expect(Object.keys(saved[1].judged).sort()).toEqual(["source-1", "source-2"]);
+  });
+
+  it("止めたらそこで終わり、終わった資料から再開できる", async () => {
+    const controller = new AbortController();
+    const { run, saved, judge, deps } = twoSources({ signal: controller.signal });
+    judge.mockImplementationOnce(async (claims, topics) => {
+      controller.abort();
+      return { links: { [claims[0].id]: [topics[0].id] }, rejected: 0 };
+    });
+    const stopped = await run();
+    expect(stopped.aborted).toBe(true);
+    expect(saved).toHaveLength(0);
+
+    // 止めた資料の控えは残らないので、残りの知見は次の計画に入る
+    const next = planClaimTopicLinkBackfill(deps.listEntries(), emptyClaimTopicLinkCheckpoint());
+    expect(next.calls).toBe(2);
+  });
+
+  it("失敗した資料は控えに残さず、続けて失敗したら止める", async () => {
+    const { run, saved, judge, docs } = twoSources();
+    for (const n of [4, 5, 6]) {
+      docs.set(`wiki:c${n}`, makeDoc(`知見 ${n}`, { derivedFromNotes: [`source-${n}`] }));
+      docs.set(`wiki:t${n}`, makeDoc(`トピック ${n}`, { kind: "topic", derivedFromNotes: [`source-${n}`] }));
+    }
+    const failure = new Error("model down");
+    judge.mockImplementation(async () => { throw failure; });
+    const result = await run();
+    expect(result).toMatchObject({ failedSources: 3, stoppedByFailures: true, failureError: failure, calls: 3 });
+    expect(saved).toHaveLength(0);
   });
 });

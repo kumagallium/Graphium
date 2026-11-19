@@ -137,7 +137,7 @@ export type KnowledgeBundleOptions = {
  * 文字列の 53 ビットのハッシュ（cyrb53）。衝突を避けるための短い指紋で、暗号の用途ではない。
  * 依存を足さず、ブラウザでも動く純関数にするため Node の crypto は使わない。
  */
-function cyrb53(str: string): number {
+export function cyrb53(str: string): number {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) {
