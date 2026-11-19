@@ -24,3 +24,24 @@ export function getGraphViewHtml(): Promise<string> {
   }
   return cached;
 }
+
+declare const __GRAPHIUM_KNOWLEDGE_GRAPH_HTML__: string | undefined;
+
+let cachedKnowledge: Promise<string> | null = null;
+
+/** 全体グラフの画面（apps/graph-app/main.tsx を Vite で組んだもの）。作りは getGraphViewHtml と同じ */
+export function getKnowledgeGraphHtml(): Promise<string> {
+  if (typeof __GRAPHIUM_KNOWLEDGE_GRAPH_HTML__ === "string") {
+    return Promise.resolve(__GRAPHIUM_KNOWLEDGE_GRAPH_HTML__);
+  }
+  if (!cachedKnowledge) {
+    const builder = new URL("../../../scripts/build-mcp-app-html.mjs", import.meta.url).href;
+    cachedKnowledge = import(/* @vite-ignore */ builder).then(
+      (m: { buildKnowledgeGraphHtml: () => Promise<string> }) => m.buildKnowledgeGraphHtml(),
+    );
+    cachedKnowledge.catch(() => {
+      cachedKnowledge = null;
+    });
+  }
+  return cachedKnowledge;
+}

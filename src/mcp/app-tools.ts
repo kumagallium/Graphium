@@ -19,9 +19,9 @@ import { readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { z } from "zod";
 
-import { getGraphViewHtml } from "./apps/graph-view-html";
+import { getGraphViewHtml, getKnowledgeGraphHtml } from "./apps/graph-view-html";
 import { getNotePreviewHtml } from "./apps/note-preview-html";
-import { buildFlowPayload, buildKnowledgePayload, buildLineagePayload, GRAPH_REF_KEY, type GraphPayload, type GraphRef } from "./graph-views";
+import { buildFlowPayload, buildKnowledgeAppPayload, buildLineagePayload, GRAPH_REF_KEY, type GraphPayload, type GraphRef, type KnowledgeAppPayload } from "./graph-views";
 import { traceLineage } from "./lineage";
 import { describeSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { buildNotePreview, flattenPreviewBlocks, type NotePreview } from "./note-preview";
@@ -32,6 +32,14 @@ import { readNote, vaultExists } from "./vault";
 
 export const NOTE_PREVIEW_URI = "ui://graphium/note-preview.html";
 export const GRAPH_VIEW_URI = "ui://graphium/graph.html";
+/** 全体グラフの画面（アプリの GlobalGraphView をそのまま描く。apps/graph-app/main.tsx） */
+export const KNOWLEDGE_GRAPH_URI = "ui://graphium/knowledge-graph.html";
+
+/** 全体グラフの道具の _meta */
+export const KNOWLEDGE_GRAPH_TOOL_META = {
+  ui: { resourceUri: KNOWLEDGE_GRAPH_URI },
+  [RESOURCE_URI_META_KEY]: KNOWLEDGE_GRAPH_URI,
+} as const;
 
 /** グラフを描く道具の _meta（新旧どちらの書き方のホストでも読めるよう両方入れる） */
 export const GRAPH_VIEW_TOOL_META = {
@@ -113,10 +121,10 @@ function text(s: string): CallToolResult {
 }
 
 /** 結果に載せた参照（道具と引数）から、描くデータを vault から組み直す（どの MCP プロセスでも同じ図になる） */
-export function buildGraphFromRef(ref: GraphRef): { payload: GraphPayload } | { error: string } {
+export function buildGraphFromRef(ref: GraphRef): { payload: GraphPayload | KnowledgeAppPayload } | { error: string } {
   if (!vaultExists()) return { error: "Graphium の vault が見つかりません。" };
   if (ref.tool === "show_knowledge_graph") {
-    const payload = buildKnowledgePayload({ folder: ref.folder });
+    const payload = buildKnowledgeAppPayload({ folder: ref.folder });
     return payload ? { payload } : { error: "NO_INDEX: Graphium を一度起動してください（note-index.json がありません）。" };
   }
   const noteId = ref.noteId ?? "";
@@ -210,6 +218,23 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
   // 大きな結果（全体グラフは数百 KB）の届け方もホスト次第なので、結果に頼らない。どのプロセスでも
   // vault から同じ図を組み直せるよう、参照は道具の名前と引数そのものにする。
   // structuredContent は画面を描かないクライアント（Claude Code）ではモデルに渡るので、小さく保ち、要約の文も入れる
+  registerAppResource(
+    server,
+    "Graphium knowledge graph",
+    KNOWLEDGE_GRAPH_URI,
+    { description: "Graphium の全体グラフを、アプリと同じ見た目（島・印・光り方）で会話の中に描く画面" },
+    async () => ({
+      contents: [
+        {
+          uri: KNOWLEDGE_GRAPH_URI,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: await getKnowledgeGraphHtml(),
+          _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false } },
+        },
+      ],
+    }),
+  );
+
   const graphResult = (summary: string, ref: GraphRef): CallToolResult => ({
     content: [{ type: "text", text: summary }],
     structuredContent: { summary, [GRAPH_REF_KEY]: ref },
@@ -292,17 +317,15 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
         folder: z.string().optional().describe("範囲にするフォルダ（\"親\" または \"親/子\"）。外は薄く描く"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
-      _meta: GRAPH_VIEW_TOOL_META,
+      _meta: KNOWLEDGE_GRAPH_TOOL_META,
     },
     async ({ folder }) => {
       if (!vaultExists()) return text("Graphium の vault が見つかりません。");
-      const payload = buildKnowledgePayload({ folder });
+      const payload = buildKnowledgeAppPayload({ folder });
       if (!payload) return text("NO_INDEX: Graphium を一度起動してください（note-index.json がありません）。");
-      const counts = new Map<string, number>();
-      for (const n of payload.nodes) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1);
       return graphResult(
-        `全体グラフを表示しました（${payload.nodes.length} ノード・${payload.edges.length} 本の線` +
-          (payload.truncated ? `。大きいので ${payload.truncated.total} 件中 ${payload.truncated.shown} 件` : "") +
+        `全体グラフを表示しました（${payload.data.nodes.length} ノード・${payload.data.edges.length} 本の線` +
+          (payload.scopeIds ? `・フォルダの範囲 ${payload.scopeIds.length} 件` : "") +
           `）。この会話で読んだ・書いたページはグラフの上で光ります。`,
         { tool: "show_knowledge_graph", ...(folder ? { folder } : {}) },
       );
@@ -329,7 +352,8 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
     async (ref) => {
       const r = buildGraphFromRef(ref as GraphRef);
       if ("error" in r) return { content: [{ type: "text", text: r.error }], isError: true };
-      return { content: [{ type: "text", text: `${r.payload.nodes.length} nodes` }], structuredContent: { payload: r.payload } };
+      const n = "data" in r.payload ? r.payload.data.nodes.length : r.payload.nodes.length;
+      return { content: [{ type: "text", text: `${n} nodes` }], structuredContent: { payload: r.payload } };
     },
   );
 

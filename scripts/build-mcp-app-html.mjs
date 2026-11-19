@@ -199,3 +199,57 @@ export async function buildGraphViewHtml() {
     "</html>",
   ].join("\n");
 }
+
+/**
+ * 全体グラフの画面（src/mcp/apps/graph-app/main.tsx）を組み立てる。アプリの GlobalGraphView を
+ * そのまま描くので、アプリと同じ Vite（React・Tailwind）で 1 つの JS と CSS に組み、HTML に埋め込む。
+ * 外から何も読まない（CSP を空のまま通す）。アプリの CSS が /fonts/ から読む書体は届かないので、
+ * Inter だけは data URL で足す（無ければ OS の書体で描かれる）
+ */
+export async function buildKnowledgeGraphHtml() {
+  const [{ build: viteBuild }, { default: react }, { default: tailwindcss }] = await Promise.all([
+    import("vite"),
+    import("@vitejs/plugin-react"),
+    import("@tailwindcss/vite"),
+  ]);
+  const out = await viteBuild({
+    configFile: false,
+    root: repoRoot,
+    logLevel: "silent",
+    plugins: [react(), tailwindcss()],
+    resolve: { alias: { "@": join(repoRoot, "src") } },
+    define: { "process.env.NODE_ENV": '"production"' },
+    build: {
+      write: false,
+      cssCodeSplit: false,
+      assetsInlineLimit: 100_000_000,
+      minify: true,
+      lib: {
+        entry: join(repoRoot, "src", "mcp", "apps", "graph-app", "main.tsx"),
+        formats: ["iife"],
+        name: "GraphiumKnowledgeGraph",
+        fileName: () => "knowledge-graph.js",
+      },
+      rollupOptions: { output: { inlineDynamicImports: true } },
+    },
+  });
+  const files = (Array.isArray(out) ? out : [out]).flatMap((o) => o.output);
+  const js = files.find((f) => f.type === "chunk")?.code ?? "";
+  const css = files.filter((f) => f.type === "asset" && f.fileName.endsWith(".css")).map((f) => String(f.source)).join("\n");
+  const inter = readFileSync(join(repoRoot, "public", "fonts", "inter.woff2")).toString("base64");
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    "<head>",
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    "<title>Graphium knowledge graph</title>",
+    `<style>${css}\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400 700; src: url(data:font/woff2;base64,${inter}) format('woff2'); }\nhtml, body { margin: 0; }</style>`,
+    "</head>",
+    "<body>",
+    '<div id="root"></div>',
+    `<script>${escapeInlineScript(js)}</script>`,
+    "</body>",
+    "</html>",
+  ].join("\n");
+}

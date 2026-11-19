@@ -4591,7 +4591,7 @@ Tools:
 | `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `_meta["graphium/preview"]` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
 | `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps), in the process graph's colours. Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
-| `show_knowledge_graph` | draw the global graph (`buildGlobalGraph`, the app's own builder, without media leaves), `folder` fading what is outside it (`collectFolderScopeIds`), at most 1,200 nodes (outside-the-folder nodes dropped first, then the least connected). While it is open it highlights what the client touches through this MCP (see below) |
+| `show_knowledge_graph` | draw the global graph with the app's own component: a third UI resource, `ui://graphium/knowledge-graph.html` (`src/mcp/apps/graph-app/main.tsx`, built with the app's Vite + React + Tailwind and inlined), renders `GlobalGraphView` in the compact mode the chat-beside graph uses, so the islands, island names, hover labels, marks and pulse are the app's. `graph_payload` returns `buildGlobalGraph` as is (`KnowledgeAppPayload`: all nodes, `scopeIds` from `collectFolderScopeIds` for `folder`, `insightsEnabled` from the feature-flags copy). Content islands need the app's embeddings (in the WebView's IndexedDB), so islands here are grouped by connection |
 | `graph_payload` | app-only: the graph view passes it the reference from a `show_*` result (`structuredContent.graphiumGraph` — the tool name and its arguments) and gets the graph data back, rebuilt from the vault (`buildGraphFromRef`) |
 | `graph_activity` | app-only (`_meta.ui.visibility: ["app"]`, never shown to the model): the graph view polls it for the activity events after a byte cursor, from 30 minutes before it opened (`notBefore`) |
 
@@ -4600,8 +4600,8 @@ Tools:
 **Graphs inside the conversation (MCP Apps).** A second UI resource,
 `ui://graphium/graph.html` (`src/mcp/apps/graph-view.ts`, built by
 `scripts/build-mcp-app-html.mjs` with cytoscape and cytoscape-fcose inlined, empty CSP like
-the note preview), draws a `GraphPayload` from `src/mcp/graph-views.ts` for `show_steps`,
-`show_lineage` and `show_knowledge_graph`. The result carries only a reference —
+the note preview), draws a `GraphPayload` from `src/mcp/graph-views.ts` for `show_steps` and `show_lineage`
+(`show_knowledge_graph` has its own view, below). The result carries only a reference —
 `structuredContent: { summary, graphiumGraph: { tool, …arguments } }` — and the view fetches
 the data with the app-only `graph_payload`, which rebuilds it from the vault. Claude Desktop
 can route the model's tool calls and the view's calls to different MCP processes (on
@@ -4610,21 +4610,18 @@ all), and a knowledge graph is a few hundred KB, so nothing is left to the resul
 delivery: any process rebuilds the same graph from the reference. A view that gets no
 reference, or whose fetch fails, shows the tool's own text and what it received instead of a
 generic error; results from v0.134–v0.150 servers (`_meta["graphium/graph"]`) are still
-drawn. The look is the app's, from shared definitions so the
-two cannot drift: the knowledge graph uses the app's global-graph stylesheet
-(`src/features/network-graph/global-graph-stylesheet.ts`, split out of
-`global-graph-view.tsx` and used by both) in the simple mode the chat-beside graph uses,
-with fcose as in the app's standard layout and the same zoom-dependent sizing
-(`applyZoomStyle`); the step flow uses the process graph's colours (`flow-palette.ts`, with
+drawn. The look is the app's, from shared definitions so the two cannot drift: the step flow uses the process graph's colours (`flow-palette.ts`, with
 the `--color-label-*-bg` values from `app.css`) and ranks nodes by the longest path along
 the edges, top to bottom like the app's process graph (`src/mcp/apps/flow-layout.ts`,
 inputs and tools just before their first step; the frame grows with the number of ranks);
-the lineage uses the global graph's kind colours and shapes in columns by depth. For the
-knowledge graph the view polls `graph_activity` every 2.5 s (8 s when hidden) and marks
-what the client touched with the chat-beside graph's rules: read pages
-`ai-read`, written pages `ai-used`, walked edges `ai-walked`, edges between touched pages
-and their relays `ai-link` (`evidence-links.ts`), untouched titles hidden (`label-muted`),
-and a one-off pulse (`graph-firing.ts`) when a page is first touched. `src/mcp/activity.ts`
+the lineage uses the global graph's kind colours and shapes in columns by depth. The knowledge graph view
+(`ui://graphium/knowledge-graph.html`, see `show_knowledge_graph` above) polls
+`graph_activity` every 2.5 s (8 s when hidden) and hands the app's `GlobalGraphView` the same
+`usageWeights` / `usageScope` the chat-beside graph gets. The app draws three strengths — used
+in this answer, used in an earlier answer, read only; the MCP cannot tell what an answer used,
+so it maps recency instead: pages read or written within 90 s of the newest event weigh 1,
+earlier ones 0.5, and walked edges go to `usageScope.walked`. A `storage-shim` replaces
+`localStorage` with memory when the host's sandbox forbids it. `src/mcp/activity.ts`
 appends the log to `appdata/mcp-activity.jsonl` (one JSON line per event, rotated to `.1`
 past 1 MB) so every MCP process can read it, fed by `get_note` /
 `get_topic` / `show_note` / `get_source_text` (read), `trace_lineage` / `show_lineage`
