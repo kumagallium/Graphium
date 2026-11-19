@@ -4,6 +4,7 @@ import {
   buildLinkedEntry,
   acceptLinkChange,
   addLinkedEntry,
+  addLinkedEntries,
   withPlaceName,
   withPlaceNameInIndex,
   LINK_HISTORY_MAX,
@@ -15,6 +16,49 @@ const link: MediaLink = { placeId: "p", relPath: "a/b.xlsx", size: 100, mtimeMs:
 const picked = { placeId: "p", relPath: "a/b.xlsx", name: "b.xlsx", size: 100, mtimeMs: 1000 };
 const place = { id: "p", name: "共有ドライブ" };
 const NOW = "2026-11-18T00:00:00.000Z";
+
+describe("addLinkedEntries", () => {
+  const file = (relPath: string, placeId: string | null = "p") => ({
+    placeId,
+    relPath: placeId === null ? null : relPath,
+    name: relPath,
+    size: 1,
+    mtimeMs: 1,
+  });
+  const run = (index: ReturnType<typeof createEmptyIndex>, files: ReturnType<typeof file>[]) => {
+    let n = 0;
+    return addLinkedEntries({ index, picked: files, places: [place], now: NOW, newFileId: () => `id${++n}` });
+  };
+
+  it("選んだファイルをすべて足す", () => {
+    const result = run(createEmptyIndex(), [file("a.csv"), file("b.pdf")]);
+    expect(result.linked.map((e) => e.name)).toEqual(["a.csv", "b.pdf"]);
+    expect(result.index.media).toHaveLength(2);
+    expect(new Set(result.index.media.map((e) => e.fileId)).size).toBe(2);
+  });
+  it("リンク済みのファイルは足さず、既存の素材を返す", () => {
+    const first = run(createEmptyIndex(), [file("a.csv")]);
+    const second = run(first.index, [file("a.csv"), file("b.csv")]);
+    expect(second.linked.map((e) => e.name)).toEqual(["b.csv"]);
+    expect(second.existing).toEqual([first.linked[0]]);
+    expect(second.index.media).toHaveLength(2);
+  });
+  it("同じ選択の中の重複は 1 件だけ足す", () => {
+    const result = run(createEmptyIndex(), [file("a.csv"), file("a.csv")]);
+    expect(result.linked).toHaveLength(1);
+    expect(result.existing).toHaveLength(1);
+    expect(result.index.media).toHaveLength(1);
+  });
+  it("置き場の外と、登録されていない置き場のファイルは足さず数える", () => {
+    const result = run(createEmptyIndex(), [file("a.csv", null), file("b.csv", "other"), file("c.csv")]);
+    expect(result.outside).toBe(2);
+    expect(result.linked.map((e) => e.name)).toEqual(["c.csv"]);
+  });
+  it("何も足さないときは同じ索引を返す", () => {
+    const index = createEmptyIndex();
+    expect(run(index, [file("a.csv", null)]).index).toBe(index);
+  });
+});
 
 describe("linkState", () => {
   it("同じ値なら ok", () => expect(linkState(link, { state: "ok", size: 100, mtimeMs: 1000 })).toBe("ok"));

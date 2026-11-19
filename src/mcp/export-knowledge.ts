@@ -10,7 +10,8 @@ import {
 } from "../features/wiki/asterism-knowledge";
 import { allEntries } from "./search";
 import { readMediaIndex } from "./sources";
-import { readNote, readNoteIndex, resolveGraphiumRoot, wikiDir } from "./vault";
+import { readIndexStrict } from "./upkeep/index-store";
+import { readNote, resolveGraphiumRoot, wikiDir } from "./vault";
 
 export type ExportAsterismKnowledgeInput = {
   claimBaseIri?: string;
@@ -27,6 +28,11 @@ const ERRORS: Record<string, string> = {
   "term-base-iri-invalid": "termBaseIri が不正です（http(s) の URL で空白を含まないこと。末尾が / か # でなければ / を補う）。",
   "note-url-base-invalid": "noteUrlBase が不正です（http(s) の URL で、# や ? を含まないこと）。省略すると公開アプリの URL を使います。",
 };
+
+const INDEX_UNREADABLE_ERROR =
+  "INDEX_UNREADABLE: note-index.json を読めないため、アーカイブ・ゴミ箱のページを見分けられません。少し待ってやり直すか、Graphium を一度起動してください。";
+const INDEX_WITHOUT_WIKI_ERROR =
+  "INDEX_INCOMPLETE: note-index.json に Wiki の行が無いため、アーカイブ・ゴミ箱のページを見分けられません。少し待ってやり直すか、Graphium を一度起動してください。";
 
 /** 資料の参照（pdf:… / document:… / url:… / ノート id）から名前を引く。引けなければ undefined */
 function makeSourceName(root: string): (ref: string) => string | undefined {
@@ -59,10 +65,16 @@ export function exportAsterismKnowledge(
         .map((f) => f.slice(0, -".json".length))
     : [];
   const wikiIds = new Set(fileIds);
+  // アーカイブ/ゴミ箱の印は索引にしか無い。読めない索引や Wiki の行が 1 つも無い索引で続けると、
+  // 隠したページまで書き出してしまうので止める。索引がまだ無い vault（一度も起動していない）は続ける
+  const index = readIndexStrict(root);
+  if (!index.ok && index.code === "INDEX_UNREADABLE") return { error: INDEX_UNREADABLE_ERROR };
+  const indexRows = index.ok ? index.index.notes : [];
+  if (index.ok && wikiIds.size > 0 && !indexRows.some((n) => wikiIds.has(n.noteId))) {
+    return { error: INDEX_WITHOUT_WIKI_ERROR };
+  }
   // ゴミ箱・アーカイブ済みは既存の送り口と同じく対象から外す
-  const hidden = new Set(
-    (readNoteIndex(root)?.notes ?? []).filter((n) => n.deletedAt || n.archivedAt).map((n) => n.noteId),
-  );
+  const hidden = new Set(indexRows.filter((n) => n.deletedAt || n.archivedAt).map((n) => n.noteId));
 
   const items: { id: string; meta: WikiMeta; title?: string }[] = [];
   for (const id of fileIds) {

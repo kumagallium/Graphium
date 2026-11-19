@@ -9,6 +9,7 @@ import { useFileManager } from "./use-file-manager";
 import { registerProvider, setActiveProvider } from "../lib/storage/registry";
 import { clearMediaIndexCache } from "../features/asset-browser";
 import { clearLatestProcessIndex } from "../features/network-graph/process-index";
+import { INDEX_SCHEMA_VERSION } from "../features/navigation/index-file";
 import type { StorageProvider } from "../lib/storage/types";
 import type { GraphiumDocument, GraphiumFile, WikiMeta } from "../lib/document-types";
 
@@ -90,7 +91,39 @@ function setupProvider(wikiSeed: Record<string, GraphiumDocument>) {
   } as unknown as StorageProvider;
   registerProvider(provider);
   setActiveProvider("test-mem-wiki-restore");
-  return { wikiFiles, loadWikiFile, appData };
+  return { wikiFiles, loadWikiFile, appData, provider };
+}
+
+const AT = "2026-01-01T00:00:00.000Z";
+
+/** 索引の 1 行（テストで見る項目だけ） */
+function indexRow(noteId: string, extra: Record<string, unknown> = {}) {
+  return { noteId, title: noteId, modifiedAt: AT, fileModifiedAt: AT, createdAt: AT, headings: [], labels: [], outgoingLinks: [], ...extra };
+}
+
+/** ノート 1 件と、指定の版の索引（w1 はアーカイブ済み）を持つ vault を用意し、索引の保存を記録する */
+function setupIndexedVault(version: number) {
+  const setup = setupProvider({ "w1": wikiDoc("知見A"), "w2": wikiDoc("知見B") });
+  const noteDoc = { ...wikiDoc("ノート"), source: undefined, wikiMeta: undefined } as GraphiumDocument;
+  const provider = setup.provider as unknown as Record<string, unknown>;
+  provider.listFiles = async () => [{ id: "n1", name: "ノート.graphium.json", modifiedTime: AT, createdTime: AT }];
+  provider.loadFile = async () => structuredClone(noteDoc);
+  setup.appData.set("note-index", {
+    version,
+    updatedAt: AT,
+    notes: [
+      indexRow("n1", { deletedAt: AT }),
+      indexRow("w1", { source: "ai", archivedAt: AT }),
+      indexRow("w2", { source: "ai" }),
+    ],
+  });
+  const saves: { notes: { noteId: string; archivedAt?: string; deletedAt?: string }[] }[] = [];
+  const writeAppData = setup.provider.writeAppData!.bind(setup.provider);
+  setup.provider.writeAppData = async (key: string, data: unknown) => {
+    if (key === "note-index") saves.push(structuredClone(data) as (typeof saves)[number]);
+    await writeAppData(key, data);
+  };
+  return { ...setup, saves };
 }
 
 async function renderFileManager(ids: string[]) {
@@ -258,6 +291,49 @@ describe("useFileManager: Wiki の取り消し用ヘルパー", () => {
     expect(errorSpy).not.toHaveBeenCalled();
     expect(result.current.getWikiIndexFlags("w1")?.deletedAt).toBeNull();
     expect(result.current.wikiFiles.map((f) => f.id)).toEqual(["w1"]);
+  });
+
+  it("起動時の索引が古い版でも、組み直しのたびにノートだけの索引を保存しない", async () => {
+    const { saves } = setupIndexedVault(INDEX_SCHEMA_VERSION - 1);
+    const { result } = await renderFileManager(["w1", "w2"]);
+    await waitFor(() => expect(result.current.getWikiIndexFlags("w1")?.archivedAt).toBe(AT));
+
+    saves.length = 0;
+    await act(async () => { await result.current.refreshFiles(); });
+    await waitFor(() => expect(saves.length).toBeGreaterThan(0));
+
+    for (const saved of saves) {
+      const rows = new Map(saved.notes.map((n) => [n.noteId, n]));
+      expect([...rows.keys()].sort()).toEqual(["n1", "w1", "w2"]);
+      expect(rows.get("w1")?.archivedAt).toBe(AT);
+      expect(rows.get("n1")?.deletedAt).toBe(AT);
+    }
+  });
+
+  it("Wiki を読み直している間の保存でも、Wiki の行とフラグを落とさない", async () => {
+    const { saves, loadWikiFile, wikiFiles } = setupIndexedVault(INDEX_SCHEMA_VERSION);
+    const { result } = await renderFileManager(["w1", "w2"]);
+    await waitFor(() => expect(result.current.getWikiIndexFlags("w1")?.archivedAt).toBe(AT));
+
+    // 読み直しを途中で止め、その間にページをゴミ箱へ送る
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    loadWikiFile.mockClear();
+    loadWikiFile.mockImplementation(async (id: string) => {
+      await gate;
+      return structuredClone(wikiFiles.get(id)!);
+    });
+    saves.length = 0;
+    await act(async () => { await result.current.refreshFiles(); });
+    await waitFor(() => expect(loadWikiFile).toHaveBeenCalled());
+    await act(async () => { await result.current.handleDeleteWikiFile("w2"); });
+    await waitFor(() => expect(saves.length).toBeGreaterThan(0));
+
+    const during = new Map(saves[saves.length - 1].notes.map((n) => [n.noteId, n]));
+    expect(during.get("w1")?.archivedAt).toBe(AT);
+    expect(during.get("w2")?.deletedAt).toBeTruthy();
+
+    await act(async () => { release(); await gate; });
   });
 
   it("安定性: handleSaveWikiFile と 3 関数は再描画しても同一参照", async () => {

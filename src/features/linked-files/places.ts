@@ -13,6 +13,8 @@ export type PickedFile = {
   size: number;
   mtimeMs: number;
 };
+/** ファイル選択の結果。failed は届かなかった・ファイルでなかった件数 */
+export type PickedFiles = { files: PickedFile[]; failed: number };
 export type LinkStat = {
   state: "ok" | "missing" | "unreachable" | "unregistered";
   size?: number;
@@ -56,10 +58,10 @@ export async function removePlace(id: string): Promise<void> {
   await invoke<void>("place_remove", { id });
 }
 
-/** Rust がファイル選択を開く。キャンセルは null。 */
-export async function pickPlaceFile(): Promise<PickedFile | null> {
+/** Rust がファイル選択（複数選択できる）を開く。キャンセルは null。 */
+export async function pickPlaceFiles(): Promise<PickedFiles | null> {
   if (!isTauri()) return desktopOnly();
-  return invoke<PickedFile | null>("place_pick_file");
+  return invoke<PickedFiles | null>("place_pick_files");
 }
 
 const statInFlight = new Map<string, Promise<LinkStat[]>>();

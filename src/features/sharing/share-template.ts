@@ -16,6 +16,7 @@
 
 import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 import type { AuthorIdentity } from "../document-provenance/types";
+import { stripMemoTraces } from "./strip-memo-traces";
 import {
   LocalFolderSharedProvider,
   LocalFolderBlobProvider,
@@ -142,6 +143,9 @@ export async function shareTemplate(
       blocks = result.doc.pages[0].blocks;
       blobs = result.blobs;
     }
+
+    // 雛形の本文にも、メモを指す引用の題（メモの先頭行）を持ち出さない
+    blocks = stripMemoTraces({ ...doc, pages: [{ ...page, blocks }] }).pages[0].blocks;
 
     const title = options.title.trim() || doc.title || "Untitled";
     const labels = Object.entries(page.labels ?? {});

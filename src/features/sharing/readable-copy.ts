@@ -98,6 +98,8 @@ export async function syncReadableCopy(
       mediaIndex: context.mediaIndex ?? null,
       identity: { name: input.author.name },
       options: { includeChats: false, includeMemos: false },
+      // 素材に指定した元データは本文で引用したものではないので、共有先には出さない
+      includeSourceData: false,
     });
     await invoke("shared_readable_sync", {
       root: input.root,

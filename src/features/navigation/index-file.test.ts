@@ -1,6 +1,6 @@
 // buildIndexEntry / updateIndexEntry / removeIndexEntry のユニットテスト
 
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   buildIndexEntry,
   tryBuildIndexEntry,
@@ -14,7 +14,7 @@ import {
   type NoteIndexEntry,
 } from "./index-file";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
-import { registerProvider, setActiveProvider } from "../../lib/storage/registry";
+import { getActiveProvider, registerProvider, setActiveProvider } from "../../lib/storage/registry";
 import type { StorageProvider } from "../../lib/storage/types";
 
 // テスト用のモック GraphiumDocument を構築するヘルパー
@@ -635,6 +635,57 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
     const result = await ensureIndex([mockFile("file-1")], docCache, existing);
     const entry = result.notes.find((n) => n.noteId === "file-1");
     expect(entry?.archivedAt).toBe("2026-04-01T00:00:00Z");
+  });
+});
+
+describe("ensureIndex の全件再構築の保存", () => {
+  const writes: GraphiumIndex[] = [];
+  const writingProvider = {
+    id: "test-mem-rebuild-writes",
+    writeAppData: async (_key: string, data: unknown) => {
+      writes.push(structuredClone(data) as GraphiumIndex);
+    },
+    readAppData: async () => null,
+    loadFile: async () => {
+      throw new Error("loadFile should not be called when docCache is pre-populated");
+    },
+  } as unknown as StorageProvider;
+  let previousProviderId: string;
+
+  beforeEach(() => {
+    writes.length = 0;
+    previousProviderId = getActiveProvider().id;
+    registerProvider(writingProvider);
+    setActiveProvider("test-mem-rebuild-writes");
+  });
+  afterEach(() => {
+    setActiveProvider(previousProviderId);
+  });
+
+  it("索引の版が古くても、フラグと Wiki の行を欠いた索引を保存しない", async () => {
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION - 1,
+      updatedAt: "2026-03-31T00:00:00Z",
+      notes: [
+        { ...buildIndexEntry("file-1", mockDoc()), deletedAt: "2026-04-01T00:00:00Z" },
+        { ...buildIndexEntry("wiki-1", mockDoc()), source: "ai", archivedAt: "2026-04-02T00:00:00Z" },
+      ],
+    };
+    const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
+
+    await ensureIndex([mockFile("file-1")], docCache, existing);
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
+
+    const saved = new Map(writes[0].notes.map((n) => [n.noteId, n]));
+    expect(saved.get("file-1")?.deletedAt).toBe("2026-04-01T00:00:00Z");
+    expect(saved.get("wiki-1")?.archivedAt).toBe("2026-04-02T00:00:00Z");
+  });
+
+  it("索引が無いときは再構築した索引を保存する", async () => {
+    const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
+    await ensureIndex([mockFile("file-1")], docCache, null);
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].notes.map((n) => n.noteId)).toEqual(["file-1"]);
   });
 });
 

@@ -44,6 +44,7 @@ import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
 import { displayTypeOf, displayMimeOf, isInMediaList } from "../linked-files/display-type";
 import type { LinkState } from "../linked-files/linked-entry";
 import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
+import { linkFilesErrorNotice, linkFilesNotice, type LinkFilesOutcome } from "../linked-files/link-notice";
 import { useLinkStates } from "../linked-files/use-link-states";
 import { isTauri } from "../../lib/platform";
 import { MaterialSidePeek } from "./MaterialSidePeek";
@@ -725,7 +726,7 @@ export type AssetGalleryViewProps = {
    * 置き場のファイルをリンクする（type === "url" のタブ・デスクトップ版のみ）。
    * 結果で「置き場の外のファイルだった」ときだけ、ここで知らせる。
    */
-  onLinkPlaceFile?: () => Promise<{ status: "cancelled" | "outside" | "linked" | "existing"; entry?: MediaIndexEntry }>;
+  onLinkPlaceFiles?: () => Promise<LinkFilesOutcome | null>;
   /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
   /** 投入口の受け皿から直接渡されたファイル群を取り込む（素材が 1 件も無いときの初回受け皿用） */
@@ -917,7 +918,7 @@ export function AssetGalleryView({
   noteFolders,
   noteFolderLookup,
   onAddUrlBookmark,
-  onLinkPlaceFile,
+  onLinkPlaceFiles,
   onUploadMedia,
   onIntakeFiles,
   onIngestMedia,
@@ -1127,25 +1128,21 @@ export function AssetGalleryView({
     const timer = setTimeout(() => setLinkNotice(null), 8000);
     return () => clearTimeout(timer);
   }, [linkNotice]);
-  const handleLinkPlaceFile = useCallback(async () => {
-    if (!onLinkPlaceFile) return;
+  const handleLinkPlaceFiles = useCallback(async () => {
+    if (!onLinkPlaceFiles) return;
     try {
-      const result = await onLinkPlaceFile();
-      if (result.status === "outside") setLinkNotice(t("linkedFile.outsidePlace"));
-      // 開いている一覧と違う種類の一覧に入ったときは、切り替えずに短く知らせる
-      else if (result.entry && !isInMediaList(result.entry, mediaType)) {
-        setLinkNotice(t("linkedFile.listedIn", { type: t(`asset.type.${displayTypeOf(result.entry)}`) }));
-      }
+      const outcome = await onLinkPlaceFiles();
+      if (outcome) setLinkNotice(linkFilesNotice(outcome, mediaType, t));
     } catch (err) {
-      setLinkNotice(t("linkedFile.linkFailed", { message: err instanceof Error ? err.message : String(err) }));
+      setLinkNotice(linkFilesErrorNotice(err, t));
     }
-  }, [onLinkPlaceFile, t, mediaType]);
+  }, [onLinkPlaceFiles, t, mediaType]);
 
   // 「置き場のファイルをリンク」ボタン（デスクトップ版のみ）。URL の一覧と、ファイルの種類ごとの一覧で同じ見た目
   const linkPlaceFileButton =
-    onLinkPlaceFile && isTauri() && ["url", "image", "document", "data", "video", "audio"].includes(mediaType) ? (
+    onLinkPlaceFiles && isTauri() && ["url", "image", "document", "data", "video", "audio"].includes(mediaType) ? (
       <button
-        onClick={() => void handleLinkPlaceFile()}
+        onClick={() => void handleLinkPlaceFiles()}
         className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors whitespace-nowrap shrink-0"
       >
         <FileIcon size={12} />

@@ -44,6 +44,11 @@ export type CollectNoteProvExtrasInput = {
     /** 計画ノート ID → 計画ノートの doc */
     planDocs: Map<string, GraphiumDocument>;
   };
+  /**
+   * 素材に指定した元データ（リンクした素材）を来歴に含めるか。既定は含める。
+   * 共有フォルダの読める写しでは切る（本文で引用していないファイルの名前と場所を、共有先へ出さない）
+   */
+  includeSourceData?: boolean;
 };
 
 /** media-server:// / file-media:// / local-media:// から fileId を取り出す（既定の resolveFileId） */
@@ -65,7 +70,17 @@ function toMediaMap(index: CollectNoteProvExtrasInput["mediaIndex"]): Map<string
   return new Map(index.map((e) => [e.fileId, e]));
 }
 
-function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
+/** 素材に指定した元データの fileId。リンクした素材で、索引にあるものだけ */
+function sourceDataIdsOf(e: MediaIndexEntry, media: Map<string, MediaIndexEntry>): string[] {
+  const ids = (e.derivedFromAssets ?? []).filter((id): id is string => {
+    if (typeof id !== "string" || id === e.fileId) return false;
+    const parent = media.get(id);
+    return !!parent && isLinkedEntry(parent);
+  });
+  return [...new Set(ids)];
+}
+
+function toAssetEntry(e: MediaIndexEntry, derivedFrom: string[]): AssetExportEntry {
   // 控えは細工されうるので、形と URL の一致を確かめて整えた値だけ出す
   const clean = isLinkedEntry(e) ? sanitizeMediaLink(e.link) : null;
   // 履歴は書き出さない
@@ -80,6 +95,7 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
     ...(e.mimeType ? { mimeType: e.mimeType } : {}),
     ...(e.sourceInfo ? { sourceInfo: e.sourceInfo } : {}),
     ...(link ? { link } : {}),
+    ...(derivedFrom.length > 0 ? { derivedFrom } : {}),
   };
 }
 
@@ -292,10 +308,17 @@ export function collectNoteProvExtras(input: CollectNoteProvExtrasInput): NotePr
   }
   if (memos.length > 0) extras.memos = memos;
 
+  // 元データに指定したリンクした素材も、素材として添える。抽出画像の元 PDF など、ほかの派生元は
+  // 添えない（本文で引用していない素材の名前や出典を、来歴に増やさない）
+  const includeSourceData = input.includeSourceData !== false;
+  const assetIds = new Set([...referenced, ...extraAssets]);
   const assets: AssetExportEntry[] = [];
-  for (const fileId of new Set([...referenced, ...extraAssets])) {
+  for (const fileId of assetIds) {
     const entry = media.get(fileId);
-    if (entry) assets.push(toAssetEntry(entry));
+    if (!entry) continue;
+    const sourceData = includeSourceData ? sourceDataIdsOf(entry, media) : [];
+    assets.push(toAssetEntry(entry, sourceData));
+    for (const parentId of sourceData) assetIds.add(parentId);
   }
   if (assets.length > 0) extras.assets = assets;
 
