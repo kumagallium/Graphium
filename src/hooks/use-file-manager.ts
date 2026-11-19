@@ -1028,10 +1028,18 @@ export function useFileManager(authenticated: boolean) {
     (async () => {
       // 先行読み込みの結果を取得（listFiles と並行して既に読み込み済み）
       const prefetched = prefetchedIndexRef.current ? await prefetchedIndexRef.current : undefined;
+      // 2 回目以降の組み直しは、起動時の写しではなくセッション中の索引を元にする。起動時の写しは
+      // 古いまま残るので、アプリの更新で索引の版が上がった回は、保存のたびに全件再構築へ入ってしまう。
+      // 空の索引（一覧の取得に失敗した直後など）は元にせず、起動時の写しのフラグを守る
+      const sessionIndex = noteIndexRef.current;
+      const baseIndex = sessionIndex && sessionIndex.notes.length > 0 ? sessionIndex : prefetched;
       // ノートのインデックスを構築
-      const index = files.length > 0
-        ? await ensureIndex(files, docCacheRef.current, prefetched)
+      const ensuredIndex = files.length > 0
+        ? await ensureIndex(files, docCacheRef.current, baseIndex)
         : { version: 4, updatedAt: new Date().toISOString(), notes: [] } as GraphiumIndex;
+      // ensureIndex は渡した索引をそのまま返すことがある。下で notes を差し替えるので写しを使う
+      // （そのまま書き換えると、Wiki を読み直すあいだセッション中の索引から Wiki の行が消える）
+      const index: GraphiumIndex = { ...ensuredIndex };
 
       // Wiki ファイルのインデックスエントリを追加
       // 既存インデックスから古い Wiki エントリを除去し、最新の wikiFiles から再構築する
