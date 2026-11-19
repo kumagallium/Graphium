@@ -3643,6 +3643,30 @@ The same `src/` tree is built four different ways.
   old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
   once done and is skipped afterwards; it copies files as before except that
   it never overwrites an existing `models.json` in the new data folder
+- Who may write a shared note. `shared_write` lets the author (the caller's
+  email equals the existing entry's `author.email`) write as before. Someone
+  else may write only when all of these hold: the entry type is `notes`; the
+  existing entry has `extra.acceptsUpdates === true`; `expected_hash` is
+  given (and, as for every write, must equal the current hash); the new
+  content keeps the same `id`, `type`, `author.email` and `created_at`; the
+  new content still has `extra.acceptsUpdates === true`; and its `status` is
+  not `unshared`. Otherwise the same `Read-only` error as before is
+  returned. `shared_delete` stays author-only, and `shared_readable_sync`
+  accepts a non-author only when the existing note accepts updates. This is
+  **accident prevention, not access control**: the caller's email is
+  self-declared, and anyone who can write to the shared folder can edit the
+  files directly. The `expected_hash` check and the process-wide write lock
+  cover writers on this device only; two devices writing to a synced folder at
+  nearly the same time are not prevented. Before overwriting an accepting note,
+  `shared_write` copies the current file to
+  `_meta/versions/<id>/<ms13>-<hash16>.json` and keeps the newest 5 (a failed
+  copy cancels the write); `_meta`, `versions` and `<id>` must not be symbolic
+  links. Read-side commands: `shared_versions_list(root, id)`,
+  `shared_version_read(root, id, name)` (only names matching
+  `^\d{13}-[0-9a-f]{16}\.json$`) and `shared_conflict_copies(root, entry_type,
+  id)` (file names in the entry folder that start with the id, end in `.json`
+  and are not `<id>.json`: cloud-sync conflict copies; contents are not
+  returned)
 - Readable copies (`shared_readable_sync`, and the cleanup `shared_delete`
   runs) are written by Rust, not chosen by the frontend: the command takes
   only the entry type, the shared id, the title and the contents, and

@@ -4543,6 +4543,38 @@ not be read or bundled (their `url` is emptied, shown as a broken reference).
 On import the shape of `blocks` / `labels` / `attributes` / `tableMeta` /
 `mediaInlineLabels` is validated and an unknown shape is rejected.
 
+#### Accepting updates from other people (`extra.acceptsUpdates`, `extra.updatedBy`)
+
+For notes only, the author can switch on **accepting updates** per note:
+`extra.acceptsUpdates === true` (default off; absent means off). While it is
+on, someone other than the author may overwrite the note's shared body with
+their own revision, one after another, instead of forking it into a separate
+entry. This is an accident-prevention switch, **not a permission**: names and
+email addresses are self-declared.
+
+- `extra.updatedBy?: { name: string; email: string }` — who wrote the
+  current version when it was not the author. `author`, `created_at` and
+  `id` always stay those of the first share. The `updated_by` of a
+  `history` row is the previous version's `extra.updatedBy`, falling back to
+  `author`.
+- A re-share by the author keeps `acceptsUpdates` on and carries no
+  `updatedBy`. While the switch is on, the author's re-share also passes the
+  `hash` it last read as `expectedHash`, so it does not overwrite a newer
+  update (it reports a conflict instead).
+- A contributor's copy (made with `forkSharedNote`) records the version it
+  was read from in `forkedFrom.hash`; an update is written with that value
+  as `expectedHash`. The shared body never carries `forkedFrom` or
+  `sharedRef`.
+- **Previous versions.** Before overwriting an entry whose switch is on,
+  Rust copies the current file to
+  `<root>/_meta/versions/<id>/<UTC milliseconds, 13 digits>-<first 16 hex of the hash>.json`
+  (temporary file + rename) and keeps the newest **5**, ordered by the number in
+  the file name (modification times are unreliable on synced folders). If the
+  copy fails, the overwrite is not done. Unsharing the note (`shared_delete`)
+  removes the folder; a failure there does not fail the unshare. A previous
+  version is restored by writing its body again as the current version; the
+  previous-version file itself is not removed.
+
 ### 7.1.1 Comment entries (`SharedEntryType: "comment"`)
 
 Teacher ⇄ student feedback rides as its own `SharedEntry`, stored under
@@ -4685,6 +4717,8 @@ Both expose `verifyHash(id)` so a reader can independently check
 content integrity.
 
 `write` takes an optional `expectedHash`, the hash of the version the caller read. If the entry's current hash differs, or the entry is gone, nothing is written and the Local folder provider throws `SharedConflictError` with the current hash. The check only covers writers on the same device; two devices writing to a synced folder at nearly the same time can still both pass it. The entry file is replaced through a temporary file and a rename, so a crash during a write leaves the previous version intact.
+
+`write` also takes `asContributor?: boolean`: when true, the Local folder provider skips its own author check and leaves the decision to Rust (see "Accepting updates from other people" in §7.1). The Local folder provider additionally offers `listVersions(id)`, `readVersion(id, name)` and `conflictCopies(type, id)`.
 
 ### 7.4 Note-side references
 
@@ -4952,6 +4986,7 @@ Layout of one shared folder (the "shared root"):
   notes/<id>.json                       # { entry, body_base64 } — the source of truth
   <other entry types>/<id>.json
   _meta/tombstones/<id>.json            # a deleted (unshared) entry
+  _meta/versions/<id>/<ms13>-<hash16>.json  # previous versions (newest 5) of a note that accepts updates
   _blobs/…                              # large files (default blob root)
   readable/notes/
     <title>_<id12>.md                   # optional, see below

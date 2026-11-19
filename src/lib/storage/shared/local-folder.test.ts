@@ -60,6 +60,12 @@ class FakeFs {
           this.entries.set(key, args.content);
           return null;
         }
+        case "shared_versions_list":
+          return [`1700000000002-${"b".repeat(16)}.json`, `1700000000001-${"a".repeat(16)}.json`];
+        case "shared_version_read":
+          return [...this.entries.values()][0];
+        case "shared_conflict_copies":
+          return [`${args.id} (conflicted copy).json`];
         case "shared_delete": {
           this.entries.delete(`${args.entryType}/${args.id}`);
           this.tombstones.set(args.id, args.tombstoneContent);
@@ -324,6 +330,30 @@ describe("LocalFolderSharedProvider — author-owned enforcement", () => {
     // 中身が書き換わっていないことも確認
     const after = await adaProv.read(entry.id);
     expect(new TextDecoder().decode(after.body)).toBe("ada-version");
+  });
+
+  it("asContributor のときは手元の作者チェックをせず、判定は Rust に任せる", async () => {
+    const adaProv = new LocalFolderSharedProvider("/tmp/shared", { email: ada.email });
+    const entry = makeEntry({ author: ada });
+    await adaProv.write(entry, new TextEncoder().encode("v1"));
+    const malloryProv = new LocalFolderSharedProvider("/tmp/shared", { email: mallory.email });
+    // 作者のままの entry を、作者でない identity で書ける（FakeFs は Rust の判定をしない）
+    await malloryProv.write(entry, new TextEncoder().encode("v2"), { asContributor: true });
+    expect(new TextDecoder().decode((await adaProv.read(entry.id)).body)).toBe("v2");
+    // identity なしは asContributor でも拒否
+    const none = new LocalFolderSharedProvider("/tmp/shared");
+    await expect(none.write(entry, new TextEncoder().encode("x"), { asContributor: true })).rejects.toThrow(/identity/);
+  });
+
+  it("前の版・競合コピーの一覧を Rust のコマンドから取れる", async () => {
+    const provider = new LocalFolderSharedProvider("/tmp/shared", { email: ada.email });
+    const entry = makeEntry({ author: ada });
+    await provider.write(entry, new TextEncoder().encode("v1"));
+    expect(await provider.listVersions(entry.id)).toHaveLength(2);
+    const v = await provider.readVersion(entry.id, `1700000000002-${"b".repeat(16)}.json`);
+    expect(v.entry.id).toBe(entry.id);
+    expect(await provider.conflictCopies("note", entry.id)).toEqual([`${entry.id} (conflicted copy).json`]);
+    await expect(provider.listVersions("bad")).rejects.toThrow(/Invalid shared id/);
   });
 
   it("entry.author と identity が一致しないと write できない（自分名義以外で書けない）", async () => {

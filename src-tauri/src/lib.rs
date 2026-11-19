@@ -3428,11 +3428,243 @@ fn assert_existing_author(
         .unwrap_or("");
     let caller = caller_email.as_deref().unwrap_or("");
     if existing_email != caller {
-        return Err(format!(
-            "Read-only: shared entry author is {existing_email}, not {caller}. Fork it instead."
-        ));
+        return Err(read_only_error(existing_email, caller));
     }
     Ok(())
+}
+
+/// 読める写しの更新用: 作者、または既存の本体が受け付け中なら通す（本体は書き換えない）
+fn assert_author_or_accepting(
+    path: &PathBuf,
+    entry_type: &str,
+    caller_email: &Option<String>,
+) -> Result<(), String> {
+    if let Err(e) = assert_existing_author(path, caller_email) {
+        let accepting = fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .is_some_and(|v| existing_accepts_contributors(entry_type, &v));
+        if !accepting {
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+fn read_only_error(existing_email: &str, caller: &str) -> String {
+    format!("Read-only: shared entry author is {existing_email}, not {caller}. Fork it instead.")
+}
+
+/// 共有の中身（`{entry, body_base64}`）の entry を取り出す
+fn stored_entry(v: &serde_json::Value) -> Option<&serde_json::Value> {
+    v.get("entry")
+}
+
+/// entry.extra.acceptsUpdates が true か（他の人の更新を受け付けている）
+fn entry_accepts_updates(entry: Option<&serde_json::Value>) -> bool {
+    entry
+        .and_then(|e| e.get("extra")?.get("acceptsUpdates")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// 既存の本体が「作者以外の更新を受け付けている」ノートか。
+/// 事故防止のスイッチであって権限ではない（名前・メールは自己申告）
+fn existing_accepts_contributors(entry_type: &str, existing: &serde_json::Value) -> bool {
+    entry_type == "notes" && entry_accepts_updates(stored_entry(existing))
+}
+
+/// `shared_write` の判定。書いてよければ、既存の本体が「受け付け中」だったか（= 上書き前に
+/// 前の版を控えるか）を返す。既存ファイルが無ければ false（最初の Share）。
+/// - 作者なら従来どおり
+/// - 作者でなければ、受け付け中のノートに対して次をすべて満たすときだけ。
+///   expected_hash あり／id・type・作者のメール・created_at が既存と同じ／新しい内容も
+///   受け付け中／status が unshared でない。満たさなければ従来と同じ Read-only のエラー
+fn assert_can_write_shared(
+    path: &PathBuf,
+    entry_type: &str,
+    caller_email: &Option<String>,
+    new_content: &str,
+    expected_hash: &Option<String>,
+) -> Result<bool, String> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let content = fs::read_to_string(path).map_err(|e| format!("既存ファイル読み取り失敗: {e}"))?;
+    let existing: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("既存ファイル JSON パース失敗: {e}"))?;
+    let old = stored_entry(&existing);
+    let existing_email = old
+        .and_then(|e| e.get("author")?.get("email")?.as_str())
+        .unwrap_or("");
+    let caller = caller_email.as_deref().unwrap_or("");
+    let accepting = existing_accepts_contributors(entry_type, &existing);
+    if existing_email == caller {
+        return Ok(accepting);
+    }
+    let denied = || Err(read_only_error(existing_email, caller));
+    if !accepting || expected_hash.is_none() {
+        return denied();
+    }
+    let Ok(incoming) = serde_json::from_str::<serde_json::Value>(new_content) else {
+        return denied();
+    };
+    let new = stored_entry(&incoming);
+    let same = |key: &str| {
+        let (Some(o), Some(n)) = (old, new) else { return false };
+        match (o.get(key), n.get(key)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        }
+    };
+    let same_author_email = match (
+        old.and_then(|e| e.get("author")?.get("email")),
+        new.and_then(|e| e.get("author")?.get("email")),
+    ) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    };
+    let unshared = new.and_then(|e| e.get("status")?.as_str()) == Some("unshared");
+    if !same("id")
+        || !same("type")
+        || !same("created_at")
+        || !same_author_email
+        || !entry_accepts_updates(new)
+        || unshared
+    {
+        return denied();
+    }
+    Ok(true)
+}
+
+// ── 前の版（<root>/_meta/versions/<id>/）────────────────────────────────────
+//
+// 受け付け中のノートを上書きする直前の中身を 5 件まで控える。更新が望まない内容だったとき、
+// 作者が前の版に戻せるようにするため。順序はファイル名の先頭の数字（UTC ミリ秒）で決める
+// （mtime は同期フォルダで当てにならない）。共有をやめたら（shared_delete）消す。
+
+/// 残す前の版の件数
+const SHARED_VERSIONS_KEEP: usize = 5;
+
+/// 前の版のファイル名か（`^\d{13}-[0-9a-f]{16}\.json$`）
+fn is_valid_version_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    if b.len() != 13 + 1 + 16 + 5 || &b[30..] != b".json" || b[13] != b'-' {
+        return false;
+    }
+    b[..13].iter().all(u8::is_ascii_digit)
+        && b[14..30]
+            .iter()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(c))
+}
+
+/// `<root>/_meta/versions/<id>/` のパス（作らない）。途中のどれかがシンボリックリンクなら断る
+fn shared_versions_dir_ro(root: &str, id: &str) -> Result<PathBuf, String> {
+    validate_id(id)?;
+    let root_path = require_root_reachable(root)?;
+    let meta = root_path.join("_meta");
+    reject_symlink(&meta)?;
+    let versions = meta.join("versions");
+    reject_symlink(&versions)?;
+    let dir = versions.join(id);
+    reject_symlink(&dir)?;
+    Ok(dir)
+}
+
+/// `<root>/_meta/versions/<id>/` を作ってパスを返す（書き込み用）。リンクはリンク先に作る前に断る
+fn shared_versions_dir(root: &str, id: &str) -> Result<PathBuf, String> {
+    let dir = shared_versions_dir_ro(root, id)?;
+    create_dir_for_write(&dir)?;
+    ensure_dir_within_root(root, &dir)?;
+    Ok(dir)
+}
+
+/// 前の版のファイル名を新しい順に返す（名前の形が合うものだけ）
+fn list_version_names(dir: &Path) -> Vec<String> {
+    let Ok(rd) = fs::read_dir(dir) else { return Vec::new() };
+    let mut names: Vec<String> = rd
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .filter(|n| is_valid_version_name(n))
+        .collect();
+    // 先頭 13 桁が同じ長さの数字なので、文字列の降順がそのまま新しい順
+    names.sort_by(|a, b| b.cmp(a));
+    names
+}
+
+/// 今のファイルを前の版として控え、5 件を超えた古いものを消す。控えられなければ Err
+fn snapshot_previous_version(root: &str, id: &str, current_path: &Path) -> Result<(), String> {
+    let content =
+        fs::read_to_string(current_path).map_err(|e| format!("前の版の控えに失敗（読み取り）: {e}"))?;
+    let hash = serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("entry")?.get("hash")?.as_str().map(str::to_string))
+        .unwrap_or_default();
+    let hex = hash.strip_prefix("sha256:").unwrap_or(&hash);
+    // hash が読めない・形が違うときは、中身の SHA-256 で名前を作る（名前の形は常に固定）
+    let short: String = if hex.len() >= 16
+        && hex[..16].bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    {
+        hex[..16].to_string()
+    } else {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(content.as_bytes());
+        digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
+    };
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dir = shared_versions_dir(root, id)?;
+    let name = format!("{millis:013}-{short}.json");
+    let target = dir.join(&name);
+    reject_symlink(&target)?;
+    write_shared_entry_file(&target, &content)
+        .map_err(|e| format!("前の版の控えに失敗: {e}"))?;
+    for old in list_version_names(&dir).into_iter().skip(SHARED_VERSIONS_KEEP) {
+        let _ = fs::remove_file(dir.join(old));
+    }
+    Ok(())
+}
+
+/// 前の版のファイル名を新しい順に返す。無ければ空
+#[tauri::command]
+fn shared_versions_list(root: String, id: String) -> Result<Vec<String>, String> {
+    let dir = shared_versions_dir_ro(&root, &id)?;
+    Ok(list_version_names(&dir))
+}
+
+/// 前の版の中身を読む。name は `<13 桁>-<16 桁 hex>.json` の形だけ受ける
+#[tauri::command]
+fn shared_version_read(root: String, id: String, name: String) -> Result<String, String> {
+    if !is_valid_version_name(&name) {
+        return Err(format!("無効な版の名前: {name}"));
+    }
+    let path = shared_versions_dir_ro(&root, &id)?.join(&name);
+    reject_symlink(&path)?;
+    fs::read_to_string(&path).map_err(|e| format!("ファイル読み取り失敗: {e}"))
+}
+
+/// クラウド同期の競合コピー（`<id>` で始まる `.json` で、`<id>.json` そのものでないもの）の
+/// ファイル名の一覧。中身は返さない
+#[tauri::command]
+fn shared_conflict_copies(
+    root: String,
+    entry_type: String,
+    id: String,
+) -> Result<Vec<String>, String> {
+    validate_id(&id)?;
+    let dir = shared_type_dir_ro(&root, &entry_type)?;
+    let Ok(rd) = fs::read_dir(&dir) else { return Ok(Vec::new()) };
+    let own = format!("{id}.json");
+    let mut out: Vec<String> = rd
+        .flatten()
+        .filter(|e| e.file_type().map(|t| !t.is_dir()).unwrap_or(false))
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .filter(|n| n.starts_with(&id) && n.ends_with(".json") && *n != own)
+        .collect();
+    out.sort();
+    Ok(out)
 }
 
 /// 「読んだ版のあとに先に更新されていた」ときのエラーの接頭辞。後ろに今の版の hash が付く
@@ -3493,8 +3725,12 @@ fn shared_write(
     let path = dir.join(format!("{id}.json"));
     reject_symlink(&path)?;
     let _guard = SHARED_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    assert_existing_author(&path, &author_email)?;
+    let accepting = assert_can_write_shared(&path, &entry_type, &author_email, &content, &expected_hash)?;
     assert_expected_hash(&path, &expected_hash)?;
+    // 受け付け中のノートは、上書きする直前の中身を前の版として控える。控えられなければ上書きしない
+    if accepting {
+        snapshot_previous_version(&root, &id, &path)?;
+    }
     write_shared_entry_file(&path, &content)
 }
 
@@ -3526,6 +3762,11 @@ fn shared_delete(
     // 共有をやめたら「読める写し」も消す。写しの掃除に失敗しても共有の削除は成功のまま
     if READABLE_ENTRY_TYPES.contains(&entry_type.as_str()) {
         let _ = readable_remove_all(&root, &entry_type, &id);
+    }
+    // 共有をやめたら前の版も残さない。失敗しても削除は成功のまま
+    // （どこかがシンボリックリンクなら shared_versions_dir_ro が断るので、リンク先は消さない）
+    if let Ok(dir) = shared_versions_dir_ro(&root, &id) {
+        let _ = fs::remove_dir_all(&dir);
     }
     Ok(())
 }
@@ -3780,13 +4021,13 @@ fn shared_readable_sync(
         if fs::symlink_metadata(&dir).is_err() {
             return Ok(());
         }
-        assert_existing_author(&entry_path, &author_email)?;
+        assert_author_or_accepting(&entry_path, &entry_type, &author_email)?;
         return readable_remove_all(&root, &entry_type, &id);
     };
     if !entry_path.exists() {
         return Err("共有されていないノートの写しは置けません".to_string());
     }
-    assert_existing_author(&entry_path, &author_email)?;
+    assert_author_or_accepting(&entry_path, &entry_type, &author_email)?;
 
     let dir = readable_dir_ro(&root, &entry_type)?;
     let parent = dir.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -5584,6 +5825,9 @@ pub fn run() {
             shared_read,
             shared_write,
             shared_delete,
+            shared_versions_list,
+            shared_version_read,
+            shared_conflict_copies,
             shared_readable_sync,
             shared_blob_read,
             shared_blob_write,
@@ -7210,6 +7454,246 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let root3 = tmp.path().join("shared3");
         fs::create_dir_all(&root3).unwrap();
         shared_write(root3.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None, None).unwrap();
+    }
+
+    // ── 他の人の更新を受け付けるノート・前の版 ──
+
+    const AU_ID: &str = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+
+    /// 受け付けの有無・作者・hash を指定した共有ノートの JSON
+    fn au_json(hash: &str, accepts: Option<bool>, author: &str, extra_entry: &str) -> String {
+        let extra = match accepts {
+            Some(v) => format!(r#","extra":{{"acceptsUpdates":{v}}}"#),
+            None => String::new(),
+        };
+        format!(
+            r#"{{"entry":{{"id":"{AU_ID}","type":"note","author":{{"email":"{author}"}},"created_at":"2026-01-01T00:00:00Z","hash":"{hash}"{extra}{extra_entry}}},"body_base64":""}}"#
+        )
+    }
+
+    fn au_setup(existing: &str) -> (tempfile::TempDir, String) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::write(root.join("notes").join(format!("{AU_ID}.json")), existing).unwrap();
+        let root_s = root.to_str().unwrap().to_string();
+        (tmp, root_s)
+    }
+
+    fn au_write(root: &str, content: String, caller: &str, expected: Option<&str>) -> Result<(), String> {
+        shared_write(
+            root.into(),
+            "notes".into(),
+            AU_ID.into(),
+            content,
+            Some(caller.into()),
+            expected.map(str::to_string),
+        )
+    }
+
+    const H1: &str = "sha256:1111111111111111aaaa";
+    const H2: &str = "sha256:2222222222222222bbbb";
+
+    #[test]
+    fn contributor_can_write_an_accepting_note_with_expected_hash() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        au_write(&root, au_json(H2, Some(true), "a@x", ""), "b@x", Some(H1)).unwrap();
+        let body = fs::read_to_string(Path::new(&root).join("notes").join(format!("{AU_ID}.json"))).unwrap();
+        assert!(body.contains("2222222222222222bbbb"));
+    }
+
+    #[test]
+    fn contributor_is_refused_when_any_condition_is_missing() {
+        let cases: Vec<(&str, String, Option<&str>)> = vec![
+            ("既存が受け付けていない", au_json(H1, None, "a@x", ""), Some(H1)),
+            ("expected_hash が無い", au_json(H1, Some(true), "a@x", ""), None),
+        ];
+        for (label, existing, expected) in cases {
+            let (_t, root) = au_setup(&existing);
+            let r = au_write(&root, au_json(H2, Some(true), "a@x", ""), "b@x", expected);
+            assert!(r.unwrap_err().starts_with("Read-only"), "{label}");
+        }
+        // 新しい内容の違反
+        let bad_news = vec![
+            ("作者を書き換える", au_json(H2, Some(true), "b@x", "")),
+            ("受け付けを切る", au_json(H2, Some(false), "a@x", "")),
+            ("受け付けの項目が無い", au_json(H2, None, "a@x", "")),
+            ("unshared にする", au_json(H2, Some(true), "a@x", r#","status":"unshared""#)),
+            ("id が違う", au_json(H2, Some(true), "a@x", "").replace(AU_ID, "0190f3a2-7b1c-7e4d-9a55-aaaaaaaaaaaa")),
+            ("type が違う", au_json(H2, Some(true), "a@x", "").replace(r#""type":"note""#, r#""type":"knowledge""#)),
+            ("created_at が違う", au_json(H2, Some(true), "a@x", "").replace("2026-01-01", "2027-01-01")),
+            ("JSON でない", "not json".to_string()),
+        ];
+        for (label, content) in bad_news {
+            let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+            let r = au_write(&root, content, "b@x", Some(H1));
+            assert!(r.unwrap_err().starts_with("Read-only"), "{label}");
+            let body = fs::read_to_string(Path::new(&root).join("notes").join(format!("{AU_ID}.json"))).unwrap();
+            assert_eq!(body, au_json(H1, Some(true), "a@x", ""), "{label}: 書かれていない");
+        }
+    }
+
+    #[test]
+    fn contributor_is_refused_for_non_note_types() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(root.join("knowledge")).unwrap();
+        fs::write(root.join("knowledge").join(format!("{AU_ID}.json")), au_json(H1, Some(true), "a@x", "")).unwrap();
+        let r = shared_write(
+            root.to_str().unwrap().into(),
+            "knowledge".into(),
+            AU_ID.into(),
+            au_json(H2, Some(true), "a@x", ""),
+            Some("b@x".into()),
+            Some(H1.into()),
+        );
+        assert!(r.unwrap_err().starts_with("Read-only"));
+    }
+
+    #[test]
+    fn contributor_write_still_conflicts_on_a_stale_hash() {
+        let (_t, root) = au_setup(&au_json(H2, Some(true), "a@x", ""));
+        let err = au_write(&root, au_json("sha256:3333", Some(true), "a@x", ""), "b@x", Some(H1)).unwrap_err();
+        assert_eq!(err, format!("SHARED_CONFLICT:{H2}"));
+    }
+
+    #[test]
+    fn author_cannot_forge_but_may_switch_off_acceptance() {
+        // 作者は従来どおり何でも書ける（受け付けを切るのも）。他人の作者名義への書き換えは
+        // 作者自身の判定（既存の author と caller の一致）で、caller を偽った場合に断られる
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        au_write(&root, au_json(H2, Some(false), "a@x", ""), "a@x", Some(H1)).unwrap();
+        // 受け付けを切ったあとは作者以外は書けない
+        let r = au_write(&root, au_json("sha256:3333", Some(true), "a@x", ""), "b@x", Some(H2));
+        assert!(r.unwrap_err().starts_with("Read-only"));
+        // 作者を名乗らない caller（None）は断る
+        let r = shared_write(root.clone(), "notes".into(), AU_ID.into(), au_json("sha256:4", Some(true), "a@x", ""), None, Some(H2.into()));
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn shared_delete_stays_author_only_even_when_accepting() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        let r = shared_delete(root.clone(), "notes".into(), AU_ID.into(), "{}".into(), Some("b@x".into()));
+        assert!(r.unwrap_err().starts_with("Read-only"));
+        assert!(Path::new(&root).join("notes").join(format!("{AU_ID}.json")).exists());
+    }
+
+    #[test]
+    fn versions_keep_the_latest_five_ordered_by_name() {
+        let (_t, root) = au_setup(&au_json("sha256:0000000000000000aaaa", Some(true), "a@x", ""));
+        for i in 1..=8 {
+            let prev = if i == 1 { "sha256:0000000000000000aaaa".to_string() } else { format!("sha256:{i:016x}aaaa", i = i - 1) };
+            au_write(&root, au_json(&format!("sha256:{i:016x}aaaa"), Some(true), "a@x", ""), "a@x", Some(&prev)).unwrap();
+            std::thread::sleep(Duration::from_millis(3));
+        }
+        let names = shared_versions_list(root.clone(), AU_ID.into()).unwrap();
+        assert_eq!(names.len(), 5);
+        let mut sorted = names.clone();
+        sorted.sort_by(|a, b| b.cmp(a));
+        assert_eq!(names, sorted, "新しい順");
+        // 一番新しいのは 1 つ前の版（hash 7）、残っているのは hash 3..7
+        assert!(names[0].ends_with("-0000000000000007.json"), "{names:?}");
+        assert!(names[4].ends_with("-0000000000000003.json"), "{names:?}");
+        let body = shared_version_read(root.clone(), AU_ID.into(), names[0].clone()).unwrap();
+        assert!(body.contains("0000000000000007aaaa"));
+        // 一時ファイルを残さない
+        let all = fs::read_dir(Path::new(&root).join("_meta/versions").join(AU_ID)).unwrap().count();
+        assert_eq!(all, 5);
+    }
+
+    #[test]
+    fn no_version_is_kept_when_the_note_does_not_accept_updates() {
+        let (_t, root) = au_setup(&au_json(H1, None, "a@x", ""));
+        au_write(&root, au_json(H2, None, "a@x", ""), "a@x", Some(H1)).unwrap();
+        assert!(!Path::new(&root).join("_meta/versions").exists());
+        assert!(shared_versions_list(root, AU_ID.into()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn version_read_accepts_only_well_formed_names() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        au_write(&root, au_json(H2, Some(true), "a@x", ""), "a@x", Some(H1)).unwrap();
+        let ok = shared_versions_list(root.clone(), AU_ID.into()).unwrap().remove(0);
+        assert!(is_valid_version_name(&ok));
+        for bad in [
+            "../notes/0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70.json",
+            "1234567890123-ABCDEF0123456789.json",
+            "1234567890123-abcdef012345678.json",
+            "123456789012-abcdef0123456789.json",
+            "1234567890123-abcdef0123456789.jsonx",
+            "1234567890123_abcdef0123456789.json",
+            "1234567890123-abcdef0123456789.json\n",
+            "",
+        ] {
+            assert!(shared_version_read(root.clone(), AU_ID.into(), bad.into()).is_err(), "{bad:?}");
+        }
+        assert!(shared_version_read(root.clone(), "not-an-id".into(), ok).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn versions_refuse_symlinked_meta_versions_and_id_dirs() {
+        let id_dir_parts: [&[&str]; 3] = [&["_meta"], &["_meta", "versions"], &["_meta", "versions", AU_ID]];
+        for parts in id_dir_parts {
+            let (t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+            let outside = t.path().join("outside");
+            fs::create_dir_all(&outside).unwrap();
+            // リンクの 1 つ手前まで本物のフォルダを作り、最後だけ外へのリンクにする
+            let mut cur = PathBuf::from(&root);
+            for p in &parts[..parts.len() - 1] {
+                cur = cur.join(p);
+                fs::create_dir_all(&cur).unwrap();
+            }
+            std::os::unix::fs::symlink(&outside, cur.join(parts[parts.len() - 1])).unwrap();
+            let r = au_write(&root, au_json(H2, Some(true), "a@x", ""), "a@x", Some(H1));
+            assert!(r.is_err(), "{parts:?}: 前の版を控えられないので上書きもしない");
+            assert!(fs::read_dir(&outside).unwrap().next().is_none(), "{parts:?}: リンク先に書かない");
+            let body = fs::read_to_string(Path::new(&root).join("notes").join(format!("{AU_ID}.json"))).unwrap();
+            assert_eq!(body, au_json(H1, Some(true), "a@x", ""));
+            assert!(shared_versions_list(root.clone(), AU_ID.into()).is_err());
+        }
+    }
+
+    #[test]
+    fn unsharing_removes_the_previous_versions() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        au_write(&root, au_json(H2, Some(true), "a@x", ""), "a@x", Some(H1)).unwrap();
+        assert_eq!(shared_versions_list(root.clone(), AU_ID.into()).unwrap().len(), 1);
+        shared_delete(root.clone(), "notes".into(), AU_ID.into(), "{}".into(), Some("a@x".into())).unwrap();
+        assert!(!Path::new(&root).join("_meta/versions").join(AU_ID).exists());
+        assert!(shared_versions_list(root, AU_ID.into()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn conflict_copies_lists_sync_duplicates_only() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        let dir = Path::new(&root).join("notes");
+        for n in [
+            format!("{AU_ID} (conflicted copy).json"),
+            format!("{AU_ID}-2.json"),
+            format!("{AU_ID}.txt"),
+            "0190f3a2-0000-7e4d-9a55-3c2f1b8d6e70 (copy).json".to_string(),
+            format!(".{AU_ID}.json.abc.tmp"),
+        ] {
+            fs::write(dir.join(n), "{}").unwrap();
+        }
+        let got = shared_conflict_copies(root.clone(), "notes".into(), AU_ID.into()).unwrap();
+        assert_eq!(got, vec![format!("{AU_ID} (conflicted copy).json"), format!("{AU_ID}-2.json")]);
+        assert!(shared_conflict_copies(root.clone(), "notes".into(), "bad".into()).is_err());
+        assert!(shared_conflict_copies(root, "nope".into(), AU_ID.into()).is_err());
+    }
+
+    #[test]
+    fn readable_sync_allows_contributors_only_for_accepting_notes() {
+        let (_t, root) = au_setup(&au_json(H1, Some(true), "a@x", ""));
+        let sync = |root: &str, who: &str| {
+            shared_readable_sync(root.into(), "notes".into(), AU_ID.into(), "t".into(), Some("# t".into()), None, Some(who.into()))
+        };
+        sync(&root, "b@x").unwrap();
+        let (_t2, root2) = au_setup(&au_json(H1, None, "a@x", ""));
+        assert!(sync(&root2, "b@x").unwrap_err().starts_with("Read-only"));
+        sync(&root2, "a@x").unwrap();
     }
 
     // ── 読める写し ──

@@ -128,6 +128,11 @@ export type ReviewRequest = {
 export type SharedWriteOptions = {
   /** 読んだ版の hash。今の版と違えば書かない（先に更新されていた） */
   expectedHash?: string;
+  /**
+   * true のとき、作者でない人が「他の人の更新を受け付けている」ノートへ書く。
+   * 作者の一致チェックを手元では行わず、Rust（shared_write）が条件を判定する
+   */
+  asContributor?: boolean;
 };
 
 /**

@@ -99,6 +99,11 @@ describe("appendHistory", () => {
     expect(appendHistory(existing({ hash: "" }))).toBeUndefined();
   });
 
+  it("他の人が更新した版（extra.updatedBy）は、その人を更新者として積む", () => {
+    const bob: AuthorIdentity = { name: "Bob", email: "bob@x.co" };
+    expect(appendHistory(existing({ extra: { updatedBy: bob } }))![0].updated_by).toEqual(bob);
+  });
+
   it("旧版の hash / 更新時刻 / 更新者を minor として 1 行積む", () => {
     expect(appendHistory(existing())).toEqual([
       {
