@@ -84,7 +84,7 @@ const EXPECTED_TOOLS = [
   // 会話の中に画面を描く（MCP Apps）
   "show_note",
   // グラフ（手順の流れ・来歴・全体グラフ）と、全体グラフの画面だけが呼ぶ道具
-  "show_steps", "show_lineage", "show_knowledge_graph", "graph_activity",
+  "show_steps", "show_lineage", "show_knowledge_graph", "graph_activity", "graph_payload",
 ];
 
 // --app-bundle: デスクトップ版に同梱する形（bundle-mcp.mjs --app）を、リポジトリの外に写して起動する。

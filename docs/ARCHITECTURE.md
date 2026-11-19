@@ -4586,35 +4586,45 @@ Tools:
 | `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps), in the process graph's colours. Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
 | `show_knowledge_graph` | draw the global graph (`buildGlobalGraph`, the app's own builder, without media leaves), `folder` fading what is outside it (`collectFolderScopeIds`), at most 1,200 nodes (outside-the-folder nodes dropped first, then the least connected). While it is open it highlights what the client touches through this MCP (see below) |
-| `graph_activity` | app-only (`_meta.ui.visibility: ["app"]`, never shown to the model): the graph view polls it for the activity events after a cursor |
+| `graph_payload` | app-only: the graph view passes it the reference from a `show_*` result (`structuredContent.graphiumGraph` — the tool name and its arguments) and gets the graph data back, rebuilt from the vault (`buildGraphFromRef`) |
+| `graph_activity` | app-only (`_meta.ui.visibility: ["app"]`, never shown to the model): the graph view polls it for the activity events after a byte cursor, from 30 minutes before it opened (`notBefore`) |
 
 **Tool annotations.** Every tool states `readOnlyHint` and `openWorldHint` explicitly, because MCP clients treat a missing hint as "may destroy, reaches outside". `readOnlyHint: true` means the tool does not change the user's notes, knowledge, materials or task ledgers (usage records such as `seen` / `read` do not count); tools that write also state `destructiveHint` — `true` when they can rewrite something that already exists, move it to the archive or trash, merge pages, or undo an operation, `false` when they only add new items or record in a task ledger — and `idempotentHint: true` only where repeating the call with the same arguments leaves the same state. `openWorldHint: true` is reserved for tools that may fetch a registered URL over the network (`get_source_text` and the task tools that read a source); tools that touch only the local vault say `false`. When unsure, a tool is marked `destructiveHint: true`. `e2e/mcp-smoke.mjs` checks that every tool states `readOnlyHint` and that every non-read-only tool states `destructiveHint`.
 
 **Graphs inside the conversation (MCP Apps).** A second UI resource,
 `ui://graphium/graph.html` (`src/mcp/apps/graph-view.ts`, built by
 `scripts/build-mcp-app-html.mjs` with cytoscape and cytoscape-fcose inlined, empty CSP like
-the note preview), draws `_meta["graphium/graph"]` — a `GraphPayload` from
-`src/mcp/graph-views.ts` — for `show_steps`, `show_lineage` and `show_knowledge_graph`. The
-text result is a one-line summary. The look is the app's, from shared definitions so the
+the note preview), draws a `GraphPayload` from `src/mcp/graph-views.ts` for `show_steps`,
+`show_lineage` and `show_knowledge_graph`. The result carries only a reference —
+`structuredContent: { summary, graphiumGraph: { tool, …arguments } }` — and the view fetches
+the data with the app-only `graph_payload`, which rebuilds it from the vault. Claude Desktop
+can route the model's tool calls and the view's calls to different MCP processes (on
+2026-11-19 the process that served the view's `resources/read` logged no `tools/call` at
+all), and a knowledge graph is a few hundred KB, so nothing is left to the result's
+delivery: any process rebuilds the same graph from the reference. A view that gets no
+reference, or whose fetch fails, shows the tool's own text and what it received instead of a
+generic error; results from v0.134–v0.150 servers (`_meta["graphium/graph"]`) are still
+drawn. The look is the app's, from shared definitions so the
 two cannot drift: the knowledge graph uses the app's global-graph stylesheet
 (`src/features/network-graph/global-graph-stylesheet.ts`, split out of
 `global-graph-view.tsx` and used by both) in the simple mode the chat-beside graph uses,
 with fcose as in the app's standard layout and the same zoom-dependent sizing
 (`applyZoomStyle`); the step flow uses the process graph's colours (`flow-palette.ts`, with
 the `--color-label-*-bg` values from `app.css`) and ranks nodes by the longest path along
-the edges (`src/mcp/apps/flow-layout.ts`, inputs and tools just before their first step);
+the edges, top to bottom like the app's process graph (`src/mcp/apps/flow-layout.ts`,
+inputs and tools just before their first step; the frame grows with the number of ranks);
 the lineage uses the global graph's kind colours and shapes in columns by depth. For the
 knowledge graph the view polls `graph_activity` every 2.5 s (8 s when hidden) and marks
-what the client touched in this MCP process with the chat-beside graph's rules: read pages
+what the client touched with the chat-beside graph's rules: read pages
 `ai-read`, written pages `ai-used`, walked edges `ai-walked`, edges between touched pages
 and their relays `ai-link` (`evidence-links.ts`), untouched titles hidden (`label-muted`),
 and a one-off pulse (`graph-firing.ts`) when a page is first touched. `src/mcp/activity.ts`
-keeps an in-memory log (2,000 events, nothing written to disk) fed by `get_note` /
+appends the log to `appdata/mcp-activity.jsonl` (one JSON line per event, rotated to `.1`
+past 1 MB) so every MCP process can read it, fed by `get_note` /
 `get_topic` / `show_note` / `get_source_text` (read), `trace_lineage` / `show_lineage`
 (walked edges), and `create_note` / `submit_procedure` / `submit_topic_page` (written);
-`search_notes` hits are logged as `seen` but not marked, as in the app. The host starts one
-MCP process per connection and routes the view's calls to it, so the log is shared without
-a file. When the host lists `pip` or `fullscreen` in `availableDisplayModes`, the view
+`search_notes` hits are logged as `seen` but not marked, as in the app. Because the file is
+shared, pages touched in another conversation open at the same time are marked too. When the host lists `pip` or `fullscreen` in `availableDisplayModes`, the view
 offers buttons for them (`requestDisplayMode`), so the graph can float beside the chat.
 
 **Previews inside the conversation (MCP Apps).** `src/mcp/app-tools.ts` registers
