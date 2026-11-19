@@ -4314,6 +4314,13 @@ const PLACE_NAME_MAX_CHARS: usize = 80;
 const PLACE_REL_PATH_MAX_BYTES: usize = 4096;
 /// place_stat_many が一度に受ける最大件数
 const PLACE_STAT_MAX_ITEMS: usize = 2000;
+/// place_pick_files が一度に受ける最大件数
+const PLACE_PICK_MAX_FILES: usize = 500;
+/// 選んだファイルを調べる処理が、この時間 1 件も進まなければ打ち切る（止まった共有フォルダ向け）
+const PLACE_PICK_STALL_TIMEOUT: Duration = Duration::from_secs(10);
+/// 選んだ件数が多すぎるときのエラーの接頭辞（画面が案内に置き換える）。
+/// 形は `PLACE_PICK_TOO_MANY:<上限>`
+const PLACE_PICK_TOO_MANY_PREFIX: &str = "PLACE_PICK_TOO_MANY";
 /// 台帳のファイル名（app_config_dir 直下。端末ごと。データフォルダには置かない）
 const PLACE_LEDGER_FILE: &str = "places.json";
 /// 目印のファイルを読む最大バイト数
@@ -4458,7 +4465,7 @@ struct PlaceInfo {
     shared: bool,
 }
 
-/// place_pick_file の戻り値
+/// 選ばれた 1 ファイル（place_id が None = どの置き場の中でもない）
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PickedFile {
@@ -4467,6 +4474,14 @@ struct PickedFile {
     name: String,
     size: u64,
     mtime_ms: i64,
+}
+
+/// place_pick_files の戻り値。failed は届かなかった・ファイルでなかった件数
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PickedFiles {
+    files: Vec<PickedFile>,
+    failed: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -4933,7 +4948,18 @@ fn place_info_with(p: &Place, reachable: bool) -> PlaceInfo {
 
 /// 台帳の置き場の中から、canonicalize 済みのファイルを含むもの（複数なら一番深いもの）を探す。
 /// 返すのは (置き場の id, `/` 区切りの相対パス)
+#[cfg(test)]
 fn locate_in_places(places: &[Place], canon_file: &Path) -> Option<(String, String)> {
+    locate_in_places_cached(places, canon_file, &mut HashMap::new())
+}
+
+/// locate_in_places の本体。roots に置き場の root の canonicalize 結果を覚え、
+/// 続けて何件も調べるときに置き場ごとの確認を 1 回で済ませる
+fn locate_in_places_cached(
+    places: &[Place],
+    canon_file: &Path,
+    roots: &mut HashMap<String, Option<PathBuf>>,
+) -> Option<(String, String)> {
     let mut best: Option<(usize, &Place, PathBuf)> = None;
     // 台帳の root は canonicalize 済みの値なので、まず文字列（パスの要素）の接頭辞だけで
     // 候補を絞る。無関係な（止まっているかもしれない）置き場の root には触らない
@@ -4942,8 +4968,11 @@ fn locate_in_places(places: &[Place], canon_file: &Path) -> Option<(String, Stri
         if !Path::new(&file_plain).starts_with(strip_verbatim_prefix(&p.root)) {
             continue;
         }
-        let Ok(root) = fs::canonicalize(&p.root) else { continue };
-        let Ok(rest) = canon_file.strip_prefix(&root) else { continue };
+        let cached = roots
+            .entry(p.id.clone())
+            .or_insert_with(|| fs::canonicalize(&p.root).ok());
+        let Some(root) = cached.as_ref() else { continue };
+        let Ok(rest) = canon_file.strip_prefix(root) else { continue };
         if rest.as_os_str().is_empty() {
             continue;
         }
@@ -5014,26 +5043,102 @@ fn stat_in_places(places: &[Place], item: &LinkRef) -> LinkStat {
     }
 }
 
-/// OS のフォルダ / ファイル選択を開き、選ばれたパスを返す（キャンセルは None）。
+/// OS のフォルダ選択を開き、選ばれたパスを返す（キャンセルは None）。
 /// save_bytes_with_dialog と同じく、コールバック＋mpsc で受ける（blocking_* は使わない）。
-fn pick_path_with_dialog(app: &tauri::AppHandle, folder: bool) -> Result<Option<PathBuf>, String> {
+fn pick_folder_with_dialog(app: &tauri::AppHandle) -> Result<Option<PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
-    let builder = app.dialog().file();
-    if folder {
-        builder.pick_folder(move |p| {
-            let _ = tx.send(p);
-        });
-    } else {
-        builder.pick_file(move |p| {
-            let _ = tx.send(p);
-        });
-    }
+    app.dialog().file().pick_folder(move |p| {
+        let _ = tx.send(p);
+    });
     let selected = rx.recv().map_err(|e| format!("選択ダイアログの結果取得に失敗: {e}"))?;
     match selected {
         None => Ok(None),
         Some(p) => p.into_path().map(Some).map_err(|e| format!("パスの解決に失敗: {e}")),
     }
+}
+
+/// OS のファイル選択を複数選択で開き、選ばれたパスを返す（キャンセルは None）。
+fn pick_paths_with_dialog(app: &tauri::AppHandle) -> Result<Option<Vec<PathBuf>>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().pick_files(move |p| {
+        let _ = tx.send(p);
+    });
+    let selected = rx.recv().map_err(|e| format!("選択ダイアログの結果取得に失敗: {e}"))?;
+    let Some(paths) = selected else { return Ok(None) };
+    let paths = paths
+        .into_iter()
+        .map(|p| p.into_path().map_err(|e| format!("パスの解決に失敗: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(if paths.is_empty() { None } else { Some(paths) })
+}
+
+/// 選ばれた 1 つのパスを、置き場の id と相対パスに直す。中身は読まない。
+/// シンボリックリンクを選ばれても、実体で置き場を判定する
+fn picked_file_from_path(
+    places: &[Place],
+    picked: &Path,
+    roots: &mut HashMap<String, Option<PathBuf>>,
+) -> Result<PickedFile, String> {
+    let canon = fs::canonicalize(picked).map_err(|e| format!("ファイルに届きません: {e}"))?;
+    let meta = fs::metadata(&canon).map_err(|e| format!("ファイル情報を取得できません: {e}"))?;
+    if !meta.is_file() {
+        return Err("ファイルではありません".to_string());
+    }
+    let found = locate_in_places_cached(places, &canon, roots);
+    // あとで状態を確かめられない名前（改行や \ を含むなど）は、リンクしても「見つからない」のままになる
+    if let Some((_, rel)) = &found {
+        validate_place_rel_path(rel).map_err(|_| "扱えないファイル名です".to_string())?;
+    }
+    let name = canon
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    Ok(PickedFile {
+        place_id: found.as_ref().map(|(id, _)| id.clone()),
+        rel_path: found.map(|(_, rel)| rel),
+        name,
+        size: meta.len(),
+        mtime_ms: metadata_mtime_ms(&meta),
+    })
+}
+
+/// 選ばれたパスをまとめて直す。1 件届かなくても残りは返し、届かなかった件数を数える。
+/// 上限を超えたらファイルに触る前に断る。stall の間 1 件も進まなければ打ち切り、残りは届かなかった扱い
+fn picked_files_from_paths(
+    places: &[Place],
+    paths: &[PathBuf],
+    stall: Duration,
+    pick: impl Fn(&[Place], &Path, &mut HashMap<String, Option<PathBuf>>) -> Result<PickedFile, String>
+        + Send
+        + 'static,
+) -> Result<PickedFiles, String> {
+    if paths.len() > PLACE_PICK_MAX_FILES {
+        return Err(format!("{PLACE_PICK_TOO_MANY_PREFIX}:{PLACE_PICK_MAX_FILES}"));
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (worker_places, worker_paths) = (places.to_vec(), paths.to_vec());
+    // 止まった共有フォルダの I/O は中断できないので別スレッドで調べる。受け手が去れば次の送信で終わる
+    thread::spawn(move || {
+        let mut roots = HashMap::new();
+        for path in &worker_paths {
+            if tx.send(pick(&worker_places, path, &mut roots)).is_err() {
+                break;
+            }
+        }
+    });
+    let mut files = Vec::with_capacity(paths.len());
+    let mut done = 0usize;
+    while done < paths.len() {
+        let Ok(result) = rx.recv_timeout(stall) else { break };
+        done += 1;
+        if let Ok(file) = result {
+            files.push(file);
+        }
+    }
+    let failed = (paths.len() - files.len()) as u32;
+    Ok(PickedFiles { files, failed })
 }
 
 /// 一覧用。root に届いた置き場だけ目印を読む（時間切れ・届かない置き場は
@@ -5080,7 +5185,7 @@ async fn place_register(
     let inner = state.0.clone();
     let data_dir = graphium_root().ok();
     let config_dir = app.path().app_config_dir().ok();
-    let Some(picked) = pick_path_with_dialog(&app, true)? else {
+    let Some(picked) = pick_folder_with_dialog(&app)? else {
         return Ok(None);
     };
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<PlaceInfo>, String> {
@@ -5170,33 +5275,21 @@ async fn place_remove(
 }
 
 #[tauri::command]
-async fn place_pick_file(
+async fn place_pick_files(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PlaceState>,
-) -> Result<Option<PickedFile>, String> {
+) -> Result<Option<PickedFiles>, String> {
     require_main_window(&window)?;
     let ledger = place_ledger_path(&app)?;
     let inner = state.0.clone();
-    let Some(picked) = pick_path_with_dialog(&app, false)? else {
+    let Some(picked) = pick_paths_with_dialog(&app)? else {
         return Ok(None);
     };
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<PickedFile>, String> {
-        // シンボリックリンクを選ばれても、実体で置き場を判定する
-        let canon = fs::canonicalize(&picked).map_err(|e| format!("ファイルに届きません: {e}"))?;
-        let meta = fs::metadata(&canon).map_err(|e| format!("ファイル情報を取得できません: {e}"))?;
-        let found = read_places(&inner, &ledger, |places| locate_in_places(places, &canon));
-        let name = canon
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        Ok(Some(PickedFile {
-            place_id: found.as_ref().map(|(id, _)| id.clone()),
-            rel_path: found.map(|(_, rel)| rel),
-            name,
-            size: meta.len(),
-            mtime_ms: metadata_mtime_ms(&meta),
-        }))
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<PickedFiles>, String> {
+        // ファイルに触る間は台帳のロックを持たない
+        let places = read_places(&inner, &ledger, |p| p.to_vec());
+        picked_files_from_paths(&places, &picked, PLACE_PICK_STALL_TIMEOUT, picked_file_from_path).map(Some)
     })
     .await
     .map_err(|e| format!("タスク失敗: {e}"))?
@@ -5458,7 +5551,7 @@ pub fn run() {
             place_register,
             place_rename,
             place_remove,
-            place_pick_file,
+            place_pick_files,
             place_stat_many,
             place_open,
             place_reveal,
@@ -7625,6 +7718,93 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
             fs_root_reachable,
         );
         assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn place_pick_files_maps_each_path_and_counts_failures() {
+        let tmp = place_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("out.txt");
+        fs::write(&outside_file, "x").unwrap();
+        let places = vec![Place { id: "p".into(), name: "n".into(), root: root.to_string_lossy().to_string() }];
+        let paths = vec![
+            root.join("a.txt"),
+            outside_file,
+            root.join("no-such-file.txt"),
+            // フォルダはファイルとして扱わない
+            root.clone(),
+        ];
+        let out = picked_files_from_paths(&places, &paths, PLACE_PICK_STALL_TIMEOUT, picked_file_from_path).unwrap();
+        assert_eq!(out.failed, 2);
+        assert_eq!(out.files.len(), 2);
+        assert_eq!(out.files[0].place_id.as_deref(), Some("p"));
+        assert_eq!(out.files[0].rel_path.as_deref(), Some("a.txt"));
+        assert_eq!(out.files[1].place_id, None);
+        assert_eq!(out.files[1].rel_path, None);
+    }
+
+    #[test]
+    fn place_pick_files_refuses_too_many_before_touching_files() {
+        let paths = vec![PathBuf::from("/nonexistent-zzz/a"); PLACE_PICK_MAX_FILES + 1];
+        let err = picked_files_from_paths(&[], &paths, PLACE_PICK_STALL_TIMEOUT, |_, _, _| {
+            panic!("ファイルに触らない")
+        })
+        .err()
+        .unwrap();
+        assert_eq!(err, format!("{PLACE_PICK_TOO_MANY_PREFIX}:{PLACE_PICK_MAX_FILES}"));
+    }
+
+    #[test]
+    fn place_pick_files_gives_up_on_a_stalled_share_and_keeps_what_it_found() {
+        let paths = vec![PathBuf::from("a"), PathBuf::from("stalled"), PathBuf::from("c")];
+        let started = Instant::now();
+        let out = picked_files_from_paths(&[], &paths, Duration::from_millis(100), |_, path, _| {
+            if path == Path::new("stalled") {
+                thread::sleep(Duration::from_secs(5));
+            }
+            Ok(PickedFile {
+                place_id: None,
+                rel_path: None,
+                name: path.to_string_lossy().to_string(),
+                size: 0,
+                mtime_ms: 0,
+            })
+        })
+        .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_eq!(out.files.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["a"]);
+        assert_eq!(out.failed, 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_pick_files_refuses_a_name_that_could_never_be_checked_later() {
+        let tmp = place_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let bad = root.join("line\nbreak.txt");
+        fs::write(&bad, "x").unwrap();
+        let places = vec![Place { id: "p".into(), name: "n".into(), root: root.to_string_lossy().to_string() }];
+        let out = picked_files_from_paths(&places, &[bad], PLACE_PICK_STALL_TIMEOUT, picked_file_from_path).unwrap();
+        assert!(out.files.is_empty());
+        assert_eq!(out.failed, 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_pick_files_counts_a_link_to_outside_as_outside() {
+        let tmp = place_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("secret.txt");
+        fs::write(&target, "x").unwrap();
+        let link = root.join("link.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let places = vec![Place { id: "p".into(), name: "n".into(), root: root.to_string_lossy().to_string() }];
+        let out = picked_files_from_paths(&places, &[link], PLACE_PICK_STALL_TIMEOUT, picked_file_from_path).unwrap();
+        assert_eq!(out.files.len(), 1);
+        assert_eq!(out.files[0].place_id, None);
+        assert_eq!(out.files[0].rel_path, None);
     }
 
     #[test]

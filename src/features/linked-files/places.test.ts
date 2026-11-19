@@ -5,7 +5,7 @@ const isTauri = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("../../lib/platform", () => ({ isTauri: () => isTauri() }));
 
-import { listPlaces, registerPlace, renamePlace, removePlace, pickPlaceFile, statLinks, openLinkedFile, revealLinkedFile } from "./places";
+import { listPlaces, registerPlace, renamePlace, removePlace, pickPlaceFiles, statLinks, openLinkedFile, revealLinkedFile } from "./places";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -21,7 +21,7 @@ describe("デスクトップ版", () => {
     await registerPlace();
     await renamePlace("p", "名前");
     await removePlace("p");
-    await pickPlaceFile();
+    await pickPlaceFiles();
     await openLinkedFile("p", "a/b");
     await revealLinkedFile("p", "a/b");
     expect(invoke.mock.calls).toEqual([
@@ -29,7 +29,7 @@ describe("デスクトップ版", () => {
       ["place_register"],
       ["place_rename", { id: "p", name: "名前" }],
       ["place_remove", { id: "p" }],
-      ["place_pick_file"],
+      ["place_pick_files"],
       ["place_open", { placeId: "p", relPath: "a/b" }],
       ["place_reveal", { placeId: "p", relPath: "a/b" }],
     ]);
@@ -69,7 +69,7 @@ describe("デスクトップ版でない", () => {
     await expect(registerPlace()).rejects.toThrow("desktop only");
     await expect(renamePlace("p", "n")).rejects.toThrow("desktop only");
     await expect(removePlace("p")).rejects.toThrow("desktop only");
-    await expect(pickPlaceFile()).rejects.toThrow("desktop only");
+    await expect(pickPlaceFiles()).rejects.toThrow("desktop only");
     await expect(openLinkedFile("p", "a")).rejects.toThrow("desktop only");
     await expect(revealLinkedFile("p", "a")).rejects.toThrow("desktop only");
   });

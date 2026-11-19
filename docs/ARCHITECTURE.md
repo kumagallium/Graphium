@@ -4063,14 +4063,14 @@ The same `src/` tree is built four different ways.
 - **Data places** (linked files; shape in DATA_MODEL.md §6.5) are eight
   commands that point at files without copying or reading them:
   `place_list`, `place_register`, `place_rename`, `place_remove`,
-  `place_pick_file`, `place_stat_many`, `place_open` and `place_reveal`.
+  `place_pick_files`, `place_stat_many`, `place_open` and `place_reveal`.
   The wrapper is `src/features/linked-files/places.ts`; the Rust side is
   the `place_*` block in `src-tauri/src/lib.rs`. The guards:
   - **JavaScript never supplies a filesystem path.** A place is added only
     through a native folder dialog opened by Rust (`place_register`), and a
     file is chosen only through a native file dialog opened by Rust
-    (`place_pick_file`, which answers with a place id and a relative path,
-    or "outside every place"). Everything else takes a place id and a
+    (`place_pick_files`, up to 500 files at a time, which answers with a
+    place id and a relative path for each, or "outside every place"). Everything else takes a place id and a
     relative path. The absolute path of each place lives only in Rust's
     per-device ledger (`places.json` under `app_config_dir`).
   - **The relative path is checked first.** It must be non-empty, at most
