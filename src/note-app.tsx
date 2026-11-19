@@ -486,6 +486,8 @@ import {
   mergeAtomsExplicit,
   runSourceTopicStage, mergeSourceTopicStageResults, type SourceTopicStageInput, type SourceTopicStageResult,
   linkClaimsToTopicsForSource, judgeClaimTopicLinks, type ClaimTopicLinkEntry, type ClaimTopicLinkResult,
+  planClaimTopicLinkBackfill, runClaimTopicLinkBackfill, parseClaimTopicLinkCheckpoint,
+  CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE,
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -582,6 +584,7 @@ import { resolveBlockMaterial } from "./features/asset-browser/block-material";
 import { setImagePeekCallback } from "./blocks/image-peek";
 import { useT, t as tStatic, getLocale, getGenerationLanguage } from "./i18n";
 import { toGenerationLanguage } from "./lib/language";
+import { readAppDataFile, writeAppDataFile } from "./lib/storage/app-data-file";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT, EMBEDDING_FAILED_EVENT, COPILOT_AUTH_EXPIRED_EVENT, CHATGPT_AUTH_EXPIRED_EVENT, CHATGPT_LIMIT_REACHED_EVENT } from "./lib/ai-error";
 import { isAbortError } from "./lib/abort-error";
 import { isBlankText, visibleTextLength } from "./lib/blank-text";
@@ -12489,6 +12492,59 @@ export function NoteApp() {
     ).catch(() => {});
   }, []);
 
+  // 既存の知見をトピックに結ぶ一括処理（設定の手入れ）。控えは vault のアプリ付随データに残す
+  const claimTopicLinkBackfill = useMemo(() => {
+    const readCheckpoint = async () => parseClaimTopicLinkCheckpoint(
+      await readAppDataFile<unknown>(CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE),
+    );
+    return {
+      plan: async () => {
+        const { calls, claims, alreadyJudged } = planClaimTopicLinkBackfill(listClaimTopicLinkEntries(), await readCheckpoint());
+        return { calls, claims, alreadyJudged };
+      },
+      run: async (
+        onProgress: (progress: { done: number; total: number; linkedClaims: number }) => void,
+        signal: AbortSignal,
+      ) => {
+        if (!ensureAgentConfigured()) return null;
+        const checkpoint = await readCheckpoint();
+        const cur = fmRef.current;
+        const result = await runClaimTopicLinkBackfill(planClaimTopicLinkBackfill(listClaimTopicLinkEntries(), checkpoint), {
+          listEntries: listClaimTopicLinkEntries,
+          loadDoc: cur.loadDoc,
+          getCachedDoc: cur.getCachedDoc,
+          handleSaveWikiFile: cur.handleSaveWikiFile,
+          judge: (claims, topics, judgeSignal) => judgeClaimTopicLinks(claims, topics, undefined, judgeSignal),
+          checkpoint,
+          saveCheckpoint: (next) => writeAppDataFile(CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE, next),
+          onProgress,
+          signal,
+          log: (...args: unknown[]) => console.warn(...args),
+        });
+        if (result.calls > 0) {
+          wikiLog.append("cross-update", [], `Linked ${result.linkedClaims} existing claim(s) to topics`, {
+            calls: result.calls,
+            links: result.links,
+            rejected: result.rejected,
+            failedSources: result.failedSources,
+            aborted: result.aborted,
+          }).catch(() => {});
+        }
+        return {
+          done: result.done,
+          total: result.total,
+          linkedClaims: result.linkedClaims,
+          calls: result.calls,
+          failedSources: result.failedSources,
+          aborted: result.aborted,
+          stoppedByFailures: result.stoppedByFailures,
+          ...(result.failureError !== undefined ? { failureReason: localizeAiError(result.failureError) } : {}),
+        };
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listClaimTopicLinkEntries]);
+
   // 話題（topic）の段（新形式・資料を直接読む）を note-app のファイル操作・ログに配線する
   // 共通ラッパー。同じキュー（topicStageQueueRef）で直列化する
   // ── 両方が同じ「既存話題スナップショットの古さ」問題を持つため。
@@ -18551,6 +18607,7 @@ export function NoteApp() {
           wikiLog.append("cross-update", Object.keys(types), `Assigned topic types to ${assigned} topic(s)`).catch(() => {});
           return { assigned, total: targets.length, calls, ...(failureError !== undefined ? { failureReason: localizeAiError(failureError) } : {}) };
         }}
+        claimTopicLinkBackfill={standardUiEnabled ? claimTopicLinkBackfill : undefined}
         onOrganizeTopics={async () => {
           // 知見（claim）はもうトピックの材料にしない — 「話題を整理」は既存トピック
           // どうしの名寄せ（Topic Consolidator）→ 統合（applyTopicMerges）だけを行う

@@ -2284,6 +2284,16 @@ fails the ingest. When Topics are merged, Claims linked to an absorbed Topic are
 retargeted to the kept Topic before the absorbed page goes to Trash, in both the app
 and MCP `merge_topics`.
 
+Claims made before this step are linked by a human-started bulk action (Settings →
+Knowledge, **Link Claims to Topics**). `planClaimTopicLinkBackfill` shows the AI-call
+count before the run; `runClaimTopicLinkBackfill` then judges one source at a time and
+can be stopped. Progress is kept in the app-data file `claim-topic-link-progress`
+(`{ version: 1, judged: { <sourceId>: { topics, claims } } }`: a fingerprint of the
+source's Topics, and the judged Claims that stayed unlinked), because a Claim with no
+fitting Topic otherwise looks untouched and would be sent again on every run. A judged
+source returns to the plan only when its Topics change or it gains a Claim that has not
+been judged. The file is disposable: losing it only costs repeating some judgments.
+
 Re-ingesting a source also re-checks topics that already cite it, not
 just the ones the router names: `runSourceTopicStage` unions the
 router's `update` list with every new-format topic whose
