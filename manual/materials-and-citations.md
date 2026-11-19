@@ -152,6 +152,8 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 
 **Finding one by what was said.** `⌘K` (`Ctrl+K` on Windows/Linux), the search box of the **AI conversations** list and the `search_media` tool of the [MCP server](/mcp-server) look through the text of your conversations as well as their names. This covers the newest conversations up to 10 million characters of saved text; older ones are found by name. The AI chat inside Graphium does not read conversations on its own.
 
+**Asking another AI.** An AI connected through the [MCP server](/mcp-server) can look through your conversations and point back to the one it used. [The measurement](/evaluations/ai-conversation-recall) shows how far this went on ten conversations.
+
 **In the browser.** The **AI conversations** tab only says that bringing in AI conversations is available in the desktop app. The records are files on this PC, and a browser cannot read them.
 
 **Making knowledge from a conversation.** A conversation can become insights and topics like any other material, and the claims it yields can be traced back to it: the source of a page opens the original conversation, and source check reads the saved text.
