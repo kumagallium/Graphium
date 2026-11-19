@@ -37,6 +37,7 @@ import { findSameTitleTopic, sameTopicTitle } from "../../lib/topic-title-key";
 import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { isAbortError } from "../../lib/abort-error";
 import { aiErrorCodeOf } from "../../lib/ai-error-codes";
+import { saveWikiWithRetry } from "./claim-topic-link";
 // wiki-topic-writer.ts はプロンプト文字列を組むだけの純関数（サーバー専用の依存を持たない）
 // なので client バンドルへそのまま import してよい（wiki-linter からの再 export と同じ扱い）。
 import { buildWindowTextWithSurvey } from "../../server/services/wiki-topic-writer";
@@ -178,6 +179,11 @@ export type ConsolidateExistingTopicsDeps = {
    * 全員が新形式の経路だけで効く。戻りが空文字なら本文が作れなかった扱い。
    */
   composeBodyByTargetId?: Map<string, (bodies: { id: string; body: string }[]) => string>;
+  /**
+   * そのトピックを topicIds に持つ知見の id を返す。新形式のトピックはメンバー知見を持たないので、
+   * 吸収されるトピックに結ばれた知見は、これで見つけて統合先へ付け替える。
+   */
+  claimIdsLinkedToTopic?: (topicId: string) => string[];
 };
 
 /**
@@ -236,6 +242,27 @@ export async function applyTopicMerges(
         result.failed++;
         continue;
       }
+
+      // 吸収される話題をゴミ箱へ送る。その話題に結ばれた知見（topicIds）を先に統合先へ付け替え、
+      // 付け替えられなかったときは送らずに残す（結びつきが消えた話題を指したままにしない）。
+      const trashAbsorbedTopic = async (sourceId: string) => {
+        try {
+          for (const claimId of deps.claimIdsLinkedToTopic?.(sourceId) ?? []) {
+            const claimDoc = deps.getCachedDoc(`wiki:${claimId}`) ?? (await deps.loadDoc(`wiki:${claimId}`));
+            if (claimDoc?.wikiMeta?.kind !== "claim") continue;
+            const nextMeta = retargetClaimTopicId(claimDoc.wikiMeta, sourceId, targetId);
+            if (nextMeta === claimDoc.wikiMeta) continue;
+            const saved = await saveWikiWithRetry(groupDeps.handleSaveWikiFile, claimId, { ...claimDoc, wikiMeta: nextMeta });
+            if (!saved) throw new Error(`failed to retarget claim ${claimId}`);
+          }
+          await groupDeps.handleDeleteWikiFile(sourceId);
+          result.merged++;
+        } catch (err) {
+          log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
+          result.failed++;
+          noteFailure(err);
+        }
+      };
 
       // 吸収される話題それぞれの実ドキュメントを読む（新形式判定・derivedFromNotes 収集用）。
       const sourceDocs: { id: string; doc: GraphiumDocument }[] = [];
@@ -408,14 +435,7 @@ export async function applyTopicMerges(
             const isNewFormat = sourceDoc !== undefined && typeof sourceDoc.wikiMeta!.topicMarkdown === "string";
             if (isNewFormat) continue;
             if (retargetFailedIds.has(sourceId)) continue;
-            try {
-              await groupDeps.handleDeleteWikiFile(sourceId);
-              result.merged++;
-            } catch (err) {
-              log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
-              result.failed++;
-              noteFailure(err);
-            }
+            await trashAbsorbedTopic(sourceId);
           }
           continue;
         }
@@ -423,14 +443,7 @@ export async function applyTopicMerges(
 
       for (const sourceId of sourceIds) {
         if (retargetFailedIds.has(sourceId)) continue;
-        try {
-          await groupDeps.handleDeleteWikiFile(sourceId);
-          result.merged++;
-        } catch (err) {
-          log("統合された話題のゴミ箱送りに失敗:", sourceId, err);
-          result.failed++;
-          noteFailure(err);
-        }
+        await trashAbsorbedTopic(sourceId);
       }
     } catch (err) {
       log("既存話題の統合処理に失敗:", targetId, err);

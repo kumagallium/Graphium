@@ -4,7 +4,7 @@
 // 既存の読み書きツール（../tools.ts）とは分け、index.ts から registerUpkeepTools を呼ぶ。
 // ハンドラ本体は「文字列を返す関数」として export し、単体テストは McpServer なしで呼ぶ。
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { withPassageContexts } from "../../features/wiki/passage-context";
 import { join } from "node:path";
 
@@ -26,7 +26,7 @@ import {
 } from "../../features/knowledge-maintenance/run-format";
 import { describeUndoImpact, undoMaintenanceOperation } from "../../features/knowledge-maintenance/undo";
 import type { MaintenanceOperation } from "../../features/knowledge-maintenance/types";
-import { buildNoteIndex, rebuildSourceBackedWikiDocument } from "../../features/wiki/wiki-service";
+import { buildNoteIndex, rebuildSourceBackedWikiDocument, retargetClaimTopicId } from "../../features/wiki/wiki-service";
 import type { TopicSourceRef } from "../../features/wiki/wiki-service";
 import { resetSearchIndex } from "../search";
 import type { ToolContext } from "../tools";
@@ -298,6 +298,21 @@ export async function reviseTopic(input: ReviseTopicInput, ctx: ToolContext, roo
 
 export type MergeTopicsInput = CommonInput & { keepId: string; absorbIds: string[]; body: string };
 
+/** 吸収されるトピックを topicIds に持つ知見を集める（統合先へ付け替える対象） */
+function claimsLinkedToTopics(root: string, topicIds: string[]): { id: string; doc: GraphiumDocument }[] {
+  const dir = wikiDir(root);
+  if (!existsSync(dir)) return [];
+  const wanted = new Set(topicIds);
+  const claims: { id: string; doc: GraphiumDocument }[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".json")) continue;
+    const id = file.slice(0, -".json".length);
+    const doc = readWikiDoc(root, id);
+    if (doc?.wikiMeta?.kind === "claim" && doc.wikiMeta.topicIds?.some((t) => wanted.has(t))) claims.push({ id, doc });
+  }
+  return claims;
+}
+
 export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, root: string): Promise<string> {
   return withWriteGuard(root, async (lock) => {
     const { keepId, body } = input;
@@ -388,6 +403,18 @@ export async function mergeTopics(input: MergeTopicsInput, ctx: ToolContext, roo
       if (!ok) {
         note = "残す側の保存に失敗（吸収側は動かしていません）";
         return `残す側の保存に失敗したため、吸収側は動かしていません: ${keep.title}`;
+      }
+
+      // 吸収されるトピックに結ばれた知見を、ゴミ箱へ移す前に残す側へ付け替える
+      for (const claim of claimsLinkedToTopics(root, absorbIds)) {
+        let meta = claim.doc.wikiMeta!;
+        for (const id of absorbIds) meta = retargetClaimTopicId(meta, id, keepId);
+        const claimSaved = await op.save(claim.id, { ...claim.doc, wikiMeta: meta });
+        await lock.refresh();
+        if (!claimSaved) {
+          note = `知見「${claim.doc.title}」の付け替えに失敗（吸収側は動かしていません）`;
+          return `知見「${claim.doc.title}」の付け替えに失敗したため、吸収側は動かしていません。取り消すには undo_operation を使ってください。`;
+        }
       }
 
       const trashed: string[] = [];

@@ -74,6 +74,15 @@ import {
   type RewriteSection,
 } from "../services/wiki-rewriter.js";
 import {
+  buildClaimTopicLinkerSystemPrompt,
+  buildClaimTopicLinkerUserMessage,
+  parseClaimTopicLinkerOutput,
+  CLAIM_LINK_MAX_CLAIMS,
+  CLAIM_LINK_MAX_TOPICS,
+  type ClaimLinkClaimRef,
+  type ClaimLinkTopicRef,
+} from "../services/wiki-claim-topic-linker.js";
+import {
   buildTopicConsolidatorSystemPrompt,
   buildTopicConsolidatorUserMessage,
   parseTopicConsolidatorOutput,
@@ -979,6 +988,62 @@ app.post("/type-topics", async (c) => {
     });
   } catch (err) {
     console.error("Wiki type-topics error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+// 知見とトピックを結ぶ判定（資料 1 本につき 1 回）。同じ資料の知見とトピックだけを受け取り、
+// 知見ごとに閉じた集合から 0〜3 件を選ばせる。/route-topics と同じ作り（maxSteps 1・モデル未登録は同じ degrade）。
+app.post("/link-claims-to-topics", async (c) => {
+  const body = await c.req.json<{
+    claims: ClaimLinkClaimRef[];
+    topics: ClaimLinkTopicRef[];
+    model?: string;
+  }>();
+
+  const isRef = (v: unknown): v is { id: string; title: string } =>
+    !!v && typeof (v as { id?: unknown }).id === "string" && typeof (v as { title?: unknown }).title === "string";
+  if (!Array.isArray(body.claims) || body.claims.length === 0 || !body.claims.every(isRef)) {
+    return c.json({ error: "claims are required" }, 400);
+  }
+  if (!Array.isArray(body.topics) || body.topics.length === 0 || !body.topics.every(isRef)) {
+    return c.json({ error: "topics are required" }, 400);
+  }
+  if (body.claims.length > CLAIM_LINK_MAX_CLAIMS || body.topics.length > CLAIM_LINK_MAX_TOPICS) {
+    return c.json({ error: `at most ${CLAIM_LINK_MAX_CLAIMS} claims and ${CLAIM_LINK_MAX_TOPICS} topics per call` }, 400);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildClaimTopicLinkerSystemPrompt(),
+      messages: [{ role: "user" as const, content: buildClaimTopicLinkerUserMessage(body.claims, body.topics) }],
+      maxSteps: 1,
+      feature: "wiki.link-claims-to-topics",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+    });
+
+    const parsed = parseClaimTopicLinkerOutput(result.message, body.claims, body.topics);
+    if (!parsed) {
+      return c.json(topicOutputUnparseableBody(), 500);
+    }
+
+    return c.json({
+      links: parsed.links,
+      rejected: parsed.rejected,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("Wiki link-claims-to-topics error:", err);
     return c.json(errorBody(err), 500);
   }
 });

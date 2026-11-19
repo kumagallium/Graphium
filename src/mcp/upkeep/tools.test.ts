@@ -251,6 +251,24 @@ describe("merge_topics", () => {
     expect(wikiBody("t1")).toBe("元の本文1");
   });
 
+  it("吸収されるトピックに結ばれた知見を残す側へ付け替え、取り消すと戻す", async () => {
+    const claim = { ...topicDoc("知見", "本文", "claim", false) };
+    claim.wikiMeta = { ...claim.wikiMeta, topicIds: ["t2", "other"] } as typeof claim.wikiMeta;
+    writeFileSync(p("wiki", "c1.json"), JSON.stringify(claim));
+
+    const reply = await mergeTopics(
+      { keepId: "t1", absorbIds: ["t2"], body: `統合後 [[source:${NOTE}]]` },
+      ctx,
+      root,
+    );
+    expect(reply).toContain("統合しました");
+    expect(readJson(p("wiki", "c1.json")).wikiMeta.topicIds).toEqual(["other", "t1"]);
+
+    const { runId, operationId } = ids(reply);
+    expect(await undoOperation({ runId, operationId }, ctx, root)).toContain("取り消しました");
+    expect(readJson(p("wiki", "c1.json")).wikiMeta.topicIds).toEqual(["t2", "other"]);
+  });
+
   it("検査: 自分自身・旧形式・answer", async () => {
     expect(await mergeTopics({ keepId: "t1", absorbIds: ["t1"], body: "x" }, ctx, root)).toMatch(/^INVALID_ARGUMENT/);
     expect(await mergeTopics({ keepId: "t1", absorbIds: ["old"], body: "x" }, ctx, root)).toMatch(/^OLD_FORMAT/);
