@@ -4657,6 +4657,45 @@ fn relaunch_via_launchd(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+/// 書き出しの種類ごとに、前回保存したフォルダを覚えておくファイル（app_config_dir 直下。端末ごと）
+const SAVE_DIRS_FILE: &str = "save-dirs.json";
+
+/// 覚えておく種類の名前。画面から渡るので、英小文字だけ・短いものに限る
+fn is_valid_remember_key(key: &str) -> bool {
+    !key.is_empty() && key.len() <= 16 && key.bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// 前回その種類で保存したフォルダ。今もフォルダとしてあるときだけ返す
+fn read_remembered_dir(map_path: &Path, key: &str) -> Option<PathBuf> {
+    let text = fs::read_to_string(map_path).ok()?;
+    let map: HashMap<String, String> = serde_json::from_str(&text).ok()?;
+    let dir = PathBuf::from(map.get(key)?);
+    if dir.is_absolute() && dir.is_dir() {
+        Some(dir)
+    } else {
+        None
+    }
+}
+
+/// その種類で保存したフォルダを覚える（一時ファイル＋rename）。失敗しても保存そのものは成功のまま
+fn remember_dir(map_path: &Path, key: &str, dir: &Path) -> Result<(), String> {
+    let mut map: HashMap<String, String> = fs::read_to_string(map_path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    map.insert(key.to_string(), dir.to_string_lossy().to_string());
+    let parent = map_path.parent().ok_or("設定フォルダが見つかりません")?;
+    fs::create_dir_all(parent).map_err(|e| format!("設定フォルダの作成に失敗: {e}"))?;
+    let tmp = parent.join(format!("{SAVE_DIRS_FILE}.{}.tmp", uuid::Uuid::new_v4().simple()));
+    let json = serde_json::to_string(&map).map_err(|e| format!("保存先の控えの書き出しに失敗: {e}"))?;
+    fs::write(&tmp, json)
+        .and_then(|_| fs::rename(&tmp, map_path))
+        .map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("保存先の控えの書き込みに失敗: {e}")
+        })
+}
+
 /// フロント側で生成したファイル（PDF / PROV-JSON-LD / Markdown / zip）を
 /// ネイティブの保存ダイアログ経由でディスクに保存する。
 ///
@@ -4669,11 +4708,15 @@ fn relaunch_via_launchd(app: tauri::AppHandle) -> Result<(), String> {
 ///   - `Ok(true)`  保存した
 ///   - `Ok(false)` ユーザーがダイアログをキャンセルした
 ///   - `Err(..)`   書き込み等に失敗した
+///
+/// `remember_key` を渡すと、その種類で前回保存したフォルダでダイアログを開き、保存したフォルダを覚える。
+/// フォルダのパスは Rust の中だけで扱い、画面には返さない
 #[tauri::command]
 async fn save_bytes_with_dialog(
     app: tauri::AppHandle,
     suggested_name: String,
     content_base64: String,
+    remember_key: Option<String>,
 ) -> Result<bool, String> {
     use base64::Engine;
     use tauri_plugin_dialog::DialogExt;
@@ -4691,6 +4734,14 @@ async fn save_bytes_with_dialog(
     let mut builder = app.dialog().file().set_file_name(&suggested_name);
     if let Some(ext) = &ext {
         builder = builder.add_filter(ext.to_uppercase(), &[ext.as_str()]);
+    }
+    let remember = remember_key
+        .filter(|k| is_valid_remember_key(k))
+        .and_then(|k| Some((k, app.path().app_config_dir().ok()?.join(SAVE_DIRS_FILE))));
+    if let Some((key, map_path)) = &remember {
+        if let Some(dir) = read_remembered_dir(map_path, key) {
+            builder = builder.set_directory(dir);
+        }
     }
 
     // save_file はノンブロッキング（コールバック）。ダイアログはメイン
@@ -4715,6 +4766,11 @@ async fn save_bytes_with_dialog(
         .map_err(|e| format!("保存先パスの解決に失敗: {e}"))?;
 
     fs::write(&target, bytes).map_err(|e| format!("ファイル書き込み失敗: {e}"))?;
+    if let (Some((key, map_path)), Some(dir)) = (&remember, target.parent()) {
+        if let Err(e) = remember_dir(map_path, key, dir) {
+            eprintln!("[save_bytes_with_dialog] {e}");
+        }
+    }
     Ok(true)
 }
 
@@ -8636,6 +8692,34 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
             fs_root_reachable,
         );
         assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn save_dirs_remember_per_kind_and_only_existing_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let map = tmp.path().join("config").join(SAVE_DIRS_FILE);
+        let word_dir = tmp.path().join("word");
+        fs::create_dir_all(&word_dir).unwrap();
+        assert_eq!(read_remembered_dir(&map, "word"), None);
+        remember_dir(&map, "word", &word_dir).unwrap();
+        assert_eq!(read_remembered_dir(&map, "word"), Some(word_dir.clone()));
+        // ほかの種類は混ざらない
+        assert_eq!(read_remembered_dir(&map, "markdown"), None);
+        // フォルダが無くなっていたら使わない
+        fs::remove_dir(&word_dir).unwrap();
+        assert_eq!(read_remembered_dir(&map, "word"), None);
+        // 壊れた控えは無視する
+        fs::write(&map, "not json").unwrap();
+        assert_eq!(read_remembered_dir(&map, "word"), None);
+    }
+
+    #[test]
+    fn save_dirs_accept_only_short_lowercase_keys() {
+        assert!(is_valid_remember_key("word"));
+        assert!(!is_valid_remember_key(""));
+        assert!(!is_valid_remember_key("Word"));
+        assert!(!is_valid_remember_key("../x"));
+        assert!(!is_valid_remember_key("abcdefghijklmnopq"));
     }
 
     #[test]

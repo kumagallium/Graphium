@@ -335,7 +335,7 @@ Markdown is lossy by design: what a block *means* survives, how it *looks* does 
 
 ### Export to Word <Badge type="tip" text="Added in v0.140.0 (2026-11-17)" /> {#export-to-word}
 
-**Word (.docx)** in the note menu, and in the menu of a note opened in the side peek, saves the note as a Word file. Headings, spacing and tables are styled in the file itself.
+**Word (.docx)** in the note menu, and in the menu of a note opened in the side peek, saves the note as a Word file. Headings, spacing and tables are styled in the file itself. On the desktop app, the save dialog opens in the folder you last saved a Word file to, so a fixed folder (a team's synced folder, say) takes one click.
 
 ![The note menu with its Export group: Print / PDF, Markdown (.md), Word (.docx), highlighted, and Provenance (PROV-JSON-LD).](/screenshots/note-menu-word.png)
 

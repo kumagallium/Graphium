@@ -4143,7 +4143,10 @@ The same `src/` tree is built four different ways.
   (`node .../sidecar/server.mjs`), and file export goes through
   `save_bytes_with_dialog`, which opens a native save dialog in Rust and
   writes only to the path the user picks — JavaScript never supplies a
-  filesystem path. **Open in app** on a document material goes through
+  filesystem path. With a `remember_key` (lowercase letters only; Word
+  export passes `word`), Rust opens the dialog in the folder last saved to
+  for that key and records the folder in `save-dirs.json` under
+  `app_config_dir`; the path is never returned to JavaScript. **Open in app** on a document material goes through
   `open_media_in_app`, which takes only a material id and its display
   name: Rust resolves the file under `media/`, writes an **editable copy**
   to `appdata/opened/<fileId>/<display name>` (path separators and
