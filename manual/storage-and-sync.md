@@ -288,6 +288,35 @@ From the proposer's side, the state badge changes to **Adopted**. Their note sta
 
 A note you created by forking shows a **Forked from: …** chip in its header; click it to open the original shared entry. The **Graph** panel on the right shows the same relationship as a dashed link, alongside any proposals aimed at your note (clickable too).
 
+### Let others update a note, one after another {#accept-updates}
+
+Normally only the author can change a shared note; everyone else forks it or proposes changes. If the author wants to share the editing instead, they can let others update the shared note directly. Updates then happen **one after another**, never at the same moment.
+
+**The author turns it on.** Open the note in the shared folder, open **Version** in the right rail, and switch on **Accept updates from others**. It is off by default, and it is a per-note setting. Notes that accept updates show an **Accepting updates** mark in the header for everyone, with who updated it last.
+
+**Others make a copy, edit it, and apply it.**
+
+1. Open the note and press **Fork to my notes** as usual. The header reminds you that the note accepts updates
+2. Edit your copy
+3. In the `⋯` menu of your copy, press **Apply to shared note**. The dialog shows which shared note it applies to and the name that will be recorded as the person who updated it
+4. Press **Apply**
+
+**If someone updated it first, nothing is overwritten.** Graphium checks that the shared note is still the version you copied from. If it is not, it writes nothing and tells you so. Your copy stays as it is, and you can **make a copy from the latest version**, **propose it as a change** instead, or close the message. The same goes for the author: pressing **Update shared copy** again on a note that others have updated shows "Someone has updated this note first" instead of overwriting it.
+
+**Previous versions.** Each update keeps the version it replaced, up to 5. Under **Previous versions** in the right rail, pressing **Restore this version** (after a confirmation) writes that version back as the current one. The version you replaced is kept too, so you can go back again. Anyone who can update the note can restore.
+
+**Who can update is decided by the shared folder.** The switch only says whether the note is open to updates. Who is actually allowed to write is the permission of the shared folder (your file server or sync service), as with everything else here.
+
+::: warning Limits
+- **Two people updating at almost the same moment** can end up as a conflict copy made by your sync software (a file with a name like "conflicted copy"). Graphium shows a notice with the file names when it finds one, but it does not merge it into the note. Open the files and decide yourself
+- **The name is self-declared.** The author identity is what each person typed in, not a verified login. It is a record for people, not proof of who made the change
+- **Writing straight to a NAS without sync software**: when two people update at almost the same moment, no conflict copy is made, and one of the updates may not remain
+- **Stopping sharing deletes the previous versions** along with the note
+- **Turning the switch off** hides the list of previous versions (it comes back when you turn it on again)
+- **The date of a previous version** comes from the clock of the computer that wrote it
+- **An author on an old version of the app** who shares again will overwrite the note **without the check**, so updates by others can be lost. Update the app for everyone who shares into this folder (the previous versions above are the way back)
+:::
+
 ## Exports
 
 Everything can leave Graphium in open formats, per note or in bulk.

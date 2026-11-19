@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -374,6 +374,9 @@ import {
   confirmCrossFolderCitations,
   needsSharedFolderChoice,
   ProposeChangesDialog,
+  UpdateSharedNoteDialog,
+  UpdateConflictDialog,
+  useSharedNoteAcceptsUpdates,
   withdrawProposal,
   resolveProposalBase,
   saveSharedNoteLink,
@@ -929,6 +932,7 @@ function NoteHeaderMenu({
   onMoveShared,
   onSaveAsTemplate,
   onProposeToSource,
+  onUpdateShared,
   onWithdrawProposal,
   isProposalShared,
   onCopyLink,
@@ -1007,6 +1011,11 @@ function NoteHeaderMenu({
    * 未設定時は項目ごと隠す（派生していない・元の作者が自分・デスクトップ以外）。
    */
   onProposeToSource?: () => void;
+  /**
+   * 派生元のノートを作者が「他の人の更新を受け付ける」にしているとき、この写しの内容を
+   * 共有に反映する（順番に更新）。未設定時は項目ごと隠す。
+   */
+  onUpdateShared?: () => void;
   /** 提案として共有済みのときだけ渡る「提案を取り下げる」 */
   onWithdrawProposal?: () => void;
   /** このノートが提案として共有済みか（項目の文言が「提案を更新」になる） */
@@ -1205,7 +1214,7 @@ function NoteHeaderMenu({
             </>
           )}
           {/* 5. 人に渡す（リンク・共有・提案）を 1 つの区画にまとめる */}
-          {(onCopyLink || onShare || onShareTemplate || onProposeToSource || onWithdrawProposal) && (
+          {(onCopyLink || onShare || onShareTemplate || onProposeToSource || onUpdateShared || onWithdrawProposal) && (
             <div className="my-1 border-t border-border" />
           )}
           {onCopyLink && (
@@ -1275,6 +1284,18 @@ function NoteHeaderMenu({
             >
               <GitPullRequestArrow size={14} />
               {isProposalShared ? t("share.propose.update") : t("share.propose.menu")}
+            </button>
+          )}
+          {/* 作者が更新を受け付けているノートの写しを、共有に反映する */}
+          {onUpdateShared && (
+            <button
+              className={itemClass}
+              disabled={shareDisabled || shareBusy}
+              onClick={() => { onUpdateShared(); setOpen(false); }}
+              data-tooltip={shareDisabled ? shareDisabledReason : t("share.update.menuHint")}
+            >
+              <UploadCloud size={14} />
+              {t("share.update.menu")}
             </button>
           )}
           {onWithdrawProposal && (
@@ -1660,6 +1681,11 @@ type NoteEditorProps = {
   openProposalRequest?: { proposalId: string; seq: number };
   /** 上の要求を処理し終えたことの通知。NoteApp は受け取ったら要求を落とす */
   onProposalRequestHandled?: () => void;
+  /**
+   * 共有ノートから写しを作る（NoteApp の fork 処理）。「共有に反映」で先に更新されていたとき、
+   * 最新の版から写しを作り直す入口に使う。未指定なら、その選択肢を出さない
+   */
+  onForkSharedNote?: (sharedId: string) => Promise<void>;
   /**
    * 本文「下」に展開する関連・文脈 UI（WikiContextDrawer 用、D2 配置）。
    * identity は subHeaderSlot / 本文上に残し、relational なセクションは本文の後ろに
@@ -2145,6 +2171,7 @@ function NoteEditorInner({
   chatRunApplyRef,
   openProposalRequest,
   onProposalRequestHandled,
+  onForkSharedNote,
   subHeaderSlot,
   contextDrawerSlot,
   renderPeekWikiContext,
@@ -3904,6 +3931,17 @@ function NoteEditorInner({
     attachClipboardListeners();
   }, [labelStore, linkStore, uploadFile, updateNoteLinks]);
 
+  // 派生元（forkedFrom）。buildDocument はスクラッチで組むので initialDoc から素通ししていたが、
+  // 「共有に反映」で forkedFrom.hash が新しくなる。initialDoc のままだと次の反映・提案が
+  // 古い hash を使って「先に更新されています」と誤判定するので、ref で最新を持つ
+  const [forkedFromState, setForkedFromState] = useState(initialDoc?.forkedFrom);
+  const forkedFromRef = useRef(forkedFromState);
+  forkedFromRef.current = forkedFromState;
+  // 別のノートを開いた（initialDoc が変わった）ときは新しい派生元に追従する
+  useEffect(() => {
+    setForkedFromState(initialDoc?.forkedFrom);
+  }, [initialDoc]);
+
   // ── 保存ロジック ──
   // 今の本文と注釈から doc を組む（同期。来歴はまだ刻まない — finishDocument）。
   // unmounting: アンマウント時の書き出し。エディタはこの後外されるので、表の行 ID を
@@ -4007,7 +4045,7 @@ function NoteEditorInner({
       //  - forkedFrom: 共有ライブラリから派生した元（逆引きの「派生版」、変更の提案）
       //  - templateFrom: どのテンプレートから作ったか（逆引きの「テンプレート由来」）
       //  - partOfPlanNoteId: 計画ノートとの結び付き
-      forkedFrom: initialDoc?.forkedFrom,
+      forkedFrom: forkedFromRef.current,
       templateFrom: initialDoc?.templateFrom,
       partOfPlanNoteId: initialDoc?.partOfPlanNoteId,
       // 投入口（intake）の取り込み元情報（note-dedupe が参照する）。
@@ -4438,6 +4476,26 @@ function NoteEditorInner({
         readable: readableCopyContext,
       });
       if (!result.ok) {
+        if ("conflict" in result && result.conflict) {
+          // 受け付け中に、ほかの人が先に更新していた。上書きしていないことを伝え、
+          // 最新の版から写しを作る道を出す（手元のノートは残る）
+          if (
+            sharedRefState?.id &&
+            onForkSharedNote &&
+            (await confirmAction(t("share.reshareConflict"), {
+              confirmLabel: t("share.reshareConflict.fork"),
+            }))
+          ) {
+            try {
+              await onForkSharedNote(sharedRefState.id);
+            } catch {
+              // 失敗の通知は fork の処理が出す
+            }
+          } else if (!onForkSharedNote) {
+            window.alert(t("share.reshareConflict"));
+          }
+          return;
+        }
         window.alert(t("share.failed") + ": " + result.error);
         return;
       }
@@ -4464,7 +4522,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext, onForkSharedNote]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4472,8 +4530,15 @@ function NoteEditorInner({
   // 移した先の更新履歴は 1 から数え直す（履歴は元のフォルダの封筒にしか無い）。
   const [moveFolderDialogOpen, setMoveFolderDialogOpen] = useState(false);
   const [moveFromRoot, setMoveFromRoot] = useState<string | null>(null);
+  // 他の人の更新を受け付け中のノートは移せない（移した先では受け付けが落ち、前の版も他の人の更新も
+  // 引き継がれず、作者の手元の本文で置き換わってしまう）。スイッチを切ってから移してもらう
+  const moveBlockedByAccepting = useSharedNoteAcceptsUpdates(sharedRefState?.id);
   const openMoveShared = useCallback(async () => {
     if (!sharedRefState) return;
+    if (moveBlockedByAccepting) {
+      window.alert(t("share.move.blockedAccepting"));
+      return;
+    }
     await ensureSharedEntryRoots();
     const from = getSharedLibrarySnapshot().entryRoots[sharedRefState.id] ?? null;
     if (!from) {
@@ -4482,9 +4547,14 @@ function NoteEditorInner({
     }
     setMoveFromRoot(from);
     setMoveFolderDialogOpen(true);
-  }, [sharedRefState, t]);
+  }, [sharedRefState, t, moveBlockedByAccepting]);
   const handleMoveShared = useCallback(async (toRoot: string) => {
     if (!sharedRefState || !sharedAuthor || !moveFromRoot || toRoot === moveFromRoot) return;
+    if (moveBlockedByAccepting) {
+      setMoveFolderDialogOpen(false);
+      window.alert(t("share.move.blockedAccepting"));
+      return;
+    }
     setShareBusy(true);
     try {
       const baseDoc = await buildDocument();
@@ -4521,7 +4591,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4550,7 +4620,7 @@ function NoteEditorInner({
   // 派生（fork）したノートの変更を、元のノートへの提案として共有する。
   // 元のノートには一切書かない（提案は自分名義の別の封筒）。取り込むかは元の作者が決める。
   const [proposeOpen, setProposeOpen] = useState(false);
-  const forkedFrom = initialDoc?.forkedFrom;
+  const forkedFrom = forkedFromState;
   const isProposalShared = sharedRefState?.type === "proposal";
   // このノートの共有コピーに来ている提案の件数（§25b B-1）。返るのは**数**なので、
   // 共有フォルダが更新されても件数が変わらない限りノート本体は描き直されない
@@ -4586,6 +4656,39 @@ function NoteEditorInner({
     // ノートへ提案するときに使えるため（取り込みは自分のノートで行うので害は無い）
     (!sharedRefState || isProposalShared);
 
+  // ── 共有に反映（順番に更新）──
+  // 派生元のノートを作者が「他の人の更新を受け付ける」にしているときだけ出す。
+  // 受け付けているかは真偽値だけを購読する（共有フォルダの更新でノート本体を描き直さない）
+  const sourceAcceptsUpdates = useSharedNoteAcceptsUpdates(forkedFrom?.sharedId);
+  const canUpdateShared = canPropose && sourceAcceptsUpdates && isTauri() && !!sharedAuthor && !!fileId;
+  const [updateSharedOpen, setUpdateSharedOpen] = useState(false);
+  const [updateConflictOpen, setUpdateConflictOpen] = useState(false);
+  const handleSharedUpdated = useCallback(
+    (result: { doc: GraphiumDocument; readableCopy?: string }) => {
+      // 返った doc の forkedFrom.hash は新しい版。ref と state の両方を先に更新して、
+      // 保存と次の反映が古い hash を使わないようにする
+      forkedFromRef.current = result.doc.forkedFrom;
+      setForkedFromState(result.doc.forkedFrom);
+      void saveDocTracked(result.doc);
+      window.alert(
+        result.readableCopy === "failed"
+          ? t("share.update.success") + "\n" + t("share.readableCopyFailed")
+          : t("share.update.success"),
+      );
+    },
+    [saveDocTracked, t],
+  );
+  const handleUpdateConflictFork = useCallback(async () => {
+    const sharedId = forkedFrom?.sharedId;
+    setUpdateConflictOpen(false);
+    if (!sharedId || !onForkSharedNote) return;
+    try {
+      await onForkSharedNote(sharedId);
+    } catch {
+      // 失敗の通知は fork の処理が出す。手元の写しはそのまま残る
+    }
+  }, [forkedFrom?.sharedId, onForkSharedNote]);
+
   // 提案する本文は「提案する」を押した時点で組み立てる（テンプレート共有と同じ約束）。
   // buildDocument は state からスクラッチで組むので sharedRef が落ちる。更新経路
   // （同じ封筒への上書き）で id を保つため、ここで再注入する
@@ -4593,6 +4696,10 @@ function NoteEditorInner({
     const baseDoc = await buildDocument();
     return sharedRefState ? { ...baseDoc, sharedRef: sharedRefState } : baseDoc;
   }, [buildDocument, sharedRefState]);
+
+  // 「共有に反映」も押した時点の本文を使う。提案と同じ組み立て（sharedRef の再注入を含む）で、
+  // 返った doc をそのまま保存しても提案の参照を失わない
+  const resolveUpdateSource = resolveProposalSource;
 
   // 3 者比較の土台。派生した時点の控え（fork-base）→ 元が派生時点から変わって
   // いなければ現在の本文 → どちらも無ければ基準版なし（2 者比較）
@@ -7425,6 +7532,32 @@ function NoteEditorInner({
           onShared={handleProposalShared}
         />
       )}
+      {/* 共有に反映（作者が更新を受け付けているノートの写しだけ） */}
+      {canUpdateShared && forkedFrom?.sharedId && (
+        <UpdateSharedNoteDialog
+          open={updateSharedOpen}
+          targetId={forkedFrom.sharedId}
+          resolveSource={resolveUpdateSource}
+          noteId={fileId ?? undefined}
+          readable={readableCopyContext}
+          onClose={() => setUpdateSharedOpen(false)}
+          onUpdated={handleSharedUpdated}
+          onConflict={() => setUpdateConflictOpen(true)}
+        />
+      )}
+      <UpdateConflictDialog
+        open={updateConflictOpen}
+        onFork={() => void handleUpdateConflictFork()}
+        onPropose={
+          canPropose
+            ? () => {
+                setUpdateConflictOpen(false);
+                setProposeOpen(true);
+              }
+            : undefined
+        }
+        onClose={() => setUpdateConflictOpen(false)}
+      />
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
       {templatePicker.dialog}
       {/* 引用ピッカーモーダル（スラッシュメニュー /claims, /Insights から） */}
@@ -7571,6 +7704,7 @@ function NoteEditorInner({
               : undefined
           }
           onProposeToSource={canPropose ? () => setProposeOpen(true) : undefined}
+          onUpdateShared={canUpdateShared ? () => setUpdateSharedOpen(true) : undefined}
           onWithdrawProposal={
             isProposalShared ? () => void handleWithdrawProposal() : undefined
           }
@@ -18011,6 +18145,7 @@ export function NoteApp() {
           <NoteEditor
             key={fm.editorKey}
             provLabelsEnabled={provLabelsEnabled}
+            onForkSharedNote={handleSharedForkNote}
             // 共有ライブラリの提案から来た「このノートに取り込む」の着地指示。
             // 宛先のノートを開いている間だけ渡す（別のノートには届かせない）
             openProposalRequest={

@@ -226,6 +226,9 @@ export function SharedNotePreview({
   onEditorReady?: (editor: any) => void;
 }) {
   const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
+  // 読み取り専用エディタは initialContent を最初の 1 回しか使わない。本文が差し替わった
+  // （他の人の更新・前の版に戻した）ときに古い内容のままにならないよう、描き直すたびに作り直す
+  const [renderSeq, setRenderSeq] = useState(0);
   // 共有ライブラリのプレビューも本文を描くので、外部メディアのゲートが要る。
   // scope を渡さないと editorRemoteScope() が "" になり、ブロックはされるものの
   // プレースホルダの「読み込む」が何も起こさない（allowRemoteContentFor("") は
@@ -279,6 +282,7 @@ export function SharedNotePreview({
         );
       });
       setState({ phase: "ready", blocks });
+      setRenderSeq((n) => n + 1);
     })();
     return () => {
       cancelled = true;
@@ -318,6 +322,7 @@ export function SharedNotePreview({
                 <BlockAlignmentProvider>
                   <AiAssistantProvider aiAvailable={false}>
                     <SandboxEditor
+                      key={renderSeq}
                       blocks={customBlockEntries}
                       initialContent={state.blocks as any[]}
                       editable={false}

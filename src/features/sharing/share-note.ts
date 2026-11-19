@@ -29,8 +29,10 @@ import type { AuthorIdentity } from "../document-provenance/types";
 import {
   LocalFolderSharedProvider,
   LocalFolderBlobProvider,
+  SharedConflictError,
   newSharedId,
   computeSharedEntryHash,
+  computeBlobHash,
   type SharedEntry,
   type BlobRef,
 } from "../../lib/storage/shared";
@@ -39,7 +41,7 @@ import {
   collectMediaRefs,
   type FetchMediaBytes,
 } from "./auto-blob";
-import { historyForUpdate } from "./share-history";
+import { appendHistory } from "./share-history";
 import { stripMemoTraces } from "./strip-memo-traces";
 import { collectAdoptedProposals } from "./proposal-apply";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -59,7 +61,12 @@ export type ShareNoteResult =
       /** 読める写しの結果（ノートの共有だけ付く） */
       readableCopy?: ReadableCopyStatus;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; conflict?: false }
+  /**
+   * 受け付け中のノートを、読んだ版のあとに別の人が更新していた（何も書いていない）。
+   * currentHash は今の共有の版（無くなっていたときは空）
+   */
+  | { ok: false; error: string; conflict: true; currentHash: string };
 
 export type ShareNoteOptions = {
   /** Settings から渡される shared root path */
@@ -136,6 +143,64 @@ export async function shareNote(
 }
 
 /**
+ * 他の人の更新を受け付けているノートか（受け付け中で、共有をやめていない）。
+ * 受け付け = 作者がノートごとに入れるスイッチ（extra.acceptsUpdates）。権限ではなく事故防止
+ */
+export function canUpdateSharedNote(entry: SharedEntry): boolean {
+  return entry.type === "note" && entry.extra?.acceptsUpdates === true && entry.status !== "unshared";
+}
+
+/**
+ * 共有コピーの本文を作る前処理（blob 化 → チャットと編集来歴を落とす → メモの痕跡を落とす）。
+ * 通常の共有（shareGraphiumDocument）と、受け付け中のノートへの更新
+ * （update-shared-note.ts）の両方が通す。doc は変更しない。
+ */
+export async function prepareEntryDoc(
+  doc: GraphiumDocument,
+  options: ShareNoteOptions,
+): Promise<{ ok: true; entryDoc: GraphiumDocument; blobs: BlobRef[] } | { ok: false; error: string }> {
+  // ── Phase 2c-1: 自動 blob 化 ──
+  const extractFileId =
+    options.__test?.extractFileId ??
+    ((url: string) => getActiveProvider().extractFileId(url));
+  const refs = collectMediaRefs(doc, extractFileId);
+  if (refs.length > 0 && !options.blobRoot) {
+    return {
+      ok: false,
+      error:
+        "Blob root is not configured. Set it in Settings → Shared storage to share notes that contain media.",
+    };
+  }
+
+  let entryDoc: GraphiumDocument = doc;
+  let blobs: BlobRef[] = [];
+  if (refs.length > 0 && options.blobRoot) {
+    const blobProvider = new LocalFolderBlobProvider(options.blobRoot);
+    const fetchBytes = options.__test?.fetchBytes ?? defaultFetchBytes;
+    const result = await autoUploadMediaBlobs(doc, {
+      extractFileId,
+      fetchBytes,
+      blobProvider,
+    });
+    entryDoc = result.doc;
+    blobs = result.blobs;
+  }
+
+  // ── §24: 共有コピーから AI チャットと編集来歴を落とす（既定） ──
+  // blob 置換の後・hash 計算の前に通す。hash は共有コピーの本文から計算するので、
+  // 剥がした状態が正になる（受け手が読む JSON と hash が一致する）
+  if (!options.includePrivateHistory) {
+    entryDoc = stripPrivateHistory(entryDoc);
+  }
+
+  // ── メモをたどれる値は常に落とす（includePrivateHistory が真でも載せない） ──
+  // これも hash 計算の前。読める写しの Markdown もこの entryDoc から組む
+  entryDoc = stripMemoTraces(entryDoc);
+
+  return { ok: true, entryDoc, blobs };
+}
+
+/**
  * ノート / Knowledge / 提案 共通の Share コア。GraphiumDocument を JSON 化して
  * shared に書き出すフローは entry type と extra フィールド以外同一。
  * share-knowledge.ts / share-proposal.ts からも使う（features/sharing 内部専用）。
@@ -169,43 +234,9 @@ export async function shareGraphiumDocument(
     const adoptedProposals =
       entryType === "proposal" ? [] : collectAdoptedProposals(doc);
 
-    // ── Phase 2c-1: 自動 blob 化 ──
-    const extractFileId =
-      options.__test?.extractFileId ??
-      ((url: string) => getActiveProvider().extractFileId(url));
-    const refs = collectMediaRefs(doc, extractFileId);
-    if (refs.length > 0 && !options.blobRoot) {
-      return {
-        ok: false,
-        error:
-          "Blob root is not configured. Set it in Settings → Shared storage to share notes that contain media.",
-      };
-    }
-
-    let entryDoc: GraphiumDocument = doc;
-    let blobs: BlobRef[] = [];
-    if (refs.length > 0 && options.blobRoot) {
-      const blobProvider = new LocalFolderBlobProvider(options.blobRoot);
-      const fetchBytes = options.__test?.fetchBytes ?? defaultFetchBytes;
-      const result = await autoUploadMediaBlobs(doc, {
-        extractFileId,
-        fetchBytes,
-        blobProvider,
-      });
-      entryDoc = result.doc;
-      blobs = result.blobs;
-    }
-
-    // ── §24: 共有コピーから AI チャットと編集来歴を落とす（既定） ──
-    // blob 置換の後・hash 計算の前に通す。hash は共有コピーの本文から計算するので、
-    // 剥がした状態が正になる（受け手が読む JSON と hash が一致する）
-    if (!options.includePrivateHistory) {
-      entryDoc = stripPrivateHistory(entryDoc);
-    }
-
-    // ── メモをたどれる値は常に落とす（includePrivateHistory が真でも載せない） ──
-    // これも hash 計算の前。読める写しの Markdown もこの entryDoc から組む
-    entryDoc = stripMemoTraces(entryDoc);
+    const prepared = await prepareEntryDoc(doc, options);
+    if (!prepared.ok) return prepared;
+    const { entryDoc, blobs } = prepared;
 
     const provider = new LocalFolderSharedProvider(options.root, {
       email: options.author.email,
@@ -219,8 +250,31 @@ export async function shareGraphiumDocument(
     const body = new TextEncoder().encode(bodyJson);
 
     // 再共有なら旧版の hash を history に積む（上書き前に読む）。
-    // hash 計算の対象外なので、履歴が増えても内容が同じなら hash は変わらない
-    const history = await historyForUpdate(provider, id, isUpdate);
+    // hash 計算の対象外なので、履歴が増えても内容が同じなら hash は変わらない。
+    // 読めなかったときは履歴なしで書く（履歴のために共有を失敗させない）
+    let existingEntry: SharedEntry | undefined;
+    if (isUpdate) {
+      try {
+        existingEntry = (await provider.read(id)).entry;
+      } catch {
+        existingEntry = undefined;
+      }
+    }
+    const history = isUpdate ? appendHistory(existingEntry) : undefined;
+    // 他の人の更新を受け付けている間は、作者の再共有も「読んだ版」を確かめて書く
+    // （その間に誰かが更新していたら上書きせず、衝突として返す）。受け付けていないノートは従来どおり
+    const accepting = entryType === "note" && existingEntry !== undefined && canUpdateSharedNote(existingEntry);
+
+    const bodyHash = await computeBlobHash(body);
+    // 受け付け中に渡す「読んだ版」。共有の本文が手元で最後に共有したときのままなら、
+    // スイッチの切り替えなどで entry の hash だけが動いていても衝突にしない。
+    // 本文が変わっていた（他の人が更新した）なら、従来どおり手元の古い hash を渡して衝突させる
+    const sameBody =
+      !!existingEntry &&
+      typeof existingEntry.extra?.bodyHash === "string" &&
+      !!doc.sharedRef?.bodyHash &&
+      existingEntry.extra.bodyHash === doc.sharedRef.bodyHash;
+    const expectedHash = sameBody ? existingEntry!.hash : (doc.sharedRef?.hash ?? "");
 
     const baseEntry: SharedEntry = {
       id,
@@ -238,12 +292,27 @@ export async function shareGraphiumDocument(
         ...(adoptedProposals.length > 0 ? { adoptedProposals } : {}),
         // Phase 2c-1: 埋め込まれた媒体の BlobRef 一覧（dedup 済み）
         ...(blobs.length > 0 ? { blobs } : {}),
+        // 再共有で受け付けのスイッチを落とさない（切り替えは setAcceptsUpdates だけ）
+        ...(accepting ? { acceptsUpdates: true } : {}),
+        // 本文だけの指紋（スイッチの切り替えで entry の hash が動いても、本文が同じかを見分ける）
+        bodyHash,
       },
     };
 
     // hash 値を sharedRef に持たせるためにここで先に計算する
     const hash = await computeSharedEntryHash(baseEntry, body);
-    await provider.write(baseEntry, body);
+    try {
+      await provider.write(
+        baseEntry,
+        body,
+        accepting ? { expectedHash } : undefined,
+      );
+    } catch (e) {
+      if (e instanceof SharedConflictError) {
+        return { ok: false, error: e.message, conflict: true, currentHash: e.currentHash };
+      }
+      throw e;
+    }
 
     // ── 読める写し（ノートだけ）──
     // 来歴は素材の名前を索引から引くので、URL を shared-blob: に置き換える前の doc を使う。
@@ -277,6 +346,7 @@ export async function shareGraphiumDocument(
         type: entryType,
         sharedAt: now,
         hash,
+        bodyHash,
       },
     };
 

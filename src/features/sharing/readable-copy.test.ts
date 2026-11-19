@@ -75,6 +75,7 @@ describe("syncReadableCopy", () => {
     expect(args.id).toBe(SHARED_ID);
     expect(args.title).toBe("実験メモ");
     expect(args.authorEmail).toBe(author.email);
+    expect(args.entryHash).toBeNull(); // 作者は渡さない
     expect(args.markdown).toContain("# 実験メモ");
     expect(args.markdown).toContain("本文です");
     expect(typeof args.prov).toBe("string");

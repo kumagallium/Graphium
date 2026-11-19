@@ -35,6 +35,11 @@ export type ReadableCopyStatus = "written" | "removed" | "off" | "failed";
 export type SyncReadableCopyInput = {
   root: string;
   authorEmail: string;
+  /**
+   * 書いた直後の共有の本体の hash。作者以外（受け付け中のノートを更新した人）が写しを
+   * 置くときに Rust が本体の hash と突き合わせる。作者は渡さなくてよい
+   */
+  entryHash?: string;
   /** 共有 id（uuidv7） */
   sharedId: string;
   title: string;
@@ -82,6 +87,7 @@ export async function syncReadableCopy(
         markdown: null,
         prov: null,
         authorEmail: input.authorEmail,
+        entryHash: input.entryHash ?? null,
       });
       return { status: "off" };
     }
@@ -109,6 +115,7 @@ export async function syncReadableCopy(
       markdown,
       prov,
       authorEmail: input.authorEmail,
+      entryHash: input.entryHash ?? null,
     });
     return { status: "written" };
   } catch (e) {

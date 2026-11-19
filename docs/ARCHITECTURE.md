@@ -3685,6 +3685,50 @@ The same `src/` tree is built four different ways.
   old `~/Documents/Graphium/server-data` writes a `.legacy-migrated` marker
   once done and is skipped afterwards; it copies files as before except that
   it never overwrites an existing `models.json` in the new data folder
+- Who may write a shared note. `shared_write` lets the author (the caller's
+  email equals the existing entry's `author.email`) write as before, except
+  that an entry whose `extra.acceptsUpdates` is on is never overwritten
+  without `expected_hash` (it returns `SHARED_CONFLICT:<current hash>`), so a
+  failed read on the author's side cannot silently overwrite someone else's
+  update. Someone else may write only when all of these hold: the entry type
+  is `notes`; the existing entry has `extra.acceptsUpdates === true`;
+  `expected_hash` is non-empty and equals the current non-empty `entry.hash`;
+  the new content keeps the same `id`, `type`, `created_at`, the whole
+  `author` object and the same `status` (value and type); it still has
+  `extra.acceptsUpdates === true`, a non-empty string `hash`, and an
+  `extra.updatedBy.email` equal to the caller; and its `status` is not
+  `unshared`. Otherwise the same `Read-only` error as before is returned.
+  `shared_delete` stays author-only (and removes the previous versions only
+  for `notes` whose body existed and passed the author check).
+  `shared_readable_sync` accepts a non-author only when the existing note
+  accepts updates, the `entry_hash` argument (non-empty) equals the body's
+  `entry.hash`, and the body's `extra.updatedBy.email` is the caller (the
+  caller wrote the current version). This is **accident prevention, not
+  access control**: the caller's email is self-declared, and anyone who can
+  write to the shared folder can edit the files directly. The write works by
+  writing a temporary file and renaming it over the target, so it bypasses
+  any per-file permission on the existing file (only the folder's permission
+  matters). The `expected_hash` check and the process-wide write lock cover
+  writers on this device only; two devices writing to a synced folder at
+  nearly the same time are not prevented. Shared bodies and previous
+  versions are read only as regular files (no symbolic links; `O_NONBLOCK` on
+  unix so a FIFO cannot hang the write lock) and refused above 512 MiB.
+  Before overwriting an accepting note, `shared_write` copies the current file
+  to `_meta/versions/<id>/<ms13>-<hash16>.json` and keeps the newest 5, always
+  including the one just copied (a failed copy cancels the write; a version
+  with the same hash part is not copied twice; names more than 24 hours in the
+  future are deleted without counting; a write whose `body_base64` equals the
+  current one, such as flipping the switch, is not copied); `_meta`,
+  `versions` and `<id>` must not be symbolic links. Graphium checks the
+  consistency of a previous version itself (the id matches, and the recorded
+  hash matches its contents before restoring), but this cannot stop someone
+  who can write to the shared folder directly from replacing a previous
+  version together with its hash. Read-side commands: `shared_versions_list(root, id)`,
+  `shared_version_read(root, id, name)` (only names matching
+  `^\d{13}-[0-9a-f]{16}\.json$`) and `shared_conflict_copies(root, entry_type,
+  id)` (file names in the entry folder that start with the id, end in `.json`
+  and are not `<id>.json`: cloud-sync conflict copies; contents are not
+  returned)
 - Readable copies (`shared_readable_sync`, and the cleanup `shared_delete`
   runs) are written by Rust, not chosen by the frontend: the command takes
   only the entry type, the shared id, the title and the contents, and

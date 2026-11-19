@@ -72,6 +72,15 @@ import {
   readSeenStore,
 } from "./shared-seen";
 import { type HashStatus } from "./hash-badge";
+import {
+  AcceptsUpdatesBadge,
+  ConflictCopiesNotice,
+  SharedNoteUpdatePanel,
+  useSharedNoteVersions,
+  readUpdatedByName,
+  type SharedNoteUpdateOps,
+} from "./SharedNoteUpdates";
+import { canUpdateSharedNote } from "./update-shared-note";
 import { ProposalDiffPanel } from "./ProposalDiffPanel";
 import { useProposalDiff } from "./use-proposal-diff";
 import type { ProposalDiffInput } from "./proposal-diff";
@@ -159,6 +168,8 @@ export type SharedNoteViewProps = {
    * 未指定なら取り込みのボタンを出さない（読むだけの画面のまま）。
    */
   onAdoptInNote?: (input: { proposalId: string; targetId: string }) => void;
+  /** DI: 「他の人の更新」「前の版」の読み書き（Storybook / テスト用。既定は実物） */
+  updateOps?: SharedNoteUpdateOps;
 };
 
 /**
@@ -198,6 +209,7 @@ function SharedNoteViewInner({
   chatDeps,
   proposalDiff,
   onAdoptInNote,
+  updateOps,
 }: SharedNoteViewProps) {
   const uiT = useT();
   const aiAssistant = useAiAssistant();
@@ -227,14 +239,25 @@ function SharedNoteViewInner({
   const isMine =
     !!currentIdentity && entry.author?.email === currentIdentity.email;
 
+  // 順番に更新（作者が受け付けを入れたノート）。印は誰が見ても出す。
+  // 前の版と競合コピーは、このエントリがある共有フォルダから読む
+  const entryRoot = getSharedEntryRoot(entry.id) ?? sharedRoot;
+  const acceptsUpdates = canUpdateSharedNote(entry);
+  const updatedByName = readUpdatedByName(entry);
+  const noteVersions = useSharedNoteVersions(entry, entryRoot, updateOps);
+
   // 「更新あり」「新着コメント N」は開いた瞬間の控えで判定する。
   // 下の markSeen が控えを進めてしまうので、進む前の値を握っておく
   const [seenAtOpen] = useState(() => readSeenStore());
+  // 自分で戻した・切り替えた版の hash。自分の書き込みを「更新あり」にしない
+  const [selfWrittenHash, setSelfWrittenHash] = useState<string | null>(null);
   const commentTotal = useMemo(
     () => countCommentsFor(entry.id, allEntries),
     [entry.id, allEntries],
   );
-  const wasUpdated = isUpdatedSince(entry, currentIdentity?.email ?? null, seenAtOpen);
+  const wasUpdated =
+    entry.hash !== selfWrittenHash &&
+    isUpdatedSince(entry, currentIdentity?.email ?? null, seenAtOpen);
   const newComments = newCommentCount(entry.id, commentTotal, seenAtOpen);
 
   // 開いた＝読んだ、とみなして控えを更新する（一覧の印を消す）。
@@ -518,17 +541,30 @@ function SharedNoteViewInner({
                     {uiT("comment.newBadge", { count: String(newComments) })}
                   </span>
                 )}
+                <AcceptsUpdatesBadge accepting={acceptsUpdates} />
               </h2>
               <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                {entry.author?.name ?? uiT("library.unknownAuthor")}
-                {entry.author?.email ? ` · ${entry.author.email}` : ""}
+                {typeof entry.author?.name === "string" ? entry.author.name : uiT("library.unknownAuthor")}
+                {typeof entry.author?.email === "string" && entry.author.email ? ` · ${entry.author.email}` : ""}
                 {" · "}
                 {formatDate(entry.updated_at)}
                 {` · v${entry.version ?? 1}`}
                 {updateCount > 0
                   ? ` · ${uiT("library.updateCount", { count: String(updateCount) })}`
                   : ""}
+                {acceptsUpdates && updatedByName
+                  ? ` · ${uiT("sharedNote.updates.lastUpdatedBy")}: ${updatedByName}`
+                  : ""}
               </div>
+              {/* 作者以外が受け付け中のノートを開いたとき: 写しを作る操作の意味を添える */}
+              {acceptsUpdates && !isMine && (
+                <p
+                  className="text-[11px] text-muted-foreground mt-1"
+                  data-testid="shared-note-fork-hint"
+                >
+                  {uiT("sharedNote.updates.forkHint")}
+                </p>
+              )}
             </div>
             {/* 操作は詳細パネルと同じ部品（出し分けの条件を二重に持たない） */}
             <div className={busy ? "opacity-50 pointer-events-none shrink-0" : "shrink-0"}>
@@ -551,6 +587,13 @@ function SharedNoteViewInner({
             </div>
           </div>
         </div>
+
+        {/* 同期ソフトの競合コピー（見つかったときだけ。気づけるよう本文の上に出す） */}
+        {noteVersions.conflicts.length > 0 && (
+          <div className="px-6 pt-3 shrink-0">
+            <ConflictCopiesNotice names={noteVersions.conflicts} />
+          </div>
+        )}
 
         {/* 本文（個人のノートと同じ本文カラム幅・同じ余白）。段落クリックでコメントの付け先を指定。
             余白の取り方も個人のノート（note-app.tsx の本文ペイン）に合わせる: 左右 24px・
@@ -652,6 +695,16 @@ function SharedNoteViewInner({
 
           {railTab === "version" && (
             <div className="flex-1 overflow-auto px-4 py-3 space-y-4 text-xs">
+              <SharedNoteUpdatePanel
+                entry={entry}
+                isMine={isMine}
+                currentIdentity={currentIdentity}
+                root={entryRoot}
+                versions={noteVersions.versions}
+                onReload={noteVersions.reload}
+                onSelfWrite={setSelfWrittenHash}
+                ops={updateOps}
+              />
               <div className="space-y-1.5">
                 <SharedEntryMeta
                   entry={entry}
