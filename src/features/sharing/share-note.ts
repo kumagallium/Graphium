@@ -19,6 +19,9 @@
 // - 剥がすのはこの 2 つだけ。provLinks / labels / noteContexts / forkedFrom /
 //   templateFrom / sharedRef / wikiMeta は共有側の投影・逆引きが使うので残す
 // - 共有フォーマットの版は変えない（フィールドが無いだけ。読む側は optional）
+// - メモの紐づけ（pages[].memoQuotes）は、上のスイッチに関係なく常に載せない。
+//   メモは共有した人の手元の下書きで、紐づけには引用した時点のメモ本文とメモの id が入る。
+//   本文の引用ブロックはノートの本文なので、そのまま出る
 //
 // 設計: docs/internal/team-shared-storage-design.md §3 / §12 Phase 2c / §24
 
@@ -114,6 +117,29 @@ export function stripPrivateHistory(doc: GraphiumDocument): GraphiumDocument {
 }
 
 /**
+ * 共有コピー用に、メモの紐づけ（`pages[].memoQuotes`）を落としたコピーを返す。元の doc は変更しない。
+ *
+ * なぜ落とすか: 値には、引用した時点のメモ本文（`quotedText`）とメモの id（`captureId`）が入る。
+ * 引用ブロックをあとから書き換えたり削ったりしていても、元のメモ本文がここに残る。
+ * メモそのものは共有した人の端末にしか無いので、受け取った側では使い道も無い
+ * （fork は受け取り時に外している。残すと「元のメモは削除されました」と出る）。
+ * 本文の引用ブロック（標準の quote）は触らない。
+ *
+ * キーごと消す（undefined を入れない）。JSON にしたとき、紐づけを持たないノートと同じ形になる。
+ */
+export function stripMemoQuotes(doc: GraphiumDocument): GraphiumDocument {
+  if (!Array.isArray(doc.pages) || !doc.pages.some((page) => page && "memoQuotes" in page)) return doc;
+  return {
+    ...doc,
+    pages: doc.pages.map((page) => {
+      if (!page || !("memoQuotes" in page)) return page;
+      const { memoQuotes: _memoQuotes, ...rest } = page;
+      return rest;
+    }),
+  };
+}
+
+/**
  * ノートを shared に書き出し、`sharedRef` 付きの新しい GraphiumDocument を返す。
  * 既に共有済みのノート（doc.sharedRef がある）は同じ id に上書きされる。
  *
@@ -200,6 +226,10 @@ export async function shareGraphiumDocument(
       entryDoc = stripPrivateHistory(entryDoc);
     }
 
+    // ── メモの紐づけは常に落とす（includePrivateHistory が真でも載せない） ──
+    // これも hash 計算の前。読める写しの Markdown もこの entryDoc から組む
+    entryDoc = stripMemoQuotes(entryDoc);
+
     const provider = new LocalFolderSharedProvider(options.root, {
       email: options.author.email,
     });
@@ -262,7 +292,7 @@ export async function shareGraphiumDocument(
     }
 
     // 手元に保存し直す doc は「剥がしていない元の doc」がベース。
-    // ここで entryDoc を使うと、共有した瞬間に手元のチャットと編集来歴が消える
+    // ここで entryDoc を使うと、共有した瞬間に手元のチャット・編集来歴・メモの紐づけが消える
     const updatedDoc: GraphiumDocument = {
       ...doc,
       sharedRef: {
