@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
-import { ConversationPreviewView } from "./ConversationPreview";
+import { ConversationPreview, ConversationPreviewView } from "./ConversationPreview";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -59,5 +59,42 @@ describe("ConversationPreviewView", () => {
     expect(view(undefined).container.textContent).toContain("Loading the conversation");
     cleanup();
     expect(view(null).container.textContent).toContain("was not found");
+  });
+});
+
+describe("この会話で作ったノート", () => {
+  it("見出しと題のリンクが出て、押すとそのノートを開く。渡さなければ見出しも出ない", () => {
+    const opened: string[] = [];
+    const { container, getByText, rerender } = render(
+      <LocaleProvider>
+        <ConversationPreviewView
+          entry={{ conversation: META } as never}
+          text="x"
+          createdNotes={[{ noteId: "n-1", title: "パンの発酵は 6 時間で止める" }]}
+          onOpenNote={(id) => opened.push(id)}
+        />
+      </LocaleProvider>,
+    );
+    expect(container.querySelector("[data-testid=conversation-created-notes] h3")).not.toBeNull();
+    getByText("パンの発酵は 6 時間で止める").click();
+    expect(opened).toEqual(["n-1"]);
+    rerender(
+      <LocaleProvider>
+        <ConversationPreviewView entry={{ conversation: META } as never} text="x" createdNotes={[]} />
+      </LocaleProvider>,
+    );
+    expect(container.querySelector("[data-testid=conversation-created-notes]")).toBeNull();
+  });
+
+  it("ConversationPreview は呼び出し側の noteTitleOf で題を引く。undefined（消した・ゴミ箱）のノートは出さない", () => {
+    const titles: Record<string, string> = { "n-1": "パンの発酵は 6 時間で止める" };
+    const entry = { fileId: "conv-x", conversation: { ...(META as object), createdNoteIds: ["n-1", "n-gone"] } } as never;
+    const { container } = render(
+      <LocaleProvider>
+        <ConversationPreview entry={entry} noteTitleOf={(id) => titles[id]} />
+      </LocaleProvider>,
+    );
+    const items = container.querySelectorAll("[data-testid=conversation-created-notes] li");
+    expect([...items].map((li) => li.textContent)).toEqual(["パンの発酵は 6 時間で止める"]);
   });
 });

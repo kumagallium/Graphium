@@ -8,6 +8,9 @@ import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
 import { parseConversationBody } from "./conversation-body";
 
+/** この会話で作ったノート（題は索引から引く） */
+export type CreatedNoteLink = { noteId: string; title: string };
+
 const BOX_STYLE = {
   alignSelf: "stretch",
   width: "100%",
@@ -59,9 +62,15 @@ export function ConversationBody({ text }: { text: string }) {
 export function ConversationPreviewView({
   entry,
   text,
+  createdNotes,
+  onOpenNote,
 }: {
   entry: Pick<MediaIndexEntry, "conversation">;
   text: string | null | undefined;
+  /** この会話で作ったノート（索引に無いものは渡さない）。空なら見出しも出さない */
+  createdNotes?: readonly CreatedNoteLink[];
+  /** 題を押したときにそのノートを開く */
+  onOpenNote?: (noteId: string) => void;
 }) {
   const t = useT();
   const meta = entry.conversation;
@@ -74,6 +83,27 @@ export function ConversationPreviewView({
       {meta && provenance && (
         <div className="text-xs text-muted-foreground" style={{ marginBottom: 8, wordBreak: "break-all" }}>
           {provenance}
+        </div>
+      )}
+      {createdNotes && createdNotes.length > 0 && (
+        <div style={{ ...BOX_STYLE, marginBottom: 12, padding: "12px 24px" }} data-testid="conversation-created-notes">
+          <h3 className="text-xs font-medium text-muted-foreground" style={{ margin: 0, marginBottom: 6 }}>
+            {t("asset.conversation.createdNotes")}
+          </h3>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {createdNotes.map((n) => (
+              <li key={n.noteId} style={{ fontSize: 14, lineHeight: 1.8 }}>
+                <button
+                  type="button"
+                  className="text-left text-foreground underline underline-offset-2 hover:text-primary"
+                  style={{ background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit" }}
+                  onClick={() => onOpenNote?.(n.noteId)}
+                >
+                  {n.title}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <div style={BOX_STYLE}>
@@ -89,7 +119,24 @@ export function ConversationPreviewView({
   );
 }
 
-export function ConversationPreview({ entry }: { entry: MediaIndexEntry }) {
+export function ConversationPreview({
+  entry,
+  onOpenNote,
+  noteTitleOf,
+}: {
+  entry: MediaIndexEntry;
+  onOpenNote?: (noteId: string) => void;
+  /** ノートの題を引く。索引に無い（消した）・ゴミ箱のノートは undefined で、一覧に出さない */
+  noteTitleOf?: (noteId: string) => string | undefined;
+}) {
+  const createdNotes = useMemo(() => {
+    const links: CreatedNoteLink[] = [];
+    for (const id of entry.conversation?.createdNoteIds ?? []) {
+      const title = noteTitleOf?.(id);
+      if (title !== undefined) links.push({ noteId: id, title });
+    }
+    return links;
+  }, [entry.conversation?.createdNoteIds, noteTitleOf]);
   const [text, setText] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
@@ -101,5 +148,5 @@ export function ConversationPreview({ entry }: { entry: MediaIndexEntry }) {
       .catch(() => { if (!cancelled) setText(null); });
     return () => { cancelled = true; };
   }, [entry.fileId]);
-  return <ConversationPreviewView entry={entry} text={text} />;
+  return <ConversationPreviewView entry={entry} text={text} createdNotes={createdNotes} onOpenNote={onOpenNote} />;
 }

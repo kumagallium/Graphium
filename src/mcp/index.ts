@@ -22,9 +22,9 @@ import { registerReadTools } from "./read-tools";
 import { registerTools, type ToolContext } from "./tools";
 import { cleanupTempFiles } from "./upkeep/cleanup";
 import { createMcpUsageRecorder } from "./usage-recorder";
-import { createActivityLog } from "./activity";
+import { createFileActivityLog } from "./activity";
 import { registerUpkeepTools } from "./upkeep/tools";
-import { resolveGraphiumRoot, vaultExists } from "./vault";
+import { appDataDir, resolveGraphiumRoot, vaultExists } from "./vault";
 
 /** bundle 時に esbuild の --define で埋め込む。dev 実行では既定値のまま */
 declare const __GRAPHIUM_VERSION__: string | undefined;
@@ -51,7 +51,8 @@ async function main(): Promise<void> {
     }
   };
   // このプロセスの中で触れたもの（全体グラフの画面が光らせる）。読んだ記録はこれにも積む
-  const activity = createActivityLog();
+  // 触れた記録は appdata のファイルに書く（画面の問い合わせが別の MCP プロセスに届いても読めるように）
+  const activity = createFileActivityLog(() => appDataDir(resolveGraphiumRoot()));
   const recorder = createMcpUsageRecorder({ getClientName });
   const ctx: ToolContext = {
     getClientName,

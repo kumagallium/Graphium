@@ -50,6 +50,12 @@ export type ConversationMaterial = {
   endedAt: string;
   /** 記録が持っている会話の題（無ければ省く）。素材の名前に使う */
   customTitle?: string;
+  /**
+   * この会話の中で、MCP の create_note が作ったノートの id（出てきた順・重複なし。無ければ省く）。
+   * 記録にある create_note の結果（`ファイル: …/<uuid>.json` と `noteId: <uuid>` の行）から取る。会話の画面にノートを並べ、
+   * まとめ済みの会話をナレッジ化の候補から外すのに使う
+   */
+  createdNoteIds?: string[];
   turns: ConversationTurn[];
   /** 本人の発言の字数の合計（brief は数えない）。ナレッジ化の候補の絞り込みに使う */
   ownChars: number;

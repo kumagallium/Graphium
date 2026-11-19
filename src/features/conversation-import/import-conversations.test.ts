@@ -387,3 +387,42 @@ describe("題（記録の custom-title）と取り込み直し", () => {
     expect(store.state.index.media[0].name).toBe("全粒粉と加水の配合");
   });
 });
+
+describe("importConversations: この会話で作ったノート", () => {
+  const NOTE_A = "aaaaaaaa-1111-4222-8333-444444444441";
+  const NOTE_B = "bbbbbbbb-1111-4222-8333-444444444442";
+
+  it("createdNoteIds が素材の来歴に入る。増えたら、変わっていない扱いでなく差し替え（続きを足した）になる", async () => {
+    const store = makeStore();
+    await importConversations([{ ...material(), createdNoteIds: [NOTE_A] }], OPTIONS, store.deps);
+    expect(store.state.index.media[0].conversation?.createdNoteIds).toEqual([NOTE_A]);
+
+    store.setNow("2026-11-11T00:00:00.000Z");
+    const same = await importConversations([{ ...material(), createdNoteIds: [NOTE_A] }], OPTIONS, store.deps);
+    expect(same.unchanged).toEqual([FILE_A]);
+
+    store.setNow("2026-11-12T00:00:00.000Z");
+    const grown = await importConversations([{ ...material(), createdNoteIds: [NOTE_A, NOTE_B] }], OPTIONS, store.deps);
+    expect(grown.updated).toEqual([FILE_A]);
+    expect(grown.unchanged).toEqual([]);
+    expect(store.state.index.media[0].conversation?.createdNoteIds).toEqual([NOTE_A, NOTE_B]);
+  });
+
+  it("noteId が無い会話の来歴には、キーを作らない", async () => {
+    const store = makeStore();
+    await importConversations([material()], OPTIONS, store.deps);
+    expect("createdNoteIds" in (store.state.index.media[0].conversation ?? {})).toBe(false);
+  });
+
+  it("取り込み直しで記録が切り詰められても、前回の id は消えない（和集合）。同じなら変わっていない", async () => {
+    const store = makeStore();
+    await importConversations([{ ...material(), createdNoteIds: [NOTE_A, NOTE_B] }], OPTIONS, store.deps);
+    store.setNow("2026-11-11T00:00:00.000Z");
+    const again = await importConversations([{ ...material(), createdNoteIds: [NOTE_B] }], OPTIONS, store.deps);
+    expect(again.unchanged).toEqual([FILE_A]);
+    expect(store.state.index.media[0].conversation?.createdNoteIds).toEqual([NOTE_A, NOTE_B]);
+    const none = await importConversations([material()], OPTIONS, store.deps);
+    expect(none.unchanged).toEqual([FILE_A]);
+    expect(store.state.index.media[0].conversation?.createdNoteIds).toEqual([NOTE_A, NOTE_B]);
+  });
+});

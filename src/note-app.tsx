@@ -165,7 +165,7 @@ import {
 import { buildSavedPageFields, buildSavedForm } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
 import { useConversationIntake } from "./features/conversation-import/use-conversation-intake";
-import { conversationIngestCandidates } from "./features/conversation-import/ingest-candidates";
+import { conversationIngestCandidates, conversationIngestLeftOutCount } from "./features/conversation-import/ingest-candidates";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
@@ -14213,6 +14213,15 @@ export function NoteApp() {
 
   // 会話の取り込みの完了画面の申し出。候補を数えるだけで、押されるまで AI は呼ばない
   const conversationIntakeState = conversationIntake.state;
+  // ノートの題を索引から引く。索引に無い・ゴミ箱のノートは undefined（会話の画面の一覧と候補の選別で同じ条件）
+  const noteTitleOf = useCallback(
+    (noteId: string): string | undefined => {
+      const note = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      if (!note || note.deletedAt) return undefined;
+      return note.title || noteId;
+    },
+    [fm.noteIndex],
+  );
   const conversationOfferEntries = useMemo(() => {
     if (conversationIntakeState.kind !== "done") return null;
     const knowledge = buildKnowledgeMap(fm.noteIndex ?? null);
@@ -14222,12 +14231,35 @@ export function NoteApp() {
       new Set(conversationIntakeState.changedIds),
       media,
       (sourceId) => (knowledge.get(sourceId)?.length ?? 0) > 0,
+      (noteId) => noteTitleOf(noteId) !== undefined,
     );
     // 候補が全部ナレッジ化済みのときは、申し出の行そのものを出さない
-    //（「発言が多い会話が無い」と出すと事実と違う）
-    if (entries.length === 0 && conversationIngestCandidates(conversationIntakeState.importedIds, new Set(), media, () => false).length > 0) return null;
+    //（「発言が多い会話が無い」と出すと事実と違う）。ノートにまとめて外した会話があるときは、その旨を伝えるので出す
+    if (
+      entries.length === 0 &&
+      conversationIngestLeftOutCount(
+        conversationIntakeState.importedIds,
+        new Set(conversationIntakeState.changedIds),
+        media,
+        (sourceId) => (knowledge.get(sourceId)?.length ?? 0) > 0,
+        (noteId) => noteTitleOf(noteId) !== undefined,
+      ) === 0 &&
+      conversationIngestCandidates(conversationIntakeState.importedIds, new Set(), media, () => false, (noteId) => noteTitleOf(noteId) !== undefined).length > 0
+    ) return null;
     return entries;
-  }, [conversationIntakeState, fm.noteIndex, fm.mediaIndex]);
+  }, [conversationIntakeState, fm.noteIndex, fm.mediaIndex, noteTitleOf]);
+  // ノートにまとめてあるため候補から外した会話の本数
+  const conversationOfferLeftOut = useMemo(() => {
+    if (conversationIntakeState.kind !== "done") return 0;
+    const knowledge = buildKnowledgeMap(fm.noteIndex ?? null);
+    return conversationIngestLeftOutCount(
+      conversationIntakeState.importedIds,
+      new Set(conversationIntakeState.changedIds),
+      fm.mediaIndex?.media ?? [],
+      (sourceId) => (knowledge.get(sourceId)?.length ?? 0) > 0,
+      (noteId) => noteTitleOf(noteId) !== undefined,
+    );
+  }, [conversationIntakeState, fm.noteIndex, fm.mediaIndex, noteTitleOf]);
 
   // カード選択時のハンドラ:
   // - "ingest-current-note" は現ノートを直接 enqueueIngest して composer を閉じる（プロンプトには流さない）
@@ -17054,6 +17086,7 @@ export function NoteApp() {
               fm.setActiveAssetType(null);
               router.replace(action.route);
             }}
+            noteTitleOf={noteTitleOf}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
               // wiki: プレフィックスは剥がさず保持する。SidePeek は noteId の
@@ -18655,6 +18688,7 @@ export function NoteApp() {
                 }
               : undefined
           }
+          noteTitleOf={noteTitleOf}
           onOpenNoteInSidePeek={(noteId) => {
             // 素材ピーク内の利用ノードクリック → ノートの SidePeek に切り替える
             setListMaterialPeekEntry(null);
@@ -18900,6 +18934,7 @@ export function NoteApp() {
             ? {
                 total: conversationIntake.state.importedIds.length,
                 candidates: conversationOfferEntries.length,
+                leftOut: conversationOfferLeftOut,
                 onIngest: () => {
                   intake.closeIntake();
                   conversationIntake.reset();

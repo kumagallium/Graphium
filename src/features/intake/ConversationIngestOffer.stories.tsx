@@ -31,6 +31,14 @@ export const Short: Story = {
   ),
 };
 
+export const WithLeftOut: Story = {
+  render: () => (
+    <ConversationStoryFrame>
+      <ConversationIngestOffer total={27} candidates={4} leftOut={3} />
+    </ConversationStoryFrame>
+  ),
+};
+
 export const NoCandidates: Story = {
   render: () => (
     <ConversationStoryFrame>

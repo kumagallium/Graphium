@@ -98,6 +98,28 @@ describe("readClaudeSession", () => {
     expect(m?.turns.map((t) => t.text)).toEqual(["全粒粉は 2 割までにする", "了解です", "お願いします"]);
   });
 
+  it("create_note の結果の noteId が createdNoteIds として届く", async () => {
+    const NOTE = "aaaaaaaa-1111-4222-8333-444444444441";
+    putSession(DIR, SID1, [
+      rec("user", "発酵の結論をノートにして"),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "a-tool",
+        sessionId: SID1,
+        message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__graphium__create_note", input: {} }] },
+      }),
+      JSON.stringify({
+        type: "user",
+        uuid: "u-result",
+        sessionId: SID1,
+        toolUseResult: "x",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: `タイトル: パン\nnoteId: ${NOTE}\nファイル: /x/notes/${NOTE}.json` }] },
+      }),
+    ]);
+    const m = await readClaudeSession(DIR, `${SID1}.jsonl`, {}, base);
+    expect(m?.createdNoteIds).toEqual([NOTE]);
+  });
+
   it.each(["..", "a/b", "", "/etc"])("フォルダ名 %j は null / 空配列", async (dir) => {
     putSession(DIR, SID1, [rec("user", "x")]);
     expect(await readClaudeSession(dir, `${SID1}.jsonl`, {}, base)).toBeNull();

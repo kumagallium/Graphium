@@ -45,6 +45,10 @@ const TEXT: Record<Lang, Record<string, string>> = {
   ja: {
     loading: "グラフを読み込んでいます…",
     failed: "グラフを表示できませんでした",
+    failConnect: "Claude との接続に失敗しました",
+    failNoRef: "道具の結果に、描くものの指定がありませんでした",
+    failFetch: "グラフのデータを受け取れませんでした",
+    failDetail: "詳しく",
     empty: "描くものがありません",
     fit: "全体を表示",
     pip: "横に浮かせる",
@@ -67,6 +71,10 @@ const TEXT: Record<Lang, Record<string, string>> = {
   en: {
     loading: "Loading the graph…",
     failed: "Could not show the graph",
+    failConnect: "Could not connect to the host",
+    failNoRef: "The tool result did not say what to draw",
+    failFetch: "Could not get the graph data",
+    failDetail: "Details",
     empty: "Nothing to draw",
     fit: "Fit",
     pip: "Float beside the chat",
@@ -123,6 +131,12 @@ let current: GraphPayload | null = null;
 let hostCtx: McpUiHostContext | undefined;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let cursor = 0;
+/**
+ * これより前の出来事は光らせない。記録は別の会話の分も混ざるファイルなので、画面を開いた少し前
+ * （同じ会話で、グラフを開く前に読んだ分は入る程度）からにする
+ */
+const LOOKBACK_MS = 30 * 60 * 1000;
+const notBefore = new Date(Date.now() - LOOKBACK_MS).toISOString();
 /** 全体グラフ: 読んだ・書いたページと、たどった線（[手前, 先]） */
 const touched = { read: new Set<string>(), wrote: new Set<string>(), walked: [] as [string, string][] };
 
@@ -316,8 +330,8 @@ function layoutOf(p: GraphPayload): cytoscape.LayoutOptions {
     for (const [r, ids] of byRank) ids.forEach((id, i) => pos.set(id, { x: r * 230, y: (i - (ids.length - 1) / 2) * 70 }));
     return { name: "preset", positions: (node: cytoscape.NodeSingular) => pos.get(node.id()) ?? { x: 0, y: 0 }, animate: false } as cytoscape.LayoutOptions;
   }
-  // 手順の流れ: 線の向きに沿った最長経路で段を決め、左から右へ並べる（flow-layout.ts）
-  const pos = flowPositions(p.nodes, p.edges, { x: 200, y: 64 });
+  // 手順の流れ: 線の向きに沿った最長経路で段を決め、上から下へ並べる（アプリの工程グラフと同じ向き。flow-layout.ts）
+  const pos = flowPositions(p.nodes, p.edges, { x: 196, y: 84 });
   return { name: "preset", positions: (node: cytoscape.NodeSingular) => pos.get(node.id()) ?? { x: 0, y: 0 }, animate: false } as cytoscape.LayoutOptions;
 }
 
@@ -342,6 +356,13 @@ function legendItems(p: GraphPayload): [string, string, string][] {
     ["wrote", USED_FILL, USED_FILL],
     ["walked", "#2f6b3a", "#2f6b3a"],
   ];
+}
+
+/** 会話の中に置くときの枠の高さ。手順の流れは上から下に伸びるので、段の数に合わせて高くする */
+function inlineHeight(p: GraphPayload): number {
+  if (p.mode !== "flow") return 460;
+  const ranks = new Set([...flowPositions(p.nodes, p.edges, { x: 196, y: 84 }).values()].map((v) => v.y)).size;
+  return Math.max(320, Math.min(760, ranks * 84 + 90));
 }
 
 function displayModes(): string[] {
@@ -387,7 +408,7 @@ function render(p: GraphPayload): void {
   }
   header.append(title, meta, actions);
   const canvas = el("div", "graph");
-  canvas.style.height = mode === "inline" ? "460px" : "calc(100vh - 120px)";
+  canvas.style.height = mode === "inline" ? `${inlineHeight(p)}px` : "calc(100vh - 120px)";
   canvas.style.background = GRAPH_BG_COLOR;
   const legend = el("div", "legend");
   for (const [key, fill, border] of legendItems(p)) {
@@ -484,7 +505,7 @@ function applyMarks(): void {
   (c.nodes(".ai-read, .ai-used") as unknown as { updateStyle: () => void }).updateStyle();
 }
 
-type ActivityEvent = { seq: number; kind: "read" | "seen" | "walk" | "wrote"; id: string; from?: string };
+type ActivityEvent = { kind: "read" | "seen" | "walk" | "wrote"; id: string; from?: string; at?: string };
 
 function applyEvents(events: ActivityEvent[]): void {
   const fresh = new Map<string, number>();
@@ -510,7 +531,7 @@ function applyEvents(events: ActivityEvent[]): void {
 
 async function poll(): Promise<void> {
   try {
-    const res = await app.callServerTool({ name: "graph_activity", arguments: { since: cursor } });
+    const res = await app.callServerTool({ name: "graph_activity", arguments: { since: cursor, notBefore } });
     const sc = res.structuredContent as { events?: ActivityEvent[]; cursor?: number } | undefined;
     if (sc?.events?.length) applyEvents(sc.events);
     if (typeof sc?.cursor === "number") cursor = sc.cursor;
@@ -538,6 +559,45 @@ function isPayload(v: unknown): v is GraphPayload {
   return !!p && Array.isArray(p.nodes) && Array.isArray(p.edges) && typeof p.mode === "string";
 }
 
+/** 失敗の理由を画面に出す（次に失敗したとき、どこで何が起きたかをその場で分かるように） */
+function renderFailure(reason: string, detail?: string): void {
+  const box = el("div", "card");
+  const head = el("header");
+  head.append(el("div", "title", TEXT[lang].failed), el("div", "meta", reason));
+  box.append(head);
+  if (detail) {
+    const d = el("details", "info");
+    d.append(el("summary", "muted", TEXT[lang].failDetail));
+    const pre = el("pre");
+    pre.textContent = detail.slice(0, 2000);
+    d.append(pre);
+    box.append(d);
+  }
+  root.replaceChildren(box);
+}
+
+/** 結果の文（content の text）をまとめる。失敗の詳しいところに出す */
+function resultText(result: { content?: unknown }): string {
+  const content = Array.isArray(result.content) ? (result.content as { type?: string; text?: string }[]) : [];
+  return content.filter((c) => c?.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n");
+}
+
+/** 結果の参照（道具と引数）から、graph_payload でデータを取りに行って描く */
+async function loadFromRef(ref: Record<string, unknown>): Promise<void> {
+  try {
+    const res = await app.callServerTool({ name: "graph_payload", arguments: ref });
+    const payload = (res.structuredContent as { payload?: unknown } | undefined)?.payload;
+    if (!res.isError && isPayload(payload)) {
+      current = payload;
+      render(payload);
+      return;
+    }
+    renderFailure(TEXT[lang].failFetch, resultText(res) || JSON.stringify(Object.keys(res)));
+  } catch (e) {
+    renderFailure(TEXT[lang].failFetch, e instanceof Error ? e.message : String(e));
+  }
+}
+
 function applyContext(ctx: McpUiHostContext | undefined): void {
   if (ctx) hostCtx = { ...hostCtx, ...ctx };
   if (hostCtx?.locale) lang = hostCtx.locale.toLowerCase().startsWith("ja") ? "ja" : "en";
@@ -548,13 +608,26 @@ renderMessage(TEXT[lang].loading);
 const app = new App({ name: "Graphium graph", version: "1.0.0" });
 
 app.ontoolresult = (result) => {
-  const payload = (result._meta as Record<string, unknown> | undefined)?.["graphium/graph"];
-  if (isPayload(payload)) {
-    current = payload;
-    render(payload);
-  } else {
-    renderMessage(TEXT[lang].failed);
+  const sc = result.structuredContent as Record<string, unknown> | undefined;
+  const ref = sc?.graphiumGraph;
+  if (ref && typeof ref === "object") {
+    void loadFromRef(ref as Record<string, unknown>);
+    return;
   }
+  // v0.134〜v0.150 のサーバーは、データそのものを _meta に載せていた
+  const legacy = (result._meta as Record<string, unknown> | undefined)?.["graphium/graph"];
+  if (isPayload(legacy)) {
+    current = legacy;
+    render(legacy);
+    return;
+  }
+  // 参照が無い結果（ノートが見つからない・手順が無い など）は、道具の返事の文をそのまま見せる
+  const keys = [
+    `content: ${Array.isArray(result.content) ? result.content.length : "none"}`,
+    `structuredContent: ${sc ? Object.keys(sc).join(", ") || "{}" : "none"}`,
+    `_meta: ${result._meta ? Object.keys(result._meta).join(", ") || "{}" : "none"}`,
+  ].join(" / ");
+  renderFailure(resultText(result) || TEXT[lang].failNoRef, keys);
 };
 app.onhostcontextchanged = (ctx) => {
   const before = `${lang}:${hostCtx?.displayMode}`;
@@ -573,4 +646,4 @@ app
     applyContext(app.getHostContext());
     if (current && `${lang}:${hostCtx?.displayMode}` !== before) render(current);
   })
-  .catch(() => renderMessage(TEXT[lang].failed));
+  .catch((e) => renderFailure(TEXT[lang].failConnect, e instanceof Error ? e.message : String(e)));

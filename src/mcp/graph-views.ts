@@ -24,8 +24,14 @@ import { appDataDir, readNoteIndex, resolveGraphiumRoot } from "./vault";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** 結果の _meta にグラフを載せるキー（画面だけが読む） */
-export const GRAPH_META_KEY = "graphium/graph";
+/** 結果の structuredContent に「何を描くか」の参照を載せるキー（画面はこれを graph_payload に渡す） */
+export const GRAPH_REF_KEY = "graphiumGraph";
+
+/** 何を描くか（道具の名前と引数）。どの MCP プロセスでも vault から同じ図を組み直せる */
+export type GraphRef =
+  | { tool: "show_steps"; noteId: string }
+  | { tool: "show_lineage"; noteId: string; direction?: "upstream" | "downstream" | "both"; depth?: number }
+  | { tool: "show_knowledge_graph"; folder?: string; noteId?: undefined; direction?: undefined; depth?: undefined };
 
 export type GraphNodeKind =
   // flow
@@ -156,20 +162,22 @@ export function graphKindOf(kind: GraphNodeKind): GraphKind {
   return "note";
 }
 
-function kindOfNoteId(id: string): GraphNodeKind {
-  if (isExternalSourceId(id)) return "source";
-  const entry = allEntries().find((e) => e.noteId === id);
-  const k = entry?.wikiKind;
-  if (k === "claim" || k === "topic" || k === "answer" || k === "atom" || k === "summary") return k;
-  return "note";
-}
-
-function labelOf(id: string, fallback?: string): string {
-  if (isExternalSourceId(id)) return describeSource(id).title;
-  return fallback || allEntries().find((e) => e.noteId === id)?.title || id;
-}
-
-export function buildLineagePayload(result: LineageResult, startTitle: string): GraphPayload {
+/**
+ * 来歴の図を組む。root は vault の場所（テストは一時 vault を渡す。既定の vault を引かないように）。
+ * 索引は 1 回だけ引いて表にする（ノードごとに索引を探し直さない）
+ */
+export function buildLineagePayload(result: LineageResult, startTitle: string, root = resolveGraphiumRoot()): GraphPayload {
+  const entries = new Map(allEntries(root).map((e) => [e.noteId, e]));
+  const kindOfNoteId = (id: string): GraphNodeKind => {
+    if (isExternalSourceId(id)) return "source";
+    const k = entries.get(id)?.wikiKind;
+    if (k === "claim" || k === "topic" || k === "answer" || k === "atom" || k === "summary") return k;
+    return "note";
+  };
+  const labelOf = (id: string, fallback?: string): string => {
+    if (isExternalSourceId(id)) return describeSource(id, root).title;
+    return fallback || entries.get(id)?.title || id;
+  };
   const nodes = new Map<string, GraphNode>();
   const startKind = kindOfNoteId(result.noteId);
   nodes.set(result.noteId, { id: result.noteId, label: startTitle, kind: startKind, graphKind: graphKindOf(startKind), focus: true, rank: 0 });

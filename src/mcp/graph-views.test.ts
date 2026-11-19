@@ -90,6 +90,7 @@ describe("buildLineagePayload", () => {
         connections: [],
       },
       "起点",
+      root,
     );
     const rank = Object.fromEntries(payload.nodes.map((n) => [n.id, n.rank]));
     expect(rank).toEqual({ x: 0, up: -1, down: 1 });
@@ -159,5 +160,29 @@ describe("activity log", () => {
     expect(first.events[0].from).toBe("a");
     expect(log.since(first.cursor).events).toEqual([]);
     expect(log.since(first.cursor).cursor).toBe(first.cursor);
+  });
+});
+
+describe("file activity log（別の MCP プロセスからも読める記録）", () => {
+  it("書いた側と別の記録から読め、notBefore より前は返さず、cursor の続きから読む", async () => {
+    const { createFileActivityLog } = await import("./activity");
+    const dir = mkdtempSync(join(tmpdir(), "activity-"));
+    try {
+      const writer = createFileActivityLog(() => dir);
+      const reader = createFileActivityLog(() => dir);
+      writer.push("read", "a");
+      writer.push("walk", "b", "a");
+      const first = reader.since(0);
+      expect(first.events.map((e) => `${e.kind}:${e.id}`)).toEqual(["read:a", "walk:b"]);
+      expect(first.events[1].from).toBe("a");
+      expect(reader.since(first.cursor).events).toEqual([]);
+      writer.push("wrote", "c");
+      expect(reader.since(first.cursor).events.map((e) => e.id)).toEqual(["c"]);
+      expect(reader.since(0, { notBefore: "2999-01-01T00:00:00.000Z" }).events).toEqual([]);
+      // 世代が回って cursor がファイルより大きくなったら、頭から読み直す
+      expect(reader.since(10_000_000).events.map((e) => e.id)).toEqual(["a", "b", "c"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

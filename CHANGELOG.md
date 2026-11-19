@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.151.0](https://github.com/kumagallium/Graphium/compare/v0.150.0...v0.151.0) - 2026-11-19
+
+- fix(source-check): retry a save declined by another save instead of dropping the result by @kumagallium in https://github.com/kumagallium/Graphium/pull/1782
+- feat: let others update a shared note one after another by @kumagallium in https://github.com/kumagallium/Graphium/pull/1784
+
 ## [v0.150.0](https://github.com/kumagallium/Graphium/compare/v0.149.0...v0.150.0) - 2026-11-19
 
 - feat(wiki): 既存の知見をトピックへ結ぶ一括処理を手入れに足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/1777
