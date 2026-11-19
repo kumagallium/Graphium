@@ -198,7 +198,7 @@ With the status **No change** or **The original has changed**, **Open the origin
 
 Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
 
-### Name a linked file as the source data
+### Name a linked file as the source data <Badge type="tip" text="Added in v0.148.0 (2026-11-19)" /> {#source-data}
 
 Say you link a 40 GB `raw.csv`, analyse it on your own computer, and bring the small `summary.csv` into Graphium. You can record that `summary.csv` came from `raw.csv`.
 
