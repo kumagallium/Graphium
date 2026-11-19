@@ -56,6 +56,12 @@ describe("linkFilesNotice: 複数のとき", () => {
       "linkedFile.linkedMany(count=3,kinds=linkedFile.kindCount(type=asset.type.data,count=2)linkedFile.kindSeparatorlinkedFile.kindCount(type=asset.type.image,count=1))",
     );
   });
+  it("PDF は左の一覧と同じドキュメントとして数える", () => {
+    const linked = [entry("a.pdf"), entry("b.docx")];
+    expect(linkFilesNotice(outcome({ linked }), "data", t)).toBe(
+      "linkedFile.linkedMany(count=2,kinds=linkedFile.kindCount(type=asset.type.document,count=2))",
+    );
+  });
   it("リンクしなかった分の内訳も続けて出す", () => {
     const text = linkFilesNotice(outcome({ linked: [entry("a.csv")], existing: [entry("b.csv")], outside: 2, failed: 3 }), "data", t);
     expect(text).toContain("linkedFile.skippedExisting(count=1)");
