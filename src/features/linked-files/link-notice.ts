@@ -18,6 +18,12 @@ export type LinkFilesOutcome = {
 /** Rust が「選んだ件数が多すぎる」ときに返すエラーの接頭辞。後ろに上限が付く */
 export const PLACE_PICK_TOO_MANY_PREFIX = "PLACE_PICK_TOO_MANY:";
 
+/** 知らせに出す一覧の名前。PDF は左の一覧では「ドキュメント」に入る */
+function listTypeOf(entry: MediaIndexEntry): MediaType {
+  const type = displayTypeOf(entry);
+  return type === "pdf" ? "document" : type;
+}
+
 /** 1 件だけ選んだときの知らせ。開いている一覧に入ったなら何も出さない */
 function singleNotice(outcome: LinkFilesOutcome, listType: MediaType, t: Translate): string | null {
   if (outcome.outside === 1) return t("linkedFile.outsidePlace");
@@ -25,14 +31,14 @@ function singleNotice(outcome: LinkFilesOutcome, listType: MediaType, t: Transla
   const entry = outcome.linked[0] ?? outcome.existing[0];
   if (!entry || isInMediaList(entry, listType)) return null;
   // 開いている一覧と違う種類の一覧に入ったときは、切り替えずに短く知らせる
-  return t("linkedFile.listedIn", { type: t(`asset.type.${displayTypeOf(entry)}`) });
+  return t("linkedFile.listedIn", { type: t(`asset.type.${listTypeOf(entry)}`) });
 }
 
 /** リンクした件数を種類ごとに数えた文（例: ドキュメント 3・データ 9） */
 function kindsText(entries: MediaIndexEntry[], t: Translate): string {
   const counts = new Map<MediaType, number>();
   for (const entry of entries) {
-    const type = displayTypeOf(entry);
+    const type = listTypeOf(entry);
     counts.set(type, (counts.get(type) ?? 0) + 1);
   }
   return [...counts]
