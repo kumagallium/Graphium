@@ -208,7 +208,8 @@ describe("summarizeConversation / summarizeWorkdirs", () => {
     expect(row.candidateSessions).toBe(1);
     expect(row.ownChars).toBe(599);
     expect(row.startedAt).toBe("2026-10-30T00:00:00.000Z");
-    expect(row.endedAt).toBe("2026-11-05T01:00:00.000Z");
+    // 期間は本人の発言がある会話だけで数える（発言の無い 11-05 の会話では広がらない）
+    expect(row.endedAt).toBe("2026-11-02T00:00:00.000Z");
   });
 
   it("候補の目安は引数で変えられる", () => {

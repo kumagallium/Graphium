@@ -87,3 +87,11 @@ describe("loadUrlText", () => {
     expect(fetchReaderArticle).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("loadUrlText — リンクした素材", () => {
+  it("置き場の URL は Web へ取りに行かない", async () => {
+    fetchReaderArticle.mockClear();
+    expect(await loadUrlText("graphium-place://place-1/docs/a.pdf")).toBeUndefined();
+    expect(fetchReaderArticle).not.toHaveBeenCalled();
+  });
+});

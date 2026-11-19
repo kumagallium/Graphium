@@ -127,3 +127,43 @@ describe("getSourceText", () => {
     expect(out).toContain("ノートの本文です");
   });
 });
+
+describe("getSourceText — リンクした素材", () => {
+  it("Web へ取りに行かず、置き場の名前と場所を説明して返す", async () => {
+    const root = mkdtempSync(join(tmpdir(), "graphium-mcp-linked-"));
+    try {
+      mkdirSync(join(root, "notes"), { recursive: true });
+      mkdirSync(join(root, "appdata"), { recursive: true });
+      const url = "graphium-place://place-1/%E5%AE%9F%E9%A8%93/a.xlsx";
+      writeFileSync(
+        join(root, "appdata", "media-index.json"),
+        JSON.stringify({
+          version: 1,
+          media: [
+            {
+              fileId: "l1",
+              name: "a.xlsx",
+              type: "url",
+              mimeType: "text/x-uri",
+              url,
+              thumbnailUrl: "",
+              uploadedAt: "",
+              usedIn: [],
+              urlMeta: { domain: "共有ドライブ", description: "実験/a.xlsx" },
+              link: { placeId: "place-1", relPath: "実験/a.xlsx", size: 1, mtimeMs: 1, recordedAt: "" },
+            },
+          ],
+        }),
+      );
+      resetMediaIndexCache();
+      resetSourceTextCache();
+      const out = await getSourceText({ sourceId: `url:${url}` }, root);
+      expect(out.startsWith("LINKED_FILE")).toBe(true);
+      expect(out).toContain("Graphium は中身を持っていません");
+      expect(out).toContain("「共有ドライブ」");
+      expect(out).toContain("「実験/a.xlsx」");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

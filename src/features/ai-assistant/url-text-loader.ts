@@ -10,6 +10,7 @@
 // あちらが取れる場合はこの関数より優先される（cited-document-context の解決順）。
 
 import { apiBase } from "../../lib/platform";
+import { isPlaceUrl } from "../linked-files/link-url";
 
 const urlTextCache = new Map<string, string>();
 
@@ -25,6 +26,8 @@ export function __clearUrlTextCacheForTest(): void {
  * フォールバックする）。
  */
 export async function loadUrlText(url: string): Promise<string | undefined> {
+  // リンクした素材（置き場のファイル）は Web ページではない。どの経路から来ても取りに行かない
+  if (isPlaceUrl(url)) return undefined;
   const cached = urlTextCache.get(url);
   if (cached != null) return cached;
   try {

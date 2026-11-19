@@ -3230,11 +3230,14 @@ interrupted run simply resumes. Details in `src/features/asset-browser/dedupe.ts
 
 **AI conversations as materials.** A conversation with an AI coding tool
 can be kept as a material of type `"conversation"` (DATA_MODEL.md §2.7).
-The pieces are in place below the UI; no screen calls them yet.
+On the desktop app the bring-in sheet has an **AI conversations** section for
+it; the web build shows one line saying it is available in the desktop app.
 
 ```
 record files ──► reader ──► ConversationMaterial ──► importConversations ──► media index entry
 (tool-specific)  (per tool)  (common shape)          (one per conversation)   + stored text
+      ▲                            │
+      └── sidecar route ◄── bring-in sheet (choose working folders)
 ```
 
 - **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
@@ -3256,7 +3259,30 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   Node only). Read-only access to `~/.claude/projects` (or
   `CLAUDE_CONFIG_DIR`): list the folders, list the session files, read one
   session, summarise per working folder. See §6.1 for how names are checked.
-  It streams each file and skips lines over 32 MB. No route exposes it yet.
+  It streams each file and skips lines over 32 MB.
+- **Route** (`src/server/routes/conversations.ts`, mounted at
+  `/api/conversations`, not on Vercel). Two `POST` endpoints, answered only
+  by the desktop sidecar (`GRAPHIUM_DESKTOP=1`; anything else gets `404`
+  `NOT_AVAILABLE`, because on a self-hosted server the records would be the
+  server's own). `claude-code/workdirs` returns the per-folder summary and,
+  for each folder, the names (`dirName`, `fileName`) of the conversations that
+  have a message from the user; the full scan behind it is shared between
+  concurrent requests and remembered for 30 seconds. `claude-code/read` takes
+  up to 50 of those name pairs and returns the common shape for each.
+- **Screen** (`src/features/intake/`, `src/features/conversation-import/`).
+  `IntakeModal` gets tabs (**Files** / **AI conversations**,
+  `IntakeSectionTabs`). `useConversationIntake` loads the folder list when
+  the section is opened (a `404` or a failed fetch means "not available"),
+  keeps the selection, then reads the chosen conversations 20 at a time and
+  hands each batch to `importConversations`. Conversations with no message
+  from the user are listed apart and not brought in. The report shows how
+  many were new, updated, unchanged and failed, and links to Materials.
+- **Reading one** (`src/features/asset-browser/ConversationPreview.tsx`,
+  `conversation-body.ts`). Materials has an **AI conversations** type; the
+  preview loads the stored text, splits it into the lead, date headings and
+  turns, and renders them as plain React text (never as HTML or Markdown),
+  with the AI's lines in a muted colour. A conversation material has no file,
+  so download and sharing are not offered for it.
 - **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
   `importConversations` saves each text with `saveMediaText` and then writes
   the media index once. The material id is derived from provider and session
@@ -4052,6 +4078,69 @@ The same `src/` tree is built four different ways.
   new id so later saves edit the new, not-yet-cited version instead of
   piling up versions. **Discard edits** runs `discard_opened_copy`, which
   deletes the copy. All five commands take only material ids.
+- **Data places** (linked files; shape in DATA_MODEL.md §6.5) are eight
+  commands that point at files without copying or reading them:
+  `place_list`, `place_register`, `place_rename`, `place_remove`,
+  `place_pick_files`, `place_stat_many`, `place_open` and `place_reveal`.
+  The wrapper is `src/features/linked-files/places.ts`; the Rust side is
+  the `place_*` block in `src-tauri/src/lib.rs`. The guards:
+  - **JavaScript never supplies a filesystem path.** A place is added only
+    through a native folder dialog opened by Rust (`place_register`), and a
+    file is chosen only through a native file dialog opened by Rust
+    (`place_pick_files`, up to 500 files at a time, which answers with a
+    place id and a relative path for each, or "outside every place"). Everything else takes a place id and a
+    relative path. The absolute path of each place lives only in Rust's
+    per-device ledger (`places.json` under `app_config_dir`).
+  - **The relative path is checked first.** It must be non-empty, at most
+    4096 bytes, `/`-separated with no leading `/`, and no segment may be
+    empty, `.` or `..`, contain `\`, NUL or a control character (and, on
+    Windows, `:`).
+  - **Symbolic links are not followed.** The joined path is looked at with
+    `symlink_metadata`; a link, or anything that is not a regular file,
+    counts as "missing". The same holds for the `.graphium-place.json`
+    marker, which is also opened with `O_NOFOLLOW` on Unix.
+  - **What is opened is the resolved real file.** The path is
+    canonicalized and must still be inside the place's canonicalized root
+    (a directory in the middle that is a link out of the place is
+    refused); the type is judged on that real file, and that same path is
+    what goes to the opener plugin. The ledger's stored root must still
+    resolve to itself, so a folder swapped for a link since registration is
+    refused. Just before the path is handed to the OS it is checked once
+    more (still a regular, non-link file, and `canonicalize` still returns
+    the same path). A swap in the very short gap between that check and the
+    OS opening the file cannot be ruled out; because only allow-listed kinds
+    are opened, a swapped file still cannot be executed.
+  - **Only an allow-list of kinds is opened.** `place_open` opens a file
+    only when its lower-cased extension is in a fixed list (documents,
+    spreadsheets, slides, plain text / CSV, images, audio, video, PDF),
+    its name does not end in `.` or a space (Windows would drop it and open
+    a different file). The executable bit is deliberately not consulted: SMB
+    shares and exFAT show every ordinary file as `-rwx------`, and the OS
+    opens allow-listed kinds in a viewer even when it is set. Anything else
+    returns `PLACE_OPEN_NOT_ALLOWED:<ext>` and the UI points the user to
+    **Show in folder**. It is a list of what is allowed, not of what is
+    blocked. `place_reveal` shows the file in the OS file manager and does
+    not open it, so it is not limited by kind.
+  - **No command reads a file's contents.** The commands return
+    `metadata` (size, modified time) or hand the file to the OS; the only
+    content Rust reads is the marker file, capped at 64 KiB.
+  - **Too-broad folders are refused.** `place_register` rejects a
+    filesystem root or drive, the home folder and its parents, and
+    Graphium's own data folder and app config folder (inside them or
+    containing them).
+  - **Only the `main` window may call them** (`require_main_window`), not
+    the viewer window. `place_stat_many` takes at most 2000 items and
+    checks each place's root on a separate thread with a 3 second limit, so
+    a stalled share or NAS marks its links `unreachable` instead of
+    freezing the app. The same check (at most one in flight per place; later
+    callers wait for it) gates `place_list`, `place_open` and `place_reveal`,
+    and a place that times out is listed as not reachable without reading
+    its marker.
+  - Unregistering (`place_remove`) only deletes the ledger entry; it never
+    touches the marker or any file.
+  Not verified on Windows or against sync services' placeholder files
+  (cloud-only files that are not downloaded yet); both are expected to
+  behave but have not been tested.
 - Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds
@@ -5118,7 +5207,7 @@ thin. It does four jobs:
    instructions and growing tool loops are read from cache.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
    `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`,
-   `clip`).
+   `clip`, `conversations`).
 4. **Record AI usage** for every LLM / embedding call so users can see
    per-feature token consumption and estimated cost. The recording layer
    is `src/server/services/llm-usage.ts`. Every call goes through either
@@ -5439,9 +5528,24 @@ written so that the only things a caller can choose are two names:
   read. The route that calls this has to bound how often the full listing
   runs (it reads every record).
 
-No HTTP route calls this service yet. The route that will (for the bring-in
-screen) has to pass the cross-site write guard and return only the common
-shape, never raw record lines.
+The route that calls it (`routes/conversations.ts`) adds its own limits:
+
+- It answers only when the server runs as the desktop sidecar
+  (`GRAPHIUM_DESKTOP=1`, checked per request). A self-hosted server returns
+  `404` and reads nothing.
+- Both endpoints are `POST`, so the cross-site write guard applies as well as
+  the per-launch token; a page on another site can neither send the request
+  nor read the answer.
+- The request can carry only name pairs (at most 50 per call, de-duplicated).
+  A `baseDir` or any other key in the body is ignored. Path building stays in
+  the service.
+- The answer is the summary or the common shape, never raw record lines, and
+  an error carries no path or exception text.
+- The full listing reads every record, so concurrent requests share one scan
+  and the finished answer (summary included) is kept for 30 seconds.
+- Reads run one at a time across requests. A conversation over 5 million
+  characters is not returned, and a single answer stops at 20 million; what
+  is left out is counted as failed.
 
 A record can hold text an attacker influenced (a reply written while working
 in someone else's repository, a paste). Two things keep it from passing as
@@ -5630,8 +5734,9 @@ people most often need to find.
 | PROV-JSON-LD of a note / a plan / the facts they need / block plain text / the memo list | `src/features/prov-export/{note-export,plan-export,note-extras}.ts`, `src/features/prov-generator/plain-text.ts`, `src/mcp/captures.ts` (§3.2) |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
+| Linked files (materials that point at a file in a registered data place; state check, open / show in folder) | `src/features/linked-files/`, `src/features/settings/DataPlacesSection.tsx`, the `place_*` block in `src-tauri/src/lib.rs` (§4.2; DATA_MODEL.md §6.5) |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
-| AI conversations as materials (reader, stored text, bring-in) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/features/conversation-import/` (§3.4) |
+| AI conversations as materials (reader, route, bring-in section, preview) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/server/routes/conversations.ts`, `src/features/conversation-import/`, `src/features/intake/`, `src/features/asset-browser/ConversationPreview.tsx` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |

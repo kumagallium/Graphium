@@ -7,7 +7,7 @@
 //
 // ここは React にも IndexedDB にも依存しない。テストしやすいよう純関数に留める。
 
-import { sanitizeAltText } from "../../lib/ocr-alt";
+import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import { isWordDocxEntry, type MediaIndexEntry } from "../asset-browser/media-index";
 import type { DesiredSource } from "./service";
@@ -97,7 +97,8 @@ export function desiredAssetSources(
     if (m.type === "image" || m.type === "document") {
       // document の ocrText は PowerPoint のスライド文字（pptx.ts + persistOcrTextPatch）。
       // 画像の OCR テキストと同じ場所に書かれるので、同じ経路で索引に載せる
-      const primary = m.ocrText?.trim();
+      // 素材索引の JSON から来る値。文字列でなければ無視し、長すぎれば切る
+      const primary = sanitizeOcrText(m.ocrText);
       // 検索用の別の読み（macOS の Vision）は、探す経路である全文の索引にだけ足す（画像のみ）
       const alt = m.type === "image" ? sanitizeAltText(m.ocrAltText) : undefined;
       if (!primary && !alt) {

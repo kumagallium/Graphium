@@ -131,3 +131,12 @@ describe("appendClipQuote", () => {
     expect(appendClipQuote(base, { ...memo, text: "  " })).toBeNull();
   });
 });
+
+describe("findClipUrlEntry — リンクした素材", () => {
+  it("置き場の URL の素材は Web クリップの当て先にしない", () => {
+    const placeUrl = "graphium-place://place-1/docs/a.pdf";
+    const index = { media: [urlEntry("l", placeUrl, { webClip: { noteId: "n1", doi: "10.1000/XYZ" } })] };
+    expect(findClipUrlEntry(index, { url: placeUrl })).toBeUndefined();
+    expect(findClipUrlEntry(index, { url: "https://x.example/", doi: "10.1000/xyz" })).toBeUndefined();
+  });
+});

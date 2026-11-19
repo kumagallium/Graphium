@@ -593,8 +593,8 @@ the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by
-copy-and-paste, into templates, or into a fork of a shared note (the memo lives in
-the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
+copy-and-paste, into templates, into the shared copy of a note (§7), or into a fork
+of a shared note (the memo lives in the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
 leaves the text.
 
 An entry is only as live as its block. Every save (the main editor and the side
@@ -1770,8 +1770,9 @@ annotation targeting that material like any other memo.
 
 **AI conversations: `MediaIndexEntry.conversation`.** A conversation with an AI
 coding tool (today: Claude Code) can be kept as a material of type
-`"conversation"` — one conversation, one material. There is no screen for
-bringing one in yet; this is the data layer it will write to. Like a URL
+`"conversation"` — one conversation, one material, brought in from the
+**AI conversations** section of the bring-in sheet on the desktop app
+(ARCHITECTURE.md §3.4). Like a URL
 bookmark, the entry has no media binary: the index entry is the only
 registration, and the text lives in the media-text channel
 (`saveMediaText(fileId)`, §6.3). `isFilelessMediaEntry` names the two types
@@ -1837,8 +1838,9 @@ type ConversationMeta = {
   conversation is recorded exactly like a typed one, so its author cannot be
   told from the record. Later long lines are the user's and are kept whole.
 - **Folder.** `noteContexts` is `["<root>/<name of the working folder>"]`,
-  where the root label is chosen by the caller in the UI language (folders
-  are two levels deep, so the provider is not a level of its own). The name
+  where the root label follows the UI language when the conversation is
+  brought in (`AI 会話` in Japanese, `AI chats` in English; folders are two
+  levels deep, so the provider is not a level of its own). The name
   is the last component of the recorded working folder with control,
   direction-changing and invisible characters removed and cut at 80
   characters; `.` and `..` are not names. Two working folders with the same
@@ -4223,6 +4225,109 @@ The Usage tab converts to the user's chosen display currency at render
 time using the `displayCurrency` / `usdJpyRate` settings persisted in
 localStorage.
 
+### 6.5 Linked files and the data places ledger
+
+A **linked file** is a material that points at a file inside a folder the
+user registered as a **data place** (an organization's synced folder, a
+lab NAS) without copying it and without reading its contents. Desktop app
+only. Graphium keeps a small record of *where the file is* and *what it
+looked like when it was recorded*; the bytes stay where they are.
+
+**In the media index.** A linked file is an ordinary `MediaIndexEntry`
+with `type: "url"` (so every list, folder, `usedIn` and graph feature that
+already handles URL materials keeps working) plus an optional `link`:
+
+```ts
+type MediaLink = {
+  placeId: string;       // id of the data place (see the ledger below)
+  relPath: string;       // path inside the place, "/"-separated, no leading "/"
+  size: number;          // bytes, when recorded
+  mtimeMs: number;       // modified time, ms since the epoch, when recorded
+  recordedAt: string;    // ISO 8601, when this record was taken
+  history?: MediaLinkSnapshot[]; // earlier records, newest first, at most 20
+};
+type MediaLinkSnapshot = { size: number; mtimeMs: number; recordedAt: string };
+```
+
+The entry's `url` is `graphium-place://<placeId>/<relPath>`, with the id
+and each path segment passed through `encodeURIComponent` (segments are
+joined by a literal `/`). A parsed URL is rejected when it has an empty
+segment, `.`, `..`, or a segment containing `/` or `\`. An entry counts as
+a linked file only when `type` is `"url"`, `link` is well formed, and the
+place id and relative path in `url` equal the ones in `link`. `name` is the
+file name, `urlMeta.domain` is the place's name (kept in step when the
+place is renamed) and `urlMeta.description` is `relPath`. No absolute path
+is stored anywhere in the index.
+
+`type` stays `"url"` and the media index version is **not** bumped: `link`
+is an optional addition (§8), older builds read the entry as an ordinary
+URL material, and the `graphium-place://` scheme is never fetched as a web
+page (the URL text loader, ingest, translation and Web clip paths skip
+it). A build that predates the field simply does not know the file can be
+opened.
+
+**State.** The state of a link is computed on demand, never stored. The
+desktop app asks Rust for the current `size` and `mtimeMs` of every
+visible link in one call (at most 2000 items per call) and compares:
+
+| State | Meaning |
+|---|---|
+| `ok` | the place is reachable, the file is there, and `size` and `mtimeMs` equal the record |
+| `changed` | the file is there but `size` or `mtimeMs` differs |
+| `missing` | the place is reachable but the file is not there (also: it is a symbolic link, not a regular file, or resolves outside the place) |
+| `unreachable` | the place's folder cannot be reached right now (a probe waits at most 3 seconds) |
+| `unregistered` | the place id is not in this device's ledger |
+
+Only size and modified time are compared; the contents are never read, so
+an edit that keeps both unchanged is not noticed. **Record the current
+state** rewrites `size` / `mtimeMs` / `recordedAt` and pushes the previous
+values onto the front of `history` (kept to 20). A damaged `history`
+element is dropped on read; a damaged core makes the link unreadable and
+the UI says so.
+
+**The ledger (per device).** Which folder a place id means on *this*
+computer is kept by Rust in `places.json` directly under the app config
+directory (`app_config_dir`), never in the data folder, so it is not
+synced between devices:
+
+```json
+[ { "id": "<uuid>", "name": "Lab share", "root": "/Volumes/lab/shared" } ]
+```
+
+`root` is the canonicalized absolute path at registration time. `name` is
+at most 80 characters. The file is written through a temporary file and a
+rename. A missing or unreadable ledger reads as empty (every link is then
+`unregistered`).
+
+**The marker file.** On registration Rust writes `.graphium-place.json`
+directly under the place's folder, so that another device or person who
+registers the same folder gets the same id:
+
+```json
+{ "id": "<uuid>", "name": "Lab share" }
+```
+
+The marker is created only if absent (never overwritten) and is read with
+a 64 KiB cap; a symbolic link, or a file that is not valid JSON with a UUID
+`id`, is ignored and left alone. If it cannot be written (read-only
+folder) the place gets a device-local id and the settings row says it is
+used on this device only. If the marker's id is already in the ledger
+under a different folder, the new place also gets a fresh device-local id.
+Unregistering removes only the ledger entry; the marker and the files
+stay.
+
+**Provenance export.** The note's PROV-JSON-LD export carries, for a
+linked material, `graphium:placeId`, `graphium:relPath`,
+`graphium:fileSize` and `graphium:fileModified` (an `xsd:dateTime`). The
+absolute path and the history are not exported.
+
+**Not part of this feature.** Searching, previewing or extracting the
+contents of a linked file; using one in a table or chart; AI ingest or
+translation; sharing a linked file itself (it is skipped in bulk share and
+the share action is hidden); linking a whole folder at once (up to 500
+files can be picked together); converting a link into a copy. For the Tauri commands and their
+guards see ARCHITECTURE.md §4.2.
+
 ## 7. Shared storage and Library
 
 The Library / Fork features run on a separate, content-addressed
@@ -4300,15 +4405,20 @@ Key model choices:
   not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
-  share dialog's checkbox turn it back on per share. Everything else
-  travels unchanged — `pages` (blocks, `labels`, `provLinks`),
-  `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
+  share dialog's checkbox turn it back on per share. The memo links in
+  `pages[].memoQuotes` (§2.2) are always dropped, whatever that switch
+  says (`stripMemoQuotes` in the same file, at the same point in the
+  flow), because each one holds the memo's id and its text at the time
+  it was quoted. The `quote` block itself is note text and stays. A copy
+  shared before this rule keeps its links until the note is shared
+  again. Everything else travels unchanged — the rest of `pages` (blocks,
+  `labels`, `provLinks`), `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
   because the shared projection (§7.6) and the reverse links read them. The shared
-  format version is unchanged: both fields were already optional, so an
+  format version is unchanged: these fields were already optional, so an
   older build reading a newer shared copy simply finds them absent.
-  Version snapshots (`snapshot:<snapshotId>`, §2.4) and memos are stored
-  outside the document altogether, so they have never travelled with a
-  share either.
+  Version snapshots (`snapshot:<snapshotId>`, §2.4) and the memos
+  themselves (`captures.json`, §2.7) are stored outside the document
+  altogether, so they do not travel with a share either.
 - **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
   sharing a page as a template writes the (previously dormant)
   `PageTemplate` JSON (`src/features/template/types.ts`: `name` /

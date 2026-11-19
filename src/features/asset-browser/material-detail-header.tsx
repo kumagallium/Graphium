@@ -36,6 +36,7 @@ import {
   Plus,
   Loader2,
   Table,
+  MessagesSquare,
 } from "lucide-react";
 import { OpenInAppButton } from "./OpenInAppButton";
 import { useT } from "../../i18n";
@@ -96,6 +97,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
       return <Table size={size} />;
     case "memo":
       return <StickyNote size={size} />;
+    case "conversation":
+      return <MessagesSquare size={size} />;
     default:
       return <Paperclip size={size} />;
   }

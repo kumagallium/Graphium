@@ -22,6 +22,7 @@ import { openExternalUrl } from "../../lib/external-link";
 import { formatDateTime } from "../../lib/format-datetime";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { runOcrForImage } from "../media-ocr";
+import { readOcrEntry, sanitizeOcrText } from "../../lib/ocr-text";
 import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
 
 const TYPE_HEX: Record<MediaType, string> = {
@@ -290,7 +291,7 @@ export function MaterialMetadataSection({
   const [reading, setReading] = useState(false);
   const usedIn = entry.usedIn;
   const isImage = entry.type === "image";
-  const indexOcrText = entry.ocrText?.trim() || null;
+  const indexOcrText = sanitizeOcrText(entry.ocrText) ?? null;
 
   useEffect(() => {
     if (!isImage) {
@@ -311,7 +312,7 @@ export function MaterialMetadataSection({
         if (!u.noteId || !u.blockId) continue;
         try {
           const doc = await getActiveProvider().loadFile(u.noteId);
-          const text = doc?.pages?.[0]?.mediaOcr?.[u.blockId]?.text?.trim();
+          const text = sanitizeOcrText(readOcrEntry(doc?.pages?.[0]?.mediaOcr, u.blockId)?.text);
           if (text) {
             if (!cancelled) setOcrText(text);
             return;

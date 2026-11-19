@@ -11,6 +11,7 @@ import type { BlockLink } from "../block-link/link-types";
 import type { CaptureIndex } from "../mobile-capture/capture-store";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { isLinkedEntry, sanitizeMediaLink } from "../linked-files/link-url";
 import { noteLinkKind } from "../../lib/note-link-kind";
 import { splitMemoBodyAndSource } from "../mobile-capture/memo-insert";
 import { collectOperationRows, findPlanNotesOf, normalizeOperationName } from "../network-graph/plan-flow";
@@ -65,6 +66,12 @@ function toMediaMap(index: CollectNoteProvExtrasInput["mediaIndex"]): Map<string
 }
 
 function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
+  // 控えは細工されうるので、形と URL の一致を確かめて整えた値だけ出す
+  const clean = isLinkedEntry(e) ? sanitizeMediaLink(e.link) : null;
+  // 履歴は書き出さない
+  const link = clean
+    ? { placeId: clean.placeId, relPath: clean.relPath, size: clean.size, mtimeMs: clean.mtimeMs, recordedAt: clean.recordedAt }
+    : null;
   return {
     fileId: e.fileId,
     type: e.type,
@@ -72,6 +79,7 @@ function toAssetEntry(e: MediaIndexEntry): AssetExportEntry {
     ...(e.url ? { url: e.url } : {}),
     ...(e.mimeType ? { mimeType: e.mimeType } : {}),
     ...(e.sourceInfo ? { sourceInfo: e.sourceInfo } : {}),
+    ...(link ? { link } : {}),
   };
 }
 

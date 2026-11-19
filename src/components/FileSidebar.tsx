@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House, MessagesSquare } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -17,6 +17,7 @@ import { ExperimentalMark } from "../ui/experimental-mark";
 import { BrandLockup } from "../ui/brand-lockup";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
+import { displayTypeOf } from "../features/linked-files/display-type";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
 import { useScrollMoreBelow } from "./use-scroll-more-below";
@@ -290,6 +291,7 @@ const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "video", icon: <Video size={14} /> },
   { type: "audio", icon: <Volume2 size={14} /> },
   { type: "url", icon: <Link size={14} /> },
+  { type: "conversation", icon: <MessagesSquare size={14} /> },
 ];
 
 /** クイックメモのショートカット（判定は note-app.tsx の ⌘⇧M ハンドラ） */
@@ -380,7 +382,7 @@ export function FileSidebar({
   const voiceNoteHandler = isTauri() ? onNewVoiceNote : undefined;
   const t = useT();
   // mac は ⌘ ⇧ M に分離、Windows / Linux は Ctrl+Shift+M を 1 キャップ（横並び配置では出さない）
-  const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
+  const mediaCounts = mediaIndex ? countByType(mediaIndex, displayTypeOf) : null;
 
   // セクション右上に出す件数バッジの集計（メモは独立セクションに移したので含めない）
   const dataCount = useMemo(() => {

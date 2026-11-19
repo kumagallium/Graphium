@@ -204,6 +204,7 @@ import { publishTableColumns } from "../../blocks/calc/table-scope";
 import { subscribeDataTableData } from "../../blocks/data-table/data";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "../../blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "../../blocks/calc/remap-targets";
+import { resolvePickerDisplayMode } from "../linked-files/display-type";
 
 type SidePeekProps = {
   noteId: string;
@@ -1367,7 +1368,8 @@ function SidePeekInner({
       setPickerMediaType(null);
       return;
     }
-    if (displayMode === "link") {
+    // リンクした素材は中身を読めないので常に @リンク（note-app 側と同じ）
+    if (resolvePickerDisplayMode(entry, displayMode) === "link") {
       const cur = docRef.current;
       if (entry.fileId && cur && !(cur.citedAssetFileIds ?? []).includes(entry.fileId)) {
         docRef.current = {

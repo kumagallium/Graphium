@@ -13,6 +13,10 @@ import { useT } from "@/i18n";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/ui/modal";
 import { Button } from "@/ui/button";
 import { IntakeReceptacle } from "./IntakeReceptacle";
+import { IntakeSectionTabs, type IntakeSection } from "./IntakeSectionTabs";
+import { ConversationWorkdirList } from "./ConversationWorkdirList";
+import { ConversationUnavailableNote } from "./ConversationUnavailableNote";
+import type { ConversationIntakeState } from "../conversation-import/use-conversation-intake";
 import type { IntakeFile, IntakeSelectionExtra, IntakeSource } from "./types";
 
 /**
@@ -81,6 +85,19 @@ export type IntakeState =
       aiAvailable: boolean;
     };
 
+/** 「AI との会話」の区画。渡さなければ、ファイルの取り込みだけの今までの画面になる */
+export type IntakeConversationProps = {
+  state: ConversationIntakeState;
+  section: IntakeSection;
+  onSectionChange: (section: IntakeSection) => void;
+  onToggle: (workdir: string) => void;
+  onToggleAll: (next: boolean) => void;
+  onImport: () => void;
+  onRetry: () => void;
+  /** 完了画面の「素材で見る」 */
+  onViewMaterials: () => void;
+};
+
 type IntakeModalProps = {
   open: boolean;
   onClose: () => void;
@@ -99,6 +116,8 @@ type IntakeModalProps = {
   onIngestAll?: (noteIds: string[], mediaFileIds: string[]) => void;
   /** 取り込んだものが 1 件のときの「開く」 */
   onOpen?: (target: IntakeOpenTarget) => void;
+  /** 「AI との会話」の区画 */
+  conversation?: IntakeConversationProps;
 };
 
 export function IntakeModal({
@@ -113,21 +132,149 @@ export function IntakeModal({
   onSetupAi,
   onIngestAll,
   onOpen,
+  conversation,
 }: IntakeModalProps) {
   const t = useT();
+  const convKind = conversation?.state.kind;
+  const convBusy = convKind === "importing" || convKind === "done";
+  // タブは、ファイル側が待機中で、会話側が取り込み中・完了でないときだけ出す
+  const showTabs = !!conversation && state.kind === "idle" && !convBusy;
+  const showConversation = showTabs && conversation.section === "conversations";
+  const showFiles = state.kind === "idle" && !convBusy && !showConversation;
 
   return (
     <Modal open={open} onClose={onClose}>
       <div className="w-[560px] max-w-[calc(100vw-2rem)]">
         <ModalHeader onClose={onClose}>
-          {state.kind === "done" ? t("intake.doneTitle") : t("intake.title")}
+          {state.kind === "done" || convKind === "done" ? t("intake.doneTitle") : t("intake.title")}
         </ModalHeader>
 
-        {state.kind === "idle" && (
+        {showFiles && (
           <ModalBody>
+            {showTabs && conversation && (
+              <div className="mb-4">
+                <IntakeSectionTabs value={conversation.section} onChange={conversation.onSectionChange} />
+              </div>
+            )}
             <IntakeReceptacle emphasized={dragActive} onFilesSelected={onFilesSelected} />
             <p className="text-xs text-muted-foreground mt-3">{t("intake.obsidianHint")}</p>
           </ModalBody>
+        )}
+
+        {showConversation && conversation && (
+          <>
+            <ModalBody>
+              <div className="mb-4">
+                <IntakeSectionTabs value={conversation.section} onChange={conversation.onSectionChange} />
+              </div>
+              {conversation.state.kind === "loading" && (
+                <ConversationWorkdirList
+                  status="loading"
+                  items={[]}
+                  selected={new Set()}
+                  onToggle={conversation.onToggle}
+                  onToggleAll={conversation.onToggleAll}
+                />
+              )}
+              {conversation.state.kind === "ready" && (
+                <ConversationWorkdirList
+                  status="ready"
+                  items={conversation.state.items}
+                  selected={conversation.state.selected}
+                  onToggle={conversation.onToggle}
+                  onToggleAll={conversation.onToggleAll}
+                  searchedPath={conversation.state.searchedPath}
+                />
+              )}
+              {conversation.state.kind === "unavailable" && <ConversationUnavailableNote />}
+              {conversation.state.kind === "error" && (
+                <div className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-foreground">{t("intake.conversation.loadError")}</p>
+                  <Button variant="outline" size="sm" onClick={conversation.onRetry}>
+                    {t("intake.conversation.retry")}
+                  </Button>
+                </div>
+              )}
+            </ModalBody>
+            {conversation.state.kind === "ready" && (
+              <ModalFooter>
+                <Button
+                  variant="primary"
+                  disabled={conversation.state.selected.size === 0}
+                  onClick={conversation.onImport}
+                >
+                  {t("intake.conversation.importButton")}
+                </Button>
+              </ModalFooter>
+            )}
+          </>
+        )}
+
+        {conversation?.state.kind === "importing" && (
+          <ModalBody>
+            {/* ファイルの running と同じ見た目（ファイル名の行だけ無い） */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground">
+                  {t("intake.running", {
+                    done: String(conversation.state.done),
+                    total: String(conversation.state.total),
+                  })}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${(conversation.state.done / Math.max(1, conversation.state.total)) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </ModalBody>
+        )}
+
+        {conversation?.state.kind === "done" && (
+          <>
+            <ModalBody>
+              <div className="space-y-4">
+                <dl className="rounded-lg border border-border divide-y divide-border text-sm">
+                  {(
+                    [
+                      ["intake.conversation.statCreated", conversation.state.created],
+                      ["intake.conversation.statUpdated", conversation.state.updated],
+                      ["intake.conversation.statUnchanged", conversation.state.unchanged],
+                    ] as const
+                  ).map(([key, count]) => (
+                    <div key={key} className="flex items-baseline justify-between px-4 py-2">
+                      <dt className="text-muted-foreground">{t(key)}</dt>
+                      <dd className="font-medium tabular-nums text-foreground">{count}</dd>
+                    </div>
+                  ))}
+                  <div className="flex items-baseline justify-between px-4 py-2">
+                    <dt className="text-muted-foreground">{t("intake.statFailed")}</dt>
+                    <dd
+                      className={`font-medium tabular-nums ${
+                        conversation.state.failed > 0 ? "text-destructive" : "text-foreground"
+                      }`}
+                    >
+                      {conversation.state.failed}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" size="sm" onClick={conversation.onViewMaterials}>
+                    {t("intake.conversation.viewMaterials")}
+                  </Button>
+                </div>
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="outline" onClick={onClose}>
+                {t("common.close")}
+              </Button>
+            </ModalFooter>
+          </>
         )}
 
         {state.kind === "running" && (

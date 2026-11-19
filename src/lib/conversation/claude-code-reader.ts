@@ -236,7 +236,10 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
     if (!sessionId && typeof record.sessionId === "string") sessionId = record.sessionId;
     if (!workdir && typeof record.cwd === "string") {
       // eslint-disable-next-line no-control-regex
-      workdir = record.cwd.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "").slice(0, MAX_WORKDIR_CHARS);
+      // 制御文字に加えて、向きを変える文字・見えない文字も落とす（パスは一覧と来歴の行にそのまま出る）
+      workdir = record.cwd
+        .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, "")
+        .slice(0, MAX_WORKDIR_CHARS);
     }
     const at = validTimestamp(record.timestamp);
     const message = record.message as { content?: unknown } | undefined;

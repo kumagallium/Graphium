@@ -128,3 +128,10 @@ describe("isUnchangedSinceLastIngest", () => {
     expect(await isUnchangedSinceLastIngest("document:d1", "2026-06-02T07:45:00.000Z", [{ noteId: "c1" }], other)).toBe(false);
   });
 });
+
+describe("mediaKnowledgeSourceId — リンクした素材", () => {
+  it("置き場の URL は取り込みの対象外（link が無くても）", () => {
+    const url = "graphium-place://place-1/docs/a.pdf";
+    expect(mediaKnowledgeSourceId({ type: "url", fileId: "l1", url })).toBeUndefined();
+  });
+});

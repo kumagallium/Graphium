@@ -11,6 +11,7 @@
 // ──────────────────────────────────────────────
 
 import type { ProvJsonLd } from "../prov-generator/generator";
+import { isValidSize, linkModifiedIso } from "../linked-files/link-safe";
 import type { BlockLink } from "../block-link/link-types";
 import type { GraphiumPage, TableSource } from "../../lib/document-types";
 import type { SourceInfo } from "../asset-browser/media-index";
@@ -76,6 +77,8 @@ export type AssetExportEntry = {
   /** 分かれば dc:format に出す（無ければ pdf と拡張子から推す） */
   mimeType?: string;
   sourceInfo?: SourceInfo;
+  /** リンクした素材の控え（置き場の id と相対パス。絶対パスは持たない。履歴は出さない） */
+  link?: { placeId: string; relPath: string; size: number; mtimeMs: number; recordedAt: string };
 };
 
 export type ChatExportEntry = {
@@ -422,6 +425,15 @@ function buildAssetNode(a: AssetExportEntry): W3CProvNode {
   };
   const mime = guessMime(a);
   if (mime) node["dc:format"] = mime;
+  if (a.link) {
+    node["graphium:placeId"] = a.link.placeId;
+    node["graphium:relPath"] = a.link.relPath;
+    if (isValidSize(a.link.size)) node["graphium:fileSize"] = a.link.size;
+    const modified = linkModifiedIso(a.link.mtimeMs);
+    if (modified) {
+      node["graphium:fileModified"] = { "@value": modified, "@type": "xsd:dateTime" };
+    }
+  }
   const info = a.sourceInfo;
   if (info) {
     const authors = (info.authors ?? []).filter((s) => typeof s === "string" && s.trim() !== "");

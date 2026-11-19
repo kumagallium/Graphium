@@ -5,6 +5,7 @@ import { peekDataTableFromBlock } from "../blocks/data-table/data";
 import { DOC_TABLE_HARD_MAX_ROWS } from "../features/data-import/target";
 import { useEffect, useState } from "react";
 import { isTextEditingTarget } from "../lib/backspace-navigation-guard";
+import { sanitizeOcrText } from "../lib/ocr-text";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -757,7 +758,9 @@ function ReadImageTextMenuItem() {
   if (!url) return null; // 画像未設定のプレースホルダには出さない
 
   const existing = ocrStore.getEntry(block.id);
-  const charCount = existing?.text ? existing.text.replace(/\s/g, "").length : 0;
+  // mediaOcr は他人のノートからも来る。文字列でない値・巨大な値で落ちない・固まらないようにする
+  const existingText = sanitizeOcrText(existing?.text) ?? "";
+  const charCount = existingText ? existingText.replace(/\s/g, "").length : 0;
 
   const run = async () => {
     if (running) return;

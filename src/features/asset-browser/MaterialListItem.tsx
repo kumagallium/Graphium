@@ -3,12 +3,15 @@
 // 親テーブルから渡される列幅・ヘッダと合わせて使う。
 
 import { safeExternalHref } from "../../lib/safe-href";
-import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table } from "lucide-react";
+import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table, MessagesSquare, File as FileIcon } from "lucide-react";
 import type { MediaIndexEntry, MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
 import { MEMO_QUOTE_COLOR } from "../memo-quote/memo-quote";
+import { isLinkedEntry, isPlaceUrl } from "../linked-files/link-url";
+import type { LinkState } from "../linked-files/linked-entry";
+import { LinkedBadge, LinkStateBadge } from "../linked-files/LinkStateBadge";
 
 const TYPE_LABEL: Record<MediaType, string> = {
   image: "Image",
@@ -53,6 +56,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
       return <Files size={size} />;
     case "data":
       return <Table size={size} />;
+    case "conversation":
+      return <MessagesSquare size={size} />;
     default:
       return <Paperclip size={size} />;
   }
@@ -91,6 +96,14 @@ function ThumbCell({ entry }: { entry: MediaIndexEntry }) {
             (e.target as HTMLImageElement).style.display = "none";
           }}
         />
+      </div>
+    );
+  }
+  // リンクした素材（控えが壊れたものを含む）は favicon やプレビュー画像を取りに行かず、ファイルのアイコンを出す
+  if (entry.type === "url" && isPlaceUrl(entry.url)) {
+    return (
+      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+        <FileIcon size={16} />
       </div>
     );
   }
@@ -144,6 +157,8 @@ export type MaterialListItemProps = {
   onDelete?: (entry: MediaIndexEntry) => void;
   /** チェックボックスを表示するか */
   showCheckbox?: boolean;
+  /** リンクした素材の状態（useLinkStates の結果）。「変わりなし」以外のときだけ印を出す */
+  linkState?: LinkState;
 };
 
 /**
@@ -169,8 +184,10 @@ export function MaterialListItem({
   onToggleSelect,
   onDelete,
   showCheckbox = true,
+  linkState,
 }: MaterialListItemProps) {
   const t = useT();
+  const linked = isLinkedEntry(entry);
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
 
   return (
@@ -211,7 +228,8 @@ export function MaterialListItem({
           <span className="text-foreground truncate" title={entry.name}>
             {entry.name}
           </span>
-          {entry.type === "url" && entry.url && (
+          {linked && <LinkedBadge />}
+          {entry.type === "url" && !linked && entry.url && (
             (() => {
               const href = safeExternalHref(entry.url);
               return href ? (
@@ -230,6 +248,12 @@ export function MaterialListItem({
             })()
           )}
         </div>
+        {/* 状態の印は名前の下の行に置く（同じ行だと狭い幅で名前が押しつぶされる） */}
+        {linked && linkState && linkState !== "ok" && (
+          <div className="mt-0.5 flex min-w-0">
+            <LinkStateBadge state={linkState} className="shrink min-w-0" />
+          </div>
+        )}
         {entry.type === "url" && entry.urlMeta?.domain && (
           <p className="text-[10px] text-muted-foreground truncate mt-0.5">
             {entry.urlMeta.domain}

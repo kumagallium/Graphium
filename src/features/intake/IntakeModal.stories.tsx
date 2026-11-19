@@ -4,7 +4,9 @@
 // 各状態の合否はストーリー先頭のコメントを参照。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { IntakeModal, type IntakeState } from "./IntakeModal";
+import { IntakeModal, type IntakeConversationProps, type IntakeState } from "./IntakeModal";
+import type { ConversationWorkdirItem } from "../conversation-import/api";
+import type { ConversationIntakeState } from "../conversation-import/use-conversation-intake";
 
 const meta: Meta<typeof IntakeModal> = {
   title: "Features/Intake/IntakeModal",
@@ -204,5 +206,124 @@ export const DoneSinglePdfAlreadyInLibrary: Story = {
       ...(DoneSinglePdf.args!.state as Extract<IntakeState, { kind: "done" }>),
       materialsExisting: 1,
     },
+  },
+};
+
+// ── AI との会話の区画 ─────────────────────────────────────────
+
+function convRow(
+  name: string,
+  sessions: number,
+  unattendedSessions: number,
+  ownChars: number,
+  startedAt: string,
+  endedAt: string,
+): ConversationWorkdirItem {
+  const attended = sessions - unattendedSessions;
+  return {
+    workdir: `/Users/example/${name}`,
+    sessions,
+    unattendedSessions,
+    candidateSessions: Math.floor(attended / 3),
+    ownTurns: attended * 6,
+    ownChars,
+    startedAt,
+    endedAt,
+    sessionRefs: Array.from({ length: attended }, (_, i) => ({
+      dirName: `-Users-example-${name}`,
+      fileName: `session-${i}.jsonl`,
+    })),
+  };
+}
+
+const CONV_ITEMS: ConversationWorkdirItem[] = [
+  convRow("bakery-notes", 12, 0, 18_420, "2026-03-04T09:12:00", "2026-10-21T18:40:00"),
+  convRow("curry-lab", 9, 3, 9_870, "2026-05-11T10:00:00", "2026-09-02T21:05:00"),
+  convRow("sourdough-log", 4, 0, 3_150, "2026-08-19T08:30:00", "2026-08-19T20:15:00"),
+  convRow("spice-ledger", 6, 6, 0, "2026-06-01T12:00:00", "2026-06-30T12:00:00"),
+];
+
+const convBase = {
+  open: true,
+  state: { kind: "idle" },
+  onClose: noop,
+  onFilesSelected: noop,
+} as const;
+
+function conv(
+  state: ConversationIntakeState,
+  section: "files" | "conversations" = "conversations",
+): IntakeConversationProps {
+  return {
+    state,
+    section,
+    onSectionChange: noop,
+    onToggle: noop,
+    onToggleAll: noop,
+    onImport: noop,
+    onRetry: noop,
+    onViewMaterials: noop,
+  };
+}
+
+/** タブが出たファイル側。タブの下に、今までの受け皿がそのまま出るかが合否 */
+export const FilesWithTabs: Story = {
+  args: { ...convBase, conversation: conv({ kind: "idle" }, "files") },
+};
+
+/** 一覧を読んでいる間。「会話の記録を調べています…」が出るかが合否 */
+export const ConversationLoading: Story = {
+  args: { ...convBase, conversation: conv({ kind: "loading" }) },
+};
+
+/** 一覧が出た直後。何も選んでいないので「取り込む」が押せない */
+export const ConversationReady: Story = {
+  args: {
+    ...convBase,
+    conversation: conv({ kind: "ready", items: CONV_ITEMS, selected: new Set(), searchedPath: "~/.claude/projects" }),
+  },
+};
+
+/** 2 つ選んだ状態。「取り込む」が押せる */
+export const ConversationReadySelected: Story = {
+  args: {
+    ...convBase,
+    conversation: conv({
+      kind: "ready",
+      items: CONV_ITEMS,
+      selected: new Set([CONV_ITEMS[0].workdir, CONV_ITEMS[1].workdir]),
+      searchedPath: "~/.claude/projects",
+    }),
+  },
+};
+
+/** ブラウザ版。理由なしの 1 行だけが出る */
+export const ConversationUnavailable: Story = {
+  args: { ...convBase, conversation: conv({ kind: "unavailable" }) },
+};
+
+/** 読めなかったとき。文と「もう一度」が出る */
+export const ConversationError: Story = {
+  args: { ...convBase, conversation: conv({ kind: "error" }) },
+};
+
+/** 取り込み中。ファイルの進行中と同じ進捗バー（ファイル名の行は無い） */
+export const ConversationImporting: Story = {
+  args: { ...convBase, conversation: conv({ kind: "importing", done: 40, total: 100 }) },
+};
+
+/** 完了。4 行の数字と「素材で見る」。「まとめてナレッジ化」は出ない */
+export const ConversationDone: Story = {
+  args: {
+    ...convBase,
+    conversation: conv({ kind: "done", created: 21, updated: 3, unchanged: 8, failed: 0 }),
+  },
+};
+
+/** 完了 + 失敗あり。失敗の数字が赤になる */
+export const ConversationDoneWithFailures: Story = {
+  args: {
+    ...convBase,
+    conversation: conv({ kind: "done", created: 18, updated: 0, unchanged: 5, failed: 2 }),
   },
 };

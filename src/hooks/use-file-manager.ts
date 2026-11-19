@@ -48,6 +48,7 @@ import { countUserTemplatesReferencingAsset } from "../features/template/user-te
 import { registerPendingOcrFile } from "../features/media-ocr";
 // 提案の基準版の控えの片付け（§25b C-3）。fork したノートを完全削除したときに消す
 import { clearForkBase } from "../features/sharing/fork-base";
+import { addLinkedEntries, listPlaces, pickPlaceFiles, type LinkFilesOutcome } from "../features/linked-files";
 import {
   addForkedProcess,
   buildNoteGraph,
@@ -91,6 +92,7 @@ import {
   remapMediaContexts,
   createEmptyIndex,
   addMediaEntry,
+  generateUrlBookmarkId,
   removeMediaEntry,
   archiveMediaEntry,
   restoreMediaEntry,
@@ -3068,6 +3070,31 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
+  // 置き場のファイルをリンクする（リンクした素材。索引では type: "url"）。
+  // 流れは handleAddUrlBookmark と同じ（索引の更新 → 状態へ反映 → 保存）。
+  // 複数選べる。何件選んでも索引の保存は 1 回。どの置き場の中でもないファイルと、
+  // すでにリンク済みのファイルは足さず、件数を返す（知らせるのは呼び出し側の画面）。
+  // キャンセルは null。
+  const handleLinkPlaceFiles = useCallback(async (): Promise<LinkFilesOutcome | null> => {
+    const picked = await pickPlaceFiles();
+    if (!picked) return null;
+    const places = await listPlaces();
+    // 選んでいる間に索引が変わりうるので、最新の索引は待ったあとで読む
+    const result = addLinkedEntries({
+      index: mediaIndexRef.current ?? createEmptyIndex(),
+      picked: picked.files,
+      places,
+      now: new Date().toISOString(),
+      newFileId: generateUrlBookmarkId,
+    });
+    if (result.linked.length > 0) {
+      mediaIndexRef.current = result.index;
+      setMediaIndex(result.index);
+      saveMediaIndex(result.index).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+    }
+    return { linked: result.linked, existing: result.existing, outside: result.outside, failed: picked.failed };
+  }, []);
+
   // --- Wiki ドキュメント操作 ---
 
   // Wiki を開く
@@ -4110,6 +4137,7 @@ export function useFileManager(authenticated: boolean) {
     remapMediaContextsEverywhere,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,
+    handleLinkPlaceFiles,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
     handleSaveImportedDoc,

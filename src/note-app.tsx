@@ -164,6 +164,7 @@ import {
 } from "./blocks/chart";
 import { buildSavedPageFields, buildSavedForm } from "./features/note-save";
 import { IntakeModal, IntakeDropOverlay, useIntake, useGlobalFileDrop, findExistingImportId } from "./features/intake";
+import { useConversationIntake } from "./features/conversation-import/use-conversation-intake";
 import type { IntakeFile, IntakeProgress, MarkdownImportResult } from "./features/intake";
 import { computeBlobHash } from "./lib/storage/shared/hash";
 import { normalizeNoteContexts } from "./features/note-context/context-tags";
@@ -293,6 +294,8 @@ import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
+import { isPlaceUrl } from "./features/linked-files/link-url";
+import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
@@ -2662,7 +2665,9 @@ function NoteEditorInner({
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
 
-    if (displayMode === "link") {
+    // リンクした素材は中身を読めないので、呼び出し元がどの形で渡しても @リンクにする
+    // （展開ブロックや、区切りテキストの中身を読む取り込みに入れない）
+    if (resolvePickerDisplayMode(entry, displayMode) === "link") {
       // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
       // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
       if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
@@ -5046,6 +5051,7 @@ function NoteEditorInner({
                   type: entry.type,
                   sourceUrl: entry.type === "url" ? entry.url : undefined,
                   excerpt: entry.urlMeta?.excerpt,
+                  placeName: entry.urlMeta?.domain,
                 }
               : assetFileId.startsWith("url:")
                 ? { fileId: assetFileId, name: assetFileId.slice(4), type: "url", sourceUrl: assetFileId.slice(4) }
@@ -11269,6 +11275,8 @@ export function NoteApp() {
       if (outcome.ocrTargets.length > 0) intakeOcr.enqueue(outcome.ocrTargets);
     },
   });
+  // 投入口の「AI との会話」の区画（区画を開くまでは何も読まない）
+  const conversationIntake = useConversationIntake();
   // ウィンドウのどこにファイルをドロップしても投入口が拾う（エディタ内・
   // モーダル内・受け皿の上は useGlobalFileDrop 側の既定 ignore で除外される）
   const { dragActive: intakeDragActive } = useGlobalFileDrop({
@@ -11550,6 +11558,7 @@ export function NoteApp() {
     const wasDone = intake.state.kind === "done";
     const outcome = intake.lastOutcome;
     intake.closeIntake();
+    conversationIntake.reset();
     if (wasDone && outcome) {
       if (outcome.notes === 1 && outcome.materials === 0 && outcome.lastNewId) {
         navigateToNote(outcome.lastNewId);
@@ -11557,7 +11566,7 @@ export function NoteApp() {
         showNoteList();
       }
     }
-  }, [intake, navigateToNote, fm.showNoteList, showNoteList]);
+  }, [intake, conversationIntake.reset, navigateToNote, fm.showNoteList, showNoteList]);
 
   // 新規ノートは保存されて初めて fileId が決まる。決まった時点で URL を差し替える。
   // これが無いと、書いたノートがリロードで開かず（URL が home のまま）、
@@ -12169,10 +12178,10 @@ export function NoteApp() {
       setComposerPrompt("");
       composer.closeComposer();
       closeAllViews();
-      fm.setActiveAssetType(entry.type);
+      fm.setActiveAssetType(displayTypeOf(entry));
       setFocusedMaterial({ fileId: entry.fileId, fullMode: false });
       setSidebarOpen(false);
-      router.navigate({ view: "assets", mediaType: entry.type });
+      router.navigate({ view: "assets", mediaType: displayTypeOf(entry) });
     },
     [composer, fm, closeAllViews, router],
   );
@@ -12280,7 +12289,8 @@ export function NoteApp() {
       const ext = parseExternalSource(sourceId);
       if (ext) {
         if (ext.kind === "url") {
-          void openExternalUrl(ext.key);
+          // リンクした素材（置き場のファイル）の URL はブラウザへ渡さない
+          if (!isPlaceUrl(ext.key)) void openExternalUrl(ext.key);
           return;
         }
         if (ext.kind === "memo") {
@@ -16790,6 +16800,7 @@ export function NoteApp() {
                 : undefined
             }
             onAddUrlBookmark={fm.handleAddUrlBookmark}
+            onLinkPlaceFiles={fm.handleLinkPlaceFiles}
             onUploadMedia={fm.handleUploadMedia}
             onIntakeFiles={(files, _source, extra) => void intake.run(files, extra)}
             onExtractDocxImages={handleExtractDocxImages}
@@ -16809,6 +16820,8 @@ export function NoteApp() {
             onIngestMedia={standardUiEnabled ? ingestMediaEntry : undefined}
             onIngestMediaBulk={standardUiEnabled ? (entries) => void ingestMediaEntries(entries) : undefined}
             onCreateProvNote={procedureUiEnabled ? (entry) => {
+              // リンクした素材（置き場のファイル）は Web ページではない。取りに行かない
+              if (entry.type === "url" && isPlaceUrl(entry.url)) return;
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // 既にこの書庫で使われているラベルを ingester に渡す。同じモノに
@@ -16924,6 +16937,8 @@ export function NoteApp() {
               }
             } : undefined}
             onTranslatePdf={translateUiEnabled ? (entry) => {
+              // リンクした素材（置き場のファイル）は Web ページではない。取りに行かない
+              if (entry.type === "url" && isPlaceUrl(entry.url)) return;
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
@@ -17138,7 +17153,7 @@ export function NoteApp() {
                       // 外部ブラウザで開く
                       if (fm.mediaIndex?.media.some((m) => m.fileId === entry.fileId)) {
                         setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
-                      } else if (entry.type === "url" && entry.url) {
+                      } else if (entry.type === "url" && entry.url && !isPlaceUrl(entry.url)) {
                         void openExternalUrl(entry.url);
                       }
                     }}
@@ -18109,10 +18124,10 @@ export function NoteApp() {
                 return;
               }
               const seqBefore = router.getSeq();
-              fm.setActiveAssetType(target.type);
+              fm.setActiveAssetType(displayTypeOf(target));
               // ノートから開いた全画面。閉じるとノートへ戻る（AssetGalleryView の onExitFullToNote）
               setFocusedMaterial({ fileId, fullMode: true, fromNote: true });
-              router.navigate({ view: "assets", mediaType: target.type });
+              router.navigate({ view: "assets", mediaType: displayTypeOf(target) });
               // 履歴が積まれたときだけノートへ戻れる（同じ URL の差し替えなら戻り先が無い）
               noteSeqBeforeFullRef.current = router.getSeq() > seqBefore ? seqBefore : null;
             }}
@@ -18331,9 +18346,9 @@ export function NoteApp() {
                   if (!target) return;
                   setListMaterialPeekEntry(null);
                   closeAllViews();
-                  fm.setActiveAssetType(target.type);
+                  fm.setActiveAssetType(displayTypeOf(target));
                   setFocusedMaterial({ fileId: target.fileId, fullMode: true });
-                  router.navigate({ view: "assets", mediaType: target.type });
+                  router.navigate({ view: "assets", mediaType: displayTypeOf(target) });
                 }
               : undefined
           }
@@ -18559,6 +18574,24 @@ export function NoteApp() {
         dragActive={intakeDragActive}
         onClose={handleIntakeClose}
         onFilesSelected={(files, _source, extra) => void intake.run(files, extra)}
+        conversation={{
+          state: conversationIntake.state,
+          section: conversationIntake.section,
+          onSectionChange: conversationIntake.setSection,
+          onToggle: conversationIntake.toggle,
+          onToggleAll: conversationIntake.toggleAll,
+          onImport: () => void conversationIntake.startImport(),
+          onRetry: conversationIntake.retry,
+          onViewMaterials: () => {
+            intake.closeIntake();
+            conversationIntake.reset();
+            // サイドバーから素材の種類を開くのと同じ経路
+            closeAllViews();
+            fm.setActiveAssetType("conversation");
+            setSidebarOpen(false);
+            router.navigate({ view: "assets", mediaType: "conversation" });
+          },
+        }}
         onSearch={() => { intake.closeIntake(); showNoteList(); setFocusSearchSignal((n) => n + 1); }}
         onShowGraph={() => { intake.closeIntake(); showGlobalGraphView(); }}
         onAskAi={() => { intake.closeIntake(); composer.openComposer(); }}
