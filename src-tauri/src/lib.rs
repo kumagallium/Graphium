@@ -2125,11 +2125,26 @@ fn read_app_data_in(dir: &std::path::Path, key: &str) -> Result<Option<String>, 
     Ok(Some(content))
 }
 
-/// dir へ appData を書く（常に新しい名前）
+/// appData の一時ファイル名を重ねないための通し番号
+static APP_DATA_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// dir へ appData を書く（常に新しい名前）。
+/// 同じ場所の一時ファイルに書いてから置き換える。直接上書きすると、書いている間は空のファイルが
+/// 見え、別プロセス（MCP）が索引を読めなくなる。一時ファイルは `.json` で終わらないので一覧に出ない
 fn write_app_data_in(dir: &std::path::Path, key: &str, data: &str) -> Result<(), String> {
     validate_app_data_path_key(key)?;
-    fs::write(join_single_component(dir, &app_data_file_name(key))?, data)
-        .map_err(|e| format!("アプリデータ書き込み失敗: {e}"))
+    let file_name = app_data_file_name(key);
+    let path = join_single_component(dir, &file_name)?;
+    let seq = APP_DATA_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = join_single_component(
+        dir,
+        &format!("{file_name}.tmp-{}-{seq}", std::process::id()),
+    )?;
+    if let Err(e) = fs::write(&tmp, data).and_then(|_| fs::rename(&tmp, &path)) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("アプリデータ書き込み失敗: {e}"));
+    }
+    Ok(())
 }
 
 /// アプリデータを読み込み
@@ -6000,6 +6015,20 @@ mod tests {
         assert_eq!(read_app_data_in(d, "a%b").unwrap().as_deref(), Some("new"));
         // どちらも無ければ None
         assert!(read_app_data_in(d, "zzz").unwrap().is_none());
+    }
+
+    #[test]
+    fn app_data_write_replaces_the_file_and_leaves_no_temp_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        write_app_data_in(d, "note-index", "{\"v\":1}").unwrap();
+        write_app_data_in(d, "note-index", "{\"v\":2}").unwrap();
+        assert_eq!(read_app_data_in(d, "note-index").unwrap().as_deref(), Some("{\"v\":2}"));
+        let names: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["note-index.json"]);
     }
 
     #[test]

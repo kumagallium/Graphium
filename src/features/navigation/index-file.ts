@@ -991,6 +991,10 @@ export async function ensureIndex(
       const wikiEntries = existing.notes.filter((n) => n.source === "ai");
       rebuilt.notes.push(...wikiEntries);
     }
+    // 保存はフラグと Wiki エントリを引き継いだあとの 1 回だけ。組み立ての途中で保存すると、
+    // ノートだけ・フラグ無しの索引がディスクに残り、その間に読んだ MCP はアーカイブ/ゴミ箱の
+    // ページを見分けられない（アプリがそこで終わると、次の起動でフラグが失われる）
+    saveIndexFile(rebuilt).catch((err) => console.warn("インデックス保存失敗:", err));
     return rebuilt;
   }
 
@@ -1069,6 +1073,7 @@ export async function ensureIndex(
 }
 
 // 全件再構築（スキーマバージョン変更時やインデックスが存在しない場合）
+// 通常ノートのエントリを作るだけで保存はしない（保存は呼び出し側の ensureIndex が引き継ぎのあとで行う）
 async function fullRebuild(
   files: GraphiumFile[],
   docCache: Map<string, GraphiumDocument>,
@@ -1094,15 +1099,11 @@ async function fullRebuild(
     }
   }
 
-  const index: GraphiumIndex = {
+  return {
     version: INDEX_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     notes: entries,
   };
-
-  saveIndexFile(index).catch((err) => console.warn("インデックス保存失敗:", err));
-
-  return index;
 }
 
 // インデックスがファイル一覧に対して最新かチェック
