@@ -83,6 +83,15 @@ export type SearchHit = {
   matchedIn: string[];
 };
 
+/**
+ * search_notes の 1 件を読む形にする。トピックは、本文と引いている資料を一度に返す get_topic へ案内する
+ * （測定で、外の AI は get_note で開いて出典を別に探していた）
+ */
+export function formatSearchHit(h: SearchHit, index: number): string {
+  const open = h.kind === "topic" ? `\n   開く: get_topic（topicId: ${h.noteId}）で本文と引いている資料を一度に読めます` : "";
+  return `${index + 1}. ${h.title}\n   noteId: ${h.noteId}  (${h.kind}, score ${h.score})\n   ${h.snippet}${open}`;
+}
+
 /** MiniSearch の設定。本体（miniSearchOptions）と同じ流儀に揃える */
 function miniSearchOptions() {
   return {
