@@ -31,7 +31,6 @@ describe("buildDocument が保存で落としてはいけないもの", () => {
 
   // sharedRef は例外。handleSave / handleShare で再注入する作りになっている
   it.each([
-    ["forkedFrom", "共有ライブラリからの派生元（逆引きの「派生版」・変更の提案）"],
     ["templateFrom", "どのテンプレートから作ったか"],
     ["partOfPlanNoteId", "計画ノートとの結び付き"],
     ["sourceTextFileId", "取り込み元のテキスト"],
@@ -40,6 +39,12 @@ describe("buildDocument が保存で落としてはいけないもの", () => {
     ["importSource", "投入口からの取り込み元（重複判定に使う）"],
   ])("%s を initialDoc から引き継ぐ（%s）", (field) => {
     expect(body).toContain(`${field}: initialDoc?.${field},`);
+  });
+
+  // forkedFrom は「共有に反映」で hash が新しくなるので、initialDoc 固定ではなく ref の最新値を使う
+  it("forkedFrom を最新の ref から引き継ぐ（共有に反映したあとも古い hash で保存しない）", () => {
+    expect(body).toContain("forkedFrom: forkedFromRef.current,");
+    expect(body).not.toContain("forkedFrom: initialDoc?.forkedFrom,");
   });
 
   it("sharedRef だけは buildDocument では組まない（保存・共有の経路で再注入する）", () => {

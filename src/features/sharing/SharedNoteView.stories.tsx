@@ -1145,3 +1145,88 @@ export const ProposalDiffManual: Story = {
     entries: [BREAD_NOTE_MIA, BREAD_PROPOSAL_KEN],
   },
 };
+
+// ---- 順番に更新（作者が「他の人の更新を受け付ける」を入れたノート）----
+
+/** 共有フォルダに触らず、スイッチ・前の版・競合コピーを描くための DI（Storybook には共有フォルダが無い） */
+const updateOpsFor = (conflicts: string[] = []) => ({
+  listVersions: async () => [
+    `${Date.now() - 86400_000}-a1b2c3.json`,
+    `${Date.now() - 3 * 86400_000}-d4e5f6.json`,
+    `${Date.now() - 6 * 86400_000}-g7h8i9.json`,
+  ],
+  conflictCopies: async () => conflicts,
+  setAcceptsUpdates: async (_id: string, value: boolean) => ({
+    ok: true as const,
+    entry: { ...NOTE, extra: { ...NOTE.extra, acceptsUpdates: value } } as SharedEntry,
+  }),
+  restoreSharedVersion: async () => ({ ok: true as const, entry: NOTE }),
+});
+
+const ACCEPTING_NOTE: SharedEntry = {
+  ...NOTE,
+  extra: {
+    ...NOTE.extra,
+    acceptsUpdates: true,
+    updatedBy: { name: TEACHER.name, email: TEACHER.email },
+  },
+} as SharedEntry;
+
+export const UpdatesAuthor: Story = {
+  name: "順番に更新 — 作者（スイッチと前の版）",
+  args: {
+    ...baseArgs,
+    entry: ACCEPTING_NOTE,
+    currentIdentity: STUDENT_A,
+    initialRailTab: "version" as const,
+    updateOps: updateOpsFor(),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "作者が見る「バージョン」。スイッチで受け付けを切り替え、受け付け中は最後に更新した人と、前の版（新しい順・5 件まで）が出る。「この版に戻す」は確認してから書き、今の版も前の版として残る。",
+      },
+    },
+  },
+};
+
+export const UpdatesAcceptingOthers: Story = {
+  name: "順番に更新 — 作者以外（印と案内）",
+  args: {
+    ...baseArgs,
+    entry: ACCEPTING_NOTE,
+    currentIdentity: TEACHER,
+    initialRailTab: "version" as const,
+    updateOps: updateOpsFor(),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "作者以外が受け付け中のノートを開いたとき。見出しの横に「更新を受け付けています」の印、「写しを作る」の近くに案内が出る。スイッチは作者にだけ出る。",
+      },
+    },
+  },
+};
+
+export const UpdatesConflictCopies: Story = {
+  name: "順番に更新 — 同期の競合コピー",
+  args: {
+    ...baseArgs,
+    entry: ACCEPTING_NOTE,
+    currentIdentity: TEACHER,
+    updateOps: updateOpsFor(["note-1 (conflicted copy 2026-11-18).json"]),
+  },
+  decorators: jaDecorators,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "同期ソフトが残した競合コピーが見つかったとき。件数・ファイル名と、中身は自動では取り込まれていないことを本文の上に出す。",
+      },
+    },
+  },
+};
