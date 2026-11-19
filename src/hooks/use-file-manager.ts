@@ -36,6 +36,12 @@ export type WikiSaveOptions = {
   /** 保存中（savingRef）でも捨てずに書く。メインエディタのアンマウント時の書き出し用。
    *  他の保存と並んで走るので savingRef は立てない */
   force?: boolean;
+  /**
+   * 本文も題も変えず、索引に写っていない項目（知見の topicIds など）だけを書く保存。
+   * ファイル一覧・索引・素材の索引を更新しない。一覧の state を触ると索引の組み直しが走り、
+   * 全 Wiki を読み直すので、まとめて保存すると「保存回数 × 全ページ」の読み込みになる。
+   */
+  metadataOnly?: boolean;
 };
 import {
   buildDerivedDocument,
@@ -3230,13 +3236,15 @@ export function useFileManager(authenticated: boolean) {
             prev && prev.wikiMeta !== doc.wikiMeta ? { ...prev, wikiMeta: doc.wikiMeta } : prev,
           );
         }
-        setWikiFiles((prev) =>
-          prev.map((f) =>
-            f.id === wikiId
-              ? { ...f, name: `${doc.title}.graphium.json`, modifiedTime: new Date().toISOString() }
-              : f
-          )
-        );
+        if (!options?.metadataOnly) {
+          setWikiFiles((prev) =>
+            prev.map((f) =>
+              f.id === wikiId
+                ? { ...f, name: `${doc.title}.graphium.json`, modifiedTime: new Date().toISOString() }
+                : f
+            )
+          );
+        }
         // wikiMetas を即座に更新（サイドバー・リストの title 表示は wikiMetas を参照しているため）
         setWikiMetas((prev) => {
           const next = new Map(prev);
@@ -3311,6 +3319,7 @@ export function useFileManager(authenticated: boolean) {
           });
           return next;
         });
+        if (options?.metadataOnly) return true;
         // インデックスを更新
         if (noteIndexRef.current) {
           const updated = updateIndexEntry(noteIndexRef.current, wikiId, doc);

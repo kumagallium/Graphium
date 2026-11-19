@@ -12594,7 +12594,8 @@ export function NoteApp() {
             listEntries: listClaimTopicLinkEntries,
             loadDoc: fm.loadDoc,
             getCachedDoc: fm.getCachedDoc,
-            handleSaveWikiFile: fm.handleSaveWikiFile,
+            // topicIds だけの保存。索引の組み直し（全 Wiki の読み直し）を起こさない
+            handleSaveWikiFile: (wikiId, doc) => fm.handleSaveWikiFile(wikiId, doc, { metadataOnly: true }),
             judge: (claims, topics, signal) => judgeClaimTopicLinks(claims, topics, undefined, signal),
             extraTopicIds: result.touchedTopicIds,
             signal: options?.signal,
