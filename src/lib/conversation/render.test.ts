@@ -226,3 +226,17 @@ describe("summarizeConversation / summarizeWorkdirs", () => {
     expect(rows.map((r) => r.workdir)).toEqual(["/Users/example/new", "/Users/example/mid", "/Users/example/old"]);
   });
 });
+
+describe("conversationTitle（記録が題を持つとき）", () => {
+  it("最初の発言より記録の題を先に使う", () => {
+    expect(conversationTitle(material([user("全粒粉は 2 割まで")], { customTitle: "全粒粉の配合" }), JST)).toBe("全粒粉の配合");
+  });
+
+  it("60 字を超えたら切って … を付ける", () => {
+    expect(conversationTitle(material([user("x")], { customTitle: "あ".repeat(61) }), JST)).toBe(`${"あ".repeat(60)}…`);
+  });
+
+  it("題が空白だけなら最初の発言を使う", () => {
+    expect(conversationTitle(material([user("全粒粉は 2 割まで")], { customTitle: "  " }), JST)).toBe("全粒粉は 2 割まで");
+  });
+});

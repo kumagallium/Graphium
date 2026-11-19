@@ -19,6 +19,7 @@ import {
 } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
 import {
+  conversationFallbackTitle,
   conversationFolder,
   conversationTitle,
   renderConversationBody,
@@ -125,9 +126,10 @@ export function buildConversationEntry(
   // url は「この素材を指す値」として出典 id と同じ形にする。空にすると、url で素材を引く
   // 走査（索引の再構築）が、url の空いたブロックをこの素材の利用と取り違える
   const ref = conversationSourceId(fileId);
+  const name = conversationTitle(material, options);
   return {
     fileId,
-    name: conversationTitle(material, options),
+    name,
     type: "conversation",
     mimeType: "text/plain",
     url: ref,
@@ -135,7 +137,7 @@ export function buildConversationEntry(
     uploadedAt: meta.importedAt,
     usedIn: [],
     noteContexts: [conversationFolder(options.folderRoot, material.workdir)],
-    conversation: meta,
+    conversation: { ...meta, autoName: name },
   };
 }
 
@@ -143,15 +145,19 @@ type Pending = { fileId: string; material: ConversationMaterial; meta: Conversat
 
 /**
  * 素材の一覧に、取り込んだ会話を反映する（純関数）。
- * 既にある会話は、題・フォルダ・登録日時・利用ノート・アーカイブの状態を残し、来歴だけ差し替える
- * （人が付け直した題やフォルダを、取り込み直しで元に戻さない）。
+ * 既にある会話は、フォルダ・登録日時・利用ノート・アーカイブの状態を残し、来歴だけ差し替える
+ * （人が付け直したフォルダを、取り込み直しで元に戻さない）。
+ *
+ * 題は、取り込みが付けた題のままなら新しい題に差し替え、利用者が付け直していれば触らない。
+ * 題だけが変わった会話は retitled に入れる（本文は同じなので、報告では「変わっていない」に数える）。
  */
 export function upsertConversationEntries(
   index: MediaIndex,
   items: readonly Pending[],
   options: ImportConversationsOptions,
   updatedAt: string,
-): { index: MediaIndex; created: string[]; updated: string[]; unchanged: string[]; conflicts: string[] } {
+): { index: MediaIndex; created: string[]; updated: string[]; unchanged: string[]; retitled: string[]; conflicts: string[] } {
+  const retitled: string[] = [];
   const created: string[] = [];
   const updated: string[] = [];
   const unchanged: string[] = [];
@@ -171,17 +177,26 @@ export function upsertConversationEntries(
       conflicts.push(item.fileId);
       continue;
     }
+    const title = conversationTitle(item.material, options);
+    // v0.147 までの素材は autoName を持たないので、当時の付け方（最初の発言）と比べる
+    const lastAuto = existing.conversation?.autoName ?? conversationFallbackTitle(item.material, options);
+    const name = existing.name === lastAuto ? title : existing.name;
     if (sameConversation(existing.conversation, item.meta)) {
       unchanged.push(item.fileId);
+      const autoName = existing.conversation?.autoName;
+      if (existing.conversation && (name !== existing.name || (autoName !== undefined && autoName !== title))) {
+        media[at] = { ...existing, name, conversation: { ...existing.conversation, autoName: title } };
+        retitled.push(item.fileId);
+      }
       continue;
     }
-    media[at] = { ...existing, conversation: item.meta };
+    media[at] = { ...existing, name, conversation: { ...item.meta, autoName: title } };
     updated.push(item.fileId);
   }
-  if (created.length === 0 && updated.length === 0) {
-    return { index, created, updated, unchanged, conflicts };
+  if (created.length === 0 && updated.length === 0 && retitled.length === 0) {
+    return { index, created, updated, unchanged, retitled, conflicts };
   }
-  return { index: { ...index, updatedAt, media }, created, updated, unchanged, conflicts };
+  return { index: { ...index, updatedAt, media }, created, updated, unchanged, retitled, conflicts };
 }
 
 /** いまの保存先を使う既定の依存 */

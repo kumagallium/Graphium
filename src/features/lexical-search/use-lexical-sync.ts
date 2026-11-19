@@ -18,6 +18,7 @@ import type { MediaIndex } from "../asset-browser/media-index";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { getDemoId } from "../../lib/demo/demo-mode";
 import { chunkNoteDocument, chunkPlainText } from "./chunk";
+import { conversationSearchChunks } from "./conversation-chunks";
 import { extractWikiSections } from "../wiki/section-extract";
 import { ALT_CHUNK_PREFIX, desiredAssetSources, desiredNoteSources } from "./sources";
 import { lexicalSearch, type DesiredSource, type LexicalStatus, type SourceLoader } from "./service";
@@ -267,6 +268,13 @@ export function useLexicalIndexSync(params: LexicalSyncParams): void {
             return null;
           }
           return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks: chunkPlainText(transcript) };
+        }
+        if (plan.mode === "conversation") {
+          const body = await getActiveProvider().loadMediaText?.(d.sourceId).catch(() => undefined);
+          // 本文の無い端末（一覧だけ同期された場合など）では索引に残さない。取り込み直すと本文が戻る
+          if (body === undefined) return null;
+          const chunks = conversationSearchChunks(body).map((c, i) => ({ ...c, chunkId: `${ALT_CHUNK_PREFIX}${i}` }));
+          return { kind: "asset", sourceId: d.sourceId, title: name, fingerprint: d.fingerprint, chunks };
         }
         const text = plan.mode === "docx" ? await extractDocxTextForIndex(d.sourceId) : await extractPdfTextForIndex(d.sourceId);
         // 抽出できなかった PDF / Word は「空で索引済み」にして毎回の再抽出を避ける（uploadedAt が変われば再試行）

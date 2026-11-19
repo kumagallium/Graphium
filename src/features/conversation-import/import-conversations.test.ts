@@ -321,3 +321,69 @@ describe("importConversations", () => {
     expect(store.saveIndex).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("題（記録の custom-title）と取り込み直し", () => {
+  const FIRST_LINE = "全粒粉は 2 割までにする。";
+
+  it("題があれば素材の名前になり、取り込みが付けた題として覚える", async () => {
+    const store = makeStore();
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    const entry = store.state.index.media[0];
+    expect(entry.name).toBe("全粒粉の配合");
+    expect(entry.conversation?.autoName).toBe("全粒粉の配合");
+  });
+
+  it("題が無ければ最初の発言のまま", async () => {
+    const store = makeStore();
+    await importConversations([material()], OPTIONS, store.deps);
+    expect(store.state.index.media[0].name).toBe(FIRST_LINE);
+  });
+
+  it("v0.147 で取り込んだ素材（autoName 無し・最初の発言の名前）は、取り込み直しで題に変わる。報告は「変わっていない」", async () => {
+    const store = makeStore();
+    await importConversations([material()], OPTIONS, store.deps);
+    const entry = store.state.index.media[0];
+    delete entry.conversation!.autoName;
+    const result = await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    expect(result).toMatchObject({ created: [], updated: [], unchanged: [FILE_A] });
+    expect(store.state.index.media[0].name).toBe("全粒粉の配合");
+    expect(store.state.index.media[0].conversation?.autoName).toBe("全粒粉の配合");
+  });
+
+  it("利用者が付け直した名前は、題が変わっても、会話が伸びても上書きしない", async () => {
+    const store = makeStore();
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    store.state.index.media[0].name = "自分で付けた名前";
+    await importConversations([material({ customTitle: "別の題" })], OPTIONS, store.deps);
+    expect(store.state.index.media[0].name).toBe("自分で付けた名前");
+    const longer = material({ customTitle: "さらに別の題", endedAt: "2026-11-04T01:00:00.000Z" });
+    const result = await importConversations([longer], OPTIONS, store.deps);
+    expect(result.updated).toEqual([FILE_A]);
+    expect(store.state.index.media[0].name).toBe("自分で付けた名前");
+  });
+
+  it("v0.147 の素材でも、最初の発言と違う名前は付け直したものとして残す", async () => {
+    const store = makeStore();
+    await importConversations([material()], OPTIONS, store.deps);
+    const entry = store.state.index.media[0];
+    delete entry.conversation!.autoName;
+    entry.name = "自分で付けた名前";
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    expect(store.state.index.media[0].name).toBe("自分で付けた名前");
+  });
+
+  it("題も中身も同じなら一覧を書き直さない", async () => {
+    const store = makeStore();
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    store.saveIndex.mockClear();
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    expect(store.saveIndex).not.toHaveBeenCalled();
+  });
+
+  it("記録の題が変わると、取り込みが付けた名前は追いかける", async () => {
+    const store = makeStore();
+    await importConversations([material({ customTitle: "全粒粉の配合" })], OPTIONS, store.deps);
+    await importConversations([material({ customTitle: "全粒粉と加水の配合" })], OPTIONS, store.deps);
+    expect(store.state.index.media[0].name).toBe("全粒粉と加水の配合");
+  });
+});

@@ -48,6 +48,8 @@ export type ConversationMaterial = {
   /** ISO 8601（記録に時刻が 1 つも無ければ ""） */
   startedAt: string;
   endedAt: string;
+  /** 記録が持っている会話の題（無ければ省く）。素材の名前に使う */
+  customTitle?: string;
   turns: ConversationTurn[];
   /** 本人の発言の字数の合計（brief は数えない）。ナレッジ化の候補の絞り込みに使う */
   ownChars: number;

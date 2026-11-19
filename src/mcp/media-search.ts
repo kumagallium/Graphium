@@ -1,17 +1,25 @@
-// search_media の本体: 素材インデックス（media-index.json）を名前・OCR の文字・URL の説明・出どころ情報（著者・年・発行元・DOI）で探す。
+// search_media の本体: 素材インデックス（media-index.json）を名前・OCR の文字・URL の説明・出どころ情報（著者・年・発行元・DOI）と、
+// AI との会話の本文で探す。
 //
 // 索引は search.ts と同じトークナイザ（本体の語彙索引と同じ）で MiniSearch に載せる。
 // media-index.json の更新時刻が変われば組み直す（アプリが素材を足したら次の検索で追いつく）。
 
 import { sanitizeAltText, sanitizeOcrText } from "../lib/ocr-text";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import MiniSearch from "minisearch";
 
 import type { MediaIndexEntry, MediaType } from "../features/asset-browser/media-index";
+import {
+  CONVERSATION_SEARCH_MAX_BODY_CHARS,
+  conversationSearchChunks,
+  conversationsInSearchBudget,
+} from "../features/lexical-search/conversation-chunks";
+import { buildSnippet } from "../features/lexical-search/snippet";
 import { tokenize } from "../features/lexical-search/tokenizer";
 import { sourceInfoSearchText } from "../features/asset-browser/source-info-text";
 import { allEntries } from "./search";
+import { conversationTextFile } from "./source-text";
 import { readMediaIndex } from "./sources";
 import { appDataDir, resolveGraphiumRoot } from "./vault";
 
@@ -27,6 +35,8 @@ type MediaDoc = {
   excerpt: string;
   domain: string;
   source: string;
+  /** AI との会話の本文の断片（断片ごとに 1 文書にする） */
+  conversationText: string;
 };
 
 export type MediaHit = {
@@ -37,7 +47,24 @@ export type MediaHit = {
   uploadedAt: string;
   usedIn: { noteId: string; title: string }[];
   score: number;
+  /** AI との会話: 本文で当たった箇所の抜粋 */
+  snippet?: string;
+  /** AI との会話: 会話の最後の日時（ISO 8601）。uploadedAt は取り込んだ日時 */
+  conversationDate?: string;
 };
+
+/** search_media の 1 件を読む形にする（AI との会話は、話した日と当たった箇所を添える） */
+export function formatMediaHit(h: MediaHit, index: number): string {
+  const used =
+    h.usedIn.length > 0
+      ? `   使っているノート: ${h.usedIn.map((u) => `${u.title}  [noteId: ${u.noteId}]`).join(" / ")}`
+      : "   使っているノート: なし（または Graphium の次回保存後に反映）";
+  const when = h.conversationDate
+    ? `会話 ${h.conversationDate.slice(0, 10)}`
+    : `取り込み ${h.uploadedAt.slice(0, 10) || "不明"}`;
+  const snippet = h.snippet ? `\n   当たった箇所: ${h.snippet}` : "";
+  return `${index + 1}. ${h.name}\n   id: ${h.id}  (${h.type}, ${when})${snippet}\n${used}`;
+}
 
 /** 素材を資料 ID の形にする */
 export function mediaSourceId(m: Pick<MediaIndexEntry, "type" | "fileId" | "url">): string {
@@ -45,7 +72,26 @@ export function mediaSourceId(m: Pick<MediaIndexEntry, "type" | "fileId" | "url"
   return `${m.type}:${m.fileId}`;
 }
 
-type Cache = { root: string; mtimeMs: number; mini: MiniSearch<MediaDoc>; byId: Map<string, MediaIndexEntry> };
+type ConversationChunk = { sourceId: string; text: string };
+type Cache = {
+  root: string;
+  mtimeMs: number;
+  mini: MiniSearch<MediaDoc>;
+  byId: Map<string, MediaIndexEntry>;
+  /** 会話の本文の断片（文書の id → 属する素材と文字） */
+  chunks: Map<string, ConversationChunk>;
+};
+
+/** 会話の本文を読む（読めなければ断片を作らない） */
+function readConversationBody(fileId: string, root: string): string | null {
+  const path = conversationTextFile(fileId, root);
+  if (!path) return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
 let cache: Cache | null = null;
 
 /** テスト用: キャッシュを捨てる */
@@ -67,14 +113,17 @@ function getIndex(root: string): Cache {
 
   const mini = new MiniSearch<MediaDoc>({
     idField: "id",
-    fields: ["name", "ocrText", "ocrAltText", "description", "excerpt", "domain", "source"],
+    fields: ["name", "ocrText", "ocrAltText", "description", "excerpt", "domain", "source", "conversationText"],
     tokenize: (s: string) => tokenize(s),
     processTerm: (term: string) => (term ? term : null),
     searchOptions: { boost: { name: 3, domain: 1.5 }, combineWith: "OR" as const },
     autoVacuum: false as const,
   });
   const byId = new Map<string, MediaIndexEntry>();
+  const chunks = new Map<string, ConversationChunk>();
   const docs: MediaDoc[] = [];
+  const conversationBudget = conversationsInSearchBudget(readMediaIndex(root).values());
+  let conversationChars = 0;
   for (const m of readMediaIndex(root).values()) {
     // アーカイブ済みの素材はギャラリーと同じく探す対象から外す
     if (m.archivedAt) continue;
@@ -90,10 +139,22 @@ function getIndex(root: string): Cache {
       excerpt: m.urlMeta?.excerpt ?? "",
       domain: m.urlMeta?.domain ?? "",
       source: sourceInfoSearchText(m.sourceInfo),
+      conversationText: "",
     });
+    if (m.type !== "conversation" || !conversationBudget.has(m.fileId)) continue;
+    const body = readConversationBody(m.fileId, root);
+    if (body === null) continue;
+    // 一覧の字数と実物が違っていても、読み込む量は上限を超えない
+    conversationChars += body.length;
+    if (conversationChars > CONVERSATION_SEARCH_MAX_BODY_CHARS) continue;
+    for (const c of conversationSearchChunks(body)) {
+      const docId = `${id}#${c.chunkId}`;
+      chunks.set(docId, { sourceId: id, text: c.text });
+      docs.push({ id: docId, name: "", ocrText: "", ocrAltText: "", description: "", excerpt: "", domain: "", source: "", conversationText: c.text });
+    }
   }
   mini.addAll(docs);
-  cache = { root, mtimeMs, mini, byId };
+  cache = { root, mtimeMs, mini, byId, chunks };
   return cache;
 }
 
@@ -104,14 +165,30 @@ export function searchMedia(
 ): MediaHit[] {
   if (!query.trim()) return [];
   const limit = options.limit ?? 20;
-  const { mini, byId } = getIndex(root);
+  const { mini, byId, chunks } = getIndex(root);
   const titles = new Map(allEntries(root).map((e) => [e.noteId, e.title]));
+  const results = mini.search(query);
+  const words = query.trim().split(/\s+/).filter(Boolean);
+
+  // 会話の抜粋は、その会話でいちばん点の高い断片から作る（結果は点の高い順）
+  const snippets = new Map<string, string>();
+  for (const r of results) {
+    const chunk = chunks.get(String(r.id));
+    if (chunk && !snippets.has(chunk.sourceId)) {
+      snippets.set(chunk.sourceId, buildSnippet(chunk.text, [...words, ...r.terms]).text);
+    }
+  }
 
   const hits: MediaHit[] = [];
-  for (const r of mini.search(query)) {
-    const m = byId.get(String(r.id));
+  const seenSources = new Set<string>();
+  for (const r of results) {
+    // 断片で当たったら、その断片が属する素材 1 件にまとめる
+    const sourceId = chunks.get(String(r.id))?.sourceId ?? String(r.id);
+    if (seenSources.has(sourceId)) continue;
+    const m = byId.get(sourceId);
     if (!m) continue;
     if (options.type && m.type !== options.type) continue;
+    seenSources.add(sourceId);
     // 同じノートに何度も貼られていても 1 行にまとめる
     const seen = new Set<string>();
     const usedIn: MediaHit["usedIn"] = [];
@@ -120,13 +197,16 @@ export function searchMedia(
       seen.add(u.noteId);
       usedIn.push({ noteId: u.noteId, title: titles.get(u.noteId) ?? u.noteTitle ?? u.noteId });
     }
+    const snippet = snippets.get(sourceId);
     hits.push({
-      id: String(r.id),
+      id: sourceId,
       name: m.name,
       type: m.type,
       uploadedAt: m.uploadedAt,
       usedIn,
       score: Math.round(r.score * 100) / 100,
+      ...(snippet ? { snippet } : {}),
+      ...(m.conversation?.endedAt ? { conversationDate: m.conversation.endedAt } : {}),
     });
     if (hits.length >= limit) break;
   }

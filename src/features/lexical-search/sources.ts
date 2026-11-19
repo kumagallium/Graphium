@@ -10,6 +10,7 @@
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import type { NoteIndexEntry } from "../navigation/index-file";
 import { isWordDocxEntry, type MediaIndexEntry } from "../asset-browser/media-index";
+import { conversationsInSearchBudget } from "./conversation-chunks";
 import type { DesiredSource } from "./service";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { SHARED_INDEXABLE_TYPES, sharedEntryFingerprint } from "../sharing/shared-entry-source";
@@ -48,7 +49,9 @@ export type AssetTextPlan =
   | { mode: "pdf" }
   | { mode: "docx" }
   /** 録音・動画の文字起こし（素材のそばの transcript.json）。loader が読む */
-  | { mode: "transcript" };
+  | { mode: "transcript" }
+  /** AI との会話の本文（取り込みのときに保存したテキスト）。loader が読む */
+  | { mode: "conversation" };
 
 /**
  * 素材の望ましいソース一覧と、各素材のテキストの取り方。
@@ -56,11 +59,13 @@ export type AssetTextPlan =
  * - URL: Reader の抜粋があるものだけ（同上）
  * - PDF: すべて（fingerprint = uploadedAt。テキストは loader が抽出する）
  * - Word（.docx）: ocrText が無いものすべて（PDF と同じ考え方。旧形式 .doc は mammoth で読めないので除外）
+ * - AI との会話: 新しい会話から字数の上限まで（fingerprint = 題と来歴のハッシュ。本文は loader が読む）
  * アーカイブ済み素材は対象外。
  */
 /**
- * 別の読み（macOS の Vision）から作った断片の chunkId の接頭辞。探すためだけに索引へ入れる断片で、
- * AI への文脈（wiki/retriever.ts の passages）からは外す
+ * 探すためだけに索引へ入れる断片の chunkId の接頭辞。AI への文脈（wiki/retriever.ts の passages）からは外す。
+ * 使うのは、別の読み（macOS の Vision）と AI との会話の本文。会話は、見つけるためには載せるが、
+ * 利用者がナレッジ化を選ばない限り、アプリの AI チャットには渡さない
  */
 export const ALT_CHUNK_PREFIX = "alt";
 
@@ -92,6 +97,7 @@ export function desiredAssetSources(
   const names = new Map<string, string>();
   const includePdf = options.includePdf ?? true;
   const includeDocx = options.includeDocx ?? true;
+  const conversationBudget = conversationsInSearchBudget(media);
   for (const m of media) {
     if (m.archivedAt) continue;
     if (m.type === "image" || m.type === "document") {
@@ -121,6 +127,16 @@ export function desiredAssetSources(
       const text = parts.join("\n\n");
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `url:${fnv1a(text)}` });
       plans.set(m.fileId, { mode: "inline", text });
+      names.set(m.fileId, m.name);
+    } else if (m.type === "conversation" && conversationBudget.has(m.fileId)) {
+      const c = m.conversation;
+      // 題が変わったら見出しも直すので、印に混ぜる。本文が変わると来歴の数字と取り込み時刻が動く
+      desired.push({
+        kind: "asset",
+        sourceId: m.fileId,
+        fingerprint: `conversation:${fnv1a(`${m.name}|${c?.endedAt ?? ""}|${c?.bodyChars ?? 0}|${c?.importedAt ?? ""}`)}`,
+      });
+      plans.set(m.fileId, { mode: "conversation" });
       names.set(m.fileId, m.name);
     } else if (m.type === "pdf" && includePdf) {
       desired.push({ kind: "asset", sourceId: m.fileId, fingerprint: `pdf:${m.uploadedAt ?? ""}` });
