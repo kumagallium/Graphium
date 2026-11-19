@@ -429,7 +429,7 @@ Things to know:
 
 In clients that support MCP Apps (Claude Desktop and others), the assistant can draw three graphs inside the conversation. They look the same as in the app.
 
-- **`show_steps`** — a note's steps as a flow: inputs and tools, the steps, and what they produced, from left to right. Useful right after the assistant makes a procedure note.
+- **`show_steps`** — a note's steps as a flow: inputs and tools, the steps, and what they produced, from top to bottom as in the app. Useful right after the assistant makes a procedure note.
 - **`show_lineage`** — where a note, topic or source came from, and what came from it.
 - **`show_knowledge_graph`** — the whole [global graph](/knowledge-layer). While it is open, it marks what the assistant touches in this conversation, as the graph beside the app's chat does: pages it read in light green, pages it wrote in dark green, and the links it followed in a thick green line. Ask for it at the start — *"show me the knowledge graph while we talk"* — and watch where the answer comes from. With `folder`, pages outside the folder are faded.
 
@@ -440,7 +440,7 @@ In clients that support MCP Apps (Claude Desktop and others), the assistant can 
 Things to know:
 
 - **Float it beside the chat.** If the client supports it, **Float beside the chat** keeps the graph next to the conversation, and **Full screen** makes it larger.
-- **Only what the assistant actually touched is marked.** Search results are not marked, only pages it read. Nothing is guessed.
+- **Only what the assistant actually touched is marked.** Search results are not marked, only pages it read. Nothing is guessed. Pages touched in another conversation open at the same time are marked too, from about half an hour before the graph opened.
 - **Large vaults are cut to 1,200 nodes.** Pages outside the folder go first, then the least connected. The graph takes about a second and a half to draw at that size.
 - **Clients that do not draw apps** (Claude Code, for example) get a one-line text answer instead.
 

@@ -2,8 +2,9 @@
 //
 // breadthfirst は「入口からの距離」で段を決めるので、材料・装置が手順ごとに直接つながる実データでは
 // すべての手順が同じ段に積まれ、手順の順序が読めなかった（2026-11-15 実データで確認）。
-// ここでは線の向きに沿った最長経路で段を決める: 材料 → 手順 → 生成物 → 次の手順 … が左から右へ並ぶ。
-// 入るだけの材料・装置は、最初に使う手順のすぐ左（段 - 1）に寄せる（全部を左端に集めない）。
+// ここでは線の向きに沿った最長経路で段を決める: 材料 → 手順 → 生成物 → 次の手順 … が上から下へ並ぶ
+// （アプリの工程グラフ elk-flow-layout の既定 DOWN と同じ向き）。
+// 入るだけの材料・装置は、最初に使う手順のすぐ上（段 - 1）に寄せる（全部を上端に集めない）。
 
 export type FlowLayoutNode = { id: string; kind: string };
 export type FlowLayoutEdge = { source: string; target: string };
@@ -31,7 +32,7 @@ export function flowRanks(nodes: FlowLayoutNode[], edges: FlowLayoutEdge[]): Map
       if (left === 0) queue.push(next);
     }
   }
-  // 入るだけのノード（材料・装置）は、使う先のいちばん左の段のすぐ左へ
+  // 入るだけのノード（材料・装置）は、使う先のいちばん上の段のすぐ上へ
   for (const n of nodes) {
     if ((indeg.get(n.id) ?? 0) > 0) continue;
     const targets = out.get(n.id) ?? [];
@@ -42,11 +43,11 @@ export function flowRanks(nodes: FlowLayoutNode[], edges: FlowLayoutEdge[]): Map
   return rank;
 }
 
-/** 段から座標を作る（段の中は元の並び順で上から下へ、中央そろえ） */
+/** 段から座標を作る（段は上から下、段の中は元の並び順で左から右へ、中央そろえ） */
 export function flowPositions(
   nodes: FlowLayoutNode[],
   edges: FlowLayoutEdge[],
-  spacing: { x: number; y: number } = { x: 200, y: 70 },
+  spacing: { x: number; y: number } = { x: 196, y: 84 },
 ): Map<string, { x: number; y: number }> {
   const rank = flowRanks(nodes, edges);
   const byRank = new Map<number, string[]>();
@@ -56,7 +57,7 @@ export function flowPositions(
   }
   const pos = new Map<string, { x: number; y: number }>();
   for (const [r, list] of byRank) {
-    list.forEach((id, i) => pos.set(id, { x: r * spacing.x, y: (i - (list.length - 1) / 2) * spacing.y }));
+    list.forEach((id, i) => pos.set(id, { x: (i - (list.length - 1) / 2) * spacing.x, y: r * spacing.y }));
   }
   return pos;
 }

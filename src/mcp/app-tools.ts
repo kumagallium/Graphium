@@ -21,7 +21,7 @@ import { z } from "zod";
 
 import { getGraphViewHtml } from "./apps/graph-view-html";
 import { getNotePreviewHtml } from "./apps/note-preview-html";
-import { buildFlowPayload, buildKnowledgePayload, buildLineagePayload, GRAPH_META_KEY, type GraphPayload } from "./graph-views";
+import { buildFlowPayload, buildKnowledgePayload, buildLineagePayload, GRAPH_REF_KEY, type GraphPayload, type GraphRef } from "./graph-views";
 import { traceLineage } from "./lineage";
 import { describeSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
 import { buildNotePreview, flattenPreviewBlocks, type NotePreview } from "./note-preview";
@@ -112,6 +112,27 @@ function text(s: string): CallToolResult {
   return { content: [{ type: "text", text: s }] };
 }
 
+/** 結果に載せた参照（道具と引数）から、描くデータを vault から組み直す（どの MCP プロセスでも同じ図になる） */
+export function buildGraphFromRef(ref: GraphRef): { payload: GraphPayload } | { error: string } {
+  if (!vaultExists()) return { error: "Graphium の vault が見つかりません。" };
+  if (ref.tool === "show_knowledge_graph") {
+    const payload = buildKnowledgePayload({ folder: ref.folder });
+    return payload ? { payload } : { error: "NO_INDEX: Graphium を一度起動してください（note-index.json がありません）。" };
+  }
+  const noteId = ref.noteId ?? "";
+  if (ref.tool === "show_steps") {
+    const doc = readNote(noteId);
+    if (!doc) return { error: `ノートが見つかりません: ${noteId}` };
+    const payload = buildFlowPayload(doc as any);
+    return payload ? { payload } : { error: `このノートには手順ブロックがありません: ${doc.title ?? noteId}` };
+  }
+  const external = isExternalSourceId(noteId);
+  const doc = external ? null : readNote(noteId);
+  if ((!external && !doc) || (external && isUnknownExternalSource(noteId))) return { error: `ノートまたは資料が見つかりません: ${noteId}` };
+  const startTitle = doc ? (doc.title ?? noteId) : describeSource(noteId).title;
+  return { payload: buildLineagePayload(traceLineage(noteId, { direction: ref.direction, depth: ref.depth }), startTitle) };
+}
+
 export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void {
   registerAppResource(
     server,
@@ -184,9 +205,14 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
     }),
   );
 
-  const graphResult = (summary: string, payload: GraphPayload): CallToolResult => ({
+  // 結果には「何を描くか」（道具と引数）だけを載せ、グラフのデータは画面が graph_payload で取りに行く。
+  // Claude Desktop では、モデルからの呼び出しと画面からの呼び出しが別の MCP プロセスに届くことがあり、
+  // 大きな結果（全体グラフは数百 KB）の届け方もホスト次第なので、結果に頼らない。どのプロセスでも
+  // vault から同じ図を組み直せるよう、参照は道具の名前と引数そのものにする。
+  // structuredContent は画面を描かないクライアント（Claude Code）ではモデルに渡るので、小さく保ち、要約の文も入れる
+  const graphResult = (summary: string, ref: GraphRef): CallToolResult => ({
     content: [{ type: "text", text: summary }],
-    _meta: { [GRAPH_META_KEY]: payload },
+    structuredContent: { summary, [GRAPH_REF_KEY]: ref },
   });
 
   registerAppTool(
@@ -213,7 +239,7 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       return graphResult(
         `「${payload.title}」の手順の流れを図で表示しました（手順 ${steps} 件・実体 ${payload.nodes.length - steps} 件）。` +
           "文字で読むなら get_note_steps を使ってください。",
-        payload,
+        { tool: "show_steps", noteId },
       );
     },
   );
@@ -243,12 +269,11 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       }
       const startTitle = doc ? (doc.title ?? noteId) : describeSource(noteId).title;
       const result = traceLineage(noteId, { direction, depth });
-      const payload = buildLineagePayload(result, startTitle);
       for (const n of [...result.upstream, ...result.downstream]) ctx.activity?.push("walk", n.noteId, n.fromId ?? noteId);
       return graphResult(
         `「${startTitle}」の来歴を図で表示しました（上流 ${result.upstream.length} 件・下流 ${result.downstream.length} 件・つながり ${result.connections.length} 件）。` +
           "文字で読むなら trace_lineage を使ってください。",
-        payload,
+        { tool: "show_lineage", noteId, ...(direction ? { direction } : {}), ...(depth ? { depth } : {}) },
       );
     },
   );
@@ -279,8 +304,32 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
         `全体グラフを表示しました（${payload.nodes.length} ノード・${payload.edges.length} 本の線` +
           (payload.truncated ? `。大きいので ${payload.truncated.total} 件中 ${payload.truncated.shown} 件` : "") +
           `）。この会話で読んだ・書いたページはグラフの上で光ります。`,
-        payload,
+        { tool: "show_knowledge_graph", ...(folder ? { folder } : {}) },
       );
+    },
+  );
+
+  // 画面だけが呼ぶ道具（モデルには見せない）。グラフのデータを、結果に載せた参照（道具と引数）から組み直して返す
+  registerAppTool(
+    server,
+    "graph_payload",
+    {
+      title: "グラフのデータを受け取る",
+      description: "グラフの画面が、show_steps / show_lineage / show_knowledge_graph の結果に載った参照から、描くデータを受け取る。画面専用。",
+      inputSchema: {
+        tool: z.enum(["show_steps", "show_lineage", "show_knowledge_graph"]).describe("どの道具の図か"),
+        noteId: z.string().optional().describe("show_steps / show_lineage の起点"),
+        direction: z.enum(["upstream", "downstream", "both"]).optional(),
+        depth: z.number().int().min(1).max(5).optional(),
+        folder: z.string().optional().describe("show_knowledge_graph の範囲"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: GRAPH_VIEW_URI, visibility: ["app"] } },
+    },
+    async (ref) => {
+      const r = buildGraphFromRef(ref as GraphRef);
+      if ("error" in r) return { content: [{ type: "text", text: r.error }], isError: true };
+      return { content: [{ type: "text", text: `${r.payload.nodes.length} nodes` }], structuredContent: { payload: r.payload } };
     },
   );
 
@@ -290,15 +339,16 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
     "graph_activity",
     {
       title: "グラフに光らせる出来事を受け取る",
-      description: "全体グラフの画面が、この MCP で外の AI が触れたもの（読んだ・検索に出た・たどった・書いた）を受け取る。画面専用。",
+      description: "全体グラフの画面が、外の AI が触れたもの（読んだ・検索に出た・たどった・書いた）を受け取る。画面専用。",
       inputSchema: {
-        since: z.number().int().min(0).optional().describe("最後に受け取った番号（既定 0）"),
+        since: z.number().int().min(0).optional().describe("前回の返事の cursor（既定 0）"),
+        notBefore: z.string().optional().describe("これより前（ISO 時刻）の出来事は返さない"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: { ui: { resourceUri: GRAPH_VIEW_URI, visibility: ["app"] } },
     },
-    async ({ since }) => {
-      const r = ctx.activity?.since(since ?? 0) ?? { events: [], cursor: since ?? 0 };
+    async ({ since, notBefore }) => {
+      const r = ctx.activity?.since(since ?? 0, notBefore ? { notBefore } : {}) ?? { events: [], cursor: since ?? 0 };
       return {
         content: [{ type: "text", text: `${r.events.length} events` }],
         structuredContent: r,

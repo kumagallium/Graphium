@@ -24,8 +24,14 @@ import { appDataDir, readNoteIndex, resolveGraphiumRoot } from "./vault";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** 結果の _meta にグラフを載せるキー（画面だけが読む） */
-export const GRAPH_META_KEY = "graphium/graph";
+/** 結果の structuredContent に「何を描くか」の参照を載せるキー（画面はこれを graph_payload に渡す） */
+export const GRAPH_REF_KEY = "graphiumGraph";
+
+/** 何を描くか（道具の名前と引数）。どの MCP プロセスでも vault から同じ図を組み直せる */
+export type GraphRef =
+  | { tool: "show_steps"; noteId: string }
+  | { tool: "show_lineage"; noteId: string; direction?: "upstream" | "downstream" | "both"; depth?: number }
+  | { tool: "show_knowledge_graph"; folder?: string; noteId?: undefined; direction?: undefined; depth?: undefined };
 
 export type GraphNodeKind =
   // flow
