@@ -95,9 +95,21 @@ export function buildConversationMeta(
     ownTurns: summary.ownTurns,
     ownChars: summary.ownChars,
     ...(summary.hasBrief ? { hasBrief: true } : {}),
+    ...(material.createdNoteIds && material.createdNoteIds.length > 0 ? { createdNoteIds: [...material.createdNoteIds] } : {}),
     bodyChars,
     importedAt,
   };
+}
+
+/** 前回の分を先に、今回の分を後ろに足した、重複のない一覧 */
+function unionIds(prev: readonly string[] | undefined, next: readonly string[] | undefined): string[] {
+  return [...new Set([...(prev ?? []), ...(next ?? [])])];
+}
+
+function sameIds(a: readonly string[] | undefined, b: readonly string[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((id, i) => id === y[i]);
 }
 
 /** 前回の取り込みと中身が同じか（importedAt を除いて比べる） */
@@ -112,6 +124,7 @@ function sameConversation(a: ConversationMeta | undefined, b: ConversationMeta):
     a.ownTurns === b.ownTurns &&
     a.ownChars === b.ownChars &&
     !!a.hasBrief === !!b.hasBrief &&
+    sameIds(a.createdNoteIds, b.createdNoteIds) &&
     a.bodyChars === b.bodyChars
   );
 }
@@ -254,8 +267,12 @@ export async function importConversations(
       skipped.push({ sessionId: material.sessionId, reason: "id-conflict" });
       continue;
     }
-    const body = renderConversationBody(material, options);
-    const meta = buildConversationMeta(material, body.length, now);
+    // 取り込み直しでは、前回のノートの id と今回の分の和集合を持つ（記録が切り詰められても消えない）
+    const union = unionIds(existing?.conversation?.createdNoteIds, material.createdNoteIds);
+    const merged: ConversationMaterial =
+      union.length > 0 ? { ...material, createdNoteIds: union } : material;
+    const body = renderConversationBody(merged, options);
+    const meta = buildConversationMeta(merged, body.length, now);
     // 変わっていない会話は本文を書き直さない（本文が失われているときは書き直す）
     let needsBody = !sameConversation(existing?.conversation, meta);
     if (!needsBody && deps.loadMediaText) {
@@ -273,7 +290,7 @@ export async function importConversations(
         continue;
       }
     }
-    pending.push({ fileId, material, meta });
+    pending.push({ fileId, material: merged, meta });
   }
 
   const latest = (await deps.readIndex()) ?? before;

@@ -61,6 +61,28 @@ const CUSTOM_TITLE_MARK = '"custom-title"';
 /** 題として持つ長さの上限（記録が壊れていても素材の一覧を膨らませない） */
 const MAX_CUSTOM_TITLE_CHARS = 300;
 
+/** Graphium の create_note を呼んだ道具の名前（`mcp__graphium__create_note` と plugin 形式だけ） */
+const CREATE_NOTE_TOOL_RE = /^mcp__(?:plugin_[\w-]+_)?graphium__create_note$/;
+const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+/** 結果の「ファイル: <パス>/notes/<id>.json」の行（題・フォルダ名は改行を含められるので、行頭に固定する） */
+const RESULT_FILE_LINE_RE = new RegExp(`^\\s*ファイル:.*[\\/\\\\](${UUID})\\.json\\s*$`, "gim");
+
+/**
+ * create_note の結果の文から、作ったノートの id を取り出す。
+ * 結果は `タイトル: …` → `noteId: <id>` → （`フォルダ: …`）→ `ファイル: …/notes/<id>.json` の順で、
+ * 題とフォルダ名には改行を入れられる（どの行も偽装できる）。本物のファイルの行は常に一番後ろなので、
+ * 行頭固定の「ファイル:」行の最後の一致の id を採り、同じ id の行頭固定の `noteId:` 行があるときだけ使う。
+ */
+export function createdNoteIdOfResult(text: string): string | null {
+  let last: string | null = null;
+  for (const m of text.matchAll(RESULT_FILE_LINE_RE)) last = m[1];
+  if (!last) return null;
+  if (!new RegExp(`^\\s*noteId:\\s*${last}\\s*$`, "im").test(text)) return null;
+  return last.toLowerCase();
+}
+/** 結び付けるノートの数の上限（記録が壊れていても素材の一覧を膨らませない） */
+const MAX_CREATED_NOTE_IDS = 500;
+
 export type ClaudeCodeReaderOptions = {
   /**
    * 会話の id。記録のファイル名（拡張子を除く）を渡す。渡さなければ記録の中の sessionId を使う。
@@ -210,6 +232,19 @@ function validTimestamp(value: unknown): string {
   return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
 }
 
+/** 結果の content（文字列か、{type:"text", text} の配列）から文字をつなぐ */
+function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as { type?: unknown; text?: unknown };
+    if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+  }
+  return parts.join("\n");
+}
+
 /** 行を 1 つずつ受け取る読み取り役を作る */
 export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions = {}): ClaudeCodeSessionReader {
   const includeAssistant = options.includeAssistant !== false;
@@ -224,6 +259,9 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
   let userTurns = 0;
   let mainRecords = 0;
   let lastAssistant: { text: string; at: string } | null = null;
+  // create_note の呼び出し（tool_use の id）で、結果をまだ読んでいないもの
+  const pendingCreateNote = new Set<string>();
+  const createdNoteIds: string[] = [];
 
   const noteTime = (at: string) => {
     if (!at) return;
@@ -233,8 +271,59 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
     if (!endedAt || t > Date.parse(endedAt)) endedAt = at;
   };
 
+  /**
+   * create_note の呼び出しと、その結果の noteId を拾う（取るのは noteId だけ。道具の出力は本文に入れない）。
+   * 下請けのエージェントの記録は別のファイルにあり、ここでは読まない。
+   */
+  const noteCreatedNotes = (line: string) => {
+    if (line.includes("create_note") && line.includes('"tool_use"')) {
+      try {
+        const rec = JSON.parse(line) as { message?: { content?: unknown } };
+        const content = rec?.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (!block || typeof block !== "object") continue;
+            const b = block as { type?: unknown; name?: unknown; id?: unknown };
+            if (b.type === "tool_use" && typeof b.name === "string" && typeof b.id === "string" && CREATE_NOTE_TOOL_RE.test(b.name)) {
+              pendingCreateNote.add(b.id);
+            }
+          }
+        }
+      } catch {
+        // 読めない行は飛ばす
+      }
+    }
+    if (pendingCreateNote.size === 0 || !line.includes('"tool_result"')) return;
+    let hit = false;
+    for (const id of pendingCreateNote) {
+      if (line.includes(id)) {
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) return;
+    try {
+      const rec = JSON.parse(line) as { message?: { content?: unknown } };
+      const content = rec?.message?.content;
+      if (!Array.isArray(content)) return;
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const b = block as { type?: unknown; tool_use_id?: unknown; is_error?: unknown; content?: unknown };
+        if (b.type !== "tool_result" || typeof b.tool_use_id !== "string" || !pendingCreateNote.has(b.tool_use_id)) continue;
+        pendingCreateNote.delete(b.tool_use_id);
+        if (b.is_error) continue;
+        const noteId = createdNoteIdOfResult(toolResultText(b.content));
+        if (!noteId) continue;
+        if (!createdNoteIds.includes(noteId) && createdNoteIds.length < MAX_CREATED_NOTE_IDS) createdNoteIds.push(noteId);
+      }
+    } catch {
+      // 読めない行は飛ばす
+    }
+  };
+
   const push = (line: string) => {
     if (line.length === 0 || line.charCodeAt(0) !== 123 /* { */) return;
+    noteCreatedNotes(line);
     if (line.includes(CUSTOM_TITLE_MARK)) {
       try {
         const parsed: unknown = JSON.parse(line);
@@ -332,7 +421,11 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
 
   const finish = (): ConversationMaterial | null => {
     if (!isValidConversationSessionId(sessionId) || mainRecords === 0) return null;
-    return { provider: "claude-code", sessionId, workdir, startedAt, endedAt, ...(customTitle ? { customTitle } : {}), turns, ownChars };
+    return { provider: "claude-code", sessionId, workdir, startedAt, endedAt, ...(customTitle ? { customTitle } : {}),
+      ...(createdNoteIds.length > 0 ? { createdNoteIds } : {}),
+      turns,
+      ownChars,
+    };
   };
 
   return { push, finish };

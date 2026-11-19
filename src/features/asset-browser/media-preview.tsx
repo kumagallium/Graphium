@@ -125,6 +125,10 @@ export type MediaPreviewProps = {
   focus?: MaterialFocus;
   /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
   onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
+  /** AI との会話: この会話で作ったノートを開く */
+  onOpenNote?: (noteId: string) => void;
+  /** AI との会話: ノートの題を引く（索引に無い・ゴミ箱は undefined） */
+  noteTitleOf?: (noteId: string) => string | undefined;
 };
 
 /**
@@ -166,7 +170,7 @@ function BrokenLinkNotice() {
   );
 }
 
-export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset, focus }: MediaPreviewProps) {
+export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset, focus, onOpenNote, noteTitleOf }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
       return <ResolvedImage entry={entry} />;
@@ -195,7 +199,7 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset,
     case "data":
       return <DataPreview entry={entry} />;
     case "conversation":
-      return <ConversationPreview entry={entry} />;
+      return <ConversationPreview entry={entry} onOpenNote={onOpenNote} noteTitleOf={noteTitleOf} />;
     default:
       return (
         <div className="flex items-center justify-center">

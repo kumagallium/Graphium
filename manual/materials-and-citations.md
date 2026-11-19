@@ -150,6 +150,8 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 
 ![A brought-in conversation opened: a Brief, the AI's reply in lighter text, and two lines of your own](/screenshots/conversation-material.png)
 
+**Notes made in a conversation.** If the AI saved notes to Graphium during the conversation, they are listed above the text under **Notes made in this conversation**; select a title to open the note. Graphium finds them in the record when you bring the conversation in. A conversation that already has such notes is left out of the candidates for **Add all to knowledge**, because its decisions are already summed up in the notes (you can still turn it into knowledge one at a time from the list).
+
 **Finding one by what was said.** `⌘K` (`Ctrl+K` on Windows/Linux), the search box of the **AI conversations** list and the `search_media` tool of the [MCP server](/mcp-server) look through the text of your conversations as well as their names. This covers the newest conversations up to 10 million characters of saved text; older ones are found by name. The AI chat inside Graphium does not read conversations on its own.
 
 **Asking another AI.** An AI connected through the [MCP server](/mcp-server) can look through your conversations and point back to the one it used. [The measurement](/evaluations/ai-conversation-recall) shows how far this went on ten conversations.

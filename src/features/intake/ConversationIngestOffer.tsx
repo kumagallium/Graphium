@@ -9,14 +9,22 @@ type ConversationIngestOfferProps = {
   total: number;
   /** ナレッジ化の候補の本数 */
   candidates: number;
+  /** ノートにまとめてあるため候補から外した本数（0 なら何も足さない） */
+  leftOut?: number;
   variant?: "full" | "short";
 };
 
-export function ConversationIngestOffer({ total, candidates, variant = "full" }: ConversationIngestOfferProps) {
+export function ConversationIngestOffer({ total, candidates, leftOut = 0, variant = "full" }: ConversationIngestOfferProps) {
   const { locale, t } = useLocale();
 
   if (candidates <= 0) {
-    return <p className="text-xs text-muted-foreground">{t("intake.conversation.offerNone")}</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        {leftOut > 0
+          ? t("intake.conversation.offerNoneLeftOut", { count: String(leftOut) })
+          : t("intake.conversation.offerNone")}
+      </p>
+    );
   }
 
   const { low, high } = estimateConversationIngestTokens(candidates);
@@ -30,6 +38,7 @@ export function ConversationIngestOffer({ total, candidates, variant = "full" }:
       {variant === "short"
         ? t("intake.conversation.offerShort", { candidates: String(candidates), tokens })
         : t("intake.conversation.offer", { total: String(total), candidates: String(candidates), tokens })}
+      {leftOut > 0 && ` ${t("intake.conversation.leftOut", { count: String(leftOut) })}`}
     </p>
   );
 }

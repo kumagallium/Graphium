@@ -18,11 +18,11 @@ function Setter({ locale }: { locale: "ja" | "en" }) {
   return null;
 }
 
-function text(locale: "ja" | "en", candidates: number, variant?: "full" | "short") {
+function text(locale: "ja" | "en", candidates: number, variant?: "full" | "short", leftOut?: number) {
   const { container } = render(
     <LocaleProvider>
       <Setter locale={locale} />
-      <ConversationIngestOffer total={27} candidates={candidates} variant={variant} />
+      <ConversationIngestOffer total={27} candidates={candidates} leftOut={leftOut} variant={variant} />
     </LocaleProvider>,
   );
   return container.textContent ?? "";
@@ -39,5 +39,15 @@ describe("ConversationIngestOffer", () => {
 
   it("候補 0 本は候補が無い文になる", () => {
     expect(text("ja", 0)).toContain("ナレッジ化の候補はありません");
+  });
+
+  it("外した本数があるときだけ、文の後ろに足す", () => {
+    expect(text("ja", 4, "full", 3)).toContain("ノートにまとめた 3 本は候補から外しました");
+    expect(text("en", 4, "full", 3)).toContain("Left out 3 already saved as notes");
+    expect(text("ja", 4, "full", 0)).not.toContain("ノートにまとめた");
+  });
+
+  it("候補が 0 本でも外した本数は伝える", () => {
+    expect(text("ja", 0, "full", 2)).toContain("ノートにまとめた 2 本は候補から外しました");
   });
 });
