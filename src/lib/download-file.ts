@@ -7,8 +7,16 @@
 import { isTauri } from "./platform";
 import { bytesToBase64 } from "@/lib/base64";
 
+export type DownloadOptions = {
+  /**
+   * デスクトップ版で、この種類の書き出しの保存先を覚える（英小文字のみ。例 "word"）。
+   * 次回は前回保存したフォルダでダイアログが開く。フォルダのパスは Rust の中だけで扱う
+   */
+  rememberKey?: string;
+};
+
 // 戻り値: 保存を実行したら true、Tauri でユーザーがダイアログをキャンセルしたら false。
-export async function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
+export async function downloadBlob(blob: Blob, filename: string, options?: DownloadOptions): Promise<boolean> {
   if (isTauri()) {
     // セキュリティ: 保存先の選択とディスク書き込みは Rust 側の
     // save_bytes_with_dialog に一本化する。JS からは保存先パスを一切
@@ -22,6 +30,7 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<boolea
     const saved = await invoke<boolean>("save_bytes_with_dialog", {
       suggestedName: filename,
       contentBase64: content_base64,
+      ...(options?.rememberKey ? { rememberKey: options.rememberKey } : {}),
     });
     return saved !== false;
   }

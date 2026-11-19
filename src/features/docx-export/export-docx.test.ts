@@ -20,6 +20,8 @@ describe("exportNoteToDocx", () => {
     const [blob, name] = downloadBlob.mock.calls[0];
     expect(name).toBe(`${sanitizeFilename(title)}.docx`);
     expect((blob as Blob).type).toBe(DOCX_MIME);
+    // 保存先は Word の書き出しの種類として覚える
+    expect(downloadBlob.mock.calls[0][2]).toEqual({ rememberKey: "word" });
   });
 
   it("保存がキャンセルされたら false", async () => {

@@ -218,5 +218,6 @@ export async function buildNoteDocxBlob(options: DocxExportOptions): Promise<Blo
 /** ノートを Word ファイルとして保存する。保存を実行したら true、キャンセルなら false */
 export async function exportNoteToDocx(options: DocxExportOptions): Promise<boolean> {
   const blob = await buildNoteDocxBlob(options);
-  return downloadBlob(blob, `${sanitizeFilename(options.title)}.docx`);
+  // 保存先は Word の書き出しだけで覚える（所定のフォルダに毎回保存する使い方のため）
+  return downloadBlob(blob, `${sanitizeFilename(options.title)}.docx`, { rememberKey: "word" });
 }
