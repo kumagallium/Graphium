@@ -20,6 +20,7 @@ import type {
   SharedEntryContent,
   SharedEntryType,
   SharedStorageProvider,
+  SharedWriteOptions,
   BlobRef,
   BlobStorageProvider,
 } from "./types";
@@ -91,6 +92,21 @@ export class AuthorMismatchError extends Error {
         `not ${callerEmail ?? "(unknown)"}. Fork it instead.`,
     );
     this.name = "AuthorMismatchError";
+  }
+}
+
+/** Rust が「先に更新されていた」ときに返すエラーの接頭辞。lib.rs の SHARED_CONFLICT_PREFIX と揃える */
+export const SHARED_CONFLICT_PREFIX = "SHARED_CONFLICT:";
+
+/** 読んだ版のあとに、共有の本体が更新されていた（または無くなっていた）。何も書いていない */
+export class SharedConflictError extends Error {
+  constructor(
+    public readonly entryId: string,
+    /** 今の版の hash。本体が無くなっていたときは空 */
+    public readonly currentHash: string,
+  ) {
+    super(`Shared entry ${entryId} was updated by someone else.`);
+    this.name = "SharedConflictError";
   }
 }
 
@@ -214,7 +230,7 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
     };
   }
 
-  async write(entry: SharedEntry, content: Uint8Array): Promise<void> {
+  async write(entry: SharedEntry, content: Uint8Array, options?: SharedWriteOptions): Promise<void> {
     if (!isValidSharedId(entry.id)) throw new Error(`Invalid shared id: ${entry.id}`);
     const folder = TYPE_TO_FOLDER[entry.type];
     if (!folder) throw new Error(`Unknown entry type: ${entry.type}`);
@@ -235,13 +251,22 @@ export class LocalFolderSharedProvider implements SharedStorageProvider {
       entry: finalEntry,
       body_base64: uint8ToBase64(content),
     };
-    await invoke<void>("shared_write", {
-      root: this.root,
-      entryType: folder,
-      id: entry.id,
-      content: JSON.stringify(stored),
-      authorEmail: this.identity?.email,
-    });
+    try {
+      await invoke<void>("shared_write", {
+        root: this.root,
+        entryType: folder,
+        id: entry.id,
+        content: JSON.stringify(stored),
+        authorEmail: this.identity?.email,
+        ...(options?.expectedHash !== undefined ? { expectedHash: options.expectedHash } : {}),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.startsWith(SHARED_CONFLICT_PREFIX)) {
+        throw new SharedConflictError(entry.id, message.slice(SHARED_CONFLICT_PREFIX.length));
+      }
+      throw e;
+    }
   }
 
   async delete(id: string): Promise<void> {

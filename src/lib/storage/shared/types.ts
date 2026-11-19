@@ -124,6 +124,12 @@ export type ReviewRequest = {
   state: "open" | "merged" | "closed";
 };
 
+/** 書き込みの条件 */
+export type SharedWriteOptions = {
+  /** 読んだ版の hash。今の版と違えば書かない（先に更新されていた） */
+  expectedHash?: string;
+};
+
 /**
  * Shared テキスト/メタデータ用 Provider。
  *
@@ -150,7 +156,7 @@ export interface SharedStorageProvider {
    * （history に旧 hash を 1 行追加）。major 改訂は呼び出し側が新 id を生成し、
    * `entry.supersedes` に旧 id をセットして write する。
    */
-  write(entry: SharedEntry, content: Uint8Array): Promise<void>;
+  write(entry: SharedEntry, content: Uint8Array, options?: SharedWriteOptions): Promise<void>;
 
   /**
    * tombstone 化（実体削除はしない）。誤共有リカバリ用。

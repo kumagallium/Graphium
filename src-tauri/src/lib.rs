@@ -3435,6 +3435,49 @@ fn assert_existing_author(
     Ok(())
 }
 
+/// 「読んだ版のあとに先に更新されていた」ときのエラーの接頭辞。後ろに今の版の hash が付く
+/// （ファイルが無くなっていたときは空）。TS 側の SHARED_CONFLICT_PREFIX と揃える
+const SHARED_CONFLICT_PREFIX: &str = "SHARED_CONFLICT";
+
+/// この端末の中で、版の確認と書き込みの間に別の書き込みを割り込ませないための鍵。
+/// 別の端末との競合は防げない（同期フォルダにはファイルの鍵が無い）
+static SHARED_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// expected_hash が指定されていれば、今の版の hash と同じかを確かめる
+fn assert_expected_hash(path: &Path, expected_hash: &Option<String>) -> Result<(), String> {
+    let Some(expected) = expected_hash else { return Ok(()) };
+    let current = fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("entry")?.get("hash")?.as_str().map(str::to_string))
+        .unwrap_or_default();
+    if &current != expected {
+        return Err(format!("{SHARED_CONFLICT_PREFIX}:{current}"));
+    }
+    Ok(())
+}
+
+/// 共有の本体を、一時ファイルに書いてから rename で置き換える。
+/// 途中で落ちても元のファイルは壊れず、読み手に書きかけの状態を見せない
+fn write_shared_entry_file(path: &Path, content: &str) -> Result<(), String> {
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
+    let result = (|| -> std::io::Result<()> {
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)
+    })();
+    result.map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("ファイル書き込み失敗: {e}")
+    })
+}
+
 #[tauri::command]
 fn shared_write(
     root: String,
@@ -3442,14 +3485,17 @@ fn shared_write(
     id: String,
     content: String,
     author_email: Option<String>,
+    expected_hash: Option<String>,
 ) -> Result<(), String> {
     validate_id(&id)?;
     let dir = shared_type_dir(&root, &entry_type)?;
     ensure_dir_within_root(&root, &dir)?;
     let path = dir.join(format!("{id}.json"));
     reject_symlink(&path)?;
+    let _guard = SHARED_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     assert_existing_author(&path, &author_email)?;
-    fs::write(&path, content).map_err(|e| format!("ファイル書き込み失敗: {e}"))
+    assert_expected_hash(&path, &expected_hash)?;
+    write_shared_entry_file(&path, &content)
 }
 
 /// 本体ファイルを削除し、tombstone JSON を `_meta/tombstones/<id>.json` に書き込む。
@@ -6223,6 +6269,7 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
             "0190e8c0-0000-7000-8000-000000000000".into(),
             "{}".into(),
             None,
+            None,
         )
         .unwrap_err();
         assert!(err.contains("書き込み権限"), "{err}");
@@ -7072,6 +7119,72 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         assert!(victim.exists());
     }
 
+    fn shared_entry_json(hash: &str) -> String {
+        format!(r#"{{"entry":{{"hash":"{hash}","author":{{"email":"a@example.com"}}}},"body_base64":""}}"#)
+    }
+
+    #[test]
+    fn shared_write_replaces_only_when_the_expected_version_is_current() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(&root).unwrap();
+        let root_s = root.to_str().unwrap().to_string();
+        let id = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+        let author = Some("a@example.com".to_string());
+        let write = |content: String, expected: Option<&str>| {
+            shared_write(root_s.clone(), "notes".into(), id.into(), content, author.clone(), expected.map(str::to_string))
+        };
+        write(shared_entry_json("sha256:one"), None).unwrap();
+        write(shared_entry_json("sha256:two"), Some("sha256:one")).unwrap();
+        // 読んだ版が古ければ書かず、今の版の hash を返す
+        let err = write(shared_entry_json("sha256:three"), Some("sha256:one")).unwrap_err();
+        assert_eq!(err, "SHARED_CONFLICT:sha256:two");
+        let path = root.join("notes").join(format!("{id}.json"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), shared_entry_json("sha256:two"));
+        // 一時ファイルを残さない
+        let names: Vec<_> = fs::read_dir(root.join("notes")).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names.len(), 1);
+    }
+
+    #[test]
+    fn shared_write_reports_a_conflict_when_the_entry_is_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(&root).unwrap();
+        let err = shared_write(
+            root.to_str().unwrap().into(),
+            "notes".into(),
+            "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70".into(),
+            shared_entry_json("sha256:one"),
+            None,
+            Some("sha256:old".into()),
+        )
+        .unwrap_err();
+        assert_eq!(err, "SHARED_CONFLICT:");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_write_does_not_write_through_a_hardlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("shared");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        let id = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
+        let outside = tmp.path().join("outside.json");
+        fs::write(&outside, shared_entry_json("sha256:one")).unwrap();
+        fs::hard_link(&outside, root.join("notes").join(format!("{id}.json"))).unwrap();
+        shared_write(
+            root.to_str().unwrap().into(),
+            "notes".into(),
+            id.into(),
+            shared_entry_json("sha256:two"),
+            Some("a@example.com".into()),
+            None,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&outside).unwrap(), shared_entry_json("sha256:one"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn shared_write_refuses_symlinked_entry_and_dir() {
@@ -7081,7 +7194,7 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let id = "0190f3a2-7b1c-7e4d-9a55-3c2f1b8d6e70";
         let target = tmp.path().join("victim.json");
         std::os::unix::fs::symlink(&target, root.join("notes").join(format!("{id}.json"))).unwrap();
-        let r = shared_write(root.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        let r = shared_write(root.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None, None);
         assert!(r.is_err());
         assert!(!target.exists());
         // notes フォルダ自体が外へのリンクに差し替えられた場合
@@ -7090,13 +7203,13 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let root2 = tmp.path().join("shared2");
         fs::create_dir_all(&root2).unwrap();
         std::os::unix::fs::symlink(&outside, root2.join("notes")).unwrap();
-        let r = shared_write(root2.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None);
+        let r = shared_write(root2.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None, None);
         assert!(r.is_err());
         assert!(fs::read_dir(&outside).unwrap().next().is_none());
         // 通常の共有は書ける
         let root3 = tmp.path().join("shared3");
         fs::create_dir_all(&root3).unwrap();
-        shared_write(root3.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None).unwrap();
+        shared_write(root3.to_str().unwrap().into(), "notes".into(), id.into(), "{}".into(), None, None).unwrap();
     }
 
     // ── 読める写し ──
@@ -7492,7 +7605,7 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         let link = tmp.path().join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let root = link.to_str().unwrap().to_string();
-        shared_write(root.clone(), "notes".into(), "00000000-0000-7000-8000-000000000001".into(), "{}".into(), None).unwrap();
+        shared_write(root.clone(), "notes".into(), "00000000-0000-7000-8000-000000000001".into(), "{}".into(), None, None).unwrap();
         assert!(real.join("notes").join("00000000-0000-7000-8000-000000000001.json").exists());
         let items = inbox_list(root.clone()).unwrap();
         assert_eq!(items.len(), 1);

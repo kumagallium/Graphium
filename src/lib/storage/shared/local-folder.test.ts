@@ -14,6 +14,7 @@ import {
   LocalFolderSharedProvider,
   LocalFolderBlobProvider,
   AuthorMismatchError,
+  SharedConflictError,
 } from "./local-folder";
 import type { SharedEntry } from "./types";
 import { newSharedId } from "./id";
@@ -50,7 +51,13 @@ class FakeFs {
           return v;
         }
         case "shared_write": {
-          this.entries.set(`${args.entryType}/${args.id}`, args.content);
+          const key = `${args.entryType}/${args.id}`;
+          if (args.expectedHash !== undefined) {
+            const existing = this.entries.get(key);
+            const current = existing ? JSON.parse(existing).entry.hash : "";
+            if (current !== args.expectedHash) throw `SHARED_CONFLICT:${current}`;
+          }
+          this.entries.set(key, args.content);
           return null;
         }
         case "shared_delete": {
@@ -150,6 +157,32 @@ describe("LocalFolderSharedProvider — write / read", () => {
   it("不正な id は弾く", async () => {
     const provider = new LocalFolderSharedProvider("/tmp/shared", { email: author.email });
     await expect(provider.read("not-a-uuid")).rejects.toThrow(/Invalid shared id/);
+  });
+});
+
+describe("LocalFolderSharedProvider — 読んだ版の確認", () => {
+  const body = (s: string) => new TextEncoder().encode(s);
+
+  it("読んだ版のままなら書ける", async () => {
+    const provider = new LocalFolderSharedProvider("/shared", { email: author.email });
+    const entry = makeEntry();
+    await provider.write(entry, body("one"));
+    const { entry: read } = await provider.read(entry.id);
+    await provider.write(entry, body("two"), { expectedHash: read.hash });
+    expect(new TextDecoder().decode((await provider.read(entry.id)).body)).toBe("two");
+  });
+
+  it("先に更新されていたら SharedConflictError で、本体は変わらない", async () => {
+    const provider = new LocalFolderSharedProvider("/shared", { email: author.email });
+    const entry = makeEntry();
+    await provider.write(entry, body("one"));
+    const { entry: first } = await provider.read(entry.id);
+    await provider.write(entry, body("two"));
+    const { entry: current } = await provider.read(entry.id);
+    const err = await provider.write(entry, body("three"), { expectedHash: first.hash }).catch((e) => e);
+    expect(err).toBeInstanceOf(SharedConflictError);
+    expect(err.currentHash).toBe(current.hash);
+    expect(new TextDecoder().decode((await provider.read(entry.id)).body)).toBe("two");
   });
 });
 

@@ -4684,6 +4684,8 @@ Two interfaces, two axes of swap:
 Both expose `verifyHash(id)` so a reader can independently check
 content integrity.
 
+`write` takes an optional `expectedHash`, the hash of the version the caller read. If the entry's current hash differs, or the entry is gone, nothing is written and the Local folder provider throws `SharedConflictError` with the current hash. The check only covers writers on the same device; two devices writing to a synced folder at nearly the same time can still both pass it. The entry file is replaced through a temporary file and a rename, so a crash during a write leaves the previous version intact.
+
 ### 7.4 Note-side references
 
 A personal note that has been shared carries `sharedRef`:
