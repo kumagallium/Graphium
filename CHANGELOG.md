@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.152.0](https://github.com/kumagallium/Graphium/compare/v0.151.0...v0.152.0) - 2026-11-19
+
+- [fix] MCP graph view: fetch the graph by reference so it draws in Claude Desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/1785
+- feat(conversation): link a brought-in conversation to the notes it made by @kumagallium in https://github.com/kumagallium/Graphium/pull/1786
+- feat(graph): 知見の topicIds から「知見 → トピック」の参照の線を出す by @kumagallium in https://github.com/kumagallium/Graphium/pull/1788
+- fix(build): extract the bundled Node.js with the system tar on Windows by @kumagallium in https://github.com/kumagallium/Graphium/pull/1790
+
 ## [v0.151.0](https://github.com/kumagallium/Graphium/compare/v0.150.0...v0.151.0) - 2026-11-19
 
 - fix(source-check): retry a save declined by another save instead of dropping the result by @kumagallium in https://github.com/kumagallium/Graphium/pull/1782
