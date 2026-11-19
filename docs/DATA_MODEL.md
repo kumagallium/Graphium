@@ -593,8 +593,8 @@ the same single `quote` block). The block's text keeps the memo's line
 breaks, with the source line (`— <source>`) in italic grey. The link is copied
 when the block is duplicated and when a note is derived from another note
 (`blockAlignments` is handled the same way), and is *not* carried by
-copy-and-paste, into templates, or into a fork of a shared note (the memo lives in
-the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
+copy-and-paste, into templates, into the shared copy of a note (§7), or into a fork
+of a shared note (the memo lives in the sharer's `captures.json`). "Detach" in the quote's popover removes the entry and
 leaves the text.
 
 An entry is only as live as its block. Every save (the main editor and the side
@@ -1954,8 +1954,10 @@ type WikiMeta = {
   derivedFromClaims?: string[];
 
   // Claim-only. IDs of the topic (`kind: "topic"`) pages this Claim belongs to
-  // (no count limit — usually 1). Paired bidirectionally with the topic's
-  // `derivedFromClaims` above.
+  // (usually 1). On a legacy Topic this is paired with the topic's
+  // `derivedFromClaims` above. New-format Topics have no member list: the link
+  // lives here only, is chosen per source (0–3 per Claim, §3.1b) and never
+  // overwrites links that already exist.
   topicIds?: string[];
 
   // Topic/Answer, new format (2026-09 onwards). Canonical Markdown body kept
@@ -2268,6 +2270,29 @@ page's own "Regenerate" action; (2) the Lint view's "legacy-format
 topics" section, which rebuilds every topic still awaiting migration in
 one confirmed batch; (3) the Lint view's per-issue "Rebuild from
 sources" fix action on a `missing-source` finding.
+
+**Linking Claims to Topics: `topicIds`.** New-format Topics are written from the
+source, so a Claim and a Topic made from the same source are not connected by
+anything the Topic stage does. A separate step connects them after the Topic stage,
+once per source (`linkClaimsToTopicsForSource`,
+`src/features/wiki/claim-topic-link.ts`; `POST /api/wiki/link-claims-to-topics`, light
+tier): one AI call receives that source's Claims that have no `topicIds` yet (title
+only) and the Topics that list the source in `derivedFromNotes` (title plus the
+opening of the definition), and picks 0–3 Topics per Claim that are what the Claim is
+mainly about — a Topic whose word merely appears does not qualify, and an empty answer
+is valid. Claims and Topics are numbered in the prompt (`C1`, `T1`), so the model never
+copies ids.
+
+The result is written to the Claim's `wikiMeta.topicIds` only. `derivedFromClaims` is
+never written here: on a legacy Topic it means "the material the body was generated
+from", which is not what this link says. Answers are checked by machine before saving —
+the id is in the set that was sent, the Topic still lists the source, at most 3 per
+Claim — and an answer that fails is discarded and counted (`rejected`, recorded in the
+wiki log). A Claim that already has `topicIds` is never overwritten. The link does not
+change a page's body, so no revision is recorded. A failed or stopped judgment never
+fails the ingest. When Topics are merged, Claims linked to an absorbed Topic are
+retargeted to the kept Topic before the absorbed page goes to Trash, in both the app
+and MCP `merge_topics`.
 
 Re-ingesting a source also re-checks topics that already cite it, not
 just the ones the router names: `runSourceTopicStage` unions the
@@ -4331,11 +4356,38 @@ linked material, `graphium:placeId`, `graphium:relPath`,
 `graphium:fileSize` and `graphium:fileModified` (an `xsd:dateTime`). The
 absolute path and the history are not exported.
 
+**Source data.** A small material made by analysis (a summary table, a
+figure) can name a linked file as its **source data**: a 40 GB `raw.csv` is
+linked, `summary.csv` is imported, and `summary.csv` gets `raw.csv` as its
+source data. The parent's `fileId` goes into the existing
+`MediaIndexEntry.derivedFromAssets`; there is no new field and the media
+index version is not bumped. Rules (`src/features/linked-files/link-origin.ts`):
+
+- A parent must be a linked file (`isLinkedEntry`). Linked files are
+  `type: "url"`, so they never trip `hasExtractedImages` /
+  `hasExpandedOffice`, which read "some material has this one in
+  `derivedFromAssets`" as "already extracted". Naming a PDF or an Office
+  file as a parent would make it look extracted when it was not.
+- A child must not be a linked file, and its `type` is `image`, `pdf`,
+  `document`, `data`, `video` or `audio` (not a memo, an AI conversation or a
+  URL bookmark). Parent is always linked and child never is, so there is no cycle.
+- Other derived-from ids (such as the PDF an extracted image came from) are
+  kept; the UI removes only linked parents. Archived linked files are not
+  offered as candidates, and an id the index no longer has is not shown.
+- Writes re-read the index, save only when something changed, and fire
+  `MEDIA_INDEX_CHANGED_EVENT`.
+
+Graphium does not read the source data to check the relationship. It is a
+record a person made. The note's PROV-JSON-LD export writes it as
+`prov:wasDerivedFrom` from the material to the linked file's `Entity`
+(which carries the `graphium:placeId` fields above), when the parent is in
+the media index.
+
 **Not part of this feature.** Searching, previewing or extracting the
 contents of a linked file; using one in a table or chart; AI ingest or
 translation; sharing a linked file itself (it is skipped in bulk share and
-the share action is hidden); linking several files or a whole folder at
-once; converting a link into a copy. For the Tauri commands and their
+the share action is hidden); linking a whole folder at once (up to 500
+files can be picked together); converting a link into a copy. For the Tauri commands and their
 guards see ARCHITECTURE.md §4.2.
 
 ## 7. Shared storage and Library
@@ -4415,15 +4467,37 @@ Key model choices:
   not the trial and error behind it. The Settings → Sharing switch
   "Include AI chats and edit history when sharing"
   (`graphium-share-include-private-history`, default off) and the bulk
-  share dialog's checkbox turn it back on per share. Everything else
-  travels unchanged — `pages` (blocks, `labels`, `provLinks`),
-  `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
+  share dialog's checkbox turn it back on per share. The structured
+  fields that trace back to a memo are dropped whether the switch is on
+  or off (`stripMemoTraces` in `src/features/sharing/strip-memo-traces.ts`,
+  at the same point in the flow): `pages[].memoQuotes` (§2.2), links whose
+  `targetNoteId` is `memo:<captureId>`, and in `wikiMeta` the `memo:`
+  entries of `derivedFromNotes`, `procedureContext.derivedFromNotes` and
+  `passageContexts`, the `[[source:memo:…]]` citations in `topicMarkdown`,
+  `evidenceSpan` and the decision, rule and observation frames when a
+  memo is among the sources (they copy source text word for word), and
+  the whole `sourceCheck` when a memo was checked (its overall verdict
+  includes the memo). When the history is shared, a document that traces
+  back to a memo also loses the `memo:` entries of
+  `documentProvenance.activities[].used` and every revision's
+  `summary.contentDiff`, which holds whole block text. A citation of a
+  memo is shown as `@<first line of the memo>`, so that label becomes the
+  fixed word `@Memo` (`@メモ`); the document does not record which label
+  belongs to which link, so a label stays only when a link to something
+  other than a memo backs it. Template bodies get the same label rule.
+  The rest of the text in `blocks` is what the author chose to share and
+  stays, including a `quote` block. **AI chats shared through the switch
+  are not rewritten**, so a chat that quoted a memo still carries that
+  text; turning the switch on is the author's choice to hand them over.
+  A copy shared before this rule keeps these values until it is shared
+  again. Everything else travels unchanged — the rest of `pages` (blocks,
+  `labels`, `provLinks`), `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
   because the shared projection (§7.6) and the reverse links read them. The shared
-  format version is unchanged: both fields were already optional, so an
+  format version is unchanged: these fields were already optional, so an
   older build reading a newer shared copy simply finds them absent.
-  Version snapshots (`snapshot:<snapshotId>`, §2.4) and memos are stored
-  outside the document altogether, so they have never travelled with a
-  share either.
+  Version snapshots (`snapshot:<snapshotId>`, §2.4) and the memos
+  themselves (`captures.json`, §2.7) are stored outside the document
+  altogether, so they do not travel with a share either.
 - **`"template"` body is a `PageTemplate`, not a `GraphiumDocument`** —
   sharing a page as a template writes the (previously dormant)
   `PageTemplate` JSON (`src/features/template/types.ts`: `name` /

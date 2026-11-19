@@ -204,7 +204,7 @@ In general, if a fake file gets mixed into an app's updates, the whole app can b
 - **Signature**: update files are signed with a key the developer controls. The app checks the signature with a public key built into it, and does not install the update if it does not match.
 - **The version number is signed too**: the signature records which version the update was made for. This stops someone from passing off an old version that carries a genuine signature as a "new" one, and sending you back to a version that still has a vulnerability.
 - **Checked on the distribution side as well**: the release procedure does not publish update information whose signed version number does not match.
-- **Approval before signing**: the release steps that sign do not run until the developer approves them.
+- **Approval before delivery**: the update is not signed for auto-update or announced to the app until the developer approves it.
 - **macOS version**: it is signed with an Apple developer certificate and has passed notarization (a check by Apple before distribution). The Windows version is not code-signed yet (see [Desktop app](/desktop-app#install-on-windows)).
 
 How to update is described in [Desktop app](/desktop-app#updating).

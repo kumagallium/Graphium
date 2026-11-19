@@ -478,12 +478,25 @@ app.get("/appdata/:key", (c) => {
   }
 });
 
+// appData の一時ファイル名を重ねないための通し番号
+let appDataTmpSeq = 0;
+
 app.put("/appdata/:key", async (c) => {
   try {
     const key = safeId(c.req.param("key"), true);
     const body = await c.req.text();
     JSON.parse(body); // バリデーション
-    writePrivateFileSync(join(subdir("appdata"), appDataFileName(key)), body);
+    // 一時ファイルに書いてから置き換える（書いている間に空のファイルを読ませない）。
+    // 一時ファイルは .json で終わらないので一覧に出ない
+    const path = join(subdir("appdata"), appDataFileName(key));
+    const tmp = `${path}.tmp-${process.pid}-${appDataTmpSeq++}`;
+    try {
+      writePrivateFileSync(tmp, body);
+      renameSync(tmp, path);
+    } catch (e) {
+      if (existsSync(tmp)) unlinkSync(tmp);
+      throw e;
+    }
     return c.json({ ok: true });
   } catch (e) {
     return c.json({ error: String(e) }, 400);

@@ -113,15 +113,16 @@ After the measurements above, the same synthetic data (233,000 rows × 16 column
 
 ## Measured when bringing in only part of a file
 
-Afterwards the import screen gained a **Filter** section ([Bringing in only part of a file](../notes-and-editor#bringing-in-part-of-a-file)). With the same synthetic data (233,000 rows × 16 columns, 188 MB), I measured from opening the section to the import. Web version, development server, headless Chromium, two runs.
+Afterwards, v0.144.0 added a **Filter** section to the import screen ([Bringing in only part of a file](../notes-and-editor#bringing-in-part-of-a-file)). With the same synthetic data (233,000 rows × 16 columns, 188 MB), I measured from opening the section to the import. This is one run of the same code as v0.144.0, in the web version on the development server with headless Chromium.
 
 | Step | Time taken | Longest single stall |
 |---|---|---|
-| Opening the section until every row and column has been read | 3.0–3.6 s | 0.07–0.09 s |
-| Entering one condition until the remaining row count appears | 0.13–0.20 s | 0.18 s (recorded in the second run only) |
-| Confirming until the filtered data table (466 rows) appears | 0.8 s (recorded in the second run only) | 0.05 s |
-| Then typing 30 characters in the body | — | 0.03 s |
+| Opening the section until every row and column has been read | 3.6 s | 0.09 s |
+| Entering a condition's value until the remaining row count appears | 0.20 s | 0.18 s |
+| Confirming until the filtered data table (466 rows) appears | 0.8 s | 0.05 s |
+| Then typing 27 characters in the body | — | 0.03 s |
 
-- The whole file is not read until the section is opened. If it stays closed, the import screen is as fast as before.
+- While the section stays closed, the whole file is not read. It is read when the section is collapsed with conditions or chosen columns still set, and when a filtered table is imported again.
+- Importing without opening the section was not timed in this measurement.
 - Empty cells, date comparison, a column that has gone from the source file and stopping a read were checked by unit tests only.
 - The desktop app was not exercised.
