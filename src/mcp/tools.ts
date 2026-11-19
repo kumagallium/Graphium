@@ -24,7 +24,8 @@ import { traceLineage, upstreamOf } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
 import { describeSource, formatSource, isExternalSourceId, isUnknownExternalSource } from "./sources";
-import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, getEntry, searchNotes } from "./search";
+import { conversationSearchHint } from "./media-search";
+import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, formatSearchHit, getEntry, searchNotes } from "./search";
 import { renderStepFlowMermaid } from "./step-flow-mermaid";
 import { listFolders } from "./folders";
 import { getTopicDetail, listTopics } from "./topics";
@@ -87,7 +88,9 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         "Graphium の vault を全文検索する。日本語も分かち書きなしで検索できる。" +
         "タイトル・本文・手順名・PROV ラベルを対象にし、手順名とラベルは本文より重く扱う。" +
         "まず何があるか知りたいときの入口。" +
-        "ナレッジ層（topic/answer/claim/insight）を広く見たいときは list_topics も使える。",
+        "トピックが当たったら get_topic で開くと、本文と引いている資料を一度に読める。" +
+        "ナレッジ層（topic/answer/claim/insight）を広く見たいときは list_topics も使える。" +
+        "AI との会話の本文はここでは探せないので search_media（type: conversation）を使う。",
       inputSchema: {
         query: z.string().describe("検索語。自然文でも単語でもよい"),
         limit: z.number().int().min(1).max(50).optional().describe("最大件数（既定 10）"),
@@ -107,20 +110,17 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
     async ({ query, limit, kind, folder }) => {
       if (!vaultExists()) return vaultMissing();
       const hits = searchNotes(query, { limit, kind, folder });
+      const hint = conversationSearchHint();
       if (hits.length === 0) {
-        return text(
-          folder
-            ? `フォルダ「${folder}」の範囲に「${query}」に一致するものはありませんでした。`
-            : `「${query}」に一致するノートはありませんでした。`,
-        );
+        const none = folder
+          ? `フォルダ「${folder}」の範囲に「${query}」に一致するものはありませんでした。`
+          : `「${query}」に一致するノートはありませんでした。`;
+        return text(hint ? `${none}\n${hint}` : none);
       }
 
       for (const h of hits) ctx.activity?.push("seen", h.noteId);
-      const lines = hits.map(
-        (h, i) =>
-          `${i + 1}. ${h.title}\n   noteId: ${h.noteId}  (${h.kind}, score ${h.score})\n   ${h.snippet}`,
-      );
-      return textWithGuard(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}`);
+      const lines = hits.map(formatSearchHit);
+      return textWithGuard(`${hits.length} 件見つかりました。\n\n${lines.join("\n\n")}${hint ? `\n\n${hint}` : ""}`);
     },
   );
 

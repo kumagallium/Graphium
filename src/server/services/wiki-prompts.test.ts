@@ -25,6 +25,23 @@ describe("buildIngestPrompt", () => {
     expect(r.existingIndex.omitted).toBe(0);
   });
 
+  it("AI との会話のときだけ、本人の発言を先に拾う節が足される（日本語・英語の見出しの両方を名指しする）", () => {
+    const heading = "When the source is a conversation with an AI";
+    const conv = buildIngestPrompt({ ...base, noteId: "conversation:conv-claude-code-s1" });
+    expect(conv.systemPrompt).toContain(heading);
+    expect(conv.systemPrompt).toContain("「私」");
+    expect(conv.systemPrompt).toContain('"Me"');
+    expect(conv.systemPrompt.indexOf(heading)).toBeLessThan(conv.systemPrompt.indexOf("## Claim ("));
+    for (const noteId of ["n1", "pdf:p1", "url:https://example.com", "chat:1", "memo:m1"]) {
+      expect(buildIngestPrompt({ ...base, noteId }).systemPrompt).not.toContain(heading);
+    }
+  });
+
+  it("AI との会話は文書モードにしない（測定した形のまま）", () => {
+    const conv = buildIngestPrompt({ ...base, noteId: "conversation:conv-claude-code-s1" });
+    expect(conv.systemPrompt).not.toContain("This source is an imported external document");
+  });
+
   it("PROV 要約があれば先頭に添える。Skill は Applied Skills に入る", () => {
     const r = buildIngestPrompt({
       ...base,

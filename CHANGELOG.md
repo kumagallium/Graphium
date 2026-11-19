@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.150.0](https://github.com/kumagallium/Graphium/compare/v0.149.0...v0.150.0) - 2026-11-19
+
+- feat(wiki): 既存の知見をトピックへ結ぶ一括処理を手入れに足す by @kumagallium in https://github.com/kumagallium/Graphium/pull/1777
+
+## [v0.149.0](https://github.com/kumagallium/Graphium/compare/v0.148.1...v0.149.0) - 2026-11-19
+
+- [infra] Ask for one release approval, right before users get the update by @kumagallium in https://github.com/kumagallium/Graphium/pull/1778
+- feat(wiki): 取り込みのあとに知見をトピックへ自動で結ぶ by @kumagallium in https://github.com/kumagallium/Graphium/pull/1775
+- feat(conversation): find AI conversations by title, date and what was said by @kumagallium in https://github.com/kumagallium/Graphium/pull/1769
+- feat(conversation): make Knowledge from AI conversations when asked by @kumagallium in https://github.com/kumagallium/Graphium/pull/1770
+- feat(mcp): point search_notes at topics and conversations, with the recall measurement by @kumagallium in https://github.com/kumagallium/Graphium/pull/1780
+
 ## [v0.148.1](https://github.com/kumagallium/Graphium/compare/v0.148.0...v0.148.1) - 2026-11-19
 
 - fix: keep archive and trash flags in the note index during rebuilds by @kumagallium in https://github.com/kumagallium/Graphium/pull/1774

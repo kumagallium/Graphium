@@ -378,3 +378,40 @@ describe("sessionId・作業フォルダ・時刻", () => {
     expect(m?.endedAt).toBe("2026-11-03T09:00:00.000Z");
   });
 });
+
+describe("会話の題（custom-title の行）", () => {
+  const titleLine = (customTitle: unknown) => JSON.stringify({ type: "custom-title", customTitle, sessionId: SID });
+
+  it("題を読み、複数あれば最後のものを使う", () => {
+    const m = read([titleLine("最初の題"), userLine({ content: "生地を見直したい" }), titleLine("全粒粉の配合の見直し")]);
+    expect(m?.customTitle).toBe("全粒粉の配合の見直し");
+  });
+
+  it("題の行が無ければ customTitle を持たない", () => {
+    expect(read([userLine()])).not.toHaveProperty("customTitle");
+  });
+
+  it("空の題や文字列でない題では、前の題を消さない", () => {
+    const m = read([titleLine("カレーの辛さ"), titleLine("   "), titleLine(42), userLine()]);
+    expect(m?.customTitle).toBe("カレーの辛さ");
+  });
+
+  it("改行は空白にし、向きを変える文字・見えない文字を落とす", () => {
+    expect(read([titleLine("中辛の\n配合‮​メモ"), userLine()])?.customTitle).toBe("中辛の 配合メモ");
+  });
+
+  it("画面に出ないタグ文字・異体字セレクタも落とす", () => {
+    expect(read([titleLine("中辛\u{e0041}\u{e0042}の\ufe0f配合"), userLine()])?.customTitle).toBe("中辛の配合");
+  });
+
+  it("題の行だけの記録は会話にならない", () => {
+    expect(read([titleLine("題だけ")])).toBeNull();
+  });
+
+  it("発言の中に同じ文字があっても題にならず、発言として残る", () => {
+    const text = '記録の "custom-title" の行を見て';
+    const m = read([userLine({ content: text })]);
+    expect(m?.customTitle).toBeUndefined();
+    expect(m?.turns[0].text).toBe(text);
+  });
+});

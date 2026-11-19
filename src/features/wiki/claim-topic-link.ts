@@ -16,6 +16,7 @@ import {
   type ClaimLinkTopicRef,
   type ClaimTopicLinkAnswer,
 } from "../../server/services/wiki-claim-topic-linker";
+import { cyrb53 } from "./asterism-knowledge";
 import { extractTopicOneLiner } from "./wiki-service";
 
 /** 候補を選ぶための最小の情報（一覧の写し。最終的な確認は実物のドキュメントで行う） */
@@ -52,8 +53,12 @@ export type ClaimTopicLinkResult = {
   calls: number;
   /** AI に渡した知見の数 */
   claimsJudged: number;
+  /** AI に渡した知見の id */
+  judgedClaimIds: string[];
   /** topicIds を書いた知見の数 */
   linkedClaims: number;
+  /** topicIds を書いた知見の id */
+  linkedClaimIds: string[];
   /** 書いた結びつきの総数 */
   links: number;
   /** 検査で捨てた答えの数（AI の答えの検査 + 保存直前の検査） */
@@ -115,7 +120,9 @@ export async function linkClaimsToTopicsForSource(
     sourceId,
     calls: 0,
     claimsJudged: 0,
+    judgedClaimIds: [],
     linkedClaims: 0,
+    linkedClaimIds: [],
     links: 0,
     rejected: 0,
     alreadyLinked: 0,
@@ -162,6 +169,7 @@ export async function linkClaimsToTopicsForSource(
     if (deps.signal?.aborted) return { ...result, aborted: true };
     result.calls = 1;
     result.claimsJudged = judgedClaims.length;
+    result.judgedClaimIds = judgedClaims.map((c) => c.id);
     const answer = await deps.judge(judgedClaims, judgedTopics, deps.signal);
     result.rejected += answer.rejected;
 
@@ -208,6 +216,7 @@ export async function linkClaimsToTopicsForSource(
         );
         if (outcome === "saved") {
           result.linkedClaims++;
+          result.linkedClaimIds.push(claimId);
           result.links += topicIds.length;
         } else if (outcome === "skipped") {
           if (skippedAs === "alreadyLinked") result.alreadyLinked++;
@@ -227,4 +236,188 @@ export async function linkClaimsToTopicsForSource(
     log("知見とトピックの判定に失敗:", sourceId, err);
     return { ...result, failureError: err };
   }
+}
+
+// ── 既存の知見を結ぶ一括処理（設定の手入れから人が起動する）──
+// 判定し終えた資料を控えに残すので、止めても、アプリを閉じても、続きから再開できる。
+// 当てはまるトピックが無かった知見は topicIds が空のままなので、控えが無いと毎回 AI に渡し直してしまう。
+
+/** 一括処理の控えの保存先（アプリ付随データのキーと Google Drive のファイル名） */
+export const CLAIM_TOPIC_LINK_CHECKPOINT_KEY = "claim-topic-link-progress";
+export const CLAIM_TOPIC_LINK_CHECKPOINT_FILE = ".graphium-claim-topic-link-progress.json";
+
+/** 失敗がこの回数続いたら止める（設定の誤りなどで AI の呼び出しを無駄にしない） */
+export const CLAIM_TOPIC_LINK_MAX_CONSECUTIVE_FAILURES = 3;
+
+export type ClaimTopicLinkCheckpoint = {
+  version: 1;
+  /** 資料 id → 判定したときのトピックの指紋と、判定しても結ばれなかった知見 */
+  judged: Record<string, { topics: string; claims: string[] }>;
+};
+
+export function emptyClaimTopicLinkCheckpoint(): ClaimTopicLinkCheckpoint {
+  return { version: 1, judged: {} };
+}
+
+/** 保存された控えを読む。形が違えば空の控えとして扱う（もう一度判定するだけで害は無い） */
+export function parseClaimTopicLinkCheckpoint(raw: unknown): ClaimTopicLinkCheckpoint {
+  const judged = (raw as { version?: unknown; judged?: unknown } | null)?.judged;
+  if ((raw as { version?: unknown } | null)?.version !== 1 || !judged || typeof judged !== "object") {
+    return emptyClaimTopicLinkCheckpoint();
+  }
+  const out: ClaimTopicLinkCheckpoint = emptyClaimTopicLinkCheckpoint();
+  for (const [sourceId, value] of Object.entries(judged)) {
+    const rec = value as { topics?: unknown; claims?: unknown } | null;
+    if (typeof rec?.topics !== "string" || !Array.isArray(rec.claims)) continue;
+    out.judged[sourceId] = { topics: rec.topics, claims: rec.claims.filter((c): c is string => typeof c === "string") };
+  }
+  return out;
+}
+
+function topicsFingerprint(topicIds: string[]): string {
+  return cyrb53([...topicIds].sort().join("\n")).toString(16);
+}
+
+export type ClaimTopicLinkBackfillPlan = {
+  /** これから判定する資料（AI を 1 本につき 1 回呼ぶ） */
+  sourceIds: string[];
+  /** AI の呼び出し回数の上限（複数の資料にまたがる知見が先に結ばれると減ることがある） */
+  calls: number;
+  /** 対象の知見の数（重複なし） */
+  claims: number;
+  /** 判定済みで、今回は飛ばす資料の数 */
+  alreadyJudged: number;
+};
+
+/**
+ * 一括処理の計画を立てる（AI は呼ばない）。対象は、topicIds が空の知見があり、同じ資料にトピックがある資料。
+ * 判定済みの資料は、トピックが変わったか、まだ判定していない知見が増えたときだけ対象に戻す。
+ */
+export function planClaimTopicLinkBackfill(
+  entries: ClaimTopicLinkEntry[],
+  checkpoint: ClaimTopicLinkCheckpoint,
+): ClaimTopicLinkBackfillPlan {
+  const claimsBySource = new Map<string, string[]>();
+  const topicsBySource = new Map<string, string[]>();
+  for (const entry of entries) {
+    const isOpenClaim = entry.kind === "claim" && (entry.topicIds?.length ?? 0) === 0;
+    if (!isOpenClaim && entry.kind !== "topic") continue;
+    const target = isOpenClaim ? claimsBySource : topicsBySource;
+    for (const sourceId of new Set(entry.derivedFromNotes ?? [])) {
+      const list = target.get(sourceId);
+      if (list) list.push(entry.id);
+      else target.set(sourceId, [entry.id]);
+    }
+  }
+
+  const sourceIds: string[] = [];
+  const claimIds = new Set<string>();
+  let alreadyJudged = 0;
+  for (const [sourceId, claims] of claimsBySource) {
+    const topics = topicsBySource.get(sourceId);
+    if (!topics) continue;
+    const record = checkpoint.judged[sourceId];
+    if (record && record.topics === topicsFingerprint(topics)) {
+      const judged = new Set(record.claims);
+      if (claims.every((id) => judged.has(id))) {
+        alreadyJudged++;
+        continue;
+      }
+    }
+    sourceIds.push(sourceId);
+    for (const id of claims) claimIds.add(id);
+  }
+  sourceIds.sort();
+  return { sourceIds, calls: sourceIds.length, claims: claimIds.size, alreadyJudged };
+}
+
+export type ClaimTopicLinkBackfillProgress = {
+  done: number;
+  total: number;
+  linkedClaims: number;
+};
+
+export type ClaimTopicLinkBackfillResult = ClaimTopicLinkBackfillProgress & {
+  /** 実際に AI を呼んだ回数 */
+  calls: number;
+  links: number;
+  rejected: number;
+  /** 判定か保存に失敗した資料の数（控えに残さないので、次の実行でやり直す） */
+  failedSources: number;
+  /** 利用者が止めたか */
+  aborted: boolean;
+  /** 失敗が続いたので途中で止めたか */
+  stoppedByFailures: boolean;
+  /** 失敗の理由（最初の 1 件） */
+  failureError?: unknown;
+};
+
+export type ClaimTopicLinkBackfillDeps = Omit<ClaimTopicLinkDeps, "extraTopicIds"> & {
+  checkpoint: ClaimTopicLinkCheckpoint;
+  saveCheckpoint: (checkpoint: ClaimTopicLinkCheckpoint) => Promise<void>;
+  onProgress?: (progress: ClaimTopicLinkBackfillProgress) => void;
+};
+
+/** 計画した資料を 1 本ずつ結ぶ。1 本終わるごとに控えを保存する。例外を投げない */
+export async function runClaimTopicLinkBackfill(
+  plan: ClaimTopicLinkBackfillPlan,
+  deps: ClaimTopicLinkBackfillDeps,
+): Promise<ClaimTopicLinkBackfillResult> {
+  const log = deps.log ?? (() => {});
+  const result: ClaimTopicLinkBackfillResult = {
+    done: 0,
+    total: plan.sourceIds.length,
+    linkedClaims: 0,
+    calls: 0,
+    links: 0,
+    rejected: 0,
+    failedSources: 0,
+    aborted: false,
+    stoppedByFailures: false,
+  };
+  const checkpoint: ClaimTopicLinkCheckpoint = { version: 1, judged: { ...deps.checkpoint.judged } };
+  let consecutiveFailures = 0;
+
+  for (const sourceId of plan.sourceIds) {
+    if (deps.signal?.aborted) {
+      result.aborted = true;
+      break;
+    }
+    const linked = await linkClaimsToTopicsForSource(sourceId, deps);
+    result.calls += linked.calls;
+    result.linkedClaims += linked.linkedClaims;
+    result.links += linked.links;
+    result.rejected += linked.rejected;
+    if (linked.aborted) {
+      result.aborted = true;
+      break;
+    }
+
+    if (linked.failureError !== undefined || linked.saveFailed > 0) {
+      result.failedSources++;
+      if (result.failureError === undefined) result.failureError = linked.failureError;
+      consecutiveFailures++;
+      if (consecutiveFailures >= CLAIM_TOPIC_LINK_MAX_CONSECUTIVE_FAILURES) {
+        result.stoppedByFailures = true;
+        break;
+      }
+    } else {
+      consecutiveFailures = 0;
+      const linkedIds = new Set(linked.linkedClaimIds);
+      const { topicIds } = selectClaimTopicLinkCandidates(sourceId, deps.listEntries());
+      checkpoint.judged[sourceId] = {
+        topics: topicsFingerprint(topicIds),
+        claims: linked.judgedClaimIds.filter((id) => !linkedIds.has(id)),
+      };
+      try {
+        await deps.saveCheckpoint(checkpoint);
+      } catch (err) {
+        // 控えが書けなくても結んだ分は残る（再開のときに同じ資料をもう一度判定するだけ）
+        log("知見とトピックの一括処理の控えを保存できなかった:", err);
+      }
+    }
+    result.done++;
+    deps.onProgress?.({ done: result.done, total: result.total, linkedClaims: result.linkedClaims });
+  }
+  return result;
 }

@@ -319,3 +319,21 @@ describe("基底の検査", () => {
     }
   });
 });
+
+describe("AI との会話を出典に持つページ", () => {
+  it("知見もトピックも束に入れず、資料の一覧にも出さない", () => {
+    const src = "conversation:conv-claude-code-s1";
+    const b = ok(buildKnowledgeBundle(
+      [
+        { id: "c9", title: "全粒粉は 2 割まで", meta: meta({ kind: "claim", derivedFromNotes: [src] }) },
+        { id: "t9", title: "配合", meta: meta({ kind: "topic", topicType: "concept", derivedFromNotes: [src] }) },
+        { id: "c8", title: "残る知見", meta: meta({ kind: "claim", derivedFromNotes: ["n1"] }) },
+      ],
+      { exportedAt: AT, claimBaseIri: "https://x.test/c", termBaseIri: "https://x.test/t#", sourceBaseIri: "https://x.test/s", noteUrlBase: "https://g.test/app" },
+    ));
+    const all = JSON.stringify(b.files);
+    expect(all).toContain("残る知見");
+    expect(all).not.toContain("全粒粉は 2 割まで");
+    expect(all).not.toContain("conv-claude-code-s1");
+  });
+});

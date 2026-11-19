@@ -80,6 +80,16 @@ export function buildDocxIngestInput(rawText: string, fileName: string, language
 }
 
 /**
+ * AI との会話の本文（renderConversationBody の出力）から取り込みの入力を作る。
+ * 本文の冒頭の説明（「私」の行は原文である、など）もそのまま渡す。読む側が発言者を見分ける手がかりになる
+ */
+export function buildConversationIngestInput(body: string, title: string, language: string): SourceIngestInput {
+  const text = (body ?? "").trim();
+  if (!text || visibleTextLength(text) < MIN_VISIBLE_SOURCE_CHARS) return { ok: false, reason: "no_text" };
+  return { ok: true, noteTitle: title, noteContent: `${outputLanguageHint(language)}\n\n${capForSingleCall(text)}`, sourceText: text };
+}
+
+/**
  * URL の取得結果から取り込みの入力を作る。送る本文（説明文＋本文）が空か不可視文字だけのときは blank。
  * description は trim() してから使う。空白だけの description だと `> ${description}` が "> " になり、
  * 本文が実質空でも空判定をすり抜けるため、「あるか」自体も isBlankText で判定する。

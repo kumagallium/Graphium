@@ -19,7 +19,17 @@ export type ConversationIntakeState =
   | { kind: "error" }
   | { kind: "ready"; items: ConversationWorkdirItem[]; selected: ReadonlySet<string>; searchedPath: string }
   | { kind: "importing"; done: number; total: number }
-  | { kind: "done"; created: number; updated: number; unchanged: number; failed: number };
+  | {
+      kind: "done";
+      created: number;
+      updated: number;
+      unchanged: number;
+      failed: number;
+      /** 今回の取り込みに入った会話の素材 id（新規・更新・変わらず） */
+      importedIds: string[];
+      /** そのうち、新しく入った・伸びた会話 */
+      changedIds: string[];
+    };
 
 export type ConversationIntakeSection = "files" | "conversations";
 
@@ -121,6 +131,8 @@ export function useConversationIntake(deps: Partial<ConversationIntakeDeps> = {}
     let updated = 0;
     let unchanged = 0;
     let failed = 0;
+    const importedIds: string[] = [];
+    const changedIds: string[] = [];
     setState({ kind: "importing", done: 0, total });
     // 取り込み中に閉じても処理は最後まで走らせる（中断しない）。画面の状態だけ世代で守る
     for (let i = 0; i < refs.length; i += CONVERSATION_READ_BATCH) {
@@ -136,13 +148,15 @@ export function useConversationIntake(deps: Partial<ConversationIntakeDeps> = {}
         updated += result.updated.length;
         unchanged += result.unchanged.length;
         failed += result.skipped.length;
+        importedIds.push(...result.created, ...result.updated, ...result.unchanged);
+        changedIds.push(...result.created, ...result.updated);
       } catch {
         failed += batch.length;
       }
       done += batch.length;
       if (generation === generationRef.current) setState({ kind: "importing", done, total });
     }
-    if (generation === generationRef.current) setState({ kind: "done", created, updated, unchanged, failed });
+    if (generation === generationRef.current) setState({ kind: "done", created, updated, unchanged, failed, importedIds, changedIds });
   }, []);
 
   const retry = useCallback(() => {

@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 import { buildNoteDocument, createNote } from "./create-note";
 import { saveAnswer } from "./save-answer";
-import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, resetSearchIndex, searchNotes } from "./search";
+import { addCreatedNoteToIndex, addCreatedWikiToIndex, allEntries, formatSearchHit, resetSearchIndex, searchNotes, type SearchHit } from "./search";
 import * as vault from "./vault";
 
 let root: string;
@@ -566,5 +566,18 @@ describe("folder で絞る", () => {
     writeIndex([]);
     const result = createNote({ title: "会話の記録", body: "ボールミリングに決めた", folder: "AI 会話" }, root);
     expect(searchNotes("ボールミリング", { folder: "AI 会話" }, root).map((h) => h.noteId)).toEqual([result.noteId]);
+  });
+});
+
+describe("formatSearchHit", () => {
+  const hit = (kind: SearchHit["kind"]): SearchHit => ({ noteId: "t1", title: "全体グラフ", kind, score: 3, snippet: "全部見せる", matchedIn: ["text"] });
+
+  it("トピックには get_topic への案内が付く", () => {
+    expect(formatSearchHit(hit("topic"), 0)).toContain("get_topic（topicId: t1）");
+  });
+
+  it("ノートや知見には付かない", () => {
+    expect(formatSearchHit(hit("note"), 0)).not.toContain("get_topic");
+    expect(formatSearchHit(hit("claim"), 0)).not.toContain("get_topic");
   });
 });

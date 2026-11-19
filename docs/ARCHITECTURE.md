@@ -1573,7 +1573,7 @@ string-match link from a Topic body to another Topic's title (see
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch (Claims). No longer proposes Topic names — Claims are not Topic material (see Topic router below; changed 2026-09-17). The merge-vs-create index it reads lists **Claims only**, each under a short number (`c12`) that the server maps back to the page id (`src/server/services/ingest-existing-index.ts`); when instructions + index + source would exceed `INGEST_INPUT_BUDGET_TOKENS` (an estimate, ~72k), the Claims sharing the most wording with the source are listed first and the rest are left out, and the count left out is returned as `omittedExistingClaims` and shown in the ingest toast (changed 2026-10-21) |
 | **Topic router** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/topic-stage.ts` (`runSourceTopicStage`) | Reads the text of the ingested *source* (not the Claims derived from it) plus an index of existing Topics (title + one-line definition) and decides which existing Topic(s) to update and which new Topic(s) to create. No embedding similarity, no count cap — the LLM alone judges "same concept or new" from the index, the same "index + judgment" approach used for merge-vs-create decisions on other Wiki pages. One narrow mechanical check follows the router's answer (`rerouteSameTitleCreates`, `src/lib/topic-title-key.ts`): a name the router wants to create is turned into an update of the existing Topic when the two titles are identical once spacing, casing, hyphens, the particle の and a trailing parenthetical gloss are ignored (never onto an answer page, and not when several existing Topics with different glosses make it ambiguous; duplicates within the same `create` list collapse to one); the count is returned as `reroutedToExisting` and nothing is dropped. A source longer than one window (see "Reading long sources in windows" below) is routed once per window, not once for the whole text. Since 2026-10-20 the same call also assigns each new Topic a **type** (`wikiMeta.topicType`: concept / material / method / agent / place — the LLM-Wiki entity-vs-concept distinction as a tag, not a separate kind) and types any untyped existing Topic it updates (`types` in the output); the index it reads shows each Topic's type or `[type: unset]`. New titles are named after the thing itself (a thing × attribute title is discouraged): `TOPIC_GRANULARITY_RULES`. |
-| **Claim–Topic linker** | `src/server/services/wiki-claim-topic-linker.ts` (prompt, answer check) / `src/features/wiki/claim-topic-link.ts` (`linkClaimsToTopicsForSource`) | Runs after the Topic stage, inside the same serialized queue, once per source (`POST /api/wiki/link-claims-to-topics`, light tier, one call). Reads that source's Claims without `topicIds` and the Topics that list the source in `derivedFromNotes`, and picks 0–3 Topics per Claim from that closed set. Ids are replaced by short numbers in the prompt; the answer is checked by machine (in the set, same source, at most 3) and failures are discarded and counted. Writes `wikiMeta.topicIds` only and never overwrites existing links. Stop aborts the call, and a failure never fails the ingest. See [DATA_MODEL.md §3.1b](DATA_MODEL.md). |
+| **Claim–Topic linker** | `src/server/services/wiki-claim-topic-linker.ts` (prompt, answer check) / `src/features/wiki/claim-topic-link.ts` (`linkClaimsToTopicsForSource`) | Runs after the Topic stage, inside the same serialized queue, once per source (`POST /api/wiki/link-claims-to-topics`, light tier, one call). Reads that source's Claims without `topicIds` and the Topics that list the source in `derivedFromNotes`, and picks 0–3 Topics per Claim from that closed set. Ids are replaced by short numbers in the prompt; the answer is checked by machine (in the set, same source, at most 3) and failures are discarded and counted. Writes `wikiMeta.topicIds` only and never overwrites existing links. Stop aborts the call, and a failure never fails the ingest. Claims made earlier are linked by the resumable bulk action **Link Claims to Topics** in Settings → Knowledge (`runClaimTopicLinkBackfill`). See [DATA_MODEL.md §3.1b](DATA_MODEL.md). |
 | **Topic typer** | `src/server/services/wiki-topic-writer.ts` (prompt) / `src/features/wiki/wiki-service.ts` (`assignTopicTypes`) | `POST /api/wiki/type-topics`. Powers "Assign topic types" (Settings → Maintenance): untyped Topics are sent 50 at a time as title + one-line definition only (no bodies) and come back as id → type; the client writes `topicType` and saves without touching the body. Human-started, with the call count shown first. The type is editable on the page banner and drives the Type column / filter of the Knowledge list and the "Topics: …" toggles in the global graph's display menu |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes. Input is Claims only — Topics never feed the hourglass. Discovery candidates that embedding-match an existing Insight (> 0.9 similarity) are only a *shortlist* — embedding is blind to negation/direction, so a second LLM judge (`judgeAtomDuplicates` / `resolveAtomDuplicates`, `POST /api/wiki/judge-atom-duplicates`) decides same / contradiction / different per pair before anything is reinforced. A second, name-first path needs no new candidate: existing Insights are sent with refs (`[a1]`…), and a bundle Claim that is one more instance of an existing Insight's rule is returned as `reinforcements: [{ atomRef, sourceConceptIds }]` instead of a new Insight (`parseAtomizerReinforcements`); a separate skeptical judge (`buildReinforceJudgeSystemPrompt`, `POST /api/wiki/judge-atom-reinforcements`) confirms each before the Claims are added. Contradictions keep both Insights and write each other's id into `wikiMeta.conflictsWith`, which the Linter surfaces as a `contradiction` issue |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims, Topics (including Topics whose titles are the same under the topic-title key above, the same rule the router's reroute uses; the page with more sources is kept), and Insights (the same relation about the same Shape; merged only by an explicit click via `mergeAtomsExplicit`, never automatically), Topics with zero member Claims, and (LLM pass only) stale/superseded pages. No day-count or overlap-percentage threshold — stale requires naming a specific superseding page, redundant requires the same specific claim. The LLM pass also asks for `questions` — open research questions the corpus doesn't yet answer, separate from `issues` and never counted in `summary` — each with `why`, `affectedWikiIds` (filtered against real ids to guard against hallucination), and `needs: "internal" \| "external"`. `buildLinterWindowMessages` cuts the LLM's input by structure, not by a numeric cutoff: it drops `kind: "summary"` pages entirely (a discontinued kind kept only for display) and sends Claims as title-only (a Claim's title already is the proposition, so its `bodyPreview` would be a duplicate) while Topics/Answers/Insights keep their preview. On failure (`POST /api/wiki/lint`'s try/catch), the route falls back to the Quick-only report and adds `lintError` (raw upstream error text) so the UI can say AI analysis failed instead of silently showing "no issues" |. On a Full check only, `lintWikis` (`wiki-service.ts`) formats the last 7 days of `wikiLog` via `formatRecentForLLM` and sends it as `recentLog`; the `/lint` route passes it through to `buildLinterWindowMessages(wikis, recentLog, …)`, which appends it as a trailing "## Recent activity" section (cut by time, not by count) used only to prioritize which `questions` to surface. Pages are referred to by a short ordinal (`#1`…`#N`, assigned by `numberWikis` in send order) instead of their UUID, and timestamps are sent as dates only — on a real-sized vault (892 pages) that cut the input from ~124k to ~46k tokens, which is what keeps `questions` from being dropped near the context limit. `parseLinterOutput` resolves whatever the model wrote back (`#N`, a bare number, a real id, or a page title) to the real id via the `numberToId` / title maps the route builds, and drops anything it cannot resolve (a `redundant` issue whose `keepId`/`absorbId` cannot be resolved is dropped whole). The system prompt states the output language (`ja`/`en`) explicitly for every user-facing field; page titles are quoted verbatim. Because a grown vault no longer fits one call (~5,000 pages reached ~360k input tokens, which failed on every 128K-context model), `buildLinterWindowMessages` splits the pages into windows of `LINT_INPUT_BUDGET_TOKENS` (72,000 by `estimateTokens`, the same budget as ingest, system prompt included) and the route calls the model once per window, in order. Every page is sent exactly once; a Topic and its member Claims go into the same window (a large Topic is split with the Topic first), other pages follow grouped by kind, and the `#N` ordinals stay global so one `numberToId` resolves every window's answer. Each window's header says which part of how many it is and that pages outside it exist. The recent-activity log goes into every window when it is at most a quarter of the budget, otherwise into the first only. Issues are merged across windows (`mergeWindowIssues`: same type with overlapping pages → first one kept) and questions de-duplicated by text. A failed window does not discard the others: the report carries `lintParts: { total, failed }`, and `lintErrorKind: "context"` when the failure was the model's context limit (`isContextOverflowError`), so the UI can explain it and suggest a larger chat model. With one window the message is byte-for-byte the old single call. All windows run inside the one request, so a caller that wants to show progress sends a `progressId` and polls `GET /api/wiki/lint/progress/:id` (`src/server/services/lint-progress.ts`: in memory, `{ done, total }` windows, forgotten after 10 minutes) while the request runs; `lintWikis` does this every 2 s when given an `onProgress` callback, and Tidy up for me shows it as "Checking your Knowledge (n / m)" with the time elapsed (2026-11-05 — on a 2,316-page vault the check is 4 windows of 35–67 s, which used to be a bare spinner) |
@@ -2371,7 +2371,7 @@ Notes:
   text, URL excerpt and description, PDF and Word (.docx) text extracted in
   the background; in the desktop app only, the transcript of a recording or
   video, read from its `transcript.json` and re-read when its transcription
-  job turns done) through one
+  job turns done; the stored text of an AI conversation) through one
   reconcile loop (`use-lexical-sync.ts`), so saves, deletes, archives and
   restores need no per-handler hooks. Settings → Storage shows the index
   status and offers a rebuild. Saves are debounced (4 s) but capped: during
@@ -3142,7 +3142,11 @@ quote-verification rule are in [DATA_MODEL.md §3.9](DATA_MODEL.md).
   cancel). `claimBaseIri` defaults to `https://kumagallium.github.io/Graphium/claim/`.
   Entry points: the "Export for Asterism" item of the Claim list "..." menu (also
   without AI, only while linking is on) and the MCP tool. The
-  PROV-JSON-LD export is separate and unchanged. See
+  PROV-JSON-LD export is separate and unchanged. A Claim or Topic whose sources
+  include a `conversation:` id is left out of the export
+  (`hasConversationSource` in `asterism-export.ts`, skip reason
+  `conversation-source`), because a conversation carries the person's own
+  judgments and names as they were said. See
   [DATA_MODEL.md §3.9](DATA_MODEL.md).
 
 **Maintenance operations a person starts are recorded and can be
@@ -3285,6 +3289,18 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   turns, and renders them as plain React text (never as HTML or Markdown),
   with the AI's lines in a muted colour. A conversation material has no file,
   so download and sharing are not offered for it.
+- **Finding one** (`src/features/lexical-search/conversation-chunks.ts`). The
+  turns of the stored text go into the lexical index, without the lead and the
+  speaker labels, which every conversation shares. `⌘K`, the search box of
+  the AI conversations list and the MCP `search_media` tool find a conversation
+  by what was said. The chunks use the `alt` chunk id prefix, so the in-app AI
+  chat does not receive them as context: a conversation reaches a model only
+  when the user asks for it. To keep the restored index small, only the newest
+  conversations up to `CONVERSATION_SEARCH_MAX_BODY_CHARS` (10 million
+  characters of stored text) are indexed; older ones are still found by name.
+  Measured on JavaScriptCore on 2026-11-19, 1.95 million characters
+  (353 conversations) added about 66 MB of live memory to a restored index
+  and took the median search from 0.3 ms to 0.9 ms.
 - **Bringing in** (`src/features/conversation-import/import-conversations.ts`).
   `importConversations` saves each text with `saveMediaText` and then writes
   the media index once. The material id is derived from provider and session
@@ -3292,10 +3308,36 @@ record files ──► reader ──► ConversationMaterial ──► importCon
   not written again unless its stored text has gone missing. If the index
   cannot be saved, the texts of conversations that were new in that run are
   removed again, so no text is left on disk without an entry to delete it
-  from. **It never calls an AI.** Turning a conversation into Knowledge is a
-  separate step the user starts, and that entry point is not open yet:
-  `start_claim_task`, `start_topic_task` and `start_procedure_task` refuse a
-  `conversation:` id.
+  from. **Bringing in never calls an AI.** Turning a conversation into
+  Knowledge is a separate step the user starts, and it has three entry points:
+  - The final screen of the bring-in sheet offers **Add all to knowledge**
+    (`ConversationIngestOffer`, candidates from `conversationIngestCandidates`
+    in `ingest-candidates.ts`). A candidate is a conversation with at least
+    300 characters of the user's own lines
+    (`CONVERSATION_CANDIDATE_MIN_OWN_CHARS`). A conversation that is new or has
+    grown in this run is a candidate; an unchanged one is a candidate only
+    while it has no Knowledge yet. The estimate shown is 70,000–90,000
+    tokens per conversation (`CONVERSATION_INGEST_TOKENS_PER_SESSION`).
+    Nothing calls an AI until the button is pressed, and when every candidate
+    already has Knowledge the offer line is not shown.
+  - The **AI conversations** list in Materials: the menu of one conversation,
+    or a multiple selection. The 300-character condition does not apply here.
+  - The MCP tools `start_claim_task` and `start_topic_task` accept a
+    `conversation:<fileId>` id (`src/mcp/claim-source.ts`). `start_procedure_task`
+    still refuses it.
+
+  The stored text is read with `loadMediaText` and turned into the ingest input by
+  `buildConversationIngestInput` (`ingestFromConversation`). At most 80,000
+  characters of one conversation go to claim extraction
+  (`capForSingleCall`). For a conversation source only, the claim extraction prompt gets
+  `CONVERSATION_SOURCE_BLOCK` (`src/server/services/wiki-ingester.ts`): harvest
+  the points that come from the user's own lines first, and write a point whose
+  only ground is an AI line as the AI's assessment, kept apart from the user's
+  points. The measurement is in `manual/evaluations/ai-conversation-claims.md`.
+  "Unchanged since last time" for a conversation compares against the time its
+  text was last replaced (`conversation.importedAt`), because a conversation
+  keeps growing. Source check runs against the stored text, and the source list
+  of a Claim or Topic opens the original conversation.
 - **Source id.** `conversation:<fileId>` (`external-source.ts`). Source
   check, the MCP's `get_source_text` and the graph views resolve it to the
   stored text and the material. It is a separate prefix from `chat:`, which

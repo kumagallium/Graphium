@@ -18,7 +18,7 @@
 
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import type { NoteIndexEntry } from "../navigation/index-file";
-import type { MediaIndexEntry } from "../asset-browser/media-index";
+import { materialListDate, type MediaIndexEntry } from "../asset-browser/media-index";
 import { matchesAllTokens, sourceInfoSearchText } from "../asset-browser/source-info-text";
 import type { SharedEntry } from "../../lib/storage/shared";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
@@ -354,7 +354,7 @@ const ASSET_TEXT_BASE_SCORE = 25;
 const ASSET_TEXT_RELATIVE_SCORE_MAX = 10;
 
 /** Cmd+K の素材検索で対象にする種類。memo は transient（メモは searchMemos が別に探す）。video/audio は下の別扱い */
-const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document"]);
+const SEARCHABLE_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["image", "pdf", "url", "document", "conversation"]);
 /** 録音・動画は、文字起こしで当たったとき（assetHits にある）だけ出す。名前だけでは出さない（従来どおり） */
 const TRANSCRIPT_MEDIA_TYPES = new Set<MediaIndexEntry["type"]>(["audio", "video"]);
 
@@ -440,7 +440,7 @@ export function searchMedia(
 
     if (reasons.length === 0) continue;
 
-    score += entry.uploadedAt ? daysAgoBoost(entry.uploadedAt) : 0;
+    score += entry.uploadedAt ? daysAgoBoost(materialListDate(entry)) : 0;
     hits.push({ entry, nameMatches, ocrSnippet, ...(textSnippet ? { textSnippet } : {}), reasons, score });
   }
 

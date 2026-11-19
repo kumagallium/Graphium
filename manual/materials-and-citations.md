@@ -146,16 +146,26 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 
 ![The report after bringing in: 21 brought in, 3 updated, 8 unchanged, 0 failed](/screenshots/intake-conversations-report.png)
 
-**Where to read them.** Brought-in conversations are listed under **Materials → AI conversations** in the left nav, in the folder `AI chats/<name of the working folder>`. Open one to read it by day: your messages, and the AI's replies in lighter text. As materials, they can be renamed, put in or taken out of folders, archived or deleted. Deleting one also deletes the text that was saved.
+**Where to read them.** Brought-in conversations are listed under **Materials → AI conversations** in the left nav, in the folder `AI chats/<name of the working folder>`. The name is the title Claude Code gave the conversation, or your first line when it has none. The date is when the conversation happened, not when you brought it in. Bringing a conversation in again updates its name, unless you renamed it yourself. Open one to read it by day: your messages, and the AI's replies in lighter text. As materials, they can be renamed, put in or taken out of folders, archived or deleted. Deleting one also deletes the text that was saved.
 
 ![A brought-in conversation opened: a Brief, the AI's reply in lighter text, and two lines of your own](/screenshots/conversation-material.png)
 
+**Finding one by what was said.** `⌘K` (`Ctrl+K` on Windows/Linux), the search box of the **AI conversations** list and the `search_media` tool of the [MCP server](/mcp-server) look through the text of your conversations as well as their names. This covers the newest conversations up to 10 million characters of saved text; older ones are found by name. The AI chat inside Graphium does not read conversations on its own.
+
+**Asking another AI.** An AI connected through the [MCP server](/mcp-server) can look through your conversations and point back to the one it used. [The measurement](/evaluations/ai-conversation-recall) shows how far this went on ten conversations.
+
 **In the browser.** The **AI conversations** tab only says that bringing in AI conversations is available in the desktop app. The records are files on this PC, and a browser cannot read them.
+
+**Making knowledge from a conversation.** A conversation can become insights and topics like any other material, and the claims it yields can be traced back to it: the source of a page opens the original conversation, and source check reads the saved text.
+
+- On the final screen of the bring-in sheet, a line offers the conversations to turn into knowledge, with the button **Add all to knowledge**. The candidates are the conversations in which you wrote at least 300 characters. A conversation that is new or has grown is a candidate; one that has not changed is a candidate only if it has no knowledge yet. The line shows the estimate, about 70,000 to 90,000 tokens of AI use per conversation. Nothing is sent to the AI until you press the button.
+- From the **AI conversations** list under Materials, the menu of a single conversation, or a multiple selection, turns it into knowledge. Here there is no minimum of 300 characters.
+- Of one conversation, the first 80,000 characters are read for insights.
+- The AI is asked to read your own lines first, and to write a point supported only by the AI's reply as the AI's reading, apart from your own points. In the measurement this raised the share of insights grounded only in your own words from 69% to 85%; it does not catch every case ([the measurement](/evaluations/ai-conversation-claims)).
+- Knowledge made from a conversation is not sent to Asterism, because a conversation holds your own decisions and names as you said them.
 
 **Not possible yet.**
 
-- Making knowledge (insights and topics) from a brought-in conversation
-- Finding a conversation by what it says; searching the material list looks at titles only
 - Sharing a conversation material, or downloading it as a file
 - Conversations from AI tools other than Claude Code
 

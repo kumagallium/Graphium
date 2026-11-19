@@ -1791,16 +1791,26 @@ type ConversationMeta = {
   hasBrief?: boolean;             // the conversation opens with a long text of unknown authorship
   bodyChars: number;              // length of the stored text
   importedAt: string;             // last time it was brought in or replaced
+  autoName?: string;              // the name bringing in gave it; absent on materials from v0.147
 };
 ```
 
 - **Identity.** `fileId` is `conv-<provider>-<sessionId>`
   (`conversationFileId`), so bringing the same conversation in again never
   makes a second material: the stored text and `conversation` are replaced
-  (a conversation keeps growing), while the name, folders (`noteContexts`),
+  (a conversation keeps growing), while folders (`noteContexts`),
   `uploadedAt`, `usedIn` and `archivedAt` are kept. `sessionId` is limited to
   letters, digits, `-` and `_` (it becomes part of a file name). `url` holds
   the source id (`conversation:<fileId>`) and `mimeType` is `text/plain`.
+- **Name.** The title the record carries (the last `custom-title` line of a
+  Claude Code record), otherwise the first line the user wrote. Bringing a
+  conversation in again follows a new title only while `name` still equals
+  `autoName` (on a material from v0.147, which has no `autoName`: the first
+  line the user wrote). A name the user changed is never replaced. A change of
+  name alone counts as **unchanged** in the report.
+- **Date in lists.** Material lists show and sort by when the conversation
+  happened (`materialListDate`: `endedAt`, then `startedAt`), not by
+  `uploadedAt`.
 - **Stored text.** What the user typed is kept **verbatim** — no rewording, no
   summarising, line breaks and inner whitespace untouched. Two things are
   removed around it: text the tool inserted into the message (see the next
@@ -1819,6 +1829,12 @@ type ConversationMeta = {
   the device that brought the conversation in. The text is fixed at that
   moment and is what quoted passages are checked against; it is not rebuilt
   on read.
+- **Making Knowledge from it.** The stored text is the source for claim
+  extraction and topics (ARCHITECTURE.md §3.4). The Knowledge page keeps
+  `conversation:<fileId>` in `derivedFromNotes`, and its source list opens the
+  conversation. Only the first 80,000 characters of one conversation reach claim
+  extraction. A Claim or Topic with such a source is not written to the Asterism
+  export (§3.9).
 - **What counts as the user's line** (Claude Code records;
   `src/lib/conversation/claude-code-reader.ts`): a `user` record that is not
   `isMeta` / `isCompactSummary` / `isSidechain`, carries no `tool_result`,
@@ -1916,8 +1932,8 @@ type WikiMeta = {
   //   "memo:<captureId>"       ingested from a memo (capture) — no note is created
   //   "conversation:<mediaFileId>" an AI conversation kept as a material (§2.7). Not the same
   //                            as "chat:": a chat stub carries no reference back to its text,
-  //                            while this one resolves to the stored text. Nothing writes it
-  //                            yet — ingesting a conversation is not open
+  //                            while this one resolves to the stored text. Written when
+  //                            Knowledge is made from a conversation
   // Lineage / graph views resolve these prefixes to external source nodes
   // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
@@ -2283,6 +2299,16 @@ change a page's body, so no revision is recorded. A failed or stopped judgment n
 fails the ingest. When Topics are merged, Claims linked to an absorbed Topic are
 retargeted to the kept Topic before the absorbed page goes to Trash, in both the app
 and MCP `merge_topics`.
+
+Claims made before this step are linked by a human-started bulk action (Settings →
+Knowledge, **Link Claims to Topics**). `planClaimTopicLinkBackfill` shows the AI-call
+count before the run; `runClaimTopicLinkBackfill` then judges one source at a time and
+can be stopped. Progress is kept in the app-data file `claim-topic-link-progress`
+(`{ version: 1, judged: { <sourceId>: { topics, claims } } }`: a fingerprint of the
+source's Topics, and the judged Claims that stayed unlinked), because a Claim with no
+fitting Topic otherwise looks untouched and would be sent again on every run. A judged
+source returns to the plan only when its Topics change or it gains a Claim that has not
+been judged. The file is disposable: losing it only costs repeating some judgments.
 
 Re-ingesting a source also re-checks topics that already cite it, not
 just the ones the router names: `runSourceTopicStage` unions the
@@ -3363,6 +3389,9 @@ per Claim type, and one-row-per-term child files for the nested parts. The
 Asterism side registers each file as its own dataset, so one file means one kind.
 It is separate from the PROV-JSON-LD export (§2.7 and ARCHITECTURE.md §3.2): the Asterism bundle is flat JSON for RML, the PROV export is a graph.
 The column names are the contract: the RML mapping refers to them.
+A Claim or Topic whose `derivedFromNotes` holds a `conversation:` id (§2.7) is never
+exported: `buildAsterismBundle` skips it with reason `conversation-source`, since a
+conversation holds the person's own judgments and names as they were said.
 
 `buildAsterismBundle` (`src/features/wiki/asterism-export.ts`) is a pure function
 shared by the in-app export and the MCP tool `export_asterism_claims`;

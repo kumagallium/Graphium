@@ -150,10 +150,23 @@ function graphemes(text: string): string[] {
 }
 
 /**
- * 一覧に出す題。本人の最初の発言の 1 行目（無ければ依頼文の 1 行目、それも無ければ
- * 出どころと日付）。本人の言葉をそのまま使うので、何の会話かを思い出しやすい。
+ * 一覧に出す題。記録が題を持っていればそれを使う（何の会話かがいちばん短く分かる）。
+ * 無ければ conversationFallbackTitle。
  */
 export function conversationTitle(material: ConversationMaterial, options: RenderConversationOptions = {}): string {
+  const custom = material.customTitle?.trim();
+  if (custom) {
+    const chars = graphemes(custom);
+    return chars.length > TITLE_MAX_CHARS ? `${chars.slice(0, TITLE_MAX_CHARS).join("")}…` : custom;
+  }
+  return conversationFallbackTitle(material, options);
+}
+
+/**
+ * 記録に題が無いときの題。本人の最初の発言の 1 行目（無ければ依頼文の 1 行目、それも無ければ
+ * 出どころと日付）。本人の言葉をそのまま使うので、何の会話かを思い出しやすい。
+ */
+export function conversationFallbackTitle(material: ConversationMaterial, options: RenderConversationOptions = {}): string {
   const firstLine = (text: string) =>
     text
       .split("\n")

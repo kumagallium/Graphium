@@ -17,6 +17,7 @@ import {
   computeClaimHash,
   planSourceCheck,
   runSourceCheck,
+  saveSourceCheckChange,
   saveSourceCheckResults,
   type PlanSourceCheckStatement,
   type ResolveSourceTextDeps,
@@ -50,7 +51,8 @@ export type UseSourceCheckDeps = {
   wikiMetas: Map<string, WikiMetaSummary>;
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined;
   loadDoc: (id: string) => Promise<GraphiumDocument | null>;
-  saveWikiFile: (wikiId: string, doc: GraphiumDocument) => Promise<unknown>;
+  /** ほかの保存の最中は書かずに false を返す（照合の保存は待ってやり直す） */
+  saveWikiFile: (wikiId: string, doc: GraphiumDocument) => Promise<boolean | void>;
   activeFileId?: string | null;
   reopenActiveWikiFile?: (wikiId: string) => void;
   /** テスト用差し替え。未指定なら runSourceCheck の既定（wikiLog.append, IndexedDB）を使う */
@@ -203,32 +205,28 @@ export function useSourceCheck(deps: UseSourceCheckDeps) {
   /** 確認済み（dismissed）を反転する。onDismiss と同じ保存経路（activityType 無し） */
   const dismiss = useCallback(
     async (docId: string): Promise<void> => {
-      const doc = await loadWikiDoc(docId, deps);
-      const profile = doc?.wikiMeta?.sourceCheck;
-      if (!doc || !profile) return;
-      const next: GraphiumDocument = {
-        ...attachSourceCheck(doc, { ...profile, dismissed: !profile.dismissed }),
-        modifiedAt: new Date().toISOString(),
-      };
-      await deps.saveWikiFile(docId, next);
-      if (deps.activeFileId === `wiki:${docId}`) deps.reopenActiveWikiFile?.(docId);
+      await saveSourceCheckChange(
+        docId,
+        (doc) => {
+          const profile = doc.wikiMeta?.sourceCheck;
+          return profile ? attachSourceCheck(doc, { ...profile, dismissed: !profile.dismissed }) : null;
+        },
+        saveDeps,
+      );
     },
-    [deps],
+    [saveDeps],
   );
 
   /** 判定結果を消す（attachSourceCheck(doc, undefined)） */
   const clear = useCallback(
     async (docId: string): Promise<void> => {
-      const doc = await loadWikiDoc(docId, deps);
-      if (!doc?.wikiMeta?.sourceCheck) return;
-      const next: GraphiumDocument = {
-        ...attachSourceCheck(doc, undefined),
-        modifiedAt: new Date().toISOString(),
-      };
-      await deps.saveWikiFile(docId, next);
-      if (deps.activeFileId === `wiki:${docId}`) deps.reopenActiveWikiFile?.(docId);
+      await saveSourceCheckChange(
+        docId,
+        (doc) => (doc.wikiMeta?.sourceCheck ? attachSourceCheck(doc, undefined) : null),
+        saveDeps,
+      );
     },
-    [deps],
+    [saveDeps],
   );
 
   /**

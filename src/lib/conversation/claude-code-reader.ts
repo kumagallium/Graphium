@@ -17,6 +17,8 @@
 //      始まるものは外す。`<p>…</p>` のような HTML で始まる本人の文は残す
 //   7. 会話の最初の発言が OPENING_BRIEF_MIN_CHARS を超えるときは、依頼文（brief）として残す
 //
+// 会話の題は `type: "custom-title"` の行の customTitle にある。何度も書かれるので、最後のものを使う。
+//
 // 7 は、長さで一律に捨てていた試行の決めを置き換えたもの。別の会話（AI）が書いた依頼文は、
 // 記録の上では人の発言と区別が付かない（origin も human になる）。実データでは、そうした
 // 依頼文の 9 割が会話の最初にあり 700 字を超えていた一方、会話の途中の長い発言は本人が
@@ -54,6 +56,10 @@ const RECORD_TYPE_RE = /"type"\s*:\s*"(?:user|assistant)"/;
 const TOOL_RESULT_KEY_RE = /"toolUseResult"\s*:/;
 /** 下請けのエージェントの記録の目印（本筋の会話ではない） */
 const SIDECHAIN_RE = /"isSidechain"\s*:\s*true/;
+/** 会話の題の行の目印。発言の中の同じ文字は `\"` に書かれるので、ここには当たらない */
+const CUSTOM_TITLE_MARK = '"custom-title"';
+/** 題として持つ長さの上限（記録が壊れていても素材の一覧を膨らませない） */
+const MAX_CUSTOM_TITLE_CHARS = 300;
 
 export type ClaudeCodeReaderOptions = {
   /**
@@ -179,6 +185,20 @@ function textOfContent(content: unknown): string | null {
   return parts.join("\n");
 }
 
+/** 題の文字を整える。改行は空白にし、制御文字・向きを変える文字・見えない文字を落とす（一覧にそのまま出る） */
+function cleanCustomTitle(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .slice(0, MAX_CUSTOM_TITLE_CHARS)
+    .replace(/[\r\n\t]+/g, " ")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, "")
+    // タグ文字・異体字セレクタなど、画面に出ないまま AI には読める文字
+    .replace(/[\u034f\u180e\ufe00-\ufe0f\ufff9-\ufffb\u{e0000}-\u{e0fff}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * 記録の時刻を ISO 8601（UTC）にそろえる。日付の形で始まらない文字列は使わない
  * （Date.parse は「Jan 1 2020 (…)」のような文字列も受けるので、欄の値をそのまま持ち回らない）
@@ -199,6 +219,7 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
   let workdir = "";
   let startedAt = "";
   let endedAt = "";
+  let customTitle = "";
   let ownChars = 0;
   let userTurns = 0;
   let mainRecords = 0;
@@ -214,6 +235,18 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
 
   const push = (line: string) => {
     if (line.length === 0 || line.charCodeAt(0) !== 123 /* { */) return;
+    if (line.includes(CUSTOM_TITLE_MARK)) {
+      try {
+        const parsed: unknown = JSON.parse(line);
+        if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "custom-title") {
+          // 空の題では、前の題を消さない
+          customTitle = cleanCustomTitle((parsed as { customTitle?: unknown }).customTitle) || customTitle;
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
     if (!RECORD_TYPE_RE.test(line)) return;
     if (SIDECHAIN_RE.test(line)) return;
     mainRecords += 1;
@@ -299,7 +332,7 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
 
   const finish = (): ConversationMaterial | null => {
     if (!isValidConversationSessionId(sessionId) || mainRecords === 0) return null;
-    return { provider: "claude-code", sessionId, workdir, startedAt, endedAt, turns, ownChars };
+    return { provider: "claude-code", sessionId, workdir, startedAt, endedAt, ...(customTitle ? { customTitle } : {}), turns, ownChars };
   };
 
   return { push, finish };

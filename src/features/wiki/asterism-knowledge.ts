@@ -6,6 +6,7 @@
 import type { TopicType, WikiMeta } from "../../lib/document-types";
 import {
   DEFAULT_NOTE_URL_BASE,
+  hasConversationSource,
   normalizeClaimBaseIri,
   normalizeNoteUrlBase,
 } from "./asterism-export";
@@ -136,7 +137,7 @@ export type KnowledgeBundleOptions = {
  * 文字列の 53 ビットのハッシュ（cyrb53）。衝突を避けるための短い指紋で、暗号の用途ではない。
  * 依存を足さず、ブラウザでも動く純関数にするため Node の crypto は使わない。
  */
-function cyrb53(str: string): number {
+export function cyrb53(str: string): number {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) {
@@ -223,7 +224,8 @@ export function buildKnowledgeBundle(
   // 行の並びは安全化した後の id の順
   const withSid = (kind: "claim" | "topic") =>
     items
-      .filter((i) => i.meta.kind === kind)
+      // AI との会話を出典に持つページは外へ書き出さない（asterism-export と同じ決まり）
+      .filter((i) => i.meta.kind === kind && !hasConversationSource(i.meta))
       .map((i) => ({ ...i, sid: safeKnowledgeId(i.id) }))
       .sort((a, b) => (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : 0));
   const claims = withSid("claim");

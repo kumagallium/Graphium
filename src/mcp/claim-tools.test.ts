@@ -24,6 +24,7 @@ import { INDEX_SCHEMA_VERSION } from "../features/navigation/index-file";
 import { protectEditedSections, startClaimTask, submitClaims, submitRewrite } from "./claim-tools";
 import { tasksLedgerPath } from "./knowledge-tasks";
 import { resetSearchIndex } from "./search";
+import { resetMediaIndexCache } from "./sources";
 import { listOperations, undoOperation } from "./upkeep/tools";
 
 const NOTE_A = "note-aaaa";
@@ -209,6 +210,43 @@ describe("start_claim_task の拒否", () => {
     writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString() });
     expect(await startClaimTask({ noteId: NOTE_A }, ctx, root)).toMatch(/^APP_RUNNING:/);
     expect(() => readFileSync(tasksLedgerPath(root))).toThrow();
+  });
+});
+
+describe("start_claim_task の AI との会話", () => {
+  const FILE = "conv-claude-code-11111111-2222-4333-8444-555555555555";
+  const BODY = "この資料は、私（利用者）と AI（Claude Code）の会話の記録である。\n\n## 2026-10-05\n\n- AI（直前の返答）: 2 割と 3 割のどちらにしますか\n- 私（09:12）: 全粒粉は 2 割までにする。3 割だと成形で形が保てなかった\n";
+  const entry = (over: Record<string, unknown> = {}) => ({
+    fileId: FILE, name: "全粒粉の配合", type: "conversation", mimeType: "text/plain", url: `conversation:${FILE}`,
+    thumbnailUrl: "", uploadedAt: "2026-11-10T00:00:00Z", usedIn: [], ...over,
+  });
+  const setup = (over: Record<string, unknown> = {}) => {
+    mkdirSync(p("media"), { recursive: true });
+    writeFileSync(p("media", `${FILE}.txt`), BODY);
+    writeJson(p("appdata", "media-index.json"), { version: 12, media: [entry(over)] });
+    resetMediaIndexCache();
+  };
+
+  it("会話の本文と、本人の発言を先に拾う節が課題に入る", async () => {
+    setup();
+    const reply = await startClaimTask({ noteId: `conversation:${FILE}` }, ctx, root);
+    expect(reply).toContain("全粒粉は 2 割までにする");
+    expect(reply).toContain("When the source is a conversation with an AI");
+    expect(taskIdOf(reply)).not.toBe("");
+  });
+
+  it("アーカイブ済み・別の種類の素材は断る", async () => {
+    setup({ archivedAt: "2026-11-11T00:00:00Z" });
+    expect(await startClaimTask({ noteId: `conversation:${FILE}` }, ctx, root)).toMatch(/^NOT_FOUND/);
+    setup({ type: "pdf" });
+    expect(await startClaimTask({ noteId: `conversation:${FILE}` }, ctx, root)).toMatch(/^NOT_FOUND/);
+  });
+
+  it("本文が無ければ取り込み直しを案内し、パスの形の id では読みに行かない", async () => {
+    setup();
+    rmSync(p("media", `${FILE}.txt`));
+    expect(await startClaimTask({ noteId: `conversation:${FILE}` }, ctx, root)).toMatch(/^SOURCE_UNAVAILABLE/);
+    expect(await startClaimTask({ noteId: "conversation:../../secret" }, ctx, root)).toMatch(/^(NOT_FOUND|NOT_A_NOTE)/);
   });
 });
 

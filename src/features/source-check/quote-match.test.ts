@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderConversationBody } from "../../lib/conversation/render";
 import { findBlockIdForQuote, locateQuoteRanges, resolveQuoteLocation } from "./quote-match";
 
 const blocks = [
@@ -222,5 +223,33 @@ describe("resolveQuoteLocation - それ以外の出典種別", () => {
     for (const kind of kinds) {
       expect(resolveQuoteLocation({ kind, text: "重要な記述がある。" }, "重要な記述")).toBeUndefined();
     }
+  });
+});
+
+describe("AI との会話の本文に対する照合", () => {
+  const body = renderConversationBody(
+    {
+      provider: "claude-code",
+      sessionId: "s",
+      workdir: "",
+      startedAt: "2026-10-05T00:12:00.000Z",
+      endedAt: "2026-10-05T00:12:00.000Z",
+      ownChars: 40,
+      turns: [{ speaker: "user", at: "2026-10-05T00:12:00.000Z", text: "加水を上げるほうで。\nこね時間は今のままにしたい。\n  （ミキサーが熱を持つので）" }],
+    },
+    { utcOffsetMinutes: 540 },
+  );
+
+  it("1 行の中の一節が見つかる", () => {
+    expect(locateQuoteRanges(body, "こね時間は今のままにしたい").length).toBeGreaterThan(0);
+  });
+
+  it("保存のときの字下げをまたいだ一節も見つかる（複数行の発言）", () => {
+    expect(locateQuoteRanges(body, "加水を上げるほうで。 こね時間は今のままにしたい。").length).toBeGreaterThan(0);
+    expect(locateQuoteRanges(body, "こね時間は今のままにしたい。\n（ミキサーが熱を持つので）").length).toBeGreaterThan(0);
+  });
+
+  it("本文に無い一節は見つからない", () => {
+    expect(locateQuoteRanges(body, "こね時間を 2 分延ばす")).toEqual([]);
   });
 });

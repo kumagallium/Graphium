@@ -15,7 +15,7 @@ export {
   type IngestStageStatus,
 } from "./IngestToast";
 export {
-  ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
+  ingestNote, backfillFrames, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromConversation, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
@@ -86,7 +86,14 @@ export type {
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
   TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";
-export { linkClaimsToTopicsForSource, selectClaimTopicLinkCandidates } from "./claim-topic-link";
-export type { ClaimTopicLinkDeps, ClaimTopicLinkEntry, ClaimTopicLinkResult } from "./claim-topic-link";
+export {
+  linkClaimsToTopicsForSource, selectClaimTopicLinkCandidates,
+  planClaimTopicLinkBackfill, runClaimTopicLinkBackfill, parseClaimTopicLinkCheckpoint,
+  CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE,
+} from "./claim-topic-link";
+export type {
+  ClaimTopicLinkDeps, ClaimTopicLinkEntry, ClaimTopicLinkResult,
+  ClaimTopicLinkBackfillPlan, ClaimTopicLinkBackfillProgress, ClaimTopicLinkBackfillResult,
+} from "./claim-topic-link";
 export { mergeAtomsExplicit } from "./atom-merge";
 export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

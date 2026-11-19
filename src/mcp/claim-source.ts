@@ -1,10 +1,11 @@
 // start_claim_task / submit_claims が読む「知見の元」の解決。
-// 対象は通常のノート（notes/）に加え、素材（pdf: / document: / url:）とメモ（memo:）。
+// 対象は通常のノート（notes/）に加え、素材（pdf: / document: / url: / conversation:）とメモ（memo:）。
 // 本文の作り方はアプリの取り込みと同じ関数を使う（features/wiki/source-ingest-input.ts・memo-note-doc.ts）:
 //   - ノート: extractPlainTextFromDoc（アプリの ingestNote）
 //   - メモ:   buildMemoNoteDoc で一時 doc を作って同じ（アプリの「メモのナレッジ化」）
 //   - PDF / Word: 抽出（Node 版）→ buildPdfIngestInput / buildDocxIngestInput（ingestFromPdf / ingestFromDocx）
 //   - URL:    fetchPageAsText（アプリの /fetch-url と同じ関数）→ buildUrlIngestInput（ingestFromUrl）
+//   - AI との会話: 保存した本文 → buildConversationIngestInput（ingestFromConversation）
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -16,11 +17,11 @@ import { extractDocxText } from "../lib/docx-text";
 import { syncLocale, t } from "../i18n";
 import { parseExternalSource } from "../features/network-graph/external-source";
 import { buildMemoNoteDoc } from "../features/wiki/memo-note-doc";
-import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, capForSingleCall, outputLanguageHint } from "../features/wiki/source-ingest-input";
+import { buildConversationIngestInput, buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, capForSingleCall, outputLanguageHint } from "../features/wiki/source-ingest-input";
 import { extractPlainTextFromDoc } from "../features/wiki/wiki-service";
 import { readCaptureIndex } from "./captures";
 import { extractPdfTextNode } from "./pdf-text-node";
-import { findMediaFile } from "./source-text";
+import { conversationTextFile, findMediaFile } from "./source-text";
 import { describeLinkedFile, readMediaIndex } from "./sources";
 import { getFlags } from "./upkeep/index-store";
 import { notesDir, wikiDir } from "./vault";
@@ -28,7 +29,7 @@ import type { GenerationLanguage } from "../lib/language";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export type ClaimSourceKind = "note" | "memo" | "pdf" | "document" | "url";
+export type ClaimSourceKind = "note" | "memo" | "pdf" | "document" | "url" | "conversation";
 
 /** 知見の元。ingester に渡す入力と、保存・照合に使う情報 */
 export type ClaimSource = {
@@ -70,7 +71,7 @@ export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex"
 export function claimSourceKindOf(noteId: string): ClaimSourceKind | "unsupported" {
   const ext = parseExternalSource(noteId);
   if (!ext) return "note";
-  if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "url" || ext.kind === "memo") return ext.kind;
+  if (ext.kind === "pdf" || ext.kind === "document" || ext.kind === "url" || ext.kind === "memo" || ext.kind === "conversation") return ext.kind;
   return "unsupported";
 }
 
@@ -85,12 +86,13 @@ export async function loadClaimSource(root: string, noteId: string, language: Ge
   if (kind === "unsupported") {
     return {
       ok: false,
-      message: `NOT_A_NOTE: この種類の資料は対象外です（対象: ノート・PDF・Word・URL 素材・メモ）: ${noteId}`,
+      message: `NOT_A_NOTE: この種類の資料は対象外です（対象: ノート・PDF・Word・URL 素材・AI との会話・メモ）: ${noteId}`,
     };
   }
   if (kind === "note") return loadNote(root, noteId);
   if (kind === "memo") return loadMemo(root, noteId, language);
   if (kind === "url") return loadUrl(root, noteId);
+  if (kind === "conversation") return loadConversation(root, noteId, language);
   return loadFileSource(root, noteId, kind, language);
 }
 
@@ -153,6 +155,27 @@ function loadMemo(root: string, noteId: string, language: GenerationLanguage): L
       doc,
       noteLike: true,
       captureId,
+    },
+  };
+}
+
+function loadConversation(root: string, noteId: string, language: GenerationLanguage): LoadedClaimSource {
+  const fileId = noteId.slice(noteId.indexOf(":") + 1);
+  const entry = readMediaIndex(root).get(fileId);
+  if (!entry || entry.archivedAt || entry.type !== "conversation") return notFound("AI との会話", noteId);
+  const path = conversationTextFile(fileId, root);
+  if (!path) return { ok: false, message: `SOURCE_UNAVAILABLE: 会話の本文が見つかりません。取り込み直すと戻ります: ${noteId}` };
+  const input = buildConversationIngestInput(readFileSync(path, "utf8"), entry.name, language);
+  if (!input.ok) return { ok: false, message: `EMPTY_NOTE: 会話の本文が空です: ${noteId}` };
+  return {
+    ok: true,
+    src: {
+      kind: "conversation",
+      noteTitle: input.noteTitle,
+      noteContent: input.noteContent,
+      sourceTitle: entry.name,
+      hashBasis: `${input.noteTitle}\n${input.sourceText}`,
+      noteLike: false,
     },
   };
 }

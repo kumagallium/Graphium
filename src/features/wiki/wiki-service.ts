@@ -9,7 +9,7 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { mergeFrame } from "./merge-frame";
 import { truncateConversationForAnswerRewrite, answerRewritePreservesCitations } from "../../server/services/wiki-topic-writer";
 import { summarizeNoteProv } from "../prov-extractor";
-import { buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, outputLanguageHint } from "./source-ingest-input";
+import { buildConversationIngestInput, buildDocxIngestInput, buildPdfIngestInput, buildUrlIngestInput, outputLanguageHint } from "./source-ingest-input";
 import { getEmbeddingModel, getDefaultLLMModel, getEmbeddingLLMModel, getSelectedModel, getStandardLLMModel, getStandardModelName, getPreciseLLMModel, getPreciseModelName, getLLMModels, loadSettings, type AsterismSettings } from "../settings/store";
 import { applyAsterismDefaults } from "./asterism-link";
 import { apiBase, isTauri } from "../../lib/platform";
@@ -1648,6 +1648,46 @@ export async function ingestFromPdf(
  * extractDocxText（上付き・下付きは <sup> / <sub> で残す）で本文を取り出し、
  * PDF と同じ /ingest API に流す。Excel/PowerPoint は未対応（呼ばないこと）。
  */
+/** AI との会話の本文から知見を抽出する（本文は取り込みのときに保存したテキスト） */
+export async function ingestFromConversation(
+  body: string,
+  title: string,
+  sourceNoteId: string,
+  existingWikis: ExistingWikiInfo[],
+  language: string,
+  knowledgeSchema: string,
+  /** 知見（Claims）抽出を行うかどうか（既定 true）。false のときは /api/wiki/ingest を呼ばない */
+  extractClaims: boolean = true,
+  signal?: AbortSignal,
+): Promise<IngestResult & { sourceText: string; sourceTitle: string }> {
+  const input = buildConversationIngestInput(body, title, language);
+  if (!input.ok) throw new Error(t("ingest.conversationNoText"));
+  const { noteTitle, noteContent, sourceText } = input;
+  if (!extractClaims) {
+    return {
+      wikis: [], tokenUsage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 }, model: null,
+      sourceText, sourceTitle: noteTitle,
+    };
+  }
+  const res = await fetch(`${API_BASE}/ingest`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({
+      noteId: sourceNoteId,
+      noteContent,
+      noteTitle,
+      existingWikiTitles: existingWikis,
+      language,
+      knowledgeSchema,
+      ...wikiBodyModel(),
+    }),
+    signal,
+  });
+  if (!res.ok) throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
+  const data = (await res.json()) as IngestResult;
+  return { ...data, sourceText, sourceTitle: noteTitle };
+}
+
 export async function ingestFromDocx(
   blob: Blob,
   fileName: string,

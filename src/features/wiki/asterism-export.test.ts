@@ -442,3 +442,32 @@ describe("buildAsterismBundle: includeTopics", () => {
     ]);
   });
 });
+
+describe("AI との会話を出典に持つページ", () => {
+  const opts = { noteUrlBase: DEFAULT_NOTE_URL_BASE, exportedAt: NOW, includeUntyped: true, includeInferred: true, includeTopics: true };
+  const fromConversation = base({ derivedFromNotes: ["conversation:conv-claude-code-s1"] });
+
+  it("知見は書き出さず、理由つきで飛ばす", () => {
+    const r = buildAsterismBundle([{ id: "c1", meta: fromConversation, title: "全粒粉は 2 割まで" }], AST, opts) as AsterismBundle;
+    expect(Object.keys(r.files)).toEqual([]);
+    expect(r.skipped).toEqual([{ id: "c1", reason: "conversation-source" }]);
+  });
+
+  it("ほかの資料と混ざっていても書き出さない", () => {
+    const mixed = base({ derivedFromNotes: ["n1", "conversation:conv-claude-code-s1"] });
+    const r = buildAsterismBundle([{ id: "c1", meta: mixed, title: "x" }], AST, opts) as AsterismBundle;
+    expect(r.skipped[0].reason).toBe("conversation-source");
+  });
+
+  it("トピックも書き出さない", () => {
+    const topic = { ...fromConversation, kind: "topic" } as WikiMeta;
+    const r = buildAsterismBundle([{ id: "t1", meta: topic, title: "配合" }], AST, opts) as AsterismBundle;
+    expect(r.files["topics.json"]).toBeUndefined();
+  });
+
+  it("会話を出典に持たない知見はこれまでどおり書き出す", () => {
+    const r = buildAsterismBundle([{ id: "c1", meta: base({}), title: "x" }], AST, opts) as AsterismBundle;
+    expect(r.skipped).toEqual([]);
+    expect(Object.keys(r.files).length).toBeGreaterThan(0);
+  });
+});

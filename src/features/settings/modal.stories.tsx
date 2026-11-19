@@ -224,6 +224,10 @@ function SettingsModalHarness({
         {...(knowledgeJobs
           ? {
               onOrganizeTopics: async () => ({ merged: 0, rebuilt: 0, failed: 0 }),
+              claimTopicLinkBackfill: {
+                plan: async () => ({ calls: 12, claims: 148, alreadyJudged: 3 }),
+                run: async () => ({ done: 12, total: 12, linkedClaims: 121, calls: 12, failedSources: 0, aborted: false, stoppedByFailures: false }),
+              },
               onRunAtomizeDiscovery: async () => ({ ok: true, created: 0, iterations: 0 }),
               onPlanAtomizeDiscovery: async () => ({ total: 6, runs: 1 }),
             }

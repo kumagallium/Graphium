@@ -4,7 +4,7 @@
 
 import { safeExternalHref } from "../../lib/safe-href";
 import { Image as ImageIcon, Video, Volume2, FileText, Files, Paperclip, Link as LinkIcon, ExternalLink, GitBranch, Table, MessagesSquare, File as FileIcon } from "lucide-react";
-import type { MediaIndexEntry, MediaType } from "./media-index";
+import { materialListDate, type MediaIndexEntry, type MediaType } from "./media-index";
 import { usePreviewImage } from "./preview-image";
 import { formatDateTime } from "../../lib/format-datetime";
 import { useT } from "../../i18n";
@@ -290,7 +290,7 @@ export function MaterialListItem({
         )}
       </td>
       <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-        {formatDateTime(entry.uploadedAt)}
+        {formatDateTime(materialListDate(entry))}
       </td>
       {onDelete && (
         <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
