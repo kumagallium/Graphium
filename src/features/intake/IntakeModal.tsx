@@ -103,6 +103,8 @@ export type IntakeConversationProps = {
     total: number;
     /** 候補の本数 */
     candidates: number;
+    /** ノートにまとめてあるため候補から外した本数 */
+    leftOut?: number;
     onIngest: () => void;
   };
 };
@@ -273,7 +275,7 @@ export function IntakeModal({
                   </div>
                 </dl>
                 {conversation.offer && (
-                  <ConversationIngestOffer total={conversation.offer.total} candidates={conversation.offer.candidates} />
+                  <ConversationIngestOffer total={conversation.offer.total} candidates={conversation.offer.candidates} leftOut={conversation.offer.leftOut} />
                 )}
                 <div className="flex flex-wrap gap-2">
                   {conversation.offer && conversation.offer.candidates > 0 && (

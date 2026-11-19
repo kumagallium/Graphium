@@ -77,6 +77,22 @@ export const English: Story = {
   ),
 };
 
+export const WithCreatedNotes: Story = {
+  render: () => (
+    <ConversationStoryFrame width={640}>
+      <ConversationPreviewView
+        entry={{ conversation: META }}
+        text={JA}
+        createdNotes={[
+          { noteId: "00000000-0000-4000-8000-000000000001", title: "ライ麦サワー種の発酵は 6 時間で止める" },
+          { noteId: "00000000-0000-4000-8000-000000000002", title: "焼き時間は 230 度で 35 分前後にする" },
+        ]}
+        onOpenNote={() => {}}
+      />
+    </ConversationStoryFrame>
+  ),
+};
+
 export const Missing: Story = {
   render: () => (
     <ConversationStoryFrame width={640}>

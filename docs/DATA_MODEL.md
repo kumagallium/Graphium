@@ -1792,9 +1792,27 @@ type ConversationMeta = {
   bodyChars: number;              // length of the stored text
   importedAt: string;             // last time it was brought in or replaced
   autoName?: string;              // the name bringing in gave it; absent on materials from v0.147
+  createdNoteIds?: string[];      // notes the AI made in this conversation with the MCP `create_note`
 };
 ```
 
+- **`createdNoteIds`.** Read at bring-in time from the record itself: every
+  `create_note` call of the Graphium MCP server (`mcp__graphium__create_note`
+  or the plugin form `mcp__plugin_<name>_graphium__create_note`) and the id in
+  its non-error result. Titles and folder names may contain line breaks, so an
+  id is taken only from the last line-anchored `ファイル: …/notes/<id>.json`
+  line, and only when a line-anchored `noteId: <id>` line with the same id is
+  also present. Calls made by sub-agents live in separate record files and are
+  not read. Ids are kept in order of appearance without duplicates, and
+  bringing the conversation in again keeps the union of the previous and the
+  new ids (a truncated record does not drop them). The key is omitted when
+  there are none. Nothing is written to
+  the notes: the link lives on the material only. The conversation screen
+  lists the notes (titles come from the note index; ids missing from the
+  index or in the trash are not shown), and a conversation with at least one
+  note that exists and is not in the trash is left out of the candidates offered for **Add all to knowledge** (it is already summed up in
+  notes). Gaining a note counts as the conversation having grown. Adding the
+  key did not change the media index version.
 - **Identity.** `fileId` is `conv-<provider>-<sessionId>`
   (`conversationFileId`), so bringing the same conversation in again never
   makes a second material: the stored text and `conversation` are replaced

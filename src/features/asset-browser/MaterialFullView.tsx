@@ -56,6 +56,8 @@ export type MaterialFullViewProps = {
   onNavigateNote?: (noteId: string) => void;
   /** 指定時：アセットグラフの利用ノードクリックで離脱せず右に SidePeek で開く */
   onOpenNoteInSidePeek?: (noteId: string) => void;
+  /** AI との会話の画面: ノートの題を引く（索引に無い・ゴミ箱は undefined） */
+  noteTitleOf?: (noteId: string) => string | undefined;
   /** PDF ビューアと右パネルの間に差し込むノートサイドピーク（翻訳ノート等） */
   noteSidePeek?: ReactNode;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
@@ -106,6 +108,7 @@ export function MaterialFullView({
   onDelete,
   onNavigateNote,
   onOpenNoteInSidePeek,
+  noteTitleOf,
   noteSidePeek,
   onRename,
   onIngest,
@@ -300,6 +303,8 @@ export function MaterialFullView({
                 onSaveSelectionAsMemo ? handleSaveSelectionAsMemo : undefined
               }
               onSaveImageAsAsset={onSaveImageAsAsset}
+              onOpenNote={onOpenNoteInSidePeek ?? onNavigateNote}
+            noteTitleOf={noteTitleOf}
             />
           </div>
         </div>

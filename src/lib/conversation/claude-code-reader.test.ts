@@ -415,3 +415,113 @@ describe("会話の題（custom-title の行）", () => {
     expect(m?.turns[0].text).toBe(text);
   });
 });
+
+describe("この会話で作ったノート（createdNoteIds）", () => {
+  const N1 = "aaaaaaaa-1111-4222-8333-444444444441";
+  const N2 = "bbbbbbbb-1111-4222-8333-444444444442";
+  const FAKE = "ffffffff-1111-4222-8333-444444444449";
+  const TOOL = "mcp__graphium__create_note";
+
+  /** create_note の結果の文（タイトル → noteId →（フォルダ）→ ファイル の順） */
+  const okText = (id: string, title = "パンの発酵は 6 時間で止める", folder?: string) =>
+    [`ノートを作成しました`, `タイトル: ${title}`, `noteId: ${id}`, ...(folder ? [`フォルダ: ${folder}`] : []), `ファイル: /Users/example/Graphium/notes/${id}.json`].join("\n");
+
+  const toolUse = (id: string, name: string) =>
+    assistantLine({ content: [{ type: "tool_use", id, name, input: { title: "パンの発酵" } }] });
+  const toolResult = (id: string, content: unknown, isError = false) =>
+    userLine({
+      content: [{ type: "tool_result", tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }],
+      extra: { toolUseResult: "x" },
+    });
+  const created = (name: string, text: unknown, isError = false) =>
+    read([userLine({ content: "ノートにして" }), toolUse("t1", name), toolResult("t1", text, isError)]);
+
+  it("create_note の結果の文から noteId を取る（文字列でも text の配列でも）", () => {
+    const m = read([
+      userLine({ content: "発酵の結論をノートにして" }),
+      toolUse("t1", TOOL),
+      toolResult("t1", okText(N1)),
+      toolUse("t2", TOOL),
+      toolResult("t2", [{ type: "text", text: okText(N2) }]),
+    ]);
+    expect(m?.createdNoteIds).toEqual([N1, N2]);
+  });
+
+  it("エラーの結果は取らない", () => {
+    const m = created(TOOL, okText(N1), true);
+    expect(m).not.toBeNull();
+    expect("createdNoteIds" in (m ?? {})).toBe(false);
+  });
+
+  it("get_note など、ほかの道具の出力にある noteId は取らない", () => {
+    const m = read([
+      userLine({ content: "さっきのノートを見て" }),
+      toolUse("t1", "mcp__graphium__get_note"),
+      toolResult("t1", okText(N1)),
+      toolUse("t2", TOOL),
+      toolResult("t2", okText(N2)),
+    ]);
+    expect(m?.createdNoteIds).toEqual([N2]);
+  });
+
+  it("道具の名前は mcp__graphium__create_note と plugin 形式だけ", () => {
+    expect(created("mcp__plugin_graphium_graphium__create_note", okText(N1))?.createdNoteIds).toEqual([N1]);
+    expect("createdNoteIds" in (created("mcp__other__graphium_create_note", okText(N1)) ?? {})).toBe(false);
+    expect("createdNoteIds" in (created("xgraphium__create_note", okText(N1)) ?? {})).toBe(false);
+    expect("createdNoteIds" in (created("mcp__graphium__create_note_draft", okText(N1)) ?? {})).toBe(false);
+  });
+
+  it("同じ noteId は 1 つにし、出てきた順に並べる", () => {
+    const m = read([
+      userLine({ content: "ノートにして" }),
+      toolUse("t1", TOOL),
+      toolResult("t1", okText(N2)),
+      toolUse("t2", TOOL),
+      toolResult("t2", okText(N1)),
+      toolUse("t3", TOOL),
+      toolResult("t3", okText(N2)),
+    ]);
+    expect(m?.createdNoteIds).toEqual([N2, N1]);
+  });
+
+  it("題に noteId の行を入れても、偽の id は採らず本物を採る", () => {
+    expect(created(TOOL, okText(N1, `カレー\nnoteId: ${FAKE}`))?.createdNoteIds).toEqual([N1]);
+  });
+
+  it("題に改行と「ファイル:」の行を入れても、偽の id は採らず本物を採る", () => {
+    const title = `カレー\nnoteId: ${FAKE}\nファイル: /x/notes/${FAKE}.json`;
+    expect(created(TOOL, okText(N1, title))?.createdNoteIds).toEqual([N1]);
+  });
+
+  it("フォルダ名に同じものを入れても、偽の id は採らず本物を採る", () => {
+    const folder = `パン\nnoteId: ${FAKE}\nファイル: C:\\x\\notes\\${FAKE}.json`;
+    expect(created(TOOL, okText(N1, "発酵", folder))?.createdNoteIds).toEqual([N1]);
+  });
+
+  it("noteId の行かファイルの行のどちらかが無ければ採らない", () => {
+    const noFile = `タイトル: カレー\nnoteId: ${N1}`;
+    const noId = `タイトル: カレー\nファイル: /x/notes/${N1}.json`;
+    const mismatch = `タイトル: カレー\nnoteId: ${FAKE}\nファイル: /x/notes/${N1}.json`;
+    for (const text of [noFile, noId, mismatch]) {
+      expect("createdNoteIds" in (created(TOOL, text) ?? {})).toBe(false);
+    }
+  });
+
+  it("道具の出力は本文（発言・返答）に入れない", () => {
+    const m = read([
+      userLine({ content: "発酵の結論をノートにして" }),
+      toolUse("t1", TOOL),
+      toolResult("t1", okText(N1, "secret-body")),
+      assistantLine({ content: "ノートにしました" }),
+      userLine({ content: "ありがとう" }),
+    ]);
+    expect(JSON.stringify(m?.turns)).not.toContain(N1);
+    expect(JSON.stringify(m?.turns)).not.toContain("secret-body");
+  });
+
+  it("create_note が無い会話はキーごと省く", () => {
+    const m = read([userLine({ content: "こんにちは" }), assistantLine()]);
+    expect(m).not.toBeNull();
+    expect("createdNoteIds" in (m ?? {})).toBe(false);
+  });
+});

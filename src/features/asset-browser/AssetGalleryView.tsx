@@ -744,6 +744,8 @@ export type AssetGalleryViewProps = {
   onTranslatePdf?: (entry: MediaIndexEntry) => void;
   /** アセットグラフの利用ノードクリックで、離脱せず右に SidePeek でノートを開く */
   onOpenNoteInSidePeek?: (noteId: string) => void;
+  /** AI との会話の画面: ノートの題を引く（索引に無い・ゴミ箱は undefined） */
+  noteTitleOf?: (noteId: string) => string | undefined;
   /** 開くノートサイドピークの noteId。指定時は PDF を Full view にして右パネルの左に並べる */
   notePeekId?: string | null;
   /** notePeekId のノートサイドピーク要素を生成する（呼び出し側で SidePeek を組み立てる） */
@@ -926,6 +928,7 @@ export function AssetGalleryView({
   onCreateProvNote,
   onTranslatePdf,
   onOpenNoteInSidePeek,
+  noteTitleOf,
   notePeekId,
   renderNotePeek,
   resolveKnowledgeWikiId,
@@ -1765,6 +1768,7 @@ export function AssetGalleryView({
         onCreateProvNote={onCreateProvNote}
         onTranslatePdf={onTranslatePdf}
         onOpenNoteInSidePeek={onOpenNoteInSidePeek}
+        noteTitleOf={noteTitleOf}
         noteSidePeek={notePeekId && renderNotePeek ? renderNotePeek(notePeekId) : null}
         knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
         onSharedRefUpdated={async (entry, sharedRef) => {
@@ -2593,6 +2597,7 @@ export function AssetGalleryView({
           onCreateProvNote={onCreateProvNote}
           onTranslatePdf={onTranslatePdf}
           onOpenNoteInSidePeek={onOpenNoteInSidePeek}
+        noteTitleOf={noteTitleOf}
           knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
           onSharedRefUpdated={async (entry, sharedRef) => {
             setDetailEntry({ ...entry, sharedRef });

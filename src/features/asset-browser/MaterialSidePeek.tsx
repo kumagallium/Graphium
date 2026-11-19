@@ -109,6 +109,8 @@ export type MaterialSidePeekProps = {
   onNavigateNote?: (noteId: string) => void;
   /** 指定時：アセットグラフの利用ノードクリックで離脱せず右に SidePeek で開く */
   onOpenNoteInSidePeek?: (noteId: string) => void;
+  /** AI との会話の画面: ノートの題を引く（索引に無い・ゴミ箱は undefined） */
+  noteTitleOf?: (noteId: string) => string | undefined;
   /** タイトル / Metadata Name 編集 */
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** Knowledge 化（URL / PDF 限定） */
@@ -210,6 +212,7 @@ export function MaterialSidePeek({
   onRegisterAsset,
   onTranslatePdf,
   onOpenNoteInSidePeek,
+  noteTitleOf,
   onExtractPdfPages,
   onExtractDocxImages,
   onExpandOffice,
@@ -354,6 +357,8 @@ export function MaterialSidePeek({
             onSaveSelectionAsMemo={onSaveSelectionAsMemo}
             onSaveImageAsAsset={onSaveImageAsAsset}
             focus={focus}
+            onOpenNote={onOpenNoteInSidePeek ?? onNavigateNote}
+            noteTitleOf={noteTitleOf}
           />
         )}
       </div>
