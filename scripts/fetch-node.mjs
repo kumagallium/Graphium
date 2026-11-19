@@ -187,17 +187,26 @@ console.log(`[fetch-node] sha256 OK (${expected.slice(0, 12)}…)`);
 console.log("[fetch-node] Extracting");
 let extractStatus;
 if (isWindows) {
-  // Windows: PowerShell の Expand-Archive を使う（unzip コマンドは標準で無い）
-  const ps = spawnSync(
-    "powershell",
-    [
-      "-NoProfile",
-      "-Command",
-      `Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force`,
-    ],
-    { stdio: "inherit" },
-  );
-  extractStatus = ps.status;
+  // Windows: まず OS 同梱の tar（bsdtar。zip も展開できる）を使う。PATH 上の tar は Git の GNU tar で
+  // zip を読めないことがあるので、System32 のものを名指しする。
+  // PowerShell の Expand-Archive は、GitHub Actions の pwsh 7 から呼ぶと PSModulePath が漏れて
+  // Windows PowerShell 5.1 が 7 の Archive モジュールを読み、展開に失敗しても終了コード 0 を返した
+  // （2026-11-19、v0.151.0 のビルド）。tar が無いときだけ、PSModulePath を外し、失敗を止める形で使う
+  const systemTar = join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
+  if (existsSync(systemTar)) {
+    extractStatus = spawnSync(systemTar, ["-xf", archivePath, "-C", tmpDir], { stdio: "inherit" }).status;
+  } else {
+    const { PSModulePath: _psModulePath, ...env } = process.env;
+    extractStatus = spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `$ErrorActionPreference = 'Stop'; Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force`,
+      ],
+      { stdio: "inherit", env },
+    ).status;
+  }
 } else {
   const ex = spawnSync("tar", ["xzf", archivePath, "-C", tmpDir], { stdio: "inherit" });
   extractStatus = ex.status;
@@ -214,6 +223,13 @@ if (extractStatus !== 0) {
 const sourceNode = isWindows
   ? join(tmpDir, archiveName, "node.exe")
   : join(tmpDir, archiveName, "bin", "node");
+
+// 展開が終了コード 0 を返しても中身が無いことがある（上の Expand-Archive）。ここで分かる形で止める
+if (!existsSync(sourceNode)) {
+  console.error(`[fetch-node] Extracted archive has no ${sourceNode}`);
+  rmSync(tmpDir, { recursive: true, force: true });
+  process.exit(1);
+}
 
 // 1. sidecar/node[.exe] に配置
 copyFileSync(sourceNode, sidecarNodePath);
