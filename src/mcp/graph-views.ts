@@ -162,20 +162,22 @@ export function graphKindOf(kind: GraphNodeKind): GraphKind {
   return "note";
 }
 
-function kindOfNoteId(id: string): GraphNodeKind {
-  if (isExternalSourceId(id)) return "source";
-  const entry = allEntries().find((e) => e.noteId === id);
-  const k = entry?.wikiKind;
-  if (k === "claim" || k === "topic" || k === "answer" || k === "atom" || k === "summary") return k;
-  return "note";
-}
-
-function labelOf(id: string, fallback?: string): string {
-  if (isExternalSourceId(id)) return describeSource(id).title;
-  return fallback || allEntries().find((e) => e.noteId === id)?.title || id;
-}
-
-export function buildLineagePayload(result: LineageResult, startTitle: string): GraphPayload {
+/**
+ * 来歴の図を組む。root は vault の場所（テストは一時 vault を渡す。既定の vault を引かないように）。
+ * 索引は 1 回だけ引いて表にする（ノードごとに索引を探し直さない）
+ */
+export function buildLineagePayload(result: LineageResult, startTitle: string, root = resolveGraphiumRoot()): GraphPayload {
+  const entries = new Map(allEntries(root).map((e) => [e.noteId, e]));
+  const kindOfNoteId = (id: string): GraphNodeKind => {
+    if (isExternalSourceId(id)) return "source";
+    const k = entries.get(id)?.wikiKind;
+    if (k === "claim" || k === "topic" || k === "answer" || k === "atom" || k === "summary") return k;
+    return "note";
+  };
+  const labelOf = (id: string, fallback?: string): string => {
+    if (isExternalSourceId(id)) return describeSource(id, root).title;
+    return fallback || entries.get(id)?.title || id;
+  };
   const nodes = new Map<string, GraphNode>();
   const startKind = kindOfNoteId(result.noteId);
   nodes.set(result.noteId, { id: result.noteId, label: startTitle, kind: startKind, graphKind: graphKindOf(startKind), focus: true, rank: 0 });

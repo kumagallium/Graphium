@@ -90,6 +90,7 @@ describe("buildLineagePayload", () => {
         connections: [],
       },
       "起点",
+      root,
     );
     const rank = Object.fromEntries(payload.nodes.map((n) => [n.id, n.rank]));
     expect(rank).toEqual({ x: 0, up: -1, down: 1 });
