@@ -12513,7 +12513,8 @@ export function NoteApp() {
           listEntries: listClaimTopicLinkEntries,
           loadDoc: cur.loadDoc,
           getCachedDoc: cur.getCachedDoc,
-          handleSaveWikiFile: cur.handleSaveWikiFile,
+          // topicIds だけの保存。索引の組み直し（全 Wiki の読み直し）を起こさない
+          handleSaveWikiFile: (wikiId, doc) => cur.handleSaveWikiFile(wikiId, doc, { metadataOnly: true }),
           judge: (claims, topics, judgeSignal) => judgeClaimTopicLinks(claims, topics, undefined, judgeSignal),
           checkpoint,
           saveCheckpoint: (next) => writeAppDataFile(CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE, next),
