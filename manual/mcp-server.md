@@ -431,9 +431,9 @@ In clients that support MCP Apps (Claude Desktop and others), the assistant can 
 
 - **`show_steps`** — a note's steps as a flow: inputs and tools, the steps, and what they produced, from top to bottom as in the app. Useful right after the assistant makes a procedure note.
 - **`show_lineage`** — where a note, topic or source came from, and what came from it.
-- **`show_knowledge_graph`** — the whole [global graph](/knowledge-layer). While it is open, it marks what the assistant touches in this conversation, as the graph beside the app's chat does: pages it read in light green, pages it wrote in dark green, and the links it followed in a thick green line. Ask for it at the start — *"show me the knowledge graph while we talk"* — and watch where the answer comes from. With `folder`, pages outside the folder are faded.
+- **`show_knowledge_graph`** — the whole [global graph](/knowledge-layer), drawn by the same component as the graph beside the app's chat: the same islands and island names, and hovering a page shows its title and the titles of the pages linked to it. While it is open, it marks what the assistant touches in this conversation: pages it read or wrote most recently in large dark green, earlier ones a step smaller, and the links it followed in a thick green line. Ask for it at the start — *"show me the knowledge graph while we talk"* — and watch where the answer comes from. With `folder`, pages outside the folder are faded.
 
-![The knowledge graph drawn inside a conversation: grey nodes for the vault, a few pages in light green with their titles (read by the assistant), and a thick green line along the links the assistant followed. Buttons at the top: Fit, Float beside the chat, Full screen.](/screenshots/mcp-knowledge-graph.png)
+![The knowledge graph drawn inside a conversation, in the app's look: grey pages grouped into islands, a few pages in large dark green with their titles (read by the assistant), and a thick green line along the links the assistant followed.](/screenshots/mcp-knowledge-graph.png)
 
 ![A procedure drawn as a flow inside a conversation: two inputs (bread flour, water) lead into five step cards — Autolyse, Stretch and fold, Bulk fermentation, Shape and proof, Bake — ending in the output, an 11 cm loaf.](/screenshots/mcp-step-flow.png)
 
@@ -441,7 +441,7 @@ Things to know:
 
 - **Float it beside the chat.** If the client supports it, **Float beside the chat** keeps the graph next to the conversation, and **Full screen** makes it larger.
 - **Only what the assistant actually touched is marked.** Search results are not marked, only pages it read. Nothing is guessed. Pages touched in another conversation open at the same time are marked too, from about half an hour before the graph opened.
-- **Large vaults are cut to 1,200 nodes.** Pages outside the folder go first, then the least connected. The graph takes about a second and a half to draw at that size.
+- **Islands are grouped by connection.** In the app, islands can follow what pages are about, using the app's embeddings; those stay inside the app, so here islands follow the links. **The first draw takes a few seconds on a large vault** (about four seconds for 2,400 pages), the same work the app does when it opens the graph; after that only the marks change.
 - **Clients that do not draw apps** (Claude Code, for example) get a one-line text answer instead.
 
 ### Your to-dos and task tools <Badge type="tip" text="Added in v0.94.9 (2026-10-22)" /> {#your-to-dos-and-task-tools}

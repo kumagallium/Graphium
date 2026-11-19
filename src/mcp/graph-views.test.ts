@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildIndexEntry, INDEX_SCHEMA_VERSION } from "../features/navigation/index-file";
 import { createActivityLog } from "./activity";
-import { buildFlowPayload, buildKnowledgePayload, buildLineagePayload } from "./graph-views";
+import { buildFlowPayload, buildKnowledgeAppPayload, buildLineagePayload } from "./graph-views";
 import { resetSearchIndex } from "./search";
 
 let root: string;
@@ -99,7 +99,7 @@ describe("buildLineagePayload", () => {
   });
 });
 
-describe("buildKnowledgePayload", () => {
+describe("buildKnowledgeAppPayload", () => {
   function seed(): void {
     const note = (title: string, folders?: string[]) => ({
       version: 2,
@@ -128,22 +128,23 @@ describe("buildKnowledgePayload", () => {
     );
   }
 
-  it("アプリの全体グラフと同じノード・線を返し、フォルダの外を out にする", () => {
+  it("アプリの全体グラフ（buildGlobalGraph）をそのまま返し、フォルダの範囲を id で添える", () => {
     seed();
-    const all = buildKnowledgePayload({}, root)!;
-    expect(all.nodes.map((n) => n.id).sort()).toEqual(["a", "b", "ca", "cb"]);
-    expect(all.edges.length).toBe(2);
-    expect(all.live).toBe(true);
-    const scoped = buildKnowledgePayload({ folder: "パン" }, root)!;
-    const out = Object.fromEntries(scoped.nodes.map((n) => [n.id, !!n.out]));
-    expect(out).toEqual({ a: false, ca: false, b: true, cb: true });
+    const all = buildKnowledgeAppPayload({}, root)!;
+    expect(all.mode).toBe("knowledge-app");
+    expect(all.data.nodes.map((n) => n.id).sort()).toEqual(["a", "b", "ca", "cb"]);
+    expect(all.data.edges.length).toBe(2);
+    expect(all.scopeIds).toBeNull();
+    const scoped = buildKnowledgeAppPayload({ folder: "パン" }, root)!;
+    expect([...(scoped.scopeIds ?? [])].sort()).toEqual(["a", "ca"]);
+    // 設定の写しが無いときは洞察を見せる
+    expect(scoped.insightsEnabled).toBe(true);
   });
 
-  it("上限を超えたら範囲の外から落とす", () => {
+  it("洞察を使わない設定なら insightsEnabled は false", () => {
     seed();
-    const r = buildKnowledgePayload({ folder: "パン", maxNodes: 2 }, root)!;
-    expect(r.nodes.map((n) => n.id).sort()).toEqual(["a", "ca"]);
-    expect(r.truncated).toEqual({ shown: 2, total: 4 });
+    writeFileSync(p("appdata", "feature-flags.json"), JSON.stringify({ claims: true, insights: false }));
+    expect(buildKnowledgeAppPayload({}, root)!.insightsEnabled).toBe(false);
   });
 });
 

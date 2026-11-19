@@ -13,7 +13,8 @@ import { syncLocale } from "../i18n";
 import { generateProvDocument } from "../features/prov-generator/generator";
 import { pageToGeneratorInput } from "../features/prov-generator/page-input";
 import { provDocToFlowGraph, type FlowGraphData } from "../features/network-graph/activity-graph-adapter";
-import { buildGlobalGraph } from "../features/network-graph/graph-builder";
+import { buildGlobalGraph, type NoteGraphData } from "../features/network-graph/graph-builder";
+import { readFeatureFlags } from "./feature-flags";
 import { kindOf, type GraphKind } from "../features/network-graph/graph-kind";
 import { collectFolderScopeIds, normalizeFolderScope } from "../features/note-context/folder-scope";
 import type { MediaIndex } from "../features/asset-browser/media-index";
@@ -211,8 +212,6 @@ export function buildLineagePayload(result: LineageResult, startTitle: string, r
 
 // ── knowledge ───────────────────────────────────────────────
 
-/** 全体グラフで描くノードの上限（会話の中の画面なので、アプリより絞る） */
-export const MAX_KNOWLEDGE_NODES = 1200;
 
 function readMediaIndexRaw(root: string): MediaIndex | null {
   const path = join(appDataDir(root), "media-index.json");
@@ -225,68 +224,34 @@ function readMediaIndexRaw(root: string): MediaIndex | null {
   }
 }
 
-export function buildKnowledgePayload(
-  options: { folder?: string; maxNodes?: number } = {},
+/**
+ * 全体グラフ（会話の中の全体グラフの画面に渡す）。アプリの全体グラフと同じ buildGlobalGraph の結果を
+ * そのまま渡し、画面はアプリの GlobalGraphView で描く（島の配置・印・光り方はアプリの部品のもの）。
+ * scopeIds はフォルダの範囲（アプリのチャットの横と同じ collectFolderScopeIds）。null なら全体
+ */
+export type KnowledgeAppPayload = {
+  mode: "knowledge-app";
+  data: NoteGraphData;
+  scopeIds: string[] | null;
+  insightsEnabled: boolean;
+};
+
+export function buildKnowledgeAppPayload(
+  options: { folder?: string } = {},
   root = resolveGraphiumRoot(),
-): GraphPayload | null {
+): KnowledgeAppPayload | null {
   const index = readNoteIndex(root);
   if (!index) return null;
   syncLocale("ja");
   const data = buildGlobalGraph(index, readMediaIndexRaw(root));
   const folder = normalizeFolderScope(options.folder);
   const scope = folder ? collectFolderScopeIds(allEntries(root), folder) : null;
-
-  // 資料（pdf: など）は、範囲の中のページとつながっていれば範囲の中
-  const inScope = (id: string) => !scope || scope.has(id);
-  const sourceInScope = new Set<string>();
-  if (scope) {
-    for (const e of data.edges) {
-      if (isExternalSourceId(e.source) && inScope(e.target)) sourceInScope.add(e.source);
-      if (isExternalSourceId(e.target) && inScope(e.source)) sourceInScope.add(e.target);
-    }
-  }
-
-  const toKind = (n: (typeof data.nodes)[number]): GraphNodeKind => {
-    if (n.external) return "source";
-    const k = n.wikiKind;
-    if (n.isWiki && (k === "claim" || k === "topic" || k === "answer" || k === "atom" || k === "summary")) return k;
-    return "note";
-  };
-  let nodes: GraphNode[] = data.nodes
-    .filter((n) => n.external !== "media")
-    .map((n) => {
-      const out = scope ? !(scope.has(n.id) || sourceInScope.has(n.id)) : false;
-      return { id: n.id, label: n.title, kind: toKind(n), graphKind: kindOf(n), ...(out ? { out: true } : {}) };
-    });
-  const total = nodes.length;
-  const maxNodes = options.maxNodes ?? MAX_KNOWLEDGE_NODES;
-  if (nodes.length > maxNodes) {
-    // 範囲の外から落とし、それでも多ければ線の多いものを残す
-    const degree = new Map<string, number>();
-    for (const e of data.edges) {
-      degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
-      degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
-    }
-    nodes = [...nodes]
-      .sort((a, b) => Number(!!a.out) - Number(!!b.out) || (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0))
-      .slice(0, maxNodes);
-  }
-  const ids = new Set(nodes.map((n) => n.id));
-  const edges: GraphEdge[] = data.edges
-    .filter((e) => ids.has(e.source) && ids.has(e.target))
-    .map((e) => ({
-      id: `${e.source}->${e.target}`,
-      source: e.source,
-      target: e.target,
-      kind: e.relation === "reference" ? "reference" : e.relation === "used" ? "used" : "derived",
-    }));
+  const flags = readFeatureFlags(root);
   return {
-    mode: "knowledge",
-    title: folder ? `Knowledge graph — ${folder}` : "Knowledge graph",
-    nodes,
-    edges,
-    ...(nodes.length < total ? { truncated: { shown: nodes.length, total } } : {}),
-    ...(folder ? { folder } : {}),
-    live: true,
+    mode: "knowledge-app",
+    data,
+    scopeIds: scope ? [...scope] : null,
+    // 洞察を使わない設定なら、アプリの全体グラフと同じく洞察を隠す（読めないときは見せる）
+    insightsEnabled: flags.ok ? flags.flags.insights : true,
   };
 }
