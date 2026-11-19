@@ -3587,7 +3587,7 @@ export const en: Record<string, string> = {
   "intake.section.label": "What to bring in",
   "intake.section.files": "Files",
   "intake.section.conversations": "AI conversations",
-  "intake.conversation.rule": "Choose Claude Code conversations by working folder to keep them as materials. What goes in is your own messages in full, and excerpts of the AI's replies",
+  "intake.conversation.rule": "Choose Claude Code conversations by working folder to keep them as materials.\nWhat goes in is your own messages in full, and excerpts of the AI's replies",
   "intake.conversation.selectAll": "Select all",
   "intake.conversation.folderCount": "Working folders: {count}",
   "intake.conversation.rowSessions": "Conversations: {sessions}",

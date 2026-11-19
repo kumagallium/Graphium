@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.147.1](https://github.com/kumagallium/Graphium/compare/v0.147.0...v0.147.1) - 2026-11-18
+
+- [docs] Manual: badge and roadmap row for bringing in AI conversations (v0.147.0) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1762
+- [fix] Do not trust the type or length of OCR text read from a note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1764
+- fix(intake): line up Select all with the rows and break the intro by sentence by @kumagallium in https://github.com/kumagallium/Graphium/pull/1765
+
 ## [v0.147.0](https://github.com/kumagallium/Graphium/compare/v0.146.0...v0.147.0) - 2026-11-18
 
 - feat(intake): bring in AI conversations from the bring-in sheet (desktop) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1760
