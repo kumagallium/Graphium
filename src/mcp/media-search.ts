@@ -66,6 +66,16 @@ export function formatMediaHit(h: MediaHit, index: number): string {
   return `${index + 1}. ${h.name}\n   id: ${h.id}  (${h.type}, ${when})${snippet}\n${used}`;
 }
 
+/** search_notes に添える案内。AI との会話の素材があるときだけ、会話の本文の探し方を伝える */
+export function conversationSearchHint(root = resolveGraphiumRoot()): string {
+  for (const m of readMediaIndex(root).values()) {
+    if (m.type === "conversation" && !m.archivedAt) {
+      return "AI との会話の本文はこの検索の対象外です。前の判断や理由を探すときは search_media（type: conversation）も使ってください。";
+    }
+  }
+  return "";
+}
+
 /** 素材を資料 ID の形にする */
 export function mediaSourceId(m: Pick<MediaIndexEntry, "type" | "fileId" | "url">): string {
   if (m.type === "url") return `url:${m.url}`;

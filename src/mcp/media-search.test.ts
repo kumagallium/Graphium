@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { resetSearchIndex } from "./search";
 import { resetMediaIndexCache } from "./sources";
-import { formatMediaHit, mediaSourceId, resetMediaSearchIndex, searchMedia } from "./media-search";
+import { conversationSearchHint, formatMediaHit, mediaSourceId, resetMediaSearchIndex, searchMedia } from "./media-search";
 
 function entry(over: Record<string, unknown>) {
   return { url: "", thumbnailUrl: "", uploadedAt: "2026-10-01T00:00:00Z", usedIn: [], mimeType: "", ...over };
@@ -128,6 +128,15 @@ describe("searchMedia", () => {
       expect(hits[0].name).toBe("全粒粉の配合");
       expect(hits[0].snippet).toContain("酸味は控えめ");
       expect(hits[0].conversationDate).toBe("2026-10-06T00:00:00Z");
+    });
+
+    it("会話があるときだけ search_notes に探し方の案内を添える", () => {
+      writeMedia([entry({ fileId: "a1", name: "総説.pdf", type: "pdf" })]);
+      expect(conversationSearchHint(root)).toBe("");
+      writeMedia([conversationEntry({ archivedAt: "2026-11-11T00:00:00Z" })]);
+      expect(conversationSearchHint(root)).toBe("");
+      writeMedia([conversationEntry()]);
+      expect(conversationSearchHint(root)).toContain("search_media");
     });
 
     it("結果の文には、話した日と当たった箇所が出る", () => {
