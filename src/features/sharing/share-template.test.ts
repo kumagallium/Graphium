@@ -273,6 +273,36 @@ describe("shareTemplate — auto blob", () => {
     expect(fs.blobs.size).toBe(2);
   });
 
+  it("メモを指す引用の題（メモの先頭行）を body に持ち出さない", async () => {
+    const page = makePage({
+      blocks: [
+        {
+          id: "b1",
+          type: "paragraph",
+          content: [{ type: "text", text: "@冷蔵庫で一晩", styles: { textColor: "blue" } }],
+        },
+      ] as GraphiumPage["blocks"],
+      knowledgeLinks: [
+        {
+          id: "l1",
+          sourceBlockId: "b1",
+          targetBlockId: "",
+          targetNoteId: "memo:cap-9",
+          type: "reference",
+          layer: "knowledge",
+          createdBy: "ai",
+        },
+      ] as GraphiumPage["knowledgeLinks"],
+    });
+    const doc = { version: 5, title: "t", pages: [page], createdAt: "", modifiedAt: "" } as GraphiumDocument;
+    const r = await shareTemplate(doc, page, { sharedRoot: "/tmp/shared", author, title: "雛形" });
+    expect(r.ok).toBe(true);
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    const body = new TextDecoder().decode(Uint8Array.from(atob(stored.body_base64), (c) => c.charCodeAt(0)));
+    expect(body).not.toContain("冷蔵庫");
+    expect(body).not.toContain("cap-9");
+  });
+
   it("元のページは変更されない（immutable）", async () => {
     const page = mediaPage();
     await shareTemplate(makeDoc(page), page, {

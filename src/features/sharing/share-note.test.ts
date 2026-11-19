@@ -451,6 +451,11 @@ describe("shareNote — 共有コピーに含めない情報", () => {
                 { type: "text", text: "@冷蔵庫で一晩寝かせる", styles: { textColor: "blue" } },
               ],
             },
+            {
+              id: "b3",
+              type: "bulletListItem",
+              content: [{ type: "text", text: "@Flour note", styles: { textColor: "blue" } }],
+            },
           ],
           labels: {},
           provLinks: [],
@@ -479,6 +484,15 @@ describe("shareNote — 共有コピーに含めない情報", () => {
               sourceBlockId: "b2",
               targetBlockId: "",
               targetNoteId: "memo:cap-9",
+              type: "reference",
+              layer: "knowledge",
+              createdBy: "ai",
+            },
+            {
+              id: "l4",
+              sourceBlockId: "b3",
+              targetBlockId: "",
+              targetNoteId: "note-1",
               type: "reference",
               layer: "knowledge",
               createdBy: "ai",
@@ -540,7 +554,7 @@ describe("shareNote — 共有コピーに含めない情報", () => {
     expect(body.wikiMeta!.derivedFromNotes).toEqual(["note-1"]);
     expect(body.wikiMeta!.topicMarkdown).toBe("低温で長く発酵させる。粉は強力粉[[source:note-1|強力粉]]。");
     expect(body.wikiMeta!.passageContexts).toEqual([{ sourceId: "note-1", passage: "強力粉" }]);
-    expect(body.pages[0].knowledgeLinks.map((l) => l.targetNoteId)).toEqual(["note-1"]);
+    expect(body.pages[0].knowledgeLinks.map((l) => l.targetNoteId)).toEqual(["note-1", "note-1"]);
     expect((body.pages[0].blocks[0] as any).content.map((c: any) => c.text)).toEqual([
       "低温で長く発酵させる ",
       "@メモ",
