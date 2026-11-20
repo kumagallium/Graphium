@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { Image, Video, Volume2, FileText, Table, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText, Folder, Share2, Pencil, Type, BookMarked, MessagesSquare, File as FileIcon } from "lucide-react";
 import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { UNFILED_PATH } from "../note-context/folder-tree-model";
-import { isPlanFolderPath } from "../note-context/reserved-folders";
 import { aggregateNoteContexts, noteContextHue, addNoteContext, removeNoteContext, replaceNoteContext } from "../note-context/context-tags";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { ContextBadge } from "../note-context/ContextBadge";
@@ -2690,8 +2689,7 @@ export function AssetGalleryView({
                   title: t("nav.renameFolder"),
                   icon: <Pencil size={12} />,
                   // 「未分類」は疑似フォルダなので改名の対象にしない（鉛筆も出さない）
-                  // 予約フォルダ「計画」は改名させない（サイドバーの FolderMenu と同じ）
-                  appliesTo: (value) => value !== UNFILED_PATH && !isPlanFolderPath(value),
+                  appliesTo: (value) => value !== UNFILED_PATH,
                   onClick: (value, pos) => {
                     if (value === UNFILED_PATH) return;
                     onFolderMenu(value, pos, { initialMode: "rename" });

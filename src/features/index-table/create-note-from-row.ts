@@ -6,6 +6,7 @@ import { t } from "../../i18n";
 import { confirmAction } from "../../ui/confirm-dialog";
 import { isNewNotesOnA4 } from "../settings/store";
 import { newNoteWidthDocFields } from "../paper-mode/new-note-draft";
+import { stampNewNoteKind } from "../note-context/reserved-folders";
 
 // テーブル行の1列目テキストを取得する
 export function getFirstCellText(tableBlock: any, rowIndex: number): string {
@@ -94,7 +95,7 @@ export async function createNoteFromRow(
   };
 
   // Google Drive に作成
-  const fileId = await getActiveProvider().createFile(title, newDoc);
+  const fileId = await getActiveProvider().createFile(title, stampNewNoteKind(newDoc));
 
   // ストアの noteLinks を更新
   store.setNoteLink(tableBlockId, title, fileId);

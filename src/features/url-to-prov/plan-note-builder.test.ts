@@ -66,16 +66,17 @@ describe("buildRunBlocks", () => {
 });
 
 describe("buildPlanDocument / linkRunsInPlan", () => {
-  it("計画フォルダに入り、1 列目が note-link の表と参考ノートへのリンクを持つ", () => {
+  it("計画ノートの印を持ち、渡した置き場に入り、1 列目が note-link の表と参考ノートへのリンクを持つ", () => {
     const { doc, tableBlockId } = buildPlanDocument({
       plan,
       stepNames: procedureStepNames(blocks),
       references: [{ id: "paper-1", title: "BaFe12O19 の共沈" }],
-      folder: "計画",
+      folders: ["手順"],
       words,
       model: "m",
     });
-    expect(doc.noteContexts).toEqual(["計画"]);
+    expect(doc.kind).toBe("plan");
+    expect(doc.noteContexts).toEqual(["手順"]);
     const page = doc.pages[0];
     expect(page.tableMeta?.[tableBlockId]?.columns).toEqual({ 対象: ["note-link"] });
     const table = (page.blocks as any[]).find((b) => b.id === tableBlockId);
@@ -140,7 +141,7 @@ describe("appendPlanCheckSection", () => {
   ];
   const flat = (b: any) => b.content.map((c: any) => c.text).join("");
   it("結論の文と、値が違う → どこにも無い → 回答で決めた → ノートにある（ノートごと）の順のまとまりを足す", () => {
-    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, folder: "計画", words });
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, words });
     const once = appendPlanCheckSection(doc, items, checkWords, refs);
     const blocks = once.pages[0].blocks as any[];
     const start = blocks.findIndex((b) => b.type === "heading" && b.content[0].text === "この計画の出どころ");
@@ -164,7 +165,7 @@ describe("appendPlanCheckSection", () => {
     expect(links.map((l) => l.targetNoteId)).toEqual(["note-a", "note-a"]);
   });
   it("確かめる項目が無いときは結論を ok にし、空のまとまりは出さない。やり直しでは節とリンクを置き換える", () => {
-    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, folder: "計画", words });
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: refs, words });
     const once = appendPlanCheckSection(doc, items, checkWords, refs);
     const twice = appendPlanCheckSection(once, items.slice(0, 2), checkWords, refs);
     const blocks = twice.pages[0].blocks as any[];
@@ -175,7 +176,7 @@ describe("appendPlanCheckSection", () => {
     expect(twice.pages[0].knowledgeLinks).toHaveLength(2);
   });
   it("英語の文は間に空白を入れてつなぐ", () => {
-    const { doc } = buildPlanDocument({ plan, stepNames: [], references: [], folder: "plan", words });
+    const { doc } = buildPlanDocument({ plan, stepNames: [], references: [], words });
     const out = appendPlanCheckSection(doc, items.slice(0, 1), { ...checkWords, intro: "AI compared them.", ok: "Nothing differs." });
     const blocks = out.pages[0].blocks as any[];
     expect(flat(blocks[blocks.length - 3])).toBe("AI compared them. Nothing differs.");

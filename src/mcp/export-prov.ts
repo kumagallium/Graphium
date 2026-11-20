@@ -42,26 +42,26 @@ export function exportDisplayTitle(title: string | undefined | null, noteId: str
 
 /**
  * 要求された scope を、対象ノートの種別と突き合わせて決める。
- * 種別は索引のエントリを優先し、エントリが無ければ doc.noteContexts で見る
+ * 種別は索引のエントリ（kind）を優先し、エントリが無い・kind を持たない古い索引なら doc で見る
  * （MCP が書いたノートは索引に載るまで時間がかかる）。
  */
 export function resolveExportScope(
   requested: ExportProvScope | undefined,
   noteId: string,
   index: GraphiumIndex | null,
-  doc?: Pick<GraphiumDocument, "noteContexts">,
+  doc?: Pick<GraphiumDocument, "noteContexts" | "kind">,
 ): { scope: ExportProvScope } | { error: string } {
   // 明示した "plan" は、索引が読めないと種別を確かめられない
-  if (requested === "plan" && !index && !doc?.noteContexts) {
+  if (requested === "plan" && !index && !doc) {
     return { error: "索引を読めません。Graphium を一度起動してください" };
   }
   const entry = index?.notes.find((n) => n.noteId === noteId);
-  const isPlan = isPlanNote(entry?.noteContexts ?? doc?.noteContexts);
+  const isPlan = isPlanNote(entry?.kind ? entry : (doc ?? entry));
   if (!requested) return { scope: isPlan ? "plan" : "note" };
   if (requested === "plan" && !isPlan) {
     return {
       error:
-        `scope: "plan" は計画ノート（「計画」フォルダに入っているノート）にだけ使えます: ${noteId}\n` +
+        `scope: "plan" は計画ノートにだけ使えます: ${noteId}\n` +
         "このノートは計画ノートではありません。scope を省略するか \"note\" にしてください。",
     };
   }
@@ -89,7 +89,7 @@ function loadPlanDocs(
   index: GraphiumIndex,
   root: string,
 ): Map<string, GraphiumDocument> {
-  const planIds = new Set(index.notes.filter((n) => isPlanNote(n.noteContexts)).map((n) => n.noteId));
+  const planIds = new Set(index.notes.filter((n) => isPlanNote(n)).map((n) => n.noteId));
   const docs = new Map<string, GraphiumDocument>([[planId, rootDoc]]);
   const processed = new Set<string>([planId]);
   let queue: { doc: GraphiumDocument; depth: number }[] = [{ doc: rootDoc, depth: 0 }];

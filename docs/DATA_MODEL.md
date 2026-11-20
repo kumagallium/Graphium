@@ -122,12 +122,27 @@ type GraphiumDocument = {
   // Notes Graphium generates are pre-filed at creation (the user may change
   // them afterwards): Translate / Extract steps put the note in a per-kind
   // folder (localised "Translations" / "Procedures") plus the source
-  // material's folders; a plan made from a chat answer goes to the reserved
-  // "Plan" folder and its run notes to "Procedures" (the Plan folder is never
-  // inherited); a new voice note goes to "Voice notes"; web clips go to
-  // "Web clips". See
+  // material's folders; a plan made from a chat answer (kind: "plan") and its
+  // operation notes go to "Procedures"; a new voice note goes to "Voice notes";
+  // web clips go to "Web clips". See
   // `src/features/note-context/generated-folders.ts`.
+  // A folder never makes a note a plan: that is `kind` below.
   noteContexts?: string[];
+
+  // Note kind (v0.153). "plan" marks a *plan note*: rows of its table with a
+  // note per row (the note-link column) become *operation notes* feeding the
+  // operations flow and the plan PROV export. "note" is every other note.
+  // Every note the app creates carries it (templates set it; anything else
+  // defaults to "note"); the user flips it with **Treat as a plan** in the
+  // note's ⋯ menu. Absent on notes saved before v0.153 or written outside the
+  // app: those are read as a plan when `noteContexts` holds the former
+  // reserved folder "計画" / "plan" / "계획" (case-insensitive, sub-folders
+  // too). `migrateToLatest` fills the value on load and the next save writes
+  // it, so later folder moves (renaming or deleting that folder included)
+  // never change the kind. Rule: `resolveNoteKind` in
+  // `src/features/note-context/reserved-folders.ts`. Absent on Knowledge and
+  // skill pages.
+  kind?: "plan" | "note";
 
   // ── authorship / agent ──────────────────────────────
   generatedBy?: {
@@ -3735,13 +3750,17 @@ type NoteIndexEntry = {
   //   by hand; used by the note list for the "Context" column display and the
   //   column-header filter. Orthogonal to PROV labels and to `theme`.
   //   Absent → undefined (treated as "uncategorised").
-  //   A reserved value, "計画" / "plan" (case-insensitive, sub-folders too,
-  //   see `src/features/note-context/reserved-folders.ts`), marks a note as
-  //   a *plan note*: rows in its table (the note-link column) become
-  //   *operation notes* feeding the plan/operation flow
-  //   (`src/features/network-graph/plan-flow.ts`). This reservation lives entirely
-  //   inside `noteContexts` — no new field or index bump is added for it.
+  //   Folders say nothing about whether a note is a plan (see `kind`).
   noteContexts?: string[];
+
+  // v37: note kind, mirrored from GraphiumDocument.kind — or, for a note
+  //   without one, the result of `resolveNoteKind` (the former reserved
+  //   "計画" / "plan" / "계획" folder in `noteContexts`). "plan" marks a plan
+  //   note whose table rows are operation notes
+  //   (`src/features/network-graph/plan-flow.ts`). Absent on Knowledge and
+  //   skill pages. Readers go through `isPlanNote(entry)`, which also reads
+  //   a pre-v37 entry (no `kind`) by its folders.
+  kind?: "plan" | "note";
 
   // v22: concatenated text read on-device out of the note's images
   //   (collected from page.mediaOcr), newline-joined. Lets a note that only
@@ -3798,6 +3817,7 @@ Bumping rules:
 | **34** | Added `templateFrom` — a mirror of the note's own `templateFrom` reduced to `{ kind, id }` (`sharedId` → `shared`, `userTemplateId` → `user`, `officialTemplateId` → `official`; the first one present in that order). The Templates list screen counts "notes made from this template" from the index alone, without opening note files, and lists those notes on request. Notes not made from a template keep `templateFrom: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **35** | Added `hasRecording` — `true` when the note body contains a recorded transcript block (a `meetingTranscript` block with a `fileId` or `recordingId`, at any depth; a block not yet recorded does not count). The Records view uses it to show a "From a recording" origin tag from the index alone, because a material's `usedIn` does not carry the block type. Notes without such a block keep `hasRecording: undefined`; existing indexes rebuild on the bump without touching note JSON. |
 | **36** | Added `ocrAltText` on `NoteIndexEntry` — the newline-joined, search-only second reading (macOS Vision, `page.mediaOcr[*].altText`) of the note's images, collected in `buildIndexEntry` and included in `searchNotes` and the note list search; shown only in the image text panel's small "another reading" box, never as body text, in copies, exports or AI input. Legacy notes keep `ocrAltText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. The media index gets the matching `MediaIndexEntry.ocrAltText` (media index version 11). |
+| **37** | Added `kind` (`"plan"` / `"note"`) on `NoteIndexEntry`, mirrored from `GraphiumDocument.kind` (or, for a note without one, read from the former reserved "計画" / "plan" folder). Whether a note is a plan moved from its folder to the note itself, so the operations flow, the plan PROV export and MCP `export_prov` tell plans apart without opening notes. Knowledge and skill pages keep `kind: undefined`; `ensureIndex` rebuilds on the bump without touching note JSON. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this

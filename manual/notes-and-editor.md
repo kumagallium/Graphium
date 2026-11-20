@@ -346,11 +346,11 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 | Template | What you get |
 |---|---|
 | **Plan Template** | "Comparison plan with a table where each item has its own detail note" |
-| **Run Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
+| **Operation Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
 
-The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its table.
+The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate an Operation note per row of its table.
 
-![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
+![The Insert Template modal with the Plan and Operation templates](/screenshots/template-picker.png)
 
 <Badge type="tip" text="Added in v0.88.0 (2026-10-09)" /> To keep a page as your own template, open the note's **⋯** menu and choose **Save as template**, then give it a name and an optional description. It is stored in your current storage, so no shared folder is needed. Your templates appear in the same table, after the built-in ones and before the team's, marked **Mine** in the Source column; selecting one inserts it into the current note. Hover a row to show **Rename** and **Delete** at its right edge: rename in place (Enter to confirm, Esc to cancel), and delete asks for confirmation first.
 
@@ -714,7 +714,7 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 ![The Folder button under a note title with its dropdown open: a "Folder" heading, a "Search folders, or type to create…" field, and two unchecked folder rows, Bread (3) and Reading (2).](/screenshots/folder-picker.png)
 
-One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [table with a note per row](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
+**Plan notes** <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: choose **Treat as a plan** in a note's **⋯** menu (a check mark shows it is on) and the note becomes a **Plan note** — the rows of its [table with a note per row](#the-index-table) become **Operation notes**. Choose it again to turn the note back into an ordinary note. The **Plan Template** and **Make an experiment plan** in [AI chat](/ai-chat-and-ask) start a note that is already a plan. Folders have nothing to do with it: a plan stays a plan wherever you file it. Earlier versions made a note a plan by filing it in a folder named **Plan** ("計画" in Japanese); notes you filed there stay plans, and that folder is now an ordinary folder you can rename or delete.
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar's **Notes** tab lists your **Folders** too (open or close the list with the **▸** beside **All Notes**). Folders holding the most notes come first (a folder counts the notes in its subfolders too; folders with the same count go by name). It shows up to eight top-level folders; with more, **Show N more** appears — press it to see them all, and it turns into **Show less**. If the selected folder is among the hidden ones, the full list is open from the start. Click one and the notes list shows only what is inside it. Its subfolders sit as rows at the top of the list — click one to open it; the notes inside a subfolder don't mix into the parent's list, just as in Finder or File Explorer. Notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 

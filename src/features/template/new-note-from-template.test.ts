@@ -129,7 +129,7 @@ describe("組み込みテンプレートから新規ノート", () => {
     expect(Object.values(metas[0].columns ?? {})[0]).toEqual(["note-link"]);
   });
 
-  it("計画テンプレート: 新しいノートは予約フォルダ「計画」に入る（ほかのテンプレートはフォルダ無し）", async () => {
+  it("計画テンプレート: 新しいノートは計画ノートとして始まる（フォルダは付けない。ほかのテンプレートは普通のノート）", async () => {
     const { isPlanNote } = await import("../note-context/reserved-folders");
     const { t } = await import("../../i18n");
     const plan = getAllTemplates().find((x) => x.id === "plan")!;
@@ -138,7 +138,9 @@ describe("組み込みテンプレートから新規ノート", () => {
       { title: "p", templateFrom: { officialTemplateId: "plan", title: "p", usedAt: "" } },
       t,
     );
-    expect(isPlanNote(doc.noteContexts)).toBe(true);
+    expect(doc.kind).toBe("plan");
+    expect(isPlanNote(doc)).toBe(true);
+    expect(doc.noteContexts).toBeUndefined();
     for (const def of getAllTemplates().filter((x) => x.id !== "plan")) {
       const other = buildDocumentFromTemplateDef(
         def,
@@ -146,6 +148,7 @@ describe("組み込みテンプレートから新規ノート", () => {
         t,
       );
       expect(other.noteContexts).toBeUndefined();
+      expect(other.kind).toBe("note");
     }
   });
 
