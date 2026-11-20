@@ -62,22 +62,19 @@ export function validateFolderPath(value: string): "ok" | "empty" | "invalid" | 
 }
 
 /**
- * フォルダ選択を文脈フィルタ（OR・完全一致）の値リストに展開する。
- * 親フォルダを選んだら子フォルダのノートも含める（件数表示が「直下 + 子合計」なので、
- * クリックで出る一覧も同じ集合にする）。既存の contextFilter は小文字完全一致の OR なので、
- * 親 + 全子の path を並べるだけで実現できる。
+ * 開いたフォルダの直下にある子フォルダ。ノート一覧の先頭に「フォルダの行」として並べる。
+ *
+ * 一覧はエクスプローラー（Finder）と同じく、開いたフォルダ自身に入っているノートだけを
+ * 出し、子フォルダの中身は子フォルダの行を開いたときに出す（2026-11-20 ユーザー指摘:
+ * 親を開くと子のノートまで混ざって並ぶのはフォルダの見た目と合わない）。
+ * 一覧の絞り込みは開いたフォルダの path 1 つだけでよい（contextFilter は完全一致）。
+ * 検索・チャットの「このフォルダで探す」は子まで含めたままにする（folder-scope.ts）。
+ * 子フォルダ・未知の path は子を持たないので空を返す。
  */
-export function expandFolderToContextValues(tree: readonly FolderNode[], path: string): string[] {
+export function childFoldersOf(tree: readonly FolderNode[], path: string): FolderNode[] {
   const key = path.trim().toLowerCase();
-  for (const node of tree) {
-    if (node.path.toLowerCase() === key) {
-      return [node.path, ...node.children.map((c) => c.path)];
-    }
-    for (const child of node.children) {
-      if (child.path.toLowerCase() === key) return [child.path];
-    }
-  }
-  return [path];
+  const node = tree.find((n) => n.path.toLowerCase() === key);
+  return node ? node.children : [];
 }
 
 /**

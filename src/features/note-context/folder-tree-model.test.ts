@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildFolderTree,
   collectFolderSource,
-  expandFolderToContextValues,
+  childFoldersOf,
   splitFolderPath,
   validateFolderPath,
 } from "./folder-tree-model";
@@ -157,29 +157,29 @@ describe("collectFolderSource", () => {
   });
 });
 
-describe("expandFolderToContextValues", () => {
+describe("childFoldersOf", () => {
   const tree = buildFolderTree([
     { value: "プロジェクトA", count: 1 },
-    { value: "プロジェクトA/実験1", count: 1 },
+    { value: "プロジェクトA/実験1", count: 2 },
     { value: "プロジェクトA/実験2", count: 1 },
     { value: "材料X", count: 1 },
   ]);
 
-  it("親を選ぶと子も含める（件数表示と同じ集合になる）", () => {
-    expect(expandFolderToContextValues(tree, "プロジェクトA")).toEqual([
-      "プロジェクトA",
-      "プロジェクトA/実験1",
-      "プロジェクトA/実験2",
+  it("親を開くと直下の子フォルダを返す（一覧の先頭にフォルダの行として出す）", () => {
+    expect(childFoldersOf(tree, "プロジェクトA").map((c) => [c.path, c.totalCount])).toEqual([
+      ["プロジェクトA/実験1", 2],
+      ["プロジェクトA/実験2", 1],
     ]);
   });
 
-  it("子を選んだらその子だけ", () => {
-    expect(expandFolderToContextValues(tree, "プロジェクトA/実験1")).toEqual([
-      "プロジェクトA/実験1",
-    ]);
+  it("大文字小文字と前後の空白は区別しない", () => {
+    const en = buildFolderTree([{ value: "Bread/Rye", count: 1 }]);
+    expect(childFoldersOf(en, " bread ").map((c) => c.path)).toEqual(["Bread/Rye"]);
   });
 
-  it("ツリーに無い値はそのまま返す（空フォルダ直後など）", () => {
-    expect(expandFolderToContextValues(tree, "未知")).toEqual(["未知"]);
+  it("子フォルダ・子の無いフォルダ・ツリーに無い値は空", () => {
+    expect(childFoldersOf(tree, "プロジェクトA/実験1")).toEqual([]);
+    expect(childFoldersOf(tree, "材料X")).toEqual([]);
+    expect(childFoldersOf(tree, "未知")).toEqual([]);
   });
 });
