@@ -6018,10 +6018,17 @@ fn acquire_place_read_slot(
     max: usize,
 ) -> Option<PlaceReadGuard> {
     use std::sync::atomic::Ordering;
-    counter
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| if n < max { Some(n + 1) } else { None })
-        .ok()
-        .map(|_| PlaceReadGuard(counter))
+    // fetch_update は新しい Rust で非推奨（try_update へ改名）。どの版でも通る compare_exchange で書く
+    let mut n = counter.load(Ordering::SeqCst);
+    loop {
+        if n >= max {
+            return None;
+        }
+        match counter.compare_exchange_weak(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return Some(PlaceReadGuard(counter)),
+            Err(current) => n = current,
+        }
+    }
 }
 
 /// 同時実行の上限つき・待ち時間の上限つきで読みを走らせる。
