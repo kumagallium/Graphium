@@ -80,7 +80,7 @@ Graphium の見た目と読みやすさを整えるタブです。
 
 ### データの置き場 <Badge type="tip" text="v0.146.0 (2026-11-18) で追加" /> {#data-places}
 
-デスクトップ版のみ。データの置き場は、その中のファイルを[写さずにリンク](/ja/materials-and-citations#linked-files)するために登録するフォルダです。Graphium が控えるのは各ファイルの場所だけで、ファイルを写すことも、中身を読むこともありません。
+デスクトップ版のみ。データの置き場は、その中のファイルを[写さずにリンク](/ja/materials-and-citations#linked-files)するために登録するフォルダです。Graphium が控えるのは各ファイルの場所だけで、ファイルを写すことはありません。中身は、開いたときだけ読みます。
 
 ![データの置き場の 2 行。「Whole bakery」（/Volumes/Bakery/Shared）は緑の印。「Sourdough team」（/Volumes/Bakery/Sourdough）はオレンジの印で、行を開くと、いまはフォルダに届かないという案内とフォルダの場所が出ている。下に Register a folder がある。](/screenshots/settings-data-places.png)
 

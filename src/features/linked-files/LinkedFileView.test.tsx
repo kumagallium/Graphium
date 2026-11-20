@@ -235,7 +235,7 @@ describe("LinkedFileView: 中身を読む", () => {
   });
 
   it("表に取り込む: 区切りファイルだけ。押すと取り込みの合図を出す（ここでは読まない）", async () => {
-    const requestImport = vi.fn();
+    const requestImport = vi.fn(() => true);
     const readLinkedFile = vi.fn(async () => new ArrayBuffer(1));
     setup(ok, named("run.csv"), { requestImport, readLinkedFile });
     await screen.findByText("No change");
@@ -249,6 +249,16 @@ describe("LinkedFileView: 中身を読む", () => {
     });
     expect(readLinkedFile).not.toHaveBeenCalled();
   });
+
+  it("表に取り込む: 受け手（開いているノート）がいなければ、止まらずにノートを開くよう案内する", async () => {
+    const requestImport = vi.fn(() => false);
+    setup(ok, named("run.csv"), { requestImport });
+    await screen.findByText("No change");
+    const btn = () => screen.getByRole("button", { name: "Import as table" }) as HTMLButtonElement;
+    fireEvent.click(btn());
+    expect(btn().disabled).toBe(false);
+    expect(screen.getByText(/In a note, choose this file from \/data/)).toBeTruthy();
+  });
 });
 
 describe("LinkedFileView: 二重起動の防止", () => {
@@ -259,6 +269,7 @@ describe("LinkedFileView: 二重起動の防止", () => {
     let settle: (() => void) | undefined;
     const requestImport = vi.fn((req: { onSettled?: () => void }) => {
       settle = req.onSettled;
+      return true;
     });
     // csv は中身を表示の対象外なので、同じ画面に両方が出る pdf 名では確かめられない。取り込みボタンだけ確かめる
     setup(ok, named("run.csv"), { requestImport });

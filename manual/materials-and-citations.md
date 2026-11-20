@@ -215,7 +215,7 @@ Graphium compares only size and modified time. An edit that leaves both unchange
 Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
 
 - **Show contents** (PDF and pictures: PNG, JPEG, GIF, WebP, BMP, HEIC, AVIF; up to 100 MB). Press it to read the file and show it in place. **Hide contents** closes it; press **Cancel** while it is reading to stop. SVG is not shown.
-- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
+- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. There are two ways in. In a note, type `/data` and choose the linked file (leave the insert style on **Embed**; choosing **Link** only puts in a reference). Or click the reference to a linked file inside a note to open it, then press **Import as table**. Pressing it from the material gallery, with no note open, only tells you to choose the file from `/data` in a note. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
 
 Graphium shows "File read: (data place) / (location)" at the top of the import dialog, so you can check which file is being imported before you confirm. Only one read runs at a time; the buttons can't be pressed again until it finishes.
 
@@ -243,7 +243,7 @@ It can be set on images, PDFs, documents, data, videos and audio that you brough
 
 ### What it can't do
 
-- Search inside a linked file, preview it, or use it in a table or chart. Graphium does not read the contents.
+- Search inside a linked file, or draw a chart straight from it. The contents are not searched or read by AI, and a chart can't read the linked file directly (import it as a table first, then chart that table).
 - Read it with AI: no importing it as knowledge, extracting steps, or translating.
 - Share the linked file itself. Sharing and the shared folder skip it.
 - Link a whole folder at once. Pick the files inside it instead (up to 500 at a time).

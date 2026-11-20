@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TableSource } from "../../lib/document-types";
 
@@ -15,6 +16,9 @@ import {
   isLinkedSourceChanged,
   linkedSnapshotOf,
   readLinkedText,
+  requestLinkedDataImport,
+  LINKED_DATA_IMPORT_EVENT,
+  type LinkedImportRequest,
 } from "./linked-import";
 
 const opts = { headerRow: 1, endRow: 3, delimiter: "comma" as const, collapseConsecutive: false };
@@ -97,5 +101,25 @@ describe("findLinkOf: このノートが使っている素材だけ", () => {
     expect(await findLinkOf("L1")).not.toBeNull();
     readMediaIndex.mockResolvedValue({ media: [{ fileId: "A", type: "pdf", url: "x", usedIn: [] }] });
     expect(await findLinkOf("A", "mine")).toBeNull();
+  });
+});
+
+describe("requestLinkedDataImport", () => {
+  const req = (): LinkedImportRequest => ({ fileId: "f", name: "a.csv", placeId: "p", relPath: "a.csv" });
+
+  it("受け手（開いているノート）がいなければ false", () => {
+    expect(requestLinkedDataImport(req())).toBe(false);
+  });
+
+  it("受け手が accepted を立てたら true", () => {
+    const onRequest = (ev: Event) => {
+      (ev as CustomEvent<LinkedImportRequest>).detail.accepted = true;
+    };
+    window.addEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+    try {
+      expect(requestLinkedDataImport(req())).toBe(true);
+    } finally {
+      window.removeEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+    }
   });
 });

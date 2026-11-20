@@ -76,7 +76,7 @@ export type LinkedFileViewProps = {
       placeId: string;
       relPath: string;
       onSettled?: () => void;
-    }) => void;
+    }) => boolean;
     revealLinkedFile?: (placeId: string, relPath: string) => Promise<void>;
     persistLinkPatch?: (fileId: string, link: MediaLink) => Promise<boolean>;
   };
@@ -348,8 +348,9 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
             variant="outline"
             disabled={!canUse || reading || importing}
             onClick={() => {
+              setMessage(null);
               setImporting(true);
-              requestImport({
+              const accepted = requestImport({
                 fileId: entry.fileId,
                 name: entry.name,
                 placeId: link.placeId,
@@ -358,6 +359,11 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
                   if (mounted.current) setImporting(false);
                 },
               });
+              // ノートを開いていない（素材の一覧から押した）ときは受け手がいない。読まずに案内する
+              if (!accepted) {
+                setImporting(false);
+                setMessage(t("linkedFile.read.openNoteFirst"));
+              }
             }}
           >
             {importing ? <Loader2 className="animate-spin" /> : <TableIcon />}

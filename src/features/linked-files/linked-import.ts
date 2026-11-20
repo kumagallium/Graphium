@@ -30,11 +30,18 @@ export type LinkedImportRequest = {
   relPath: string;
   /** 受け付けた（読み終えた）・受け付けなかったときに呼ぶ。押したボタンを押せるように戻すため */
   onSettled?: () => void;
+  /** 受け手（開いているノート）が受け取ったら true にする。dispatchEvent は同期なので、送った直後に読める */
+  accepted?: boolean;
 };
 
-export function requestLinkedDataImport(req: LinkedImportRequest): void {
-  if (typeof window === "undefined") return;
+/**
+ * 取り込み画面を開くよう合図する。受け手（開いているノート）がいたら true。
+ * ノートを開いていない（素材の一覧から押した）ときは誰も受け取らないので false を返す
+ */
+export function requestLinkedDataImport(req: LinkedImportRequest): boolean {
+  if (typeof window === "undefined") return false;
   window.dispatchEvent(new CustomEvent<LinkedImportRequest>(LINKED_DATA_IMPORT_EVENT, { detail: req }));
+  return req.accepted === true;
 }
 
 export type LinkedText = { text: string; size: number; mtimeMs: number };
