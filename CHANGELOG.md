@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.152.2](https://github.com/kumagallium/Graphium/compare/v0.152.1...v0.152.2) - 2026-11-20
+
+- [fix] Show only a folder's own notes, with subfolders as rows on top by @kumagallium in https://github.com/kumagallium/Graphium/pull/1795
+
 ## [v0.152.1](https://github.com/kumagallium/Graphium/compare/v0.152.0...v0.152.1) - 2026-11-19
 
 - feat(docx-export): open the save dialog in the folder a Word file was last saved to by @kumagallium in https://github.com/kumagallium/Graphium/pull/1792
