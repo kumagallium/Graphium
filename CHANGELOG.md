@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.153.1](https://github.com/kumagallium/Graphium/compare/v0.153.0...v0.153.1) - 2026-11-20
+
+- [fix] Shrink the Rust Checks cache and save it only on main by @kumagallium in https://github.com/kumagallium/Graphium/pull/1803
+
 ## [v0.153.0](https://github.com/kumagallium/Graphium/compare/v0.152.2...v0.153.0) - 2026-11-20
 
 - feat: read linked files on demand (show PDF/images, import CSV as a table) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1797
