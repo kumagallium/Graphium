@@ -74,7 +74,20 @@ jobs:
           node scripts/bundle-server.mjs
           mkdir -p dist
 
+      # ランナーのイメージ版をキャッシュの鍵に入れる。whisper-rs-sys の build script は
+      # cmake を回し、CMakeCache にコンパイラの絶対パス（MSVC 14.51.xxx など）を覚える。
+      # イメージ更新で MSVC が上がると、古いイメージで作ったキャッシュを戻したジョブだけ
+      # 「CMAKE_ASM_COMPILER ... is not a full path to an existing compiler tool」で落ちる。
+      # イメージは段階的に切り替わるので、新旧が混ざる間は通ったり落ちたりする。
+      # ImageVersion はランナーのプロセス環境変数で、式の env コンテキストには無いので
+      # ステップの出力に移してから使う。
+      - name: Read runner image version
+        id: image
+        shell: bash
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
       - name: Cache cargo registry and target
+        id: cargo-cache
         uses: actions/cache@v4
         with:
           path: |
@@ -82,8 +95,20 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             src-tauri/target
-          key: rust-checks-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: rust-checks-${{ runner.os }}-
+          key: rust-checks-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            rust-checks-${{ runner.os }}-${{ steps.image.outputs.version }}-
+            rust-checks-${{ runner.os }}-
+
+      # 別のイメージで作ったキャッシュ（または鍵にイメージ版が無い旧形式）を戻したときは、
+      # コンパイラのパスを覚えている whisper-rs-sys の成果物だけ捨てて作り直させる。
+      # ほかのクレートの成果物は残すので、ビルド時間の増加は whisper.cpp の分だけ。
+      - name: Drop cmake output built on another runner image
+        if: >-
+          steps.cargo-cache.outputs.cache-matched-key != '' &&
+          !startsWith(steps.cargo-cache.outputs.cache-matched-key,
+                      format('rust-checks-{0}-{1}-', runner.os, steps.image.outputs.version))
+        run: cargo clean --manifest-path src-tauri/Cargo.toml -p whisper-rs-sys
 
       - name: clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
