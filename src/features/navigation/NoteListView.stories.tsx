@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { NoteListView } from "./NoteListView";
 import { RecentNotes } from "./RecentNotes";
 import type { GraphiumIndex } from "./index-file";
+import { buildFolderTree, childFoldersOf, collectFolderSource } from "../note-context/folder-tree-model";
 import "../../app.css";
 
 // ── モックデータ ──
@@ -346,4 +347,45 @@ export const NarrowScrolls: Story = {
   name: "枠の幅 500（タイトルを詰めてもなお足りず、横スクロール）",
   args: narrowArgs,
   decorators: [widthDecorator(500)],
+};
+
+// ── フォルダを開いたとき ──
+// エクスプローラーと同じく、開いたフォルダ自身のノートだけを並べ、子フォルダは先頭に行で出す。
+// 子フォルダの行・パンくずの親を押すと、そのフォルダを開き直す（本物では note-app が同じことをする）
+
+const FOLDER_INDEX: GraphiumIndex = {
+  ...MOCK_INDEX,
+  notes: MOCK_INDEX.notes.map((n, i) => ({
+    ...n,
+    noteContexts: [["焼結", "焼結/第1回", "焼結/第1回", "焼結/第2回", "焼結"][i % 5]],
+  })),
+};
+
+function FolderOpenStory({ initial }: { initial: string }) {
+  const [folder, setFolder] = useState<string | null>(initial);
+  const tree = buildFolderTree(collectFolderSource(FOLDER_INDEX.notes).folders);
+  return (
+    <NoteListView
+      noteIndex={FOLDER_INDEX}
+      onOpenNote={(id) => console.log("open:", id)}
+      onBack={() => console.log("back")}
+      contextFilter={folder ? [folder] : []}
+      onContextFilterChange={() => setFolder(null)}
+      selectedFolder={folder}
+      childFolders={folder ? childFoldersOf(tree, folder) : undefined}
+      onSelectFolder={setFolder}
+      onClearFolder={() => setFolder(null)}
+      onNewNoteInFolder={(path) => console.log("new in:", path)}
+    />
+  );
+}
+
+export const FolderWithChildren: Story = {
+  name: "フォルダを開く（子フォルダは先頭の行、ノートは直下のものだけ）",
+  render: () => <FolderOpenStory initial="焼結" />,
+};
+
+export const ChildFolder: Story = {
+  name: "子フォルダを開く（パンくずの親で戻る）",
+  render: () => <FolderOpenStory initial="焼結/第1回" />,
 };

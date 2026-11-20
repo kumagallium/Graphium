@@ -418,7 +418,7 @@ import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, getActiveNotes, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import type { LintIssue, LintReport, WikiSnapshot } from "./server/services/wiki-linter";
 import type { LintProgress } from "./features/wiki/wiki-service";
-import { UNFILED_PATH, buildFolderTree, collectFolderSource, expandFolderToContextValues, splitFolderPath } from "./features/note-context/folder-tree-model";
+import { UNFILED_PATH, buildFolderTree, childFoldersOf, collectFolderSource, splitFolderPath } from "./features/note-context/folder-tree-model";
 import { assetFolderValues, buildNoteFolderLookup, type NoteFolderLookup } from "./features/asset-browser/asset-folders";
 import { buildGeneratedNoteFolders, GENERATED_NOTE_FOLDER_KEYS, type GeneratedNoteKind } from "./features/note-context/generated-folders";
 import type { EditMediaContexts } from "./features/asset-browser/media-index";
@@ -9155,7 +9155,7 @@ export function NoteApp() {
   const [listSidePeekNoteId, setListSidePeekNoteId] = useState<string | null>(null);
   // フォルダ（noteContexts のフォルダ見せ）: サイドバーの選択とノート一覧の文脈フィルタを
   // ここで同期する。selectedFolder はハイライト用の path（未分類は UNFILED_PATH）、
-  // folderContextFilter は一覧に渡す実フィルタ（親フォルダは子 path 込みに展開済み）。
+  // folderContextFilter は一覧に渡す実フィルタ（開いたフォルダの path だけ。子フォルダは一覧の先頭に行で出す）。
   // 一覧側で列フィルタを手動操作したらフォルダ選択は解除する（onContextFilterChange）。
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [folderContextFilter, setFolderContextFilter] = useState<string[]>([]);
@@ -9627,7 +9627,7 @@ export function NoteApp() {
     }
     return out;
   }, [fm.noteIndex, emptyFolders]);
-  // 展開するためのツリー。集計規則はサイドバーと共通（collectFolderSource）
+  // 一覧の先頭に出す子フォルダを引くためのツリー。集計規則はサイドバーと共通（collectFolderSource）
   const folderTreeForNav = useMemo(
     () => buildFolderTree(collectFolderSource(fm.noteIndex?.notes ?? []).folders, emptyFolders),
     [fm.noteIndex, emptyFolders],
@@ -17528,10 +17528,15 @@ export function NoteApp() {
             noteIndex={fm.noteIndex}
             contextFilter={folderContextFilter}
             selectedFolder={selectedFolder}
+            childFolders={
+              selectedFolder && selectedFolder !== UNFILED_PATH
+                ? childFoldersOf(folderTreeForNav, selectedFolder)
+                : undefined
+            }
             onSelectFolder={(path) => {
-              // パンくずの親フォルダ。サイドバーのクリックと同じ絞り込みにする
+              // パンくずの親フォルダ・一覧先頭の子フォルダの行。サイドバーのクリックと同じ絞り込みにする
               setSelectedFolder(path);
-              setFolderContextFilter(expandFolderToContextValues(folderTreeForNav, path));
+              setFolderContextFilter([path]);
             }}
             onClearFolder={() => {
               setSelectedFolder(null);

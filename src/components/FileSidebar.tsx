@@ -8,7 +8,7 @@ import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { BackendStartingNotice, BackendUnavailableNotice } from "./BackendStatusNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { FolderTree } from "../features/note-context/FolderTree";
-import { buildFolderTree, collectFolderSource, expandFolderToContextValues } from "../features/note-context/folder-tree-model";
+import { buildFolderTree, collectFolderSource } from "../features/note-context/folder-tree-model";
 import { isTauri } from "../lib/platform";
 import type { WikiKind } from "../lib/document-types";
 import { type RecentNote } from "../features/navigation";
@@ -668,9 +668,8 @@ export function FileSidebar({
               emptyFolders={emptyFolders}
               unfiledCount={folderData.unfiledCount}
               selected={selectedFolder}
-              onSelectFolder={(path) =>
-                onSelectFolder(path, expandFolderToContextValues(folderTree, path))
-              }
+              // 一覧は開いたフォルダ自身のノートだけ（子フォルダは一覧の先頭に行として出す）
+              onSelectFolder={(path) => onSelectFolder(path, [path])}
               onSelectUnfiled={onSelectUnfiledFolder}
               onCreateFolder={onCreateFolder}
               onFolderContextMenu={onFolderContextMenu}
