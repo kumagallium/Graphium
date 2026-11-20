@@ -86,9 +86,11 @@ jobs:
         shell: bash
         run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
 
-      - name: Cache cargo registry and target
+      # 戻したキャッシュの鍵（cache-matched-key）を見たいので、restore と save に分ける。
+      # actions/cache 本体はこの出力を持たない（restore 側だけが持つ）。
+      - name: Restore cargo registry and target
         id: cargo-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -115,3 +117,15 @@ jobs:
 
       - name: test
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      # 以前の actions/cache と同じく、成功したときだけ、鍵がぴったり当たらなかったときだけ保存する。
+      - name: Save cargo registry and target
+        if: success() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
