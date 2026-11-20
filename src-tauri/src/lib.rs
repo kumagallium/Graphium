@@ -3414,11 +3414,24 @@ const SHARED_FILE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 /// unix は O_NOFOLLOW + O_NONBLOCK で開くので、確認のあとに FIFO へ差し替えられても書き手を
 /// 待って止まらない（SHARED_WRITE_LOCK を持ったまま固まらない）。開いたあとの実体も通常ファイルか
 /// 確かめ、上限（512 MiB）の 1 バイト先で打ち切る。
-fn read_shared_file(path: &Path) -> Result<String, String> {
-    let meta = fs::symlink_metadata(path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
-    if meta.file_type().is_symlink() || !meta.is_file() {
-        return Err(format!("通常のファイルではありません: {}", path.display()));
-    }
+/// Windows の「再解析点」属性（シンボリックリンク・ジャンクションなど）
+#[cfg(any(windows, test))]
+const WIN_FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+/// Windows: リンクをたどらず、リンクそのものを開く
+#[cfg(windows)]
+const WIN_FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+/// 開いたハンドルの属性に再解析点があるか（Windows のリンク差し替えの検出。属性値の判定だけなので全 OS で試せる）
+#[cfg(any(windows, test))]
+fn has_reparse_point_attr(attrs: u32) -> bool {
+    attrs & WIN_FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+/// 通常ファイルを、リンクをたどらず・FIFO で固まらずに開く。
+/// - Unix: O_NOFOLLOW | O_NONBLOCK
+/// - Windows: FILE_FLAG_OPEN_REPARSE_POINT で開き、開いたハンドルに再解析点があれば断る
+///   （検査のあとにリンクへ差し替えられても、たどらない）
+fn open_regular_file_nofollow(path: &Path) -> Result<fs::File, String> {
     let file = {
         #[cfg(unix)]
         {
@@ -3428,16 +3441,41 @@ fn read_shared_file(path: &Path) -> Result<String, String> {
                 .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
                 .open(path)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(WIN_FILE_FLAG_OPEN_REPARSE_POINT)
+                .open(path)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             fs::File::open(path)
         }
     }
     .map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
     let opened = file.metadata().map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if has_reparse_point_attr(opened.file_attributes()) {
+            return Err("通常のファイルではありません".to_string());
+        }
+    }
     if !opened.is_file() {
+        return Err("通常のファイルではありません".to_string());
+    }
+    Ok(file)
+}
+
+fn read_shared_file(path: &Path) -> Result<String, String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
         return Err(format!("通常のファイルではありません: {}", path.display()));
     }
+    let file = open_regular_file_nofollow(path)?;
+    let opened = file.metadata().map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
     if opened.len() > SHARED_FILE_MAX_BYTES {
         return Err(format!("ファイルが大きすぎます: {}", path.display()));
     }
@@ -5125,8 +5163,26 @@ fn validate_place_rel_path(rel: &str) -> Result<(), PlaceResolveError> {
         if cfg!(windows) && part.contains(':') {
             return bad("使えない文字");
         }
+        if is_windows_reserved_name(part) {
+            return bad("予約された名前");
+        }
     }
     Ok(())
+}
+
+/// Windows の予約名（CON・PRN・AUX・NUL・COM1〜9・LPT1〜9。拡張子付きも同じ扱い・大文字小文字を区別しない）。
+/// Windows ではこの名前がファイルでなくデバイスを指し、開くと固まる・別のものを読むことがある。
+/// 置き場は OS をまたいで共有されうるので、どの OS でも断る。
+fn is_windows_reserved_name(part: &str) -> bool {
+    // 最初の「.」までが本体。末尾の空白は Windows が落とす
+    let stem = part.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        s if s.len() == 4 => {
+            (s.starts_with("COM") || s.starts_with("LPT")) && matches!(s.as_bytes()[3], b'1'..=b'9')
+        }
+        _ => false,
+    }
 }
 
 /// ファイルの更新日時（エポックからのミリ秒）。取れなければ 0
@@ -5893,6 +5949,253 @@ async fn place_open(
     .map_err(|e| format!("タスク失敗: {e}"))?
 }
 
+/// place_read_file が読んでよい種類（小文字）。画面のプレビュー用（PDF・画像）。
+/// svg は中にスクリプトを持てるので入れない。
+const PLACE_READ_PREVIEW_EXTS: &[&str] =
+    &["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif"];
+/// place_read_file が読んでよい種類（小文字）。表への取り込み用（区切りファイル）。
+const PLACE_READ_DATA_EXTS: &[&str] = &["csv", "tsv", "txt", "dat"];
+/// プレビュー用に読む上限（100 MiB）
+const PLACE_READ_PREVIEW_MAX_BYTES: u64 = 100 * 1024 * 1024;
+/// 表への取り込み用に読む上限（200 MiB）
+const PLACE_READ_DATA_MAX_BYTES: u64 = 200 * 1024 * 1024;
+/// 読み始めに確保するバッファの上限（8 MiB）
+const PLACE_READ_INITIAL_CAPACITY: u64 = 8 * 1024 * 1024;
+/// 同時に読める数（全体）。超えたら PLACE_READ_BUSY
+const PLACE_READ_MAX_CONCURRENT: usize = 2;
+/// プレビュー用の読みの待ち時間の上限
+const PLACE_READ_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
+/// 表への取り込み用の読みの待ち時間の上限
+const PLACE_READ_DATA_TIMEOUT: Duration = Duration::from_secs(120);
+/// 同時実行の上限に当たったときの Err
+const PLACE_READ_BUSY: &str = "PLACE_READ_BUSY";
+/// 待ち時間の上限を超えたときの Err
+const PLACE_READ_TIMEOUT: &str = "PLACE_READ_TIMEOUT";
+/// 進行中の place_read_file の数（アプリ全体）
+static PLACE_READ_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// 種類を理由に断るときの Err の先頭。形は `PLACE_READ_NOT_ALLOWED:<拡張子か空>`
+const PLACE_READ_NOT_ALLOWED_PREFIX: &str = "PLACE_READ_NOT_ALLOWED";
+/// 大きすぎて断るときの Err の先頭。形は `PLACE_READ_TOO_LARGE:<上限バイト数>`
+const PLACE_READ_TOO_LARGE_PREFIX: &str = "PLACE_READ_TOO_LARGE";
+
+/// 読む目的。画面から文字列で受け、ここで 2 通りに絞る。
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlaceReadPurpose {
+    Preview,
+    Data,
+}
+
+impl PlaceReadPurpose {
+    fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "preview" => Ok(Self::Preview),
+            "data" => Ok(Self::Data),
+            _ => Err(format!("読む目的が不正です: {s}")),
+        }
+    }
+
+    fn exts(self) -> &'static [&'static str] {
+        match self {
+            Self::Preview => PLACE_READ_PREVIEW_EXTS,
+            Self::Data => PLACE_READ_DATA_EXTS,
+        }
+    }
+
+    fn timeout(self) -> Duration {
+        match self {
+            Self::Preview => PLACE_READ_PREVIEW_TIMEOUT,
+            Self::Data => PLACE_READ_DATA_TIMEOUT,
+        }
+    }
+
+    fn max_bytes(self) -> u64 {
+        match self {
+            Self::Preview => PLACE_READ_PREVIEW_MAX_BYTES,
+            Self::Data => PLACE_READ_DATA_MAX_BYTES,
+        }
+    }
+}
+
+/// 目的に合う種類か。許可リストに無い（拡張子なしを含む）・名前の末尾が `.` や空白なら断る。
+fn check_place_readable(path: &Path, purpose: PlaceReadPurpose) -> Result<(), String> {
+    let ext = place_name_ext(path);
+    let raw_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if raw_name.ends_with(['.', ' ']) || !purpose.exts().contains(&ext.as_str()) {
+        return Err(format!("{PLACE_READ_NOT_ALLOWED_PREFIX}:{ext}"));
+    }
+    Ok(())
+}
+
+/// 通常ファイルだけを、リンクを辿らず・FIFO で固まらず、上限つきで読む。
+/// 開く前の大きさと、読んでいる途中の長さの両方で上限を見る（読み中に伸びても打ち切る）。
+fn read_regular_file_limited(
+    path: &Path,
+    max: u64,
+    after_open: impl FnOnce() -> Result<(), String>,
+) -> Result<Vec<u8>, String> {
+    let too_large = || format!("{PLACE_READ_TOO_LARGE_PREFIX}:{max}");
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err("通常のファイルではありません".to_string());
+    }
+    if meta.len() > max {
+        return Err(too_large());
+    }
+    let file = open_regular_file_nofollow(path)?;
+    // 開いたあとに、パスがまだ同じ実体を指しているか（root の配下・名前・種類）を確かめ直す
+    after_open()?;
+    let opened = file.metadata().map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if opened.len() > max {
+        return Err(too_large());
+    }
+    // 先に確保するのは小さめ（8 MiB）まで。大きいファイルは読みながら伸ばす
+    let mut buf = Vec::with_capacity(opened.len().min(max).min(PLACE_READ_INITIAL_CAPACITY) as usize);
+    file.take(max + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("ファイル読み取り失敗: {e}"))?;
+    if buf.len() as u64 > max {
+        return Err(too_large());
+    }
+    Ok(buf)
+}
+
+/// 進行中の数を 1 つ持つ札。読む処理（ブロッキングスレッド）が持ち、終わると返す
+struct PlaceReadGuard(&'static std::sync::atomic::AtomicUsize);
+
+impl Drop for PlaceReadGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn acquire_place_read_slot(
+    counter: &'static std::sync::atomic::AtomicUsize,
+    max: usize,
+) -> Option<PlaceReadGuard> {
+    use std::sync::atomic::Ordering;
+    // fetch_update は新しい Rust で非推奨（try_update へ改名）。どの版でも通る compare_exchange で書く
+    let mut n = counter.load(Ordering::SeqCst);
+    loop {
+        if n >= max {
+            return None;
+        }
+        match counter.compare_exchange_weak(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return Some(PlaceReadGuard(counter)),
+            Err(current) => n = current,
+        }
+    }
+}
+
+/// 同時実行の上限つき・待ち時間の上限つきで読みを走らせる。
+/// 札は読むスレッドが持つので、止まった読みは時間切れで呼び出しを返したあとも札を持ち続け、
+/// 止まった読みが積み上がっても上限（max）を超えて増えない。
+fn run_bounded_place_read(
+    counter: &'static std::sync::atomic::AtomicUsize,
+    max: usize,
+    timeout: Duration,
+    work: impl FnOnce() -> Result<Vec<u8>, String> + Send + 'static,
+) -> Result<Vec<u8>, String> {
+    let guard = acquire_place_read_slot(counter, max).ok_or_else(|| PLACE_READ_BUSY.to_string())?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _guard = guard;
+        let _ = tx.send(work());
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(r) => r,
+        Err(_) => Err(PLACE_READ_TIMEOUT.to_string()),
+    }
+}
+
+/// 開いたあとの確かめ直し: パスを canonicalize し直し、root の配下・検査時と同じ実体（最終要素の名前を含む）・
+/// 許可リストの拡張子のままであること。検査と open のすき間の差し替えを、読む前に拾う。
+fn verify_place_file_after_open(
+    canon_root: &Path,
+    expected: &Path,
+    purpose: PlaceReadPurpose,
+) -> Result<(), String> {
+    let missing = || PlaceResolveError::Missing.message();
+    let canon = fs::canonicalize(expected).map_err(|_| missing())?;
+    if !canon.starts_with(canon_root) {
+        return Err(missing());
+    }
+    if strip_verbatim_prefix(&canon.to_string_lossy()) != strip_verbatim_prefix(&expected.to_string_lossy())
+        || canon.file_name() != expected.file_name()
+    {
+        return Err(missing());
+    }
+    check_place_readable(&canon, purpose)
+}
+
+/// 置き場の 1 ファイルの中身を読む（place_read_file の本体）。
+/// 相対パスの検証・置き場への到達確認（時間切れつき）・root の下の確認・リンクの拒否は
+/// resolve_in_places_probed が行う。そのあと種類と大きさを見て、読む直前に確かめ直す。
+/// 読んだ中身はどこにも書かない。
+fn read_place_file_in_places(
+    places: &[Place],
+    probes: &PlaceProbes,
+    place_id: &str,
+    rel_path: &str,
+    purpose: &str,
+    timeout: Duration,
+    probe: impl Fn(&str) -> bool + Clone + Send + 'static,
+) -> Result<Vec<u8>, String> {
+    let purpose = PlaceReadPurpose::parse(purpose)?;
+    let resolved = resolve_in_places_probed(places, probes, place_id, rel_path, timeout, probe)
+        .map_err(|e| e.message())?;
+    check_place_readable(&resolved.path, purpose)?;
+    if resolved.size > purpose.max_bytes() {
+        return Err(format!("{PLACE_READ_TOO_LARGE_PREFIX}:{}", purpose.max_bytes()));
+    }
+    recheck_place_target(&resolved.path).map_err(|e| e.message())?;
+    let root = places
+        .iter()
+        .find(|p| p.id == place_id)
+        .map(|p| p.root.clone())
+        .ok_or_else(|| PlaceResolveError::Unregistered.message())?;
+    let canon_root = fs::canonicalize(&root).map_err(|_| PlaceResolveError::Unreachable.message())?;
+    let expected = resolved.path.clone();
+    read_regular_file_limited(&resolved.path, purpose.max_bytes(), || {
+        verify_place_file_after_open(&canon_root, &expected, purpose)
+    })
+}
+
+/// 利用者の操作で、置き場の 1 ファイルの中身をそのまま返す（コピー・キャッシュは作らない）
+#[tauri::command]
+async fn place_read_file(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PlaceState>,
+    place_id: String,
+    rel_path: String,
+    purpose: String,
+) -> Result<tauri::ipc::Response, String> {
+    require_main_window(&window)?;
+    let ledger = place_ledger_path(&app)?;
+    let inner = state.0.clone();
+    let probes = state.1.clone();
+    // 待ち時間の上限は目的で決まる（目的が不正ならここで断る）
+    let timeout = PlaceReadPurpose::parse(&purpose)?.timeout();
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        run_bounded_place_read(&PLACE_READ_IN_FLIGHT, PLACE_READ_MAX_CONCURRENT, timeout, move || {
+            let places = read_places(&inner, &ledger, |p| p.to_vec());
+            read_place_file_in_places(
+                &places,
+                &probes,
+                &place_id,
+                &rel_path,
+                &purpose,
+                PLACE_PROBE_TIMEOUT,
+                fs_root_reachable,
+            )
+        })
+    })
+    .await
+    .map_err(|e| format!("タスク失敗: {e}"))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// 置き場のファイルを、OS のファイラーで選択した状態で表示する
 #[tauri::command]
 async fn place_reveal(
@@ -6032,6 +6335,7 @@ pub fn run() {
             place_pick_files,
             place_stat_many,
             place_open,
+            place_read_file,
             place_reveal,
             print_webview,
             set_background_work_active,
@@ -8547,6 +8851,257 @@ OK           Z:        \\\\nas\\Kumagai\\deeper        Microsoft Windows Network
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let r = resolve_place_file(tmp.path(), "run.sh").unwrap();
         assert!(check_place_openable(&r.path).is_err());
+    }
+
+    // --- place_read_file ---
+
+    fn read_fixture() -> (tempfile::TempDir, Vec<Place>) {
+        let tmp = place_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        fs::write(root.join("d.csv"), b"a,b\n1,2\n").unwrap();
+        fs::write(root.join("D.TSV"), b"a\tb").unwrap();
+        fs::write(root.join("p.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(root.join("i.PNG"), b"png").unwrap();
+        fs::write(root.join("v.svg"), b"<svg/>").unwrap();
+        fs::write(root.join("run.sh"), b"#!/bin/sh").unwrap();
+        fs::write(root.join("noext"), b"x").unwrap();
+        let places =
+            vec![Place { id: "p".into(), name: "n".into(), root: root.to_string_lossy().to_string() }];
+        (tmp, places)
+    }
+
+    fn read_in(places: &[Place], id: &str, rel: &str, purpose: &str) -> Result<Vec<u8>, String> {
+        read_place_file_in_places(
+            places,
+            &PlaceProbes::default(),
+            id,
+            rel,
+            purpose,
+            PLACE_PROBE_TIMEOUT,
+            fs_root_reachable,
+        )
+    }
+
+    #[test]
+    fn place_read_returns_bytes_for_allowed_kinds() {
+        let (_t, places) = read_fixture();
+        assert_eq!(read_in(&places, "p", "d.csv", "data").unwrap(), b"a,b\n1,2\n");
+        assert_eq!(read_in(&places, "p", "D.TSV", "data").unwrap(), b"a\tb");
+        assert_eq!(read_in(&places, "p", "a.txt", "data").unwrap(), b"hello");
+        assert_eq!(read_in(&places, "p", "p.pdf", "preview").unwrap(), b"%PDF-1.4");
+        assert_eq!(read_in(&places, "p", "i.PNG", "preview").unwrap(), b"png");
+    }
+
+    #[test]
+    fn place_read_allowlist_depends_on_purpose() {
+        let (_t, places) = read_fixture();
+        assert_eq!(read_in(&places, "p", "d.csv", "preview").unwrap_err(), "PLACE_READ_NOT_ALLOWED:csv");
+        assert_eq!(read_in(&places, "p", "p.pdf", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:pdf");
+        assert_eq!(read_in(&places, "p", "v.svg", "preview").unwrap_err(), "PLACE_READ_NOT_ALLOWED:svg");
+        assert_eq!(read_in(&places, "p", "run.sh", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:sh");
+        assert_eq!(read_in(&places, "p", "noext", "data").unwrap_err(), "PLACE_READ_NOT_ALLOWED:");
+        assert!(read_in(&places, "p", "d.csv", "other").is_err());
+        for e in ["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif"] {
+            assert!(check_place_readable(Path::new(&format!("x.{e}")), PlaceReadPurpose::Preview).is_ok());
+        }
+        for e in ["csv", "tsv", "txt", "dat"] {
+            assert!(check_place_readable(Path::new(&format!("x.{e}")), PlaceReadPurpose::Data).is_ok());
+        }
+        // 末尾の空白・ドットは断る
+        assert!(check_place_readable(Path::new("x.csv "), PlaceReadPurpose::Data).is_err());
+        assert!(check_place_readable(Path::new("x.csv."), PlaceReadPurpose::Data).is_err());
+    }
+
+    #[test]
+    fn place_read_limits_are_fixed() {
+        assert_eq!(PlaceReadPurpose::Preview.max_bytes(), 100 * 1024 * 1024);
+        assert_eq!(PlaceReadPurpose::Data.max_bytes(), 200 * 1024 * 1024);
+    }
+
+    #[test]
+    fn place_read_refuses_over_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("big.csv");
+        fs::write(&f, vec![b'a'; 11]).unwrap();
+        assert_eq!(read_regular_file_limited(&f, 10, || Ok(())).unwrap_err(), "PLACE_READ_TOO_LARGE:10");
+        assert_eq!(read_regular_file_limited(&f, 11, || Ok(())).unwrap().len(), 11);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_read_refuses_links_and_fifo() {
+        let (tmp, places) = read_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.csv"), b"s").unwrap();
+        std::os::unix::fs::symlink(outside.path().join("secret.csv"), root.join("l.csv")).unwrap();
+        assert!(read_in(&places, "p", "l.csv", "data").is_err());
+        // 途中のフォルダが外へのリンク
+        std::os::unix::fs::symlink(outside.path(), root.join("outdir")).unwrap();
+        assert!(read_in(&places, "p", "outdir/secret.csv", "data").is_err());
+        // 読む関数へ直接リンクを渡しても読まない
+        assert!(read_regular_file_limited(&root.join("l.csv"), 100, || Ok(())).is_err());
+        // FIFO は固まらず断る
+        let fifo = root.join("f.csv");
+        let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(read_in(&places, "p", "f.csv", "data").is_err());
+        assert!(read_regular_file_limited(&fifo, 100, || Ok(())).is_err());
+    }
+
+    #[test]
+    fn place_reparse_point_attribute_is_detected() {
+        assert!(has_reparse_point_attr(0x400));
+        assert!(has_reparse_point_attr(0x400 | 0x20));
+        assert!(!has_reparse_point_attr(0x20));
+        assert!(!has_reparse_point_attr(0));
+    }
+
+    #[test]
+    fn place_read_verify_after_open_rechecks_root_name_and_kind() {
+        let (tmp, _places) = read_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let ok = root.join("d.csv");
+        assert!(verify_place_file_after_open(&root, &ok, PlaceReadPurpose::Data).is_ok());
+        // 目的に合わない種類
+        assert!(verify_place_file_after_open(&root, &ok, PlaceReadPurpose::Preview).is_err());
+        // root の外
+        let outside = tempfile::tempdir().unwrap();
+        let out_file = fs::canonicalize(outside.path()).unwrap().join("x.csv");
+        fs::write(&out_file, b"x").unwrap();
+        assert!(verify_place_file_after_open(&root, &out_file, PlaceReadPurpose::Data).is_err());
+        // 消えた
+        assert!(verify_place_file_after_open(&root, &root.join("gone.csv"), PlaceReadPurpose::Data).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn place_read_verify_after_open_refuses_swapped_link() {
+        let (tmp, _places) = read_fixture();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        // 検査したあとに、同じ名前がリンクへ差し替わった（同じ root の中の別ファイルを指す）
+        fs::write(root.join("other.csv"), b"o").unwrap();
+        fs::write(root.join("swap.csv"), b"s").unwrap();
+        fs::remove_file(root.join("swap.csv")).unwrap();
+        std::os::unix::fs::symlink(root.join("other.csv"), root.join("swap.csv")).unwrap();
+        assert!(verify_place_file_after_open(&root, &root.join("swap.csv"), PlaceReadPurpose::Data).is_err());
+        // 開く側もリンクは断る
+        assert!(open_regular_file_nofollow(&root.join("swap.csv")).is_err());
+    }
+
+    #[test]
+    fn place_read_after_open_failure_stops_before_reading() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("a.csv");
+        fs::write(&f, b"abc").unwrap();
+        assert_eq!(
+            read_regular_file_limited(&f, 100, || Err("differs".to_string())).unwrap_err(),
+            "differs"
+        );
+    }
+
+    #[test]
+    fn place_windows_reserved_names_are_refused_everywhere() {
+        for bad in [
+            "CON", "con", "Prn.txt", "a/AUX", "a/nul.csv", "COM1", "com9.dat", "LPT1.txt", "x/Lpt9",
+            "con.tar.gz", "CON .csv",
+        ] {
+            assert!(validate_place_rel_path(bad).is_err(), "{bad:?}");
+        }
+        for ok in ["COM0", "COM10", "console.csv", "a/conx.csv", "lpt.csv", "my.con", "aux1.csv", "COMM1"] {
+            assert!(validate_place_rel_path(ok).is_ok(), "{ok:?}");
+        }
+    }
+
+    static TEST_SLOTS_A: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static TEST_SLOTS_B: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    #[test]
+    fn place_read_concurrency_limit_returns_busy_and_frees_slots() {
+        use std::sync::atomic::Ordering;
+        let g1 = acquire_place_read_slot(&TEST_SLOTS_A, 2).unwrap();
+        let g2 = acquire_place_read_slot(&TEST_SLOTS_A, 2).unwrap();
+        assert!(acquire_place_read_slot(&TEST_SLOTS_A, 2).is_none());
+        assert_eq!(
+            run_bounded_place_read(&TEST_SLOTS_A, 2, Duration::from_secs(1), || Ok(vec![1])).unwrap_err(),
+            PLACE_READ_BUSY
+        );
+        drop(g1);
+        assert_eq!(
+            run_bounded_place_read(&TEST_SLOTS_A, 2, Duration::from_secs(1), || Ok(vec![1])).unwrap(),
+            vec![1]
+        );
+        drop(g2);
+        // 札は返る（読み終えたあとの Drop はスレッド側。少し待つ）
+        for _ in 0..50 {
+            if TEST_SLOTS_A.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(TEST_SLOTS_A.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn place_read_timeout_returns_timeout_and_slot_stays_until_thread_ends() {
+        use std::sync::atomic::Ordering;
+        let t = Instant::now();
+        let r = run_bounded_place_read(&TEST_SLOTS_B, 1, Duration::from_millis(100), || {
+            thread::sleep(Duration::from_millis(600));
+            Ok(vec![])
+        });
+        assert_eq!(r.unwrap_err(), PLACE_READ_TIMEOUT);
+        assert!(t.elapsed() < Duration::from_millis(500));
+        // 止まった読みはまだ札を持つ = 積み上がらない
+        assert_eq!(TEST_SLOTS_B.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            run_bounded_place_read(&TEST_SLOTS_B, 1, Duration::from_millis(100), || Ok(vec![])).unwrap_err(),
+            PLACE_READ_BUSY
+        );
+        for _ in 0..100 {
+            if TEST_SLOTS_B.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(TEST_SLOTS_B.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn place_read_timeouts_and_initial_capacity() {
+        assert_eq!(PlaceReadPurpose::Preview.timeout(), Duration::from_secs(60));
+        assert_eq!(PlaceReadPurpose::Data.timeout(), Duration::from_secs(120));
+        assert_eq!(PLACE_READ_MAX_CONCURRENT, 2);
+        assert_eq!(PLACE_READ_INITIAL_CAPACITY, 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn place_read_refuses_bad_paths_and_unknown_places() {
+        let (_t, places) = read_fixture();
+        for bad in ["../x.csv", "/etc/passwd", "a//b.csv", "sub/../d.csv", "a\\b.csv", ""] {
+            assert!(read_in(&places, "p", bad, "data").is_err(), "{bad:?}");
+        }
+        assert_eq!(
+            read_in(&places, "nope", "d.csv", "data").unwrap_err(),
+            PlaceResolveError::Unregistered.message()
+        );
+        assert_eq!(
+            read_in(&places, "p", "missing.csv", "data").unwrap_err(),
+            PlaceResolveError::Missing.message()
+        );
+        // 置き場が時間内に届かなければ中身へ進まない
+        let (slow, _) = sleeping_probe(1500);
+        let err = read_place_file_in_places(
+            &places,
+            &PlaceProbes::default(),
+            "p",
+            "d.csv",
+            "data",
+            Duration::from_millis(100),
+            slow,
+        )
+        .unwrap_err();
+        assert_eq!(err, PlaceResolveError::Unreachable.message());
     }
 
     #[test]

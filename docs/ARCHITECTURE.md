@@ -4172,10 +4172,11 @@ The same `src/` tree is built four different ways.
   new id so later saves edit the new, not-yet-cited version instead of
   piling up versions. **Discard edits** runs `discard_opened_copy`, which
   deletes the copy. All five commands take only material ids.
-- **Data places** (linked files; shape in DATA_MODEL.md §6.5) are eight
-  commands that point at files without copying or reading them:
-  `place_list`, `place_register`, `place_rename`, `place_remove`,
-  `place_pick_files`, `place_stat_many`, `place_open` and `place_reveal`.
+- **Data places** (linked files; shape in DATA_MODEL.md §6.5) are nine
+  commands that point at files without copying them, and read one only when
+  the user opens it: `place_list`, `place_register`, `place_rename`,
+  `place_remove`, `place_pick_files`, `place_stat_many`, `place_open`,
+  `place_reveal` and `place_read_file`.
   The wrapper is `src/features/linked-files/places.ts`; the Rust side is
   the `place_*` block in `src-tauri/src/lib.rs`. The guards:
   - **JavaScript never supplies a filesystem path.** A place is added only
@@ -4215,9 +4216,44 @@ The same `src/` tree is built four different ways.
     **Show in folder**. It is a list of what is allowed, not of what is
     blocked. `place_reveal` shows the file in the OS file manager and does
     not open it, so it is not limited by kind.
-  - **No command reads a file's contents.** The commands return
-    `metadata` (size, modified time) or hand the file to the OS; the only
-    content Rust reads is the marker file, capped at 64 KiB.
+  - **A file is read only when the user opens it.** Apart from
+    `place_read_file`, the commands return `metadata` (size, modified
+    time) or hand the file to the OS, and the only other content Rust reads
+    is the marker file, capped at 64 KiB. `place_read_file(place_id,
+    rel_path, purpose)` returns the bytes of one file, and the UI calls it
+    only from a button the user pressed (**Show contents**, **Import as
+    table**, or re-importing a table): never on listing, checking the state,
+    search, AI, sharing or export. Its guards:
+    - `purpose` is `preview` or `data`; anything else is refused.
+      `preview` reads `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp`,
+      `bmp`, `heic` and `avif` (not `svg`, which can carry script) up to
+      100 MiB. `data` reads `csv`, `tsv`, `txt` and `dat` up to 200 MiB.
+      The lists are of what is allowed. A file of another kind (or none)
+      returns `PLACE_READ_NOT_ALLOWED:<ext>`; a file over the limit returns
+      `PLACE_READ_TOO_LARGE:<limit in bytes>`.
+    - It reuses the checks above (relative path, place reachability with its
+      time limit, real path inside the root, no symbolic links, re-check
+      right before opening) and then opens the file with `O_NOFOLLOW` and
+      `O_NONBLOCK`, requires a regular file (a FIFO cannot hang it) and
+      stops reading at the limit even if the file grows meanwhile.
+    - At most 2 reads run at once across the app (more return
+      `PLACE_READ_BUSY`), and a call that takes longer than 60 s (`preview`)
+      or 120 s (`data`) returns `PLACE_READ_TIMEOUT`. The slot is held by
+      the reading thread, so a stalled read cannot pile up past the limit.
+      The initial buffer is at most 8 MiB. On Windows the file is opened
+      with `FILE_FLAG_OPEN_REPARSE_POINT` and refused when the opened
+      handle has the reparse-point attribute; on every OS the path is
+      canonicalized again after opening and must still be inside the root,
+      have the same final name and an allowed extension. Relative paths with
+      a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9, with
+      or without an extension) are refused on every OS.
+    - Only the `main` window may call it. The bytes go back to that caller
+      only: Rust keeps no cache and writes nothing to disk, and the UI shows
+      them through a `blob:` URL it revokes on close, or hands the decoded
+      text to the import dialog. The original is not registered as an asset.
+    - What the guards above do not change: a linked file's contents are
+      never given to AI, search, ingest or sharing. A table imported from it
+      is an ordinary table in the note.
   - **Too-broad folders are refused.** `place_register` rejects a
     filesystem root or drive, the home folder and its parents, and
     Graphium's own data folder and app config folder (inside them or
@@ -4227,7 +4263,7 @@ The same `src/` tree is built four different ways.
     checks each place's root on a separate thread with a 3 second limit, so
     a stalled share or NAS marks its links `unreachable` instead of
     freezing the app. The same check (at most one in flight per place; later
-    callers wait for it) gates `place_list`, `place_open` and `place_reveal`,
+    callers wait for it) gates `place_list`, `place_open`, `place_reveal` and `place_read_file`,
     and a place that times out is listed as not reachable without reading
     its marker.
   - Unregistering (`place_remove`) only deletes the ledger entry; it never

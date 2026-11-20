@@ -295,7 +295,16 @@ import { rememberBlobUrl } from "./features/inline-image/spec";
 import { publishTableColumns } from "./blocks/calc/table-scope";
 import { applyCalcWritebacks, type CalcWritebackRequest } from "./blocks/calc/writeback";
 import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/remap-targets";
-import { isPlaceUrl } from "./features/linked-files/link-url";
+import { isLinkedEntry, isPlaceUrl } from "./features/linked-files/link-url";
+import {
+  LINKED_DATA_IMPORT_EVENT,
+  findLinkOf,
+  isLinkedDataImportable,
+  readFromLabel,
+  readLinkedText,
+  type LinkedImportRequest,
+} from "./features/linked-files/linked-import";
+import { readErrorMessageKey } from "./features/linked-files/places";
 import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
@@ -2580,8 +2589,58 @@ function NoteEditorInner({
        * 表の出所に残す（写しを読み直しただけで、どう絞ったかの記録を失わない）
        */
       keepDerivation?: TableDerivation;
+      /**
+       * リンクした素材（データの置き場のファイル）から読んだとき、読んだ時点の元ファイルの大きさ・更新日時。
+       * あるとき fileId はリンクした素材を指し、元のファイルは素材として登録しない（コピーを作らない）
+       */
+      linked?: { size: number; mtimeMs: number };
+      /** リンクした素材から読んだとき、「読んだファイル: 置き場 / 場所」（確定前に見せる） */
+      readFromNote?: string;
     } | null
   >(null);
+  // 取り込みの読み込み中・ダイアログを開いている間は、別の取り込み要求を受けない（途中の設定を消さない）
+  const dataImportOpenRef = useRef(false);
+  dataImportOpenRef.current = dataImportFile !== null;
+  const linkedImportBusyRef = useRef(false);
+
+  // リンクした素材を読んで取り込み画面を開く（素材ピークの「表に取り込む」と、/データ のピッカーの共通の入口）。
+  // 押されたときだけ読む。ダイアログを開いている間・読み込み中は受けない（途中の設定を消さない）。
+  // 受けたら true。挿す先は pickerEditorRef（無ければメインの編集器）
+  const startLinkedImport = useCallback((req: LinkedImportRequest): boolean => {
+    if (dataImportOpenRef.current || linkedImportBusyRef.current) {
+      req.onSettled?.();
+      return true;
+    }
+    linkedImportBusyRef.current = true;
+    void (async () => {
+      try {
+        const { text, size, mtimeMs } = await readLinkedText(req.placeId, req.relPath);
+        const readFromNote = await readFromLabel(req.placeId, req.relPath);
+        pickerEditorRef.current = pickerEditorRef.current ?? editorRef.current;
+        setPickerMediaType(null);
+        setDataImportFile({ fileName: req.name, text, fileId: req.fileId, linked: { size, mtimeMs }, readFromNote });
+      } catch (e) {
+        const { key, params } = readErrorMessageKey(e);
+        alert(tStatic(key, params));
+      } finally {
+        linkedImportBusyRef.current = false;
+        req.onSettled?.();
+      }
+    })();
+    return true;
+  }, []);
+
+  // リンクした素材の「表に取り込む」（素材ピークの LinkedFileView からの合図）
+  useEffect(() => {
+    const onRequest = (ev: Event) => {
+      const req = (ev as CustomEvent<LinkedImportRequest>).detail;
+      if (!req) return;
+      // 受け取ったことを送り手に知らせる（ノートを開いていないときは誰も true にしない）
+      req.accepted = startLinkedImport(req);
+    };
+    window.addEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+    return () => window.removeEventListener(LINKED_DATA_IMPORT_EVENT, onRequest);
+  }, [startLinkedImport]);
 
   // ── チャートの「素材のデータから」 ──
   // チャートブロックがピッカー（データ素材）→ 取り込みダイアログを求めてきたときの
@@ -2691,15 +2750,27 @@ function NoteEditorInner({
   // displayMode:
   //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
   //   "link"  → @素材名 の inline リンク（@mention の asset 分岐と同じく citedAssetFileIds に登録）
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
+  const handlePickerSelect = useCallback((
+    entry: MediaIndexEntry,
+    displayMode: AssetDisplayMode,
+    requestedMode: AssetDisplayMode = displayMode,
+  ) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
 
-    // リンクした素材は中身を読めないので、呼び出し元がどの形で渡しても @リンクにする
-    // （展開ブロックや、区切りテキストの中身を読む取り込みに入れない）
+    // リンクした素材の区切りファイル（CSV など）を「データを選択」で選んだら、参照は入れず、
+    // 置き場から読んで取り込み画面へ進める（表になる）。「リンク」で入れる選択のときは下の @リンクのまま
+    // ピッカーはリンクした素材の displayMode を常に "link" に寄せて返すので、利用者が選んだ requestedMode で見る
+    if (requestedMode !== "link" && isLinkedEntry(entry) && isLinkedDataImportable(entry.name)) {
+      const link = entry.link!;
+      startLinkedImport({ fileId: entry.fileId, name: entry.name, placeId: link.placeId, relPath: link.relPath });
+      return;
+    }
+
+    // リンクした素材は、展開ブロックにはせず @リンクにする（画像・PDF の中身は素材ピークで開く）
     if (resolvePickerDisplayMode(entry, displayMode) === "link") {
       // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
       // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
@@ -2778,7 +2849,7 @@ function NoteEditorInner({
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash, linkStore, startLinkedImport]);
 
   // 確定のときに開いていたノートが、まだ開いているか。新規ノート（fileId が null）は保存で
   // ID が付くので、null → 値は同じノートとみなす（別のノートへ移ったときだけ false）
@@ -2802,6 +2873,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult
     ) => {
@@ -2854,7 +2926,8 @@ function NoteEditorInner({
       if (!fileId) return;
       // 取り込みダイアログで読んだ本文をそのまま使う（描画のために読み直さない）。
       // 絞り込みのときは写しの本文を registerDerivedSource が覚えさせている
-      if (!derivedSource && file.text !== undefined) primeAssetText(fileId, file.text);
+      // リンクした素材の本文は覚えさせない（キャッシュしない約束。データ表にもならない）
+      if (!derivedSource && file.text !== undefined && !file.linked) primeAssetText(fileId, file.text);
       // 登録を待つ間にエディタが作り直される（言語の切り替え・ノートの切り替え）ことがあるので、
       // 挿す先は今生きているエディタ。作り直された直後は editorRef が一瞬だけ前の
       // インスタンスを指すので liveEditorRef を先に見る
@@ -2924,6 +2997,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult,
       derived?: TableSource,
@@ -2986,6 +3060,8 @@ function NoteEditorInner({
         // 元の素材が読めず写しを開いたとき、読み方も変えず絞り込まずに確定したときだけ来歴を残す
         const keep = derived ? undefined : keepDerivationFor(file.keepDerivation, file.initialOptions, result);
         if (keep) builtSource.derivation = keep;
+        // リンクした素材から絞り込まずに取り込んだとき: 取り込んだ時点の元ファイルの大きさ・更新日時を残す
+        if (!derived && file.linked) builtSource.linkedStat = { ...file.linked };
         tableMetaStore.setSource(blockId, builtSource);
       }
 
@@ -3051,6 +3127,7 @@ function NoteEditorInner({
         text?: string;
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
+        linked?: { size: number; mtimeMs: number };
       },
       result: DataImportResult
     ) => {
@@ -3105,21 +3182,30 @@ function NoteEditorInner({
     (blockId: string, source: TableSource, target: ImportTarget = "table") => {
       if (!source.fileId) return;
       void (async () => {
+        // リンクした素材は置き場から読み直す（素材にコピーが無い）。読めなければ例外（既存と同じ扱い）
         const readAsset = async (fileId: string) => {
+          // このノートが使っているリンク素材だけを読み直す（違えば例外。読まない）
+          const link = await findLinkOf(fileId, openFileIdRef.current ?? undefined);
+          if (link) {
+            const { text, size, mtimeMs } = await readLinkedText(link.placeId, link.relPath);
+            return { text, linked: { size, mtimeMs }, readFromNote: await readFromLabel(link.placeId, link.relPath) };
+          }
           const provider = getActiveProvider();
           const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
-          return readDataFileText(blob);
+          return { text: await readDataFileText(blob), linked: undefined, readFromNote: undefined };
         };
         // 絞り込みの表は、元の素材を条件つきで開く（条件を直せるように）。
         // 元が読めない（消された）ときは、写しをふつうに開く
         const back = reimportTargetOf(source);
         if (back) {
           try {
-            const text = await readAsset(back.fileId);
+            const { text, linked, readFromNote } = await readAsset(back.fileId);
             setDataImportFile({
               fileName: back.fileName,
               text,
+              linked,
+              readFromNote,
               fileId: back.fileId,
               replaceBlockId: blockId,
               initialOptions: back.initialOptions
@@ -3134,10 +3220,12 @@ function NoteEditorInner({
           }
         }
         try {
-          const text = await readAsset(source.fileId!);
+          const { text, linked, readFromNote } = await readAsset(source.fileId!);
           setDataImportFile({
             fileName: source.fileName,
             text,
+            linked,
+            readFromNote,
             fileId: source.fileId,
             replaceBlockId: blockId,
             initialOptions: {
@@ -3149,8 +3237,14 @@ function NoteEditorInner({
             // 写しを開き直しただけでは、どう絞ったかの記録を失わない
             keepDerivation: source.derivation,
           });
-        } catch {
-          alert(tStatic("dataImport.readError"));
+        } catch (e) {
+          // リンクした素材の読み直しが断られた・読めなかったときは、その理由を出す
+          if ((e instanceof Error ? e.message : String(e)).startsWith("PLACE_READ_")) {
+            const { key, params } = readErrorMessageKey(e);
+            alert(tStatic(key, params));
+          } else {
+            alert(tStatic("dataImport.readError"));
+          }
         }
       })();
     },
@@ -7412,6 +7506,9 @@ function NoteEditorInner({
           initialOptions={dataImportFile.initialOptions}
           initialTarget={dataImportFile.initialTarget}
           initialExtract={dataImportFile.initialExtract}
+          readFromNote={dataImportFile.readFromNote}
+          // リンクした素材は、元のファイルを素材にしないので、素材を読むデータ表にはしない（表に取り込む）
+          showTargetChoice={!dataImportFile.linked}
           onCancel={() => setDataImportFile(null)}
           onConfirm={(result) => handleDataImportConfirm(dataImportFile, result)}
         />

@@ -181,7 +181,7 @@ Materials registered before v0.37.0 are read once in the background after you si
 
 ## Link a file without copying it <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#linked-files}
 
-Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied, and Graphium never reads what is inside. This is for the desktop app only.
+Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied. Graphium reads the contents only when you ask it to (see [Show the contents or import it as a table](#linked-read)). This is for the desktop app only.
 
 ### Set it up and link a file
 
@@ -210,6 +210,21 @@ With the status **No change** or **The original has changed**, **Open the origin
 
 Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
 
+### Show the contents or import it as a table {#linked-read}
+
+Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
+
+- **Show contents** (PDF and pictures: PNG, JPEG, GIF, WebP, BMP, HEIC, AVIF; up to 100 MB). Press it to read the file and show it in place. **Hide contents** closes it; press **Cancel** while it is reading to stop. SVG is not shown.
+- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. There are two ways in. In a note, type `/data` and choose the linked file (leave the insert style on **Embed**; choosing **Link** only puts in a reference). Or click the reference to a linked file inside a note to open it, then press **Import as table**. Pressing it from the material gallery, with no note open, only tells you to choose the file from `/data` in a note. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
+
+Graphium shows "File read: (data place) / (location)" at the top of the import dialog, so you can check which file is being imported before you confirm. Only one read runs at a time; the buttons can't be pressed again until it finishes.
+
+If you narrow the table with conditions, the small filtered CSV that is made is kept in the library as an ordinary material, so search, AI and sharing can reach it. The linked original itself is still never copied.
+
+Both buttons are available while the status is **No change** or **The original has changed**. If the file is too large, of another kind, or can't be reached, a message says why.
+
+The table remembers the size and modified time of the file when you imported it. If the original is edited later, the table's source badge shows **The original data has changed**. Pressing the badge reads the file again so you can re-import it.
+
 ### Name a linked file as the source data <Badge type="tip" text="Added in v0.148.0 (2026-11-19)" /> {#source-data}
 
 Say you link a 40 GB `raw.csv`, analyse it on your own computer, and bring the small `summary.csv` into Graphium. You can record that `summary.csv` came from `raw.csv`.
@@ -228,7 +243,7 @@ It can be set on images, PDFs, documents, data, videos and audio that you brough
 
 ### What it can't do
 
-- Search inside a linked file, preview it, or use it in a table or chart. Graphium does not read the contents.
+- Search inside a linked file, or draw a chart straight from it. The contents are not searched or read by AI, and a chart can't read the linked file directly (import it as a table first, then chart that table).
 - Read it with AI: no importing it as knowledge, extracting steps, or translating.
 - Share the linked file itself. Sharing and the shared folder skip it.
 - Link a whole folder at once. Pick the files inside it instead (up to 500 at a time).

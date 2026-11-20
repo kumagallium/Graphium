@@ -1,32 +1,60 @@
 // リンクした素材 1 件の中身の表示（素材ピーク・全画面の本体）。
 //
 // Graphium が持っているのは「置き場の中のどこにあるか」と、控えたときの大きさ・更新日時だけ。
-// ファイルは写さず、中身も読まない。Web ページを取りに行く UrlReaderView は使わない。
+// ファイルは写さない。中身は利用者が「中身を表示」「表に取り込む」を押したときだけ読む
+// （PDF・画像の表示 / 区切りファイルの表への取り込み。キャッシュも保存もしない）。
+// Web ページを取りに行く UrlReaderView は使わない。
 //
 // 状態は 5 通り（変わりなし／変わっています／見つかりません／置き場に届きません／この端末に未登録）。
 // 「見つからない」「届かない」「未登録」のときは、開く・場所を表示を押せなくする。
 // 「変わっています」のときは、控えといまを並べて見せ、「いまの状態を控え直す」で控えを更新できる
 // （前の控えは履歴に積む）。
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { File as FileIcon, FolderSearch, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { File as FileIcon, FolderSearch, ExternalLink, Loader2, RefreshCw, Eye, Table as TableIcon, X } from "lucide-react";
 import { Button } from "@ui/button";
 import { useT } from "../../i18n";
 import { formatBytes } from "../../lib/format-bytes";
 import { formatDateTime } from "../../lib/format-datetime";
 import { persistLinkPatch, type MediaIndexEntry, type MediaLink } from "../asset-browser/media-index";
+import { PdfViewer } from "../asset-browser/PdfViewer";
 import { linkModifiedIso } from "./link-safe";
+import { isLinkedDataImportable, requestLinkedDataImport } from "./linked-import";
 import { sanitizeMediaLink } from "./link-url";
 import { acceptLinkChange, linkState, type LinkState } from "./linked-entry";
 import { LinkedBadge, LinkStateBadge } from "./LinkStateBadge";
 import {
   listPlaces,
   openLinkedFile,
+  readErrorMessageKey,
+  readLinkedFile,
   revealLinkedFile,
   statLinks,
+  type LinkedReadPurpose,
   type LinkStat,
   type PlaceInfo,
 } from "./places";
+
+/** 「中身を表示」で見せられる種類（Rust 側 place_read_file の preview 許可リストのうち、見せ方のあるもの） */
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  heic: "image/heic",
+  avif: "image/avif",
+};
+
+/** 名前から見せ方を決める。PDF・画像以外は null（「中身を表示」を出さない） */
+function previewKindOf(name: string): { kind: "pdf" } | { kind: "image"; mime: string } | null {
+  const m = name.toLowerCase().match(/\.([^./\\]+)$/);
+  if (!m) return null;
+  if (m[1] === "pdf") return { kind: "pdf" };
+  const mime = IMAGE_MIME[m[1]];
+  return mime ? { kind: "image", mime } : null;
+}
 
 /** Rust 側 place_open が、開かない種類のファイルに返すエラー文字列の接頭辞 */
 export const PLACE_OPEN_NOT_ALLOWED_PREFIX = "PLACE_OPEN_NOT_ALLOWED:";
@@ -41,6 +69,14 @@ export type LinkedFileViewProps = {
     statLinks?: (items: { placeId: string; relPath: string }[]) => Promise<LinkStat[]>;
     listPlaces?: () => Promise<PlaceInfo[]>;
     openLinkedFile?: (placeId: string, relPath: string) => Promise<void>;
+    readLinkedFile?: (placeId: string, relPath: string, purpose: LinkedReadPurpose) => Promise<ArrayBuffer>;
+    requestImport?: (req: {
+      fileId: string;
+      name: string;
+      placeId: string;
+      relPath: string;
+      onSettled?: () => void;
+    }) => boolean;
     revealLinkedFile?: (placeId: string, relPath: string) => Promise<void>;
     persistLinkPatch?: (fileId: string, link: MediaLink) => Promise<boolean>;
   };
@@ -53,6 +89,8 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   const open = __test?.openLinkedFile ?? openLinkedFile;
   const reveal = __test?.revealLinkedFile ?? revealLinkedFile;
   const persist = __test?.persistLinkPatch ?? persistLinkPatch;
+  const readFile = __test?.readLinkedFile ?? readLinkedFile;
+  const requestImport = __test?.requestImport ?? requestLinkedDataImport;
 
   // 控え。控え直したら手元でも更新する（索引の再読み込みを待たずに表示へ反映）
   // 索引の値は細工されうるので、描く前に sanitizeMediaLink を通す（壊れていれば何も描かない）
@@ -64,6 +102,30 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   const [checking, setChecking] = useState(false);
   const [placeName, setPlaceName] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  // 中身の表示。押したときだけ読み、閉じる・切り替え・取り消しで blob URL を返す（revoke）
+  const [shown, setShown] = useState<{ url: string; kind: "pdf" | "image" } | null>(null);
+  const [reading, setReading] = useState(false);
+  // 表への取り込みの読み込み中（note-app が読み終えたら onSettled で戻る）
+  const [importing, setImporting] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const readToken = useRef(0);
+  const closeContent = useCallback(() => {
+    readToken.current += 1;
+    setReading(false);
+    setShown((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }, []);
+  // 別の素材に切り替わった・閉じたら、前の中身は持たない
+  useEffect(() => closeContent, [entry.fileId, closeContent]);
 
   const fail = useCallback(
     (e: unknown) => setMessage(t("linkedFile.actionFailed", { message: e instanceof Error ? e.message : String(e) })),
@@ -116,6 +178,32 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
   }, [safeLink?.placeId, places]);
 
   if (!link) return null;
+
+  const preview = previewKindOf(entry.name);
+  const importable = isLinkedDataImportable(entry.name);
+
+  const showContent = async () => {
+    if (!preview) return;
+    const token = ++readToken.current;
+    setMessage(null);
+    setReading(true);
+    try {
+      const buf = await readFile(link.placeId, link.relPath, "preview");
+      if (token !== readToken.current) return; // 取り消された
+      const blob = new Blob([buf], { type: preview.kind === "pdf" ? "application/pdf" : preview.mime });
+      const url = URL.createObjectURL(blob);
+      setShown((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return { url, kind: preview.kind };
+      });
+    } catch (e) {
+      if (token !== readToken.current) return;
+      const { key, params } = readErrorMessageKey(e);
+      setMessage(t(key, params));
+    } finally {
+      if (token === readToken.current) setReading(false);
+    }
+  };
 
   const state: LinkState | null = current ? linkState(link, current) : null;
   const canUse = state === "ok" || state === "changed";
@@ -236,6 +324,52 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
           <FolderSearch />
           {t("linkedFile.reveal")}
         </Button>
+        {preview && !shown && !reading && (
+          <Button size="sm" variant="outline" disabled={!canUse || importing} onClick={() => void showContent()}>
+            <Eye />
+            {t("linkedFile.read.show")}
+          </Button>
+        )}
+        {reading && (
+          <Button size="sm" variant="outline" onClick={closeContent}>
+            <Loader2 className="animate-spin" />
+            {t("linkedFile.read.loading")} · {t("linkedFile.read.cancel")}
+          </Button>
+        )}
+        {shown && (
+          <Button size="sm" variant="outline" onClick={closeContent}>
+            <X />
+            {t("linkedFile.read.hide")}
+          </Button>
+        )}
+        {importable && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canUse || reading || importing}
+            onClick={() => {
+              setMessage(null);
+              setImporting(true);
+              const accepted = requestImport({
+                fileId: entry.fileId,
+                name: entry.name,
+                placeId: link.placeId,
+                relPath: link.relPath,
+                onSettled: () => {
+                  if (mounted.current) setImporting(false);
+                },
+              });
+              // ノートを開いていない（素材の一覧から押した）ときは受け手がいない。読まずに案内する
+              if (!accepted) {
+                setImporting(false);
+                setMessage(t("linkedFile.read.openNoteFirst"));
+              }
+            }}
+          >
+            {importing ? <Loader2 className="animate-spin" /> : <TableIcon />}
+            {t("linkedFile.read.importTable")}
+          </Button>
+        )}
         <Button size="sm" variant="ghost" disabled={checking} onClick={() => void recheck()}>
           {checking ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           {t("linkedFile.recheck")}
@@ -243,6 +377,27 @@ export function LinkedFileView({ entry, __test }: LinkedFileViewProps) {
       </div>
 
       {message && <p className="text-xs text-muted-foreground">{message}</p>}
+
+      {(preview || importable) && <p className="text-[11px] text-muted-foreground">{t("linkedFile.read.hint")}</p>}
+
+      {/* 中身。押したときだけ読んだものを、その場で見せる（どこにも書かない） */}
+      {shown?.kind === "image" && (
+        <img
+          src={shown.url}
+          alt={entry.name}
+          className="max-w-full max-h-[60vh] object-contain rounded"
+          data-testid="linked-file-content"
+          onError={() => {
+            closeContent();
+            setMessage(t("linkedFile.read.failed"));
+          }}
+        />
+      )}
+      {shown?.kind === "pdf" && (
+        <div className="h-[60vh] overflow-hidden rounded border border-border-subtle" data-testid="linked-file-content">
+          <PdfViewer entry={{ ...entry, type: "pdf", url: shown.url }} />
+        </div>
+      )}
 
       {/* 控え直しの履歴（折りたたみ。新しい順） */}
       {history.length > 0 && (

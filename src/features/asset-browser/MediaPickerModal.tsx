@@ -190,7 +190,11 @@ export type AssetDisplayMode = "embed" | "link";
 export type MediaPickerModalProps = {
   mediaIndex: MediaIndex | null;
   mediaType: MediaType;
-  onSelect: (entry: MediaIndexEntry, displayMode: AssetDisplayMode) => void;
+  /**
+   * displayMode はリンクした素材なら常に "link" に寄せた値。
+   * requestedMode は利用者が選んだ挿入方法そのもの（リンクした CSV を「埋め込み」で選んだら表に取り込む、の判定用）
+   */
+  onSelect: (entry: MediaIndexEntry, displayMode: AssetDisplayMode, requestedMode?: AssetDisplayMode) => void;
   onClose: () => void;
   /** 新規アップロード（File → URL を返す） */
   onUpload?: (file: File) => Promise<string>;
@@ -300,7 +304,7 @@ export function MediaPickerModal({
 
   const handleSelect = useCallback(
     (entry: MediaIndexEntry) => {
-      onSelect(entry, resolvePickerDisplayMode(entry, displayMode));
+      onSelect(entry, resolvePickerDisplayMode(entry, displayMode), displayMode);
       onClose();
     },
     [onSelect, onClose, displayMode],

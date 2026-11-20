@@ -417,3 +417,14 @@ describe("DataImportModal / 全列の正規化", () => {
     expect("extract" in r).toBe(false);
   });
 });
+
+describe("DataImportModal / 読んだファイルの表示", () => {
+  it("readFromNote があれば確定の前に見える。なければ出さない", () => {
+    const { rerender } = render(
+      <DataImportModal fileName="a.csv" text={csv(3)} readFromNote="File read: Lab NAS / runs/a.csv" onCancel={() => {}} onConfirm={() => {}} />
+    );
+    expect(screen.getByTestId("data-import-read-from").textContent).toBe("File read: Lab NAS / runs/a.csv");
+    rerender(<DataImportModal fileName="a.csv" text={csv(3)} onCancel={() => {}} onConfirm={() => {}} />);
+    expect(screen.queryByTestId("data-import-read-from")).toBeNull();
+  });
+});

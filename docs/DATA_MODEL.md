@@ -483,6 +483,9 @@ type TableSource = {
   };
   meta?: { key: string; value: string }[]; // `key: value` lines read from the preamble
   derivation?: TableDerivation;            // only on a table made by filtering a file
+  linkedStat?: { size: number; mtimeMs: number };
+                                           // size / mtime of a linked file when it was imported
+                                           // without filtering (see §6.5)
 };
 
 type TableDerivation = {                   // how a filtered copy was made
@@ -490,6 +493,8 @@ type TableDerivation = {                   // how a filtered copy was made
   fromFileId?: string;                     // media index ID of the original asset
   fromFileName: string;                    // name of the original file
   fromOptions?: TableSource["options"];    // how the original was read (absent in older records)
+  fromSize?: number;                       // linked original only: its size (bytes) when read
+  fromMtimeMs?: number;                    // linked original only: its modified time when read
   columns: string[];                       // columns kept (every header when all were kept)
   sourceColumns?: number;                  // columns in the original; equal to columns.length means "all"
   conditions: { column: string; op: "eq" | "ne" | "contains" | "gt" | "ge" | "lt" | "le" | "notEmpty"; value?: string }[];
@@ -4426,9 +4431,31 @@ record a person made. The note's PROV-JSON-LD export writes it as
 (which carries the `graphium:placeId` fields above), when the parent is in
 the media index.
 
-**Not part of this feature.** Searching, previewing or extracting the
-contents of a linked file; using one in a table or chart; AI ingest or
-translation; sharing a linked file itself (it is skipped in bulk share and
+**Reading contents (on demand only).** Graphium reads a linked file's
+contents only when the user asks, through `place_read_file` (ARCHITECTURE.md
+§4.2): **Show contents** displays a PDF or an image from a `blob:` URL, and
+**Import as table** reads a `.csv` / `.tsv` / `.txt` / `.dat` file into the
+import dialog. Nothing is cached or copied, and the original is not
+registered as an asset: the table's `source.fileId` is the linked material's
+id. The size and modified time at the moment of reading are kept with the
+table so a later change can be flagged: `source.derivation.fromSize` /
+`fromMtimeMs` on a filtered table, `source.linkedStat` (`{ size, mtimeMs }`)
+otherwise. Both are optional (absent in older notes and on tables not made
+from a linked file); when the file's current size or modified time differs,
+the table's source badge shows "The original data has changed". Re-importing
+reads the linked file again, and only when the material is one this note
+already uses (`usedIn` lists the note); otherwise nothing is read. The import
+dialog shows "File read: <place name> / <path>" before the user confirms.
+
+**A filtered copy is an ordinary asset.** When the import dialog filters a
+linked file (columns and conditions), the small result CSV is registered as a
+normal material with the linked file in its `derivedFromAssets`. That copy is
+stored like any other asset, so search, AI ingest and sharing can reach it.
+The linked original is never copied or kept, but the filtered rows are.
+
+**Not part of this feature.** Searching or extracting the contents of a
+linked file; using one directly in a chart (a table imported from it can be
+charted like any table); AI ingest or translation; sharing a linked file itself (it is skipped in bulk share and
 the share action is hidden); linking a whole folder at once (up to 500
 files can be picked together); converting a link into a copy. For the Tauri commands and their
 guards see ARCHITECTURE.md §4.2.

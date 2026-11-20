@@ -5,7 +5,7 @@ const isTauri = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("../../lib/platform", () => ({ isTauri: () => isTauri() }));
 
-import { listPlaces, registerPlace, renamePlace, removePlace, pickPlaceFiles, statLinks, openLinkedFile, revealLinkedFile } from "./places";
+import { listPlaces, registerPlace, renamePlace, removePlace, pickPlaceFiles, statLinks, openLinkedFile, revealLinkedFile, readLinkedFile, readErrorMessageKey } from "./places";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -112,5 +112,41 @@ describe("呼び出しの重ね防止", () => {
     invoke.mockResolvedValue([]);
     await listPlaces();
     expect(invoke).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("readLinkedFile", () => {
+  it("place_read_file を目的つきで呼ぶ", async () => {
+    isTauri.mockReturnValue(true);
+    const buf = new ArrayBuffer(3);
+    invoke.mockResolvedValue(buf);
+    expect(await readLinkedFile("p", "a/b.pdf", "preview")).toBe(buf);
+    expect(invoke).toHaveBeenCalledWith("place_read_file", { placeId: "p", relPath: "a/b.pdf", purpose: "preview" });
+  });
+
+  it("デスクトップ版でなければ投げる（invoke しない）", async () => {
+    isTauri.mockReturnValue(false);
+    await expect(readLinkedFile("p", "a.csv", "data")).rejects.toThrow("desktop only");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("readErrorMessageKey", () => {
+  it("接頭辞と既存の理由を文言キーにする", () => {
+    expect(readErrorMessageKey("PLACE_READ_NOT_ALLOWED:svg")).toEqual({ key: "linkedFile.read.notAllowed", params: { ext: "svg" } });
+    expect(readErrorMessageKey(new Error("PLACE_READ_NOT_ALLOWED:"))).toEqual({ key: "linkedFile.read.notAllowed", params: { ext: "" } });
+    expect(readErrorMessageKey("PLACE_READ_TOO_LARGE:104857600")).toEqual({ key: "linkedFile.read.tooLarge", params: { max: "100" } });
+    expect(readErrorMessageKey("データの置き場に届きません").key).toBe("linkedFile.read.unreachable");
+    expect(readErrorMessageKey("ファイルが見つかりません").key).toBe("linkedFile.read.missing");
+    expect(readErrorMessageKey("データの置き場が登録されていません").key).toBe("linkedFile.read.unregistered");
+    expect(readErrorMessageKey("なぞのエラー").key).toBe("linkedFile.read.failed");
+  });
+});
+
+describe("readErrorMessageKey: 同時実行・時間切れ・参照外", () => {
+  it("BUSY / TIMEOUT / NOT_REFERENCED を文言キーにする", () => {
+    expect(readErrorMessageKey("PLACE_READ_BUSY").key).toBe("linkedFile.read.busy");
+    expect(readErrorMessageKey(new Error("PLACE_READ_TIMEOUT")).key).toBe("linkedFile.read.timeout");
+    expect(readErrorMessageKey(new Error("PLACE_READ_NOT_REFERENCED")).key).toBe("linkedFile.read.notReferenced");
   });
 });

@@ -31,6 +31,7 @@ import {
 import { Database, Download, Maximize2, TriangleAlert } from "lucide-react";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t, useLocaleSubscription } from "../../i18n";
+import { LinkedSourceChangedNote } from "../../features/linked-files/LinkedSourceChangedNote";
 import type { TableDerivation, TableSource } from "../../lib/document-types";
 import {
   hasDataTableExportCallback,
@@ -261,6 +262,7 @@ function CaptionRow({
           </span>
         </button>
       )}
+      {source && <LinkedSourceChangedNote source={source} />}
       {data && (
         <span style={styles.badge}>
           {t("dataTable.rowsCols", {

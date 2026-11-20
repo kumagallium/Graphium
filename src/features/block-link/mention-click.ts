@@ -234,7 +234,10 @@ export function openPeekTarget(
   switch (ext.kind) {
     case "url":
       if (openers.openMaterial) {
-        openers.openMaterial(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
+        // 素材の一覧から @リンクで入れた URL 系の素材（リンクした素材を含む）は、鍵が URL ではなく fileId。
+        // URL で引くと見つからず、URL を取りに行く画面（http(s) 以外は失敗）が開いてしまう。fileId で引く
+        const byFileId = mediaIndex?.media.find((m) => m.type === "url" && m.fileId === ext.key);
+        openers.openMaterial(byFileId ?? buildUrlPeekEntry(ext.key, mediaIndex ?? null));
         return true;
       }
       if (openers.openUrlFallback) {

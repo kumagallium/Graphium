@@ -47,7 +47,7 @@ Changing **Where your notes are saved** does not move existing notes automatical
 
 ### Data places <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#data-places}
 
-Desktop app only. A data place is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is; it does not copy the file or read what is inside.
+Desktop app only. A data place is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is and does not copy it; it reads the contents only when you open them.
 
 ![Two data places as rows. "Whole bakery" (/Volumes/Bakery/Shared) has a green dot. "Sourdough team" (/Volumes/Bakery/Sourdough) has an orange dot and is opened to show that the folder can't be reached right now, with its folder location. Register a folder sits below.](/screenshots/settings-data-places.png)
 

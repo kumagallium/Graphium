@@ -328,3 +328,24 @@ describe("readMentionAt", () => {
     ).toBeNull();
   });
 });
+
+describe("openPeekTarget: リンクした素材の @リンク（鍵は URL ではなく fileId）", () => {
+  const linked = {
+    fileId: "url_abc",
+    name: "run2.csv",
+    type: "url",
+    mimeType: "text/x-uri",
+    url: "graphium-place://p1/run2.csv",
+    thumbnailUrl: "",
+    uploadedAt: "2026-11-19T00:00:00.000Z",
+    usedIn: [],
+    link: { placeId: "p1", relPath: "run2.csv", size: 1, mtimeMs: 1, recordedAt: "x" },
+  };
+  it("fileId で引いて、素材ピークにその素材を渡す（URL を取りに行く画面にしない）", () => {
+    const o = { openNote: vi.fn(), openMaterial: vi.fn(), openUrlFallback: vi.fn(), openMemo: vi.fn() };
+    const idx = { media: [linked] } as never;
+    expect(openPeekTarget("url:url_abc", idx, o)).toBe(true);
+    expect(o.openMaterial).toHaveBeenCalledWith(linked);
+    expect(o.openUrlFallback).not.toHaveBeenCalled();
+  });
+});
