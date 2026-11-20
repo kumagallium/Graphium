@@ -210,7 +210,7 @@ With the status **No change** or **The original has changed**, **Open the origin
 
 Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
 
-### Show the contents or import it as a table {#linked-read}
+### Show the contents or import it as a table <Badge type="tip" text="Added in v0.153.0 (2026-11-20)" /> {#linked-read}
 
 Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
 
