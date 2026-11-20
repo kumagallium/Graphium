@@ -39,6 +39,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
+    # CI では差分コンパイル（incremental）の成果物は使い回せず、キャッシュを膨らませるだけ。
+    # 切ると target が小さくなり、復元・保存も速くなる。
+    env:
+      CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v4
 
@@ -97,9 +101,12 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             src-tauri/target
-          key: rust-checks-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          # v2: incremental を含まない形。v1 はぴったり当たると保存し直されず incremental を
+          # 抱えたまま残るので、鍵を変えて作り直させる（最後の行は v1 からの暖機用）。
+          key: rust-checks-v2-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            rust-checks-${{ runner.os }}-${{ steps.image.outputs.version }}-
+            rust-checks-v2-${{ runner.os }}-${{ steps.image.outputs.version }}-
+            rust-checks-v2-${{ runner.os }}-
             rust-checks-${{ runner.os }}-
 
       # 別のイメージで作ったキャッシュ（または鍵にイメージ版が無い旧形式）を戻したときは、
@@ -109,7 +116,7 @@ jobs:
         if: >-
           steps.cargo-cache.outputs.cache-matched-key != '' &&
           !startsWith(steps.cargo-cache.outputs.cache-matched-key,
-                      format('rust-checks-{0}-{1}-', runner.os, steps.image.outputs.version))
+                      format('rust-checks-v2-{0}-{1}-', runner.os, steps.image.outputs.version))
         run: cargo clean --manifest-path src-tauri/Cargo.toml -p whisper-rs-sys
 
       - name: clippy
@@ -118,9 +125,20 @@ jobs:
       - name: test
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
-      # 以前の actions/cache と同じく、成功したときだけ、鍵がぴったり当たらなかったときだけ保存する。
+      # 保存は main だけ。PR のキャッシュはその PR からしか読めず、イメージ版ごとに 1〜1.4 GB
+      # 増えてリポジトリの上限（10 GB）を押し、main のキャッシュを追い出していた。
+      # PR は main のキャッシュを読むだけにする。成功したとき・ぴったり当たらなかったときだけ。
+      - name: Drop incremental output before saving
+        if: >-
+          success() && github.ref == 'refs/heads/main' &&
+          steps.cargo-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: rm -rf src-tauri/target/debug/incremental
+
       - name: Save cargo registry and target
-        if: success() && steps.cargo-cache.outputs.cache-hit != 'true'
+        if: >-
+          success() && github.ref == 'refs/heads/main' &&
+          steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
