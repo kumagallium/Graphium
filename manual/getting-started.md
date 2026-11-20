@@ -92,7 +92,7 @@ Click **Add to Knowledge** in a note's header and Graphium distills it into shor
 ## Where to go next
 
 - **Put everything in** — [Materials & citations](/materials-and-citations): PDFs, web pages, Word files, images. Search finds it all again — even text inside photos.
-- **Start from a scaffold** — type `/` and choose **Template** for a ready-made **Plan Template** or **Run Template**; the Run Template doubles as a worked example of labeled steps.
+- **Start from a scaffold** — type `/` and choose **Template** for a ready-made **Plan Template** or **Operation Template**; the Operation Template doubles as a worked example of labeled steps.
 - **The editor in depth** — [Notes & editor](/notes-and-editor): blocks, formulas, callouts, templates, search.
 - **Capture from your phone** — [Mobile capture](/mobile).
 - **How your notes are protected** — [Security](/security).

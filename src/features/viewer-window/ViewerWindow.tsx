@@ -55,6 +55,7 @@ import { flushEditorsBeforeExit } from "../../lib/flush-on-exit";
 import { readIndexFile, type GraphiumIndex } from "../navigation/index-file";
 import { SidePeek, type PeekStandalonePanelArgs } from "../index-table/side-peek";
 import { ProvGraphPanel } from "../prov-generator/view";
+import { isPlanNote } from "../note-context/reserved-folders";
 import { useProvGeneration } from "../../hooks/use-prov-generation";
 import { useLabelStore } from "../context-label/store";
 import { isProvLabelsEnabled } from "../settings";
@@ -414,7 +415,7 @@ function ViewerProvPanel({
         doc={provDoc}
         editorRef={args.editorRef}
         noteId={args.noteId}
-        noteContexts={args.noteContexts}
+        isPlan={isPlanNote({ kind: args.doc.kind, noteContexts: args.noteContexts })}
         index={index}
       />
     </div>

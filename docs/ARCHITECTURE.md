@@ -1078,8 +1078,8 @@ stubs that mark chat-derived Wiki sources.
 
 ##### The plan export
 
-`buildPlanProvJsonLd` takes a plan note (a note in the reserved "plan"
-folder), the index, and the documents of the plan and of every operation note
+`buildPlanProvJsonLd` takes a plan note (a note with `kind: "plan"`),
+the index, and the documents of the plan and of every operation note
 it reaches (nested plans too, with a set of ancestors to stop cycles: the
 root plan's row notes are depth 0 and the walk stops past depth 8). It reads the **first page's** table only
 (`collectOperationRows`), as the plan graph does. A note that is missing from
@@ -1444,7 +1444,7 @@ field is never written.
 
 Note the naming collision: this "plan note" (an ingestion output linked
 to execution notes via `partOfPlanNoteId`) is a different concept from
-the "plan note" defined by the reserved "計画"/"plan" folder
+the "plan note" marked by `kind: "plan"` on the note
 (`src/features/note-context/reserved-folders.ts`) — the latter is the
 parent of a set of operation notes, made by hand or from a chat answer
 (below). They may converge in the future, but today they are independent.
@@ -1452,7 +1452,7 @@ parent of a set of operation notes, made by hand or from a chat answer
 #### Chat answer → experiment plan
 
 An AI chat answer that proposes the next experiment can be turned into
-a plan note of the reserved-folder kind (**Make an experiment plan**
+a plan note (`kind: "plan"`; **Make an experiment plan**
 under the answer, in note chat and standalone chat):
 
 1. `POST /api/prov/plan-from-answer`
@@ -1464,8 +1464,8 @@ under the answer, in note chat and standalone chat):
    rules.
 2. The client aligns the names with the library (same two passes as
    above) and builds the documents
-   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note in the
-   reserved plan folder whose table has a `note-link` first column and one
+   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note
+   (`kind: "plan"`, filed with its run notes in "Procedures") whose table has a `note-link` first column and one
    column per varied parameter, and one run note per row holding the
    common procedure with that row's values substituted into the matching
    attribute keys.
@@ -5860,7 +5860,7 @@ people most often need to find.
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
-| Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
+| Plan note detection (`kind`, and the former reserved "plan" folder for notes saved before v0.153) | `src/features/note-context/reserved-folders.ts` |
 | Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's table; executed edges come from cross-note references. The flow draws one band per table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |

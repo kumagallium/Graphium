@@ -154,6 +154,7 @@ import { t as tStatic } from "../i18n";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../lib/async-pool";
 import { createKeyedSerial } from "../lib/keyed-serial";
 import { deleteSavedPreview } from "../blocks/chart/data-preview-persist";
+import { kindBeforeFolderChange, stampNewNoteKind } from "../features/note-context/reserved-folders";
 
 /**
  * メインエディタの保存先。エディタを開いた時点で決まり、保存のたびに
@@ -175,7 +176,9 @@ export type EditorSaveTarget = {
 const storage = () => getActiveProvider();
 const listFiles = () => storage().listFiles();
 const loadFile = (id: string) => storage().loadFile(id);
-const createFile = (title: string, content: GraphiumDocument) => storage().createFile(title, content);
+// 新しいノートは必ず種類（kind）を持たせて書く（指定が無ければ普通のノート）。
+// kind の無いノートは旧予約フォルダ「計画」で読み替えられるので、新しく作るノートに残さない
+const createFile = (title: string, content: GraphiumDocument) => storage().createFile(title, stampNewNoteKind(content));
 // 保存できたら、別ウィンドウが同じノートを出していれば読み直してもらう
 // （lib/viewer-window.ts。開いていなければ何も起きない）
 const saveFile = async (id: string, content: GraphiumDocument) => {
@@ -2288,6 +2291,8 @@ export function useFileManager(authenticated: boolean) {
         const nextDoc: GraphiumDocument = {
           ...doc,
           noteContexts: normalized,
+          // フォルダを動かしても種類（計画か）は変えない（旧ノートは動かす前の読み替えで確定させる）
+          kind: kindBeforeFolderChange(doc),
           modifiedAt: new Date().toISOString(),
         };
         try {
@@ -2583,6 +2588,8 @@ export function useFileManager(authenticated: boolean) {
         const nextDoc: GraphiumDocument = {
           ...doc,
           noteContexts: next,
+          // フォルダを動かしても種類（計画か）は変えない（旧ノートは動かす前の読み替えで確定させる）
+          kind: kindBeforeFolderChange(doc),
           modifiedAt: new Date().toISOString(),
         };
         try {
@@ -2641,6 +2648,8 @@ export function useFileManager(authenticated: boolean) {
         const nextDoc: GraphiumDocument = {
           ...doc,
           noteContexts: next,
+          // フォルダを動かしても種類（計画か）は変えない（旧ノートは動かす前の読み替えで確定させる）
+          kind: kindBeforeFolderChange(doc),
           modifiedAt: new Date().toISOString(),
         };
         try {

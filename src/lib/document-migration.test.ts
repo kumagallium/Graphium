@@ -774,3 +774,25 @@ describe("migrateToLatest: bookmark ブロックの og:image を落とす", () =
     expect(JSON.stringify(doc)).toBe(once);
   });
 });
+
+describe("migrateToLatest: ノートの種類（kind）", () => {
+  const base = (extra: Partial<GraphiumDocument>): GraphiumDocument =>
+    ({ version: 6, title: "t", pages: [], createdAt: "", modifiedAt: "", ...extra }) as GraphiumDocument;
+
+  it("kind の無い旧ノートは旧予約フォルダ「計画」で読み替える", () => {
+    expect(migrateToLatest(base({ noteContexts: ["計画"] })).kind).toBe("plan");
+    expect(migrateToLatest(base({ noteContexts: ["Plan/2026"] })).kind).toBe("plan");
+    expect(migrateToLatest(base({ noteContexts: ["焼結"] })).kind).toBe("note");
+    expect(migrateToLatest(base({})).kind).toBe("note");
+  });
+
+  it("kind を持つノートはフォルダに関わらずそのまま", () => {
+    expect(migrateToLatest(base({ kind: "note", noteContexts: ["計画"] })).kind).toBe("note");
+    expect(migrateToLatest(base({ kind: "plan", noteContexts: ["焼結"] })).kind).toBe("plan");
+  });
+
+  it("ナレッジとスキルのページには付けない", () => {
+    expect(migrateToLatest(base({ wikiMeta: { kind: "claim" } as GraphiumDocument["wikiMeta"] })).kind).toBeUndefined();
+    expect(migrateToLatest(base({ skillMeta: {} as GraphiumDocument["skillMeta"] })).kind).toBeUndefined();
+  });
+});

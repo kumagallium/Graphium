@@ -22,8 +22,8 @@ describe("buildGeneratedNoteFolders", () => {
     ]);
   });
 
-  it("予約フォルダ「計画」とその子は引き継がない（計画ノート扱いにしない）", () => {
-    expect(buildGeneratedNoteFolders("手順", ["計画", "計画/パン", "Plan", "熱電"])).toEqual(["手順", "熱電"]);
+  it("「計画」フォルダも普通のフォルダとして引き継ぐ（計画かどうかはノートの種類で決まる）", () => {
+    expect(buildGeneratedNoteFolders("手順", ["計画", "計画/パン", "熱電"])).toEqual(["手順", "計画", "計画/パン", "熱電"]);
   });
 
   it("種類のフォルダが空なら元のフォルダだけ、どちらも無ければ undefined", () => {

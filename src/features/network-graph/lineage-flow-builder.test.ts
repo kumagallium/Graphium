@@ -218,7 +218,7 @@ describe("buildLevelFlow", () => {
     expect(buildLevelFlow({ ...base(s), nodeId: "k" }).kind).toBe("none");
   });
 
-  it("計画フォルダのノートでなければ、表の行があっても計画の図にしない", () => {
+  it("計画ノートでなければ、表の行があっても計画の図にしない", () => {
     const d = planDoc();
     const s = stack([node("dough", { groups: [{ key: "notes", label: "ノート", children: ["bake"] }] }), node("bake")]);
     const res = buildLevelFlow({ ...base(s), nodeId: "dough", docs: new Map([["dough", d]]), index });

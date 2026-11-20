@@ -81,7 +81,7 @@ function noteActionOf(ctx: ActionContext, noteId: string): "open" | "expand" {
   const proc = ctx.processIndex?.processes.find((p) => p.noteId === noteId);
   if (proc?.graph.steps.some((s) => !s.externalOrigin)) return "expand";
   const entry = ctx.index?.notes.find((n) => n.noteId === noteId);
-  if (isPlanNote(entry?.noteContexts)) return "expand";
+  if (isPlanNote(entry)) return "expand";
   return "open";
 }
 
@@ -127,7 +127,7 @@ export function buildLevelFlow(input: BuildLevelFlowInput): LevelFlow {
   // 1. 計画ノート（工程タブと同じ条件）: 工程グラフと同一
   if (doc && index) {
     const entry = index.notes.find((n) => n.noteId === nodeId);
-    const rows = isPlanNote(entry?.noteContexts) ? collectOperationRows(doc, index) : [];
+    const rows = isPlanNote(entry) ? collectOperationRows(doc, index) : [];
     if (rows.length > 0) {
       const base = buildPlanFlowGraph({ rows, index, processIndex }).graph;
       // 未作成・ゴミ箱・アーカイブ・開けないノートの行には「作る / 開く」ボタンを出さない
