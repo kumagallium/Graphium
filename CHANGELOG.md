@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.153.0](https://github.com/kumagallium/Graphium/compare/v0.152.2...v0.153.0) - 2026-11-20
+
+- feat: read linked files on demand (show PDF/images, import CSV as a table) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1797
+- [fix] Key the Rust Checks cache by runner image to stop stale MSVC paths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1800
+
 ## [v0.152.2](https://github.com/kumagallium/Graphium/compare/v0.152.1...v0.152.2) - 2026-11-20
 
 - [fix] Show only a folder's own notes, with subfolders as rows on top by @kumagallium in https://github.com/kumagallium/Graphium/pull/1795
