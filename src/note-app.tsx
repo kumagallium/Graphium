@@ -2749,7 +2749,11 @@ function NoteEditorInner({
   // displayMode:
   //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
   //   "link"  → @素材名 の inline リンク（@mention の asset 分岐と同じく citedAssetFileIds に登録）
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
+  const handlePickerSelect = useCallback((
+    entry: MediaIndexEntry,
+    displayMode: AssetDisplayMode,
+    requestedMode: AssetDisplayMode = displayMode,
+  ) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
@@ -2758,7 +2762,8 @@ function NoteEditorInner({
 
     // リンクした素材の区切りファイル（CSV など）を「データを選択」で選んだら、参照は入れず、
     // 置き場から読んで取り込み画面へ進める（表になる）。「リンク」で入れる選択のときは下の @リンクのまま
-    if (displayMode !== "link" && isLinkedEntry(entry) && isLinkedDataImportable(entry.name)) {
+    // ピッカーはリンクした素材の displayMode を常に "link" に寄せて返すので、利用者が選んだ requestedMode で見る
+    if (requestedMode !== "link" && isLinkedEntry(entry) && isLinkedDataImportable(entry.name)) {
       const link = entry.link!;
       startLinkedImport({ fileId: entry.fileId, name: entry.name, placeId: link.placeId, relPath: link.relPath });
       return;
