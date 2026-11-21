@@ -5824,7 +5824,7 @@ people most often need to find.
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
-| Plan note detection (`kind`, and the former reserved "plan" folder for notes saved before v0.153) | `src/features/note-context/reserved-folders.ts` |
+| Plan note detection (`kind`, and the former reserved "plan" folder for notes saved before v0.154) | `src/features/note-context/reserved-folders.ts` |
 | Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's table; executed edges come from cross-note references. The flow draws one band per table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |

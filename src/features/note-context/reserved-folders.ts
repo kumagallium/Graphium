@@ -1,6 +1,6 @@
 // 計画ノートの判定ユーティリティ。
 //
-// 計画かどうかはノート自身の kind（"plan" / "note"）で決める（v0.153〜）。以前は
+// 計画かどうかはノート自身の kind（"plan" / "note"）で決める（v0.154〜）。以前は
 // 予約フォルダ「計画」（noteContexts）に入っているかで決めていたが、置き場（フォルダ）に
 // 種類が混ざり「計画フォルダに入れても、どのプロジェクトの計画か分からない」という混乱の元に
 // なったので、印をノートへ移した。「計画」フォルダは今は普通のフォルダで、名前の変更も削除もできる。
@@ -48,7 +48,7 @@ export function isPlanFolderPath(path: string): boolean {
  * 要素の正規化（文字列以外の無視・trim・空の除外）は normalizeNoteContexts に任せ、
  * 規則を二重に持たない。
  *
- * v0.153 からは計画かどうかをノート自身の kind で決める。この関数は kind を持たない
+ * v0.154 からは計画かどうかをノート自身の kind で決める。この関数は kind を持たない
  * 旧ノートの読み替え（resolveNoteKind）にだけ使う。
  */
 export function isInLegacyPlanFolder(noteContexts: readonly unknown[] | undefined | null): boolean {
@@ -67,7 +67,7 @@ export type PlanTarget = {
 };
 
 /**
- * ノートの種類を決める。kind があればそれに従い、無い（v0.153 より前に保存された・
+ * ノートの種類を決める。kind があればそれに従い、無い（v0.154 より前に保存された・
  * MCP などアプリの外で作られた）ノートは、旧予約フォルダ「計画」に入っているかで読み替える。
  * 読み込み時（document-migration）と索引（index-file）がこの結果を kind として持つので、
  * 一度保存されたノートはフォルダを動かしても種類が変わらない。

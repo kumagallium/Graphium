@@ -1280,7 +1280,7 @@ export type GraphiumDocument = {
    */
   noteContexts?: string[];
   /**
-   * ノートの種類（v0.153〜）。"plan" は計画ノート（表の行が工程ノートになり、工程グラフ・
+   * ノートの種類（v0.154〜）。"plan" は計画ノート（表の行が工程ノートになり、工程グラフ・
    * 計画の PROV 書き出しの起点になる）、"note" はそれ以外。アプリが作るノートは必ず持つ。
    * 無い（それより前に保存された・アプリの外で作られた）ノートは、旧予約フォルダ「計画」に
    * 入っているかで読み替える（note-context/reserved-folders.ts の resolveNoteKind）。

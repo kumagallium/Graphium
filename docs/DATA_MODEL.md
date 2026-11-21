@@ -129,12 +129,12 @@ type GraphiumDocument = {
   // A folder never makes a note a plan: that is `kind` below.
   noteContexts?: string[];
 
-  // Note kind (v0.153). "plan" marks a *plan note*: rows of its table with a
+  // Note kind (v0.154). "plan" marks a *plan note*: rows of its table with a
   // note per row (the note-link column) become *operation notes* feeding the
   // operations flow and the plan PROV export. "note" is every other note.
   // Every note the app creates carries it (templates set it; anything else
   // defaults to "note"); the user flips it with **Treat as a plan** in the
-  // note's ⋯ menu. Absent on notes saved before v0.153 or written outside the
+  // note's ⋯ menu. Absent on notes saved before v0.154 or written outside the
   // app: those are read as a plan when `noteContexts` holds the former
   // reserved folder "計画" / "plan" / "계획" (case-insensitive, sub-folders
   // too). `migrateToLatest` fills the value on load and the next save writes
