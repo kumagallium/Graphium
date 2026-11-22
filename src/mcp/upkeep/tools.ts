@@ -1,4 +1,5 @@
 // 手入れのツール（revise_topic / merge_topics / archive_page / restore_page / list_operations / undo_operation）。
+// 同じ guard を使う set_source_date は ./source-date.ts（登録も向こう。ここから import すると循環する）
 // 仕様: docs/internal/mcp-upkeep-stage3-spec-2026-10.md §3
 //
 // 既存の読み書きツール（../tools.ts）とは分け、index.ts から registerUpkeepTools を呼ぶ。

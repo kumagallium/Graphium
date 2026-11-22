@@ -43,6 +43,22 @@ describe("create-note", () => {
     });
   });
 
+  describe("sourceDate", () => {
+    it("資料の日付を保存形で入れ、作成日時は書き込んだ時刻のまま", () => {
+      const before = Date.now();
+      const result = createNote({ title: "論文", body: "本文", sourceDate: "2012年3月" }, dir);
+      const saved = JSON.parse(readFileSync(result.filePath, "utf8"));
+      expect(saved.sourceDate).toBe("2012-03");
+      expect(new Date(saved.createdAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    });
+
+    it("空なら付けない・読めなければノートを作らずに投げる", () => {
+      const saved = JSON.parse(readFileSync(createNote({ title: "メモ", body: "本文", sourceDate: " " }, dir).filePath, "utf8"));
+      expect(saved.sourceDate).toBeUndefined();
+      expect(() => createNote({ title: "論文", body: "本文", sourceDate: "去年" }, dir)).toThrow(/sourceDate/);
+    });
+  });
+
   describe("citations", () => {
     function writeExistingNote(root: string, noteId: string, title: string) {
       const notes = join(root, "notes");

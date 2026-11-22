@@ -98,7 +98,11 @@ export type EditActivityType =
   /** 保守の操作（統合・作り直し・アーカイブなど）の取り消し。ユーザー操作なので human agent に
    *  紐づくが、「人が編集したページか」（hasHumanEditHistory）には数えない
    *  — 取り消しただけのページは人が書いた内容を持たない（§knowledge-maintenance）。 */
-  | "maintenance_undo";
+  | "maintenance_undo"
+  /** 資料の日付（doc.sourceDate）だけの付け替え。MCP の set_source_date が記録する。
+   *  本文は変えないので差分は空になる。外の AI が書いたので ai agent に紐づく
+   *  （アプリで題の下のチップから付けたときは通常の保存。フォルダの付け替えと同じく、本文が変わらなければ版は増えない）。 */
+  | "source_date_set";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {
