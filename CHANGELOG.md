@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.155.0](https://github.com/kumagallium/Graphium/compare/v0.154.1...v0.155.0) - 2026-11-22
+
+- [feat] Keep a note's source date apart from its creation date by @kumagallium in https://github.com/kumagallium/Graphium/pull/1806
+
 ## [v0.154.1](https://github.com/kumagallium/Graphium/compare/v0.154.0...v0.154.1) - 2026-11-22
 
 - [fix] Conversation import: stop calling a slow listing "desktop only", and remember summaries by @kumagallium in https://github.com/kumagallium/Graphium/pull/1805
