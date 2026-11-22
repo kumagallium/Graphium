@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.154.0](https://github.com/kumagallium/Graphium/compare/v0.153.0...v0.154.0) - 2026-11-22
+
+- [fix] Shrink the Rust Checks cache and save it only on main by @kumagallium in https://github.com/kumagallium/Graphium/pull/1803
+- [feat] Mark plan notes on the note itself instead of the reserved Plan folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1798
+
 ## [v0.153.0](https://github.com/kumagallium/Graphium/compare/v0.152.2...v0.153.0) - 2026-11-20
 
 - feat: read linked files on demand (show PDF/images, import CSV as a table) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1797
