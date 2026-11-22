@@ -3944,6 +3944,38 @@ The same `src/` tree is built four different ways.
   file that cannot be read, is too long, or times out never blocks the next,
   and the toast says how many could not be transcribed and that the audio is
   still saved.
+- **Voice input** (`src-tauri/src/voice_input.rs`, `src/features/voice-input/`)
+  puts a microphone button next to the ⌘K box and the two chat inputs
+  (standalone chat and the panel beside a note). It reuses the meeting
+  recorder's pieces but keeps nothing: `voice_input_start` opens the default
+  microphone with `cpal` (no system audio, so no Screen Recording permission),
+  resamples to 16 kHz mono and holds the samples in memory only, up to 30
+  seconds (`voice-input-limit` when the cap is reached; `voice-input-level`
+  sends the RMS about every 100 ms so the screen can stop after 1.5 s of
+  silence following speech, or after 8 s with no speech at all).
+  `voice_input_stop` takes the samples and runs the same whisper engine
+  with the meeting settings (language, model size, vocabulary), and returns
+  the text; nothing is written to `media/`, the index or PROV, and the
+  screen only places the text in the input — it never sends or runs it.
+  Language is accepted only as `auto` / `ja` / `en`, the model only if it is
+  already downloaded (`model-missing` otherwise), and the vocabulary goes
+  through the same `normalize_vocabulary` as meeting transcription (control
+  characters dropped — a NUL would make whisper-rs panic — and the last 160
+  characters kept). Recordings under 0.3 s return empty text. The three
+  commands answer the main window only (`require_main_window`): the viewer
+  window shows content from outside, such as shared notes, and must not
+  reach the microphone. While one recording is being transcribed, a new
+  `voice_input_start` is refused with `busy`, so repeated stops cannot pile
+  up transcription work. The loaded model is kept for 3 minutes after the
+  last use (successful or not) so a second question does not wait for the
+  load again; a single watcher thread drops it after that, and it is also
+  dropped when the size changes. `voice_input_cancel` stops and discards.
+  Like `meeting_rec_start`, the commands do not require a user gesture, so
+  script running in the main window could start a recording; the defence is
+  the same as for every other command — no foreign content runs as script
+  in the main window (§6.1) — plus the OS microphone indicator. The web
+  build has no button: the browser's speech recognition sends audio to a
+  remote service, which the desktop path exists to avoid.
 - Folder intake does not use `<input webkitdirectory>` on the desktop.
   WebKit builds that file list by asking the OS whether each entry is an
   alias file (`URLByResolvingAliasFileAtURL` → `getattrlist`), which costs

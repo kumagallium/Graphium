@@ -31,7 +31,7 @@ const MAX_DURATION_MS: u64 = 3 * 60 * 60 * 1000;
 // 純関数（実デバイス無しでテストできる部分）
 // ---------------------------------------------------------------------------
 #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
-mod dsp {
+pub(crate) mod dsp {
     /// planar（前半 L・後半 R）のバッファを L R L R … に並べ直す。
     /// pinray 0.2.7 の macOS は Interleaved と報告しつつ実体は planar のため。
     /// チャンネル数 ch が 1 のとき、または長さが ch で割り切れないときはそのまま返す。

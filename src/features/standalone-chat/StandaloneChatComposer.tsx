@@ -5,7 +5,7 @@
 // 見えるよう、見た目は 1 つに揃える。送信・停止・エラー表示・渡す範囲チップ・
 // Web 検索未設定の警告までをここで持ち、AI 呼び出しと保存は呼び出し側に任せる。
 
-import { useCallback, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useCallback, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Square, Send } from "lucide-react";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
@@ -27,6 +27,8 @@ import {
   useChatImageInput,
   useChatModelAcceptsImages,
 } from "../chat-images";
+import { VoiceInputButton } from "../voice-input/VoiceInputButton";
+import { appendVoiceText } from "../voice-input/clean-text";
 import type { ChatImageRef } from "../../lib/document-types";
 
 /** 探すフォルダのチップに渡す値一式（未指定ならチップを出さない） */
@@ -70,6 +72,17 @@ export function StandaloneChatComposer({
   const t = useT();
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 声の入力: 空ならそのまま、あれば空白でつないで末尾に足す。入れたら欄に戻してカーソルを末尾へ（送信はしない）
+  const handleVoiceText = useCallback((text: string) => {
+    setInput((cur) => appendVoiceText(cur, text));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
   const imageInput = useChatImageInput({ disabled: loading });
   const detectedAccepts = useChatModelAcceptsImages(imagesAccepted === undefined && imageInput.images.length > 0);
   const textOnlyModel = imageInput.images.length > 0 && (imagesAccepted ?? detectedAccepts) === false;
@@ -129,6 +142,7 @@ export function StandaloneChatComposer({
       <PendingChatImageStrip images={imageInput.images} onRemove={imageInput.remove} />
       <div className="flex gap-2">
         <Textarea
+          ref={textareaRef}
           value={input}
           onChange={handleInputChange}
           {...compositionHandlers}
@@ -167,6 +181,7 @@ export function StandaloneChatComposer({
       <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-1.5">
           <ChatImageAttachButton onFiles={(files) => void imageInput.addFiles(files)} disabled={loading} />
+          <VoiceInputButton onText={handleVoiceText} disabled={loading} className="-ml-1" />
           {t("standaloneChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
         </span>
         {(onScopeChange || folderScope) && (
