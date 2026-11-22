@@ -23,9 +23,16 @@ describe("fetchConversationWorkdirs", () => {
     expect(await fetchConversationWorkdirs()).toEqual({ kind: "unavailable" });
   });
 
-  it("fetch が投げたら unavailable", async () => {
+  it("fetch が投げたら unavailable（ブラウザだけの版）", async () => {
     stubFetch(() => Promise.reject(new TypeError("Failed to fetch")));
     expect(await fetchConversationWorkdirs()).toEqual({ kind: "unavailable" });
+  });
+
+  it("デスクトップ版で fetch が投げたら error（打ち切りを「使えない」と取り違えない）", async () => {
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    const f = stubFetch(() => Promise.reject(new TypeError("Load failed")));
+    expect(await fetchConversationWorkdirs()).toEqual({ kind: "error" });
+    expect((f.mock.calls[0] as unknown[])[0]).toBe("http://127.0.0.1:3001/api/conversations/claude-code/workdirs");
   });
 
   it("500 は error", async () => {

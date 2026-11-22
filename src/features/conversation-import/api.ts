@@ -2,7 +2,7 @@
 //
 // 合言葉は installApiAuthFetch が fetch に自動で付ける。ここでは AI を呼ばない。
 
-import { apiBase } from "../../lib/platform";
+import { apiBase, isTauri } from "../../lib/platform";
 import type { WorkdirSummary } from "../../lib/conversation/render";
 import type { ConversationMaterial } from "../../lib/conversation/types";
 
@@ -28,8 +28,12 @@ export async function fetchConversationWorkdirs(signal?: AbortSignal): Promise<F
       signal,
     });
   } catch (e) {
-    // 中断は呼び出し側が扱う。それ以外のネットワーク失敗は「使えない」に倒す
+    // 中断は呼び出し側が扱う
     if (signal?.aborted) throw e;
+    // デスクトップ版では sidecar が必ずいるので、届かないのは一時的な失敗（一覧作りが長引いて
+    // 打ち切られた等）。「使えない場所」と言わず、もう一度試せる失敗にする。
+    // ブラウザだけの版はサーバーが無いので、ここで「使えない」に倒す
+    if (isTauri()) return { kind: "error" };
     return { kind: "unavailable" };
   }
   if (res.status === 404) return { kind: "unavailable" };
