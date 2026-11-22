@@ -91,3 +91,53 @@ export function sourceDatePrecision(value: string): SourceDatePrecision {
 export function sourceDateSortKey(entry: { sourceDate?: string; createdAt?: string }): string {
   return entry.sourceDate || entry.createdAt || "";
 }
+
+// ── 日付の種類 ────────────────────────────────────────────────
+// 同じ「資料の日付」でも、論文の出版日・学会の発表日・議事録の記録日では意味が違う。
+// 時点で切った評価（ある日より前の資料だけで知識を作る）で区別できるよう、省略可能な種類を持つ。
+// 無いときは「種類は分からない」として扱う（既定で published とは見なさない）。
+
+export const SOURCE_DATE_KINDS = ["published", "presented", "recorded", "other"] as const;
+export type SourceDateKind = (typeof SOURCE_DATE_KINDS)[number];
+
+/** 保存されている値として正しい種類か。そうでなければ undefined */
+export function normalizeSourceDateKind(value: unknown): SourceDateKind | undefined {
+  return typeof value === "string" && (SOURCE_DATE_KINDS as readonly string[]).includes(value)
+    ? (value as SourceDateKind)
+    : undefined;
+}
+
+// ── 時点との前後 ──────────────────────────────────────────────
+
+/** 資料の日付が、ある時点（cutoff）より前か後か。精度が足りず決められなければ "overlaps" */
+export type SourceDateVsCutoff = "before" | "after" | "overlaps";
+
+/** 保存形の日付が覆う期間 [最初の日, 最後の日]（どちらも YYYY-MM-DD） */
+export function sourceDateRange(value: string): { start: string; end: string } {
+  const m = value.match(STORED_RE);
+  if (!m) throw new Error(`資料の日付の形ではありません: ${value}`);
+  const y = Number(m[1]);
+  if (m[3]) return { start: value, end: value };
+  if (m[2]) {
+    const mo = Number(m[2]);
+    const last = String(daysInMonth(y, mo)).padStart(2, "0");
+    return { start: `${value}-01`, end: `${value}-${last}` };
+  }
+  return { start: `${y}-01-01`, end: `${y}-12-31` };
+}
+
+/**
+ * 資料の日付を時点（cutoff。保存形と同じ書き方で、年・年月・日のどれでもよい）と比べる。
+ * - before: 資料の期間がまるごと時点の期間より前（例: "2012-03" と時点 "2013"）
+ * - after: 資料の期間がまるごと時点の期間より後
+ * - overlaps: 期間が重なり、精度が足りず前後を決められない（例: "2012" と時点 "2012-06-01"）
+ * 時点そのもの（同じ日・同じ月）に当たる資料も overlaps になる。「時点より前だけ」を取るときは
+ * before だけを使い、overlaps を含めるかは使う側が決める（リークを避けるなら含めない）。
+ */
+export function compareSourceDateToCutoff(sourceDate: string, cutoff: string): SourceDateVsCutoff {
+  const a = sourceDateRange(sourceDate);
+  const c = sourceDateRange(cutoff);
+  if (a.end < c.start) return "before";
+  if (a.start > c.end) return "after";
+  return "overlaps";
+}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  compareSourceDateToCutoff,
+  normalizeSourceDateKind,
   normalizeStoredSourceDate,
   parseSourceDate,
   sourceDatePrecision,
@@ -70,5 +72,28 @@ describe("sourceDateSortKey", () => {
     ];
     const sorted = [...rows].sort((a, b) => sourceDateSortKey(a).localeCompare(sourceDateSortKey(b)));
     expect(sorted.map((r) => r.id)).toEqual(["paper-year", "paper-month", "blog", "own"]);
+  });
+});
+
+describe("compareSourceDateToCutoff", () => {
+  it("精度の範囲がまるごと前・後なら決まる", () => {
+    expect(compareSourceDateToCutoff("2012-03", "2013")).toBe("before");
+    expect(compareSourceDateToCutoff("2012", "2012-06-01")).toBe("overlaps");
+    expect(compareSourceDateToCutoff("2012-05", "2012-06-01")).toBe("before");
+    expect(compareSourceDateToCutoff("2012-06", "2012-06-01")).toBe("overlaps");
+    expect(compareSourceDateToCutoff("2012-06-02", "2012-06-01")).toBe("after");
+    expect(compareSourceDateToCutoff("2013", "2012-12-31")).toBe("after");
+    // 月末の日数（うるう年）
+    expect(compareSourceDateToCutoff("2012-02", "2012-03-01")).toBe("before");
+    expect(compareSourceDateToCutoff("2012-02", "2012-02-29")).toBe("overlaps");
+  });
+});
+
+describe("normalizeSourceDateKind", () => {
+  it("決まった種類だけを通す", () => {
+    expect(normalizeSourceDateKind("published")).toBe("published");
+    expect(normalizeSourceDateKind("recorded")).toBe("recorded");
+    expect(normalizeSourceDateKind("Published")).toBeUndefined();
+    expect(normalizeSourceDateKind(1)).toBeUndefined();
   });
 });

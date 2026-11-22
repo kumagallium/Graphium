@@ -20,7 +20,7 @@ import { exportAsterismKnowledge } from "./export-knowledge";
 import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { noteLinkKind } from "../lib/note-link-kind";
-import { normalizeStoredSourceDate } from "../lib/source-date";
+import { SOURCE_DATE_KINDS, normalizeSourceDateKind, normalizeStoredSourceDate } from "../lib/source-date";
 import { traceLineage, upstreamOf } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
@@ -281,7 +281,10 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       if (entry?.modifiedAt) parts.push(`更新: ${entry.modifiedAt}`);
       // 資料の日付（その資料がいつのものか。作成・更新の日時とは別）
       const sourceDate = normalizeStoredSourceDate((doc as { sourceDate?: unknown }).sourceDate);
-      if (sourceDate) parts.push(`資料の日付: ${sourceDate}`);
+      if (sourceDate) {
+        const kind = normalizeSourceDateKind((doc as { sourceDateKind?: unknown }).sourceDateKind);
+        parts.push(`資料の日付: ${sourceDate}${kind ? `（${kind}）` : ""}`);
+      }
       if (doc.generatedBy) {
         const g = doc.generatedBy as { agent?: string; model?: string };
         parts.push(`書いたもの: ${g.agent ?? "human"}${g.model ? ` / ${g.model}` : ""}`);
@@ -705,13 +708,20 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               "ノートの作成日時は書き込んだ時刻のまま変わらない（資料の日付は別に持つ）。" +
               "会話のメモなど、資料の日付が無いノートでは省く",
           ),
+        sourceDateKind: z
+          .enum(SOURCE_DATE_KINDS)
+          .optional()
+          .describe(
+            "資料の日付の種類（sourceDate を渡すときだけ）: published（出版・公開）/ presented（発表）/ " +
+              "recorded（記録した日。議事録・実験の日など）/ other。分からなければ省く",
+          ),
       },
       // 対応しているクライアントでは、作ったノートを会話の中にプレビューとして描く（app-tools.ts）
       _meta: NOTE_PREVIEW_TOOL_META,
       // 新しいノートを足すだけ（呼ぶたびに別のノートができる）
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ title, body, sessionId, model, citations, folder, sourceDate }) => {
+    async ({ title, body, sessionId, model, citations, folder, sourceDate, sourceDateKind }) => {
       try {
         const result = createNote({
           title,
@@ -721,6 +731,7 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           citations,
           folder,
           sourceDate,
+          sourceDateKind,
           client: ctx.getClientName?.(),
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
@@ -737,7 +748,9 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             `  タイトル: ${result.title}`,
             `  noteId: ${result.noteId}`,
             ...(result.doc.noteContexts ? [`  フォルダ: ${result.doc.noteContexts[0]}`] : []),
-            ...(result.doc.sourceDate ? [`  資料の日付: ${result.doc.sourceDate}`] : []),
+            ...(result.doc.sourceDate
+              ? [`  資料の日付: ${result.doc.sourceDate}${result.doc.sourceDateKind ? `（${result.doc.sourceDateKind}）` : ""}`]
+              : []),
             `  ファイル: ${result.filePath}`,
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,

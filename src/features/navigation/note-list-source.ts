@@ -3,6 +3,7 @@
 
 import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./index-file";
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
+import { normalizeStoredSourceDate } from "../../lib/source-date";
 import { buildLinkCounts, linkCountsOf } from "./link-counts";
 
 export type NoteListEntry = {
@@ -67,7 +68,8 @@ export class IndexFileNoteListSource implements NoteListSource {
         title: n.title,
         modifiedAt: n.modifiedAt,
         createdAt: n.createdAt,
-        ...(n.sourceDate ? { sourceDate: n.sourceDate } : {}),
+        // 索引は手で書き換えられうるので、保存形でない値は一覧に出さない
+        ...(normalizeStoredSourceDate(n.sourceDate) ? { sourceDate: normalizeStoredSourceDate(n.sourceDate) } : {}),
         labels: Array.from(labelSet),
         noteContexts: n.noteContexts ?? [],
         incomingLinkCount: linkCountsOf(linkCounts, n.noteId).incoming,

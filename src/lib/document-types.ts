@@ -1321,6 +1321,12 @@ export type GraphiumDocument = {
    * 読み書きの検査は lib/source-date.ts。additive optional のため旧データは従来通り動く。
    */
   sourceDate?: string;
+  /**
+   * 資料の日付の種類（v0.155〜）。"published"（出版・公開）/ "presented"（発表）/
+   * "recorded"（記録した日。議事録・実験の日など）/ "other"。無ければ「種類は分からない」。
+   * sourceDate が無いときは持たない。時点で切った評価で日付の意味を区別するための余地。
+   */
+  sourceDateKind?: "published" | "presented" | "recorded" | "other";
   createdAt: string;
   modifiedAt: string;
 };

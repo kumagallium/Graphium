@@ -67,7 +67,8 @@ describe("set_source_date", () => {
     expect(doc.createdAt).toBe(CREATED);
     expect(doc.noteContexts).toEqual(["公開情報/論文"]);
     expect(doc.pages[0].blocks[0].content[0].text).toBe("本文");
-    expect(doc.modifiedAt).not.toBe(CREATED);
+    // 更新日時は変えない（まとめて付けても一覧の更新順を崩さない）
+    expect(doc.modifiedAt).toBe(CREATED);
 
     const acts = Object.values(doc.documentProvenance.activities) as { type: string }[];
     expect(acts.map((a) => a.type)).toContain("source_date_set");
@@ -105,6 +106,37 @@ describe("set_source_date", () => {
     expect(reply).toContain("nope");
     expect(noteOf("paper").sourceDate).toBeUndefined();
     expect(noteOf("blog").sourceDate).toBe("2026-11");
+  });
+
+  it("日付の種類を付け、省略なら保ち、日付を外すと種類も外れる", async () => {
+    await setSourceDate({ items: [{ noteId: "paper", sourceDate: "2012-03", sourceDateKind: "published" }] }, ctx, root);
+    expect(noteOf("paper").sourceDateKind).toBe("published");
+    expect(entryOf("paper")?.sourceDateKind).toBe("published");
+    await setSourceDate({ items: [{ noteId: "paper", sourceDate: "2012-03-15" }] }, ctx, root);
+    expect(noteOf("paper").sourceDateKind).toBe("published");
+    await setSourceDate({ items: [{ noteId: "paper", sourceDate: null }] }, ctx, root);
+    expect(noteOf("paper").sourceDate).toBeUndefined();
+    expect(noteOf("paper").sourceDateKind).toBeUndefined();
+  });
+
+  it("付け直しを繰り返しても編集の記録は続けて増えない", async () => {
+    for (const d of ["2012", "2013", "2012", "2013"]) {
+      await setSourceDate({ items: [{ noteId: "paper", sourceDate: d }] }, ctx, root);
+    }
+    const acts = noteOf("paper").documentProvenance.activities as { type: string }[];
+    expect(acts.filter((a) => a.type === "source_date_set")).toHaveLength(1);
+    expect(noteOf("paper").sourceDate).toBe("2013");
+  });
+
+  it("形の壊れたノートは、先に確かめる段で弾き、ほかのノートも書かない", async () => {
+    writeFileSync(p("notes", "broken.json"), JSON.stringify({ title: "pages が無い" }));
+    const reply = await setSourceDate(
+      { items: [{ noteId: "paper", sourceDate: "2012" }, { noteId: "broken", sourceDate: "2012" }] },
+      ctx,
+      root,
+    );
+    expect(reply).toMatch(/^INVALID_ARGUMENT/);
+    expect(noteOf("paper").sourceDate).toBeUndefined();
   });
 
   it("Graphium の起動中は断る", async () => {

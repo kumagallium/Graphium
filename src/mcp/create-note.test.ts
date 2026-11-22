@@ -52,6 +52,16 @@ describe("create-note", () => {
       expect(new Date(saved.createdAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
     });
 
+    it("日付の種類を入れる・不明な種類は投げる", () => {
+      const saved = JSON.parse(
+        readFileSync(createNote({ title: "論文", body: "本文", sourceDate: "2012", sourceDateKind: "published" }, dir).filePath, "utf8"),
+      );
+      expect(saved.sourceDateKind).toBe("published");
+      expect(() =>
+        createNote({ title: "論文", body: "本文", sourceDate: "2012", sourceDateKind: "x" as never }, dir),
+      ).toThrow(/sourceDateKind/);
+    });
+
     it("空なら付けない・読めなければノートを作らずに投げる", () => {
       const saved = JSON.parse(readFileSync(createNote({ title: "メモ", body: "本文", sourceDate: " " }, dir).filePath, "utf8"));
       expect(saved.sourceDate).toBeUndefined();

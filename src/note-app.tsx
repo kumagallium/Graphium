@@ -2433,6 +2433,8 @@ function NoteEditorInner({
   // ナレッジ・スキルのページは持たない（チップを出さない・buildDocument で素通しする）
   const [sourceDate, setSourceDate] = useState<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
   const sourceDateRef = useRef<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
+  // 日付の種類（出版・発表・記録など）は画面では選ばない（MCP から付く）。日付を外したら一緒に外す
+  const sourceDateKindRef = useRef(initialDoc?.sourceDateKind);
   // 一覧・サイドバーからのフォルダの変更（一覧での付け外し・フォルダの改名や削除）は activeDoc だけを
   // 差し替え、エディタは作り直さない。開いたままのエディタが古いフォルダを持ち続けると、次の自動保存が
   // それを書き戻す（改名したフォルダが元の名前で復活し、ノートが新しい名前のフォルダから抜けた）。
@@ -4158,6 +4160,9 @@ function NoteEditorInner({
       kind: hasNoteKind ? noteKindRef.current : undefined,
       // 資料の日付。チップの付け外しで変わるため ref から読む（ナレッジ・スキルは元の値を素通し）
       sourceDate: hasNoteKind ? sourceDateRef.current : initialDoc?.sourceDate,
+      sourceDateKind: hasNoteKind
+        ? (sourceDateRef.current ? sourceDateKindRef.current : undefined)
+        : initialDoc?.sourceDateKind,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -8155,6 +8160,7 @@ function NoteEditorInner({
                     onChange={(next) => {
                       if (archived || trashed) return;
                       sourceDateRef.current = next;
+                      if (!next) sourceDateKindRef.current = undefined;
                       setSourceDate(next);
                       markDirty();
                     }}

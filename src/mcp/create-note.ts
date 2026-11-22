@@ -20,7 +20,7 @@ import type { BlockLink } from "../lib/block-link-types";
 import type { GraphiumDocument } from "../lib/document-types";
 import { makeProps, markdownToBlocks, parseInlineContent, type Block } from "./markdown-to-blocks";
 import { normalizeFolderScope } from "../features/note-context/folder-scope";
-import { parseSourceDate } from "../lib/source-date";
+import { normalizeSourceDateKind, parseSourceDate, type SourceDateKind } from "../lib/source-date";
 import { notesDir, readNote, resolveGraphiumRoot } from "./vault";
 
 /** 回答が引いた Graphium 内のページ/ノートの参照。id は noteId（wiki も同じ id 空間で読める） */
@@ -57,6 +57,8 @@ export type CreateNoteInput = {
    * 作成日時（createdAt）は書き込んだ時刻のまま変えない。
    */
   sourceDate?: string;
+  /** 資料の日付の種類（published / presented / recorded / other）。sourceDate があるときだけ入れる */
+  sourceDateKind?: SourceDateKind;
 };
 
 export type CreateNoteResult = {
@@ -177,6 +179,11 @@ export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphium
       );
     }
     doc.sourceDate = sourceDate;
+    if (input.sourceDateKind !== undefined) {
+      const kind = normalizeSourceDateKind(input.sourceDateKind);
+      if (!kind) throw new Error(`sourceDateKind が不明です: "${input.sourceDateKind}"`);
+      doc.sourceDateKind = kind;
+    }
   }
   return doc;
 }
