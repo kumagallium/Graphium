@@ -2685,6 +2685,15 @@ function NoteEditorInner({
       addColumnType: tableMetaStore.addColumnType,
     },
     uploadFile,
+    // 計画テンプレートを差し込んだら、このノートを計画にする（ナレッジ・スキルのページは種類を持たない）
+    onApplyKind: hasNoteKind
+      ? (kind) => {
+          if (noteKindRef.current === kind) return;
+          noteKindRef.current = kind;
+          setNoteKind(kind);
+          markDirtyRef.current();
+        }
+      : undefined,
   });
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
