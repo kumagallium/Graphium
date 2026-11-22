@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.154.1](https://github.com/kumagallium/Graphium/compare/v0.154.0...v0.154.1) - 2026-11-22
+
+- [fix] Conversation import: stop calling a slow listing "desktop only", and remember summaries by @kumagallium in https://github.com/kumagallium/Graphium/pull/1805
+
 ## [v0.154.0](https://github.com/kumagallium/Graphium/compare/v0.153.0...v0.154.0) - 2026-11-22
 
 - [fix] Shrink the Rust Checks cache and save it only on main by @kumagallium in https://github.com/kumagallium/Graphium/pull/1803
