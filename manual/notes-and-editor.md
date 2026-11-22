@@ -76,7 +76,7 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Source date**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
 
-### Source date {#source-date}
+### Source date <Badge type="tip" text="Added in v0.155.0 (2026-11-22)" /> {#source-date}
 
 A note made today from a 2012 paper is still about something from 2012. The **source date** says when the source itself is from — a paper's publication date, a blog post's date, the date of a meeting — and is kept apart from the date the note was made, which never changes. That way a note you bring in later does not pretend to be older than it is, and you can still line up your notes by when things happened.
 

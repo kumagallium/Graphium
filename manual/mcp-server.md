@@ -181,7 +181,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
-| `set_source_date` | "Add the publication date from each note's Source line to the notes in the Public folder" (see [below](#source-date-from-your-assistant)) |
+| `set_source_date` <Badge type="tip" text="Added in v0.155.0 (2026-11-22)" /> | "Add the publication date from each note's Source line to the notes in the Public folder" (see [below](#source-date-from-your-assistant)) |
 | `start_claim_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | "Turn this note (or a brought-in AI conversation) into claims" (the assistant writes the claims itself; see [below](#having-your-assistant-make-claims)) |
 | `submit_claims` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant after `start_claim_task`, with the claims it wrote |
 | `find_claims_for_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to look for more existing claims it might add to |
@@ -232,7 +232,7 @@ The body is Markdown: headings, lists, code blocks, tables, bold, italic, inline
 
 Both arguments are additive — a call without them behaves exactly as before.
 
-### The date of the source {#source-date-from-your-assistant}
+### The date of the source <Badge type="tip" text="Added in v0.155.0 (2026-11-22)" /> {#source-date-from-your-assistant}
 
 A note made today from a 2012 paper is still about something from 2012. Graphium keeps that as the note's [source date](/notes-and-editor#source-date), separately from when the note was made, so the creation date never pretends the note is older than it is.
 

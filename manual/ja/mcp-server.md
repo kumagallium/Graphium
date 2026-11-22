@@ -190,7 +190,7 @@ pnpm bundle:mcp
 | `restore_page` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「そのページをアーカイブから戻して」 |
 | `list_operations` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「最近の手入れの操作は何をした？」 |
 | `undo_operation` <Badge type="tip" text="v0.87.0 (2026-10-07) で追加" /> | 「さっきの統合を取り消して」 |
-| `set_source_date` | 「公開情報フォルダのノートに、本文の出典の行にある発行日を資料の日付として付けて」（[下](#source-date-from-your-assistant)を参照） |
+| `set_source_date` <Badge type="tip" text="v0.155.0 (2026-11-22) で追加" /> | 「公開情報フォルダのノートに、本文の出典の行にある発行日を資料の日付として付けて」（[下](#source-date-from-your-assistant)を参照） |
 | `start_claim_task` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 「このノート（取り込んだ AI との会話でも）から知見を作って」（知見はアシスタント自身が書きます。[下の節](#アシスタントに知見を作ってもらう)を参照） |
 | `submit_claims` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | `start_claim_task` のあとに、アシスタントが書いた知見を渡すために呼びます |
 | `find_claims_for_task` <Badge type="tip" text="v0.97.0 (2026-10-26) で追加" /> | 書き足し先になりそうな既存の知見を、アシスタントが追加で探すために呼びます |
@@ -251,7 +251,7 @@ pnpm bundle:mcp
 
 どちらも追加のみの変更で、指定しなければ従来どおりに動きます。
 
-### 資料の日付 {#source-date-from-your-assistant}
+### 資料の日付 <Badge type="tip" text="v0.155.0 (2026-11-22) で追加" /> {#source-date-from-your-assistant}
 
 2012 年の論文から今日ノートを作っても、中身は 2012 年のものです。Graphium はこれをノートの[資料の日付](/ja/notes-and-editor#source-date)として、ノートを作った日時とは別に持ちます。作成日時がノートを実際より古く見せることはありません。
 
