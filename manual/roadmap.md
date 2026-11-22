@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 27 more in November
+::: details 28 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -387,6 +387,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.149.0** | 2026-11-19 | [Find a brought-in AI conversation by what was said, and make knowledge from it](/materials-and-citations#bring-in-ai-conversations) — a conversation is named after its title in Claude Code and dated by when it happened. `⌘K`, the conversation list and the MCP server find it by the words in it. After bringing conversations in, the ones where you wrote the most are offered for knowledge, with an estimate of the AI use; nothing is sent to an AI until you press the button |
 | **v0.151.0** | 2026-11-19 | [Let others update a shared note, one after another](/storage-and-sync#accept-updates) — the author of a note in a shared folder can accept updates from others. They edit their own copy and send it back; if someone updated the note first, nothing is overwritten and they are told. The last five versions are kept and can be restored |
 | **v0.153.0** | 2026-11-20 | [Show a linked file or import it as a table](/materials-and-citations#linked-read) — a linked PDF or image can be shown in place, and a linked CSV can be imported into a note as a table from **/data**, without copying the original. Graphium reads the file only when you press the button. When the original changes later, the table says so and can be imported again |
+| **v0.154.0** | 2026-11-22 | [A note is a plan by its own setting, not by its folder](/notes-and-editor#folders) — choose **Treat as a plan** in a note's **⋯** menu, or start from the Plan Template. A plan stays a plan wherever you file it, and the **Plan** folder is now an ordinary folder you can rename or delete. **Make an experiment plan** in AI chat moves to a small icon beside the answer, so **Make Knowledge** stands out <!--chip: Plans by their own setting--> |
 
 :::
 
