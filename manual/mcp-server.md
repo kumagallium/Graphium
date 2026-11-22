@@ -181,6 +181,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `restore_page` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Bring that page back from the archive" |
 | `list_operations` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "What upkeep operations have been done recently?" |
 | `undo_operation` <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> | "Undo that merge" |
+| `set_source_date` | "Add the publication date from each note's Source line to the notes in the Public folder" (see [below](#source-date-from-your-assistant)) |
 | `start_claim_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | "Turn this note (or a brought-in AI conversation) into claims" (the assistant writes the claims itself; see [below](#having-your-assistant-make-claims)) |
 | `submit_claims` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant after `start_claim_task`, with the claims it wrote |
 | `find_claims_for_task` <Badge type="tip" text="Added in v0.97.0 (2026-10-26)" /> | Called by the assistant to look for more existing claims it might add to |
@@ -230,6 +231,14 @@ The body is Markdown: headings, lists, code blocks, tables, bold, italic, inline
 - **`citations`** — a list of `{ id, title? }` referring to Graphium notes or pages the answer drew on. When present, a References section is appended to the note body: an entry whose `id` matches an existing note becomes an `@`-linked reference (same shape as the References section topics build from their sources); an entry whose `id` does not resolve is kept as plain text instead of being silently dropped.
 
 Both arguments are additive — a call without them behaves exactly as before.
+
+### The date of the source {#source-date-from-your-assistant}
+
+A note made today from a 2012 paper is still about something from 2012. Graphium keeps that as the note's [source date](/notes-and-editor#source-date), separately from when the note was made, so the creation date never pretends the note is older than it is.
+
+- **`create_note`** takes an optional **`sourceDate`**: as many digits as are known — `"2012"`, `"2012-03"` or `"2012-03-15"` (`"2012年3月"` is read too). A year alone stays a year; it is not padded to January 1. Leave it out for notes that are not about a dated source, such as a conversation record. A value that cannot be read as a date makes the call fail rather than being dropped.
+- **`set_source_date`** adds, changes or removes the source date of notes you already have, up to 500 in one call — for example after bringing in many papers and posts, when each note's body still has the original date written in it. It changes only the source date: the body, title, folders and creation date stay as they are. Quit Graphium first; while it is running the call is refused. Every item is checked before anything is written, so one unreadable date or unknown note id leaves all notes unchanged. Each note's History panel records the change as **Set source date**, and the reply lists the previous value of each note: passing that back (or `null` for a note that had none) puts it back. It works on notes only, not on Knowledge pages.
+- **`get_note`** shows the source date under the note's title when it has one.
 
 ### Keeping conversation records in one folder <Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> {#create-note-folder}
 
@@ -552,7 +561,7 @@ Combined with [Asterism](https://github.com/kumagallium/asterism) (a knowledge g
 
 ## What it deliberately does not do
 
-**It never edits your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite a **note** you wrote.
+**It never edits the content of your existing notes.** `create_note` only adds new ones. `save_answer` only adds new Q&A pages — it does not touch your notes either, though the Q&A page it creates *will* be revised later by Graphium's own knowledge-layer maintenance, unlike a note. Nothing an assistant does through MCP can overwrite the body, title or folders of a **note** you wrote. The one thing it can set on an existing note is its [source date](#source-date-from-your-assistant) (`set_source_date`), only while Graphium is closed, and each change is recorded in the note's History panel.
 
 **Knowledge pages can be maintained, and every change is recorded and undoable.** Topics and Q&A pages can be rewritten, merged and archived (see [above](#maintaining-knowledge-pages-from-your-assistant)). Each of these is written to the Upkeep history with the client name, and you can undo it from Graphium. This is refused while Graphium is running, and no History-panel version is made — you go back through the Upkeep history. [Claims the assistant makes](#having-your-assistant-make-claims) are recorded and undone the same way.
 
