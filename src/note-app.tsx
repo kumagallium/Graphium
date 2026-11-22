@@ -437,6 +437,8 @@ import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
+import { SourceDateChip } from "./features/source-date/SourceDateChip";
+import { normalizeStoredSourceDate } from "./lib/source-date";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import {
@@ -2426,6 +2428,13 @@ function NoteEditorInner({
   const hasNoteKind = !initialDoc?.wikiMeta && !initialDoc?.skillMeta;
   const [noteKind, setNoteKind] = useState<NoteKind>(resolveNoteKind(initialDoc));
   const noteKindRef = useRef<NoteKind>(resolveNoteKind(initialDoc));
+  // 資料の日付（その資料がいつのものか）。作成日時とは別に持つ。題の下のチップから付ける。
+  // buildDocument がスクラッチで組むので ref も併置する（noteContexts と同じ流儀）。
+  // ナレッジ・スキルのページは持たない（チップを出さない・buildDocument で素通しする）
+  const [sourceDate, setSourceDate] = useState<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
+  const sourceDateRef = useRef<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
+  // 日付の種類（出版・発表・記録など）は画面では選ばない（MCP から付く）。日付を外したら一緒に外す
+  const sourceDateKindRef = useRef(initialDoc?.sourceDateKind);
   // 一覧・サイドバーからのフォルダの変更（一覧での付け外し・フォルダの改名や削除）は activeDoc だけを
   // 差し替え、エディタは作り直さない。開いたままのエディタが古いフォルダを持ち続けると、次の自動保存が
   // それを書き戻す（改名したフォルダが元の名前で復活し、ノートが新しい名前のフォルダから抜けた）。
@@ -4149,6 +4158,11 @@ function NoteEditorInner({
       noteContexts:
         noteContextsRef.current.length > 0 ? noteContextsRef.current : undefined,
       kind: hasNoteKind ? noteKindRef.current : undefined,
+      // 資料の日付。チップの付け外しで変わるため ref から読む（ナレッジ・スキルは元の値を素通し）
+      sourceDate: hasNoteKind ? sourceDateRef.current : initialDoc?.sourceDate,
+      sourceDateKind: hasNoteKind
+        ? (sourceDateRef.current ? sourceDateKindRef.current : undefined)
+        : initialDoc?.sourceDateKind,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -8135,6 +8149,19 @@ function NoteEditorInner({
                     onClear={() => {
                       noteContextsRef.current = [];
                       setNoteContexts([]);
+                      markDirty();
+                    }}
+                  />
+                )}
+                {/* 資料の日付（作成日時とは別。年だけ・年月だけでも付けられる） */}
+                {(sourceDate || (!archived && !trashed)) && (
+                  <SourceDateChip
+                    value={sourceDate}
+                    onChange={(next) => {
+                      if (archived || trashed) return;
+                      sourceDateRef.current = next;
+                      if (!next) sourceDateKindRef.current = undefined;
+                      setSourceDate(next);
                       markDirty();
                     }}
                   />
@@ -12673,10 +12700,11 @@ export function NoteApp() {
     </>
   );
 
-  // 食い違いの節で引用に添える資料の日付（ノートは作成日、論文は出どころ情報の年）。
+  // 食い違いの節で引用に添える資料の日付（ノートは資料の日付、無ければ作成日。論文は出どころ情報の年）。
+  // 2012 年の論文を今日ノートにしても 2026 年の資料に見えないよう、資料の日付を先に見る。
   // トピックの組み立て（wiki-service）が引く。ノート一覧・素材一覧が変わるたびに渡し直す
   useEffect(() => {
-    const notes = new Map((fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n.createdAt]));
+    const notes = new Map((fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n.sourceDate ?? n.createdAt]));
     const media = new Map((fm.mediaIndex?.media ?? []).map((m) => [m.fileId, m.sourceInfo?.year]));
     setSourceDateLookup((sourceId) => {
       const ext = parseExternalSource(sourceId);

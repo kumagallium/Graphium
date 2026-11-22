@@ -148,6 +148,9 @@ export function buildRestoredDocument(
     createdAt: current.createdAt,
     documentProvenance: current.documentProvenance,
     sharedRef: current.sharedRef,
+    // 資料の日付は「資料がいつのものか」で、本文の版とは別。版を戻しても今の値を保つ
+    sourceDate: current.sourceDate,
+    sourceDateKind: current.sourceDateKind,
     modifiedAt: new Date().toISOString(),
     skillMeta: current.skillMeta && snapshot.skillMeta
       ? current.skillMeta.systemSkillId === "knowledge-schema" &&

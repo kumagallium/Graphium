@@ -21,6 +21,7 @@ import { resolveNoteKind } from "../note-context/reserved-folders";
 import { collectOcrAltText, collectOcrText } from "../media-ocr/collect";
 import { inlineContentToText } from "../markdown-export/inline-text";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool";
+import { normalizeSourceDateKind, normalizeStoredSourceDate } from "../../lib/source-date";
 
 // ── 型定義 ──
 
@@ -196,7 +197,13 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      v36 以前の索引（項目が無い）を読む側は、noteContexts で読み替える（isPlanNote が同じ規則）。
 //      bump を必ず実地確認する: Graphium 起動時に v36 インデックスが v37 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 37;
+// v38: 資料の日付（sourceDate）とその種類（sourceDateKind）を NoteIndexEntry に写す。
+//      ノートの作成日時（createdAt）とは別に「その資料がいつのものか」を持たせ、一覧の
+//      「資料の日付」の列と並べ替えに使う。保存形（YYYY / YYYY-MM / YYYY-MM-DD）でない値は写さない。
+//      保存されたノートは書き換えない。v37 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v37 インデックスが v38 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 38;
 
 export type GraphiumIndex = {
   version: number;
@@ -377,6 +384,14 @@ export type NoteIndexEntry = {
    * ナレッジ・スキルのページは undefined。
    */
   kind?: "plan" | "note";
+  /**
+   * 資料の日付（v38）。doc.sourceDate を写す（"YYYY" / "YYYY-MM" / "YYYY-MM-DD"）。
+   * 一覧の「資料の日付」の列と並べ替えに使う。無いノート・保存形でない値は undefined。
+   * createdAt（Graphium で作った日時）とは別物。
+   */
+  sourceDate?: string;
+  /** 資料の日付の種類（v38）。doc.sourceDateKind を写す。sourceDate が無ければ持たない */
+  sourceDateKind?: "published" | "presented" | "recorded" | "other";
   /**
    * Claim / Atom の認識論的ステータス（Phase η, v15）。
    * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
@@ -759,6 +774,9 @@ export function buildIndexEntry(
     noteContexts: normalizeNoteContexts(doc.noteContexts),
     // ノートの種類（v37）。ナレッジ・スキルのページは持たない
     kind: doc.wikiMeta || doc.skillMeta ? undefined : resolveNoteKind(doc),
+    // 資料の日付（v38）。保存形でない値は写さない
+    sourceDate: normalizeStoredSourceDate(doc.sourceDate),
+    sourceDateKind: normalizeStoredSourceDate(doc.sourceDate) ? normalizeSourceDateKind(doc.sourceDateKind) : undefined,
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
     rebuttalConditions:
       doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0

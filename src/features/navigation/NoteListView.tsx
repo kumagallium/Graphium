@@ -12,7 +12,7 @@ import {
   type NoteListEntry,
 } from "./note-list-source";
 import type { GraphiumIndex } from "./index-file";
-import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
+import { NOTE_LIST_SORT_KEYS, NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { IntakeReceptacle, type IntakeFile, type IntakeSelectionExtra, type IntakeSource } from "../intake";
 import { useLocale, useT, getDisplayLabelName } from "../../i18n";
 import { listCollationLocale } from "../../lib/locale-format";
@@ -30,6 +30,7 @@ import {
   type NoteListHideableColumn,
 } from "./note-list-columns";
 import { formatDateTime } from "../../lib/format-datetime";
+import { sourceDateSortKey } from "../../lib/source-date";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -381,6 +382,11 @@ export function NoteListView({
         case "createdAt":
           cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           break;
+        case "sourceDate":
+          // 資料の日付（無ければ作成日で補う）。どちらも YYYY-MM-DD で始まる文字列なので、
+          // 文字列のまま比べると時系列の順になる（年だけの資料はその年の頭に並ぶ）
+          cmp = sourceDateSortKey(a).localeCompare(sourceDateSortKey(b));
+          break;
         case "title":
           cmp = a.title.localeCompare(b.title, collation);
           break;
@@ -479,9 +485,12 @@ export function NoteListView({
     if (sortKey === "labels") pinned.add("labels");
     if (sortKey === "noteContexts") pinned.add("folder");
     if (sortKey === "knowledgeCount") pinned.add("knowledge");
+    if (sortKey === "sourceDate") pinned.add("sourceDate");
     return pinned;
   }, [authorFilter, labelFilter, contextFilter, selectedFolder, sortKey]);
   const hasLabelColumn = labelFilterOptions.length > 0;
+  // 資料の日付の列も、どのノートにも付いていないときは列ごと出さない（資料の日付を使わない人の表を広げない）
+  const hasSourceDateColumn = entries.some((e) => !!e.sourceDate);
   // 参照先・被参照も、どのノートにも値が無いときは列ごと出さない（ナレッジ一覧と同じ規則）。
   // 絞り込む前の全件で決め、読み込み前（0 件）は出しておく（読み込み後に表が動くのを避ける）
   const showOutgoing = entries.length === 0 || entries.some((e) => e.outgoingLinkCount > 0);
@@ -492,6 +501,7 @@ export function NoteListView({
     hasCheckbox: !!onDeleteNotes,
     hasActions: !!(onDeleteNotes || onArchiveNotes),
     hasLabels: hasLabelColumn,
+    hasSourceDate: hasSourceDateColumn,
     pinned: pinnedColumns,
   });
   const cols = useResponsiveColumns(columnPlan);
@@ -736,6 +746,7 @@ export function NoteListView({
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={handleSort}
+        sortOptions={hasSourceDateColumn ? NOTE_LIST_SORT_KEYS : NOTE_LIST_SORT_KEYS.filter((o) => o.key !== "sourceDate")}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchInputRef={searchInputRef}
@@ -962,6 +973,18 @@ export function NoteListView({
                     )}
                   </div>
                 </th>
+                {hasSourceDateColumn && (
+                  <th
+                    className={cn(
+                      "py-2 pl-3 w-[104px] whitespace-nowrap cursor-pointer hover:text-foreground",
+                      hide.has("sourceDate") && "hidden",
+                    )}
+                    onClick={() => handleSort("sourceDate")}
+                    data-tooltip={t("sourceDate.tooltip")}
+                  >
+                    {t("nav.sourceDate")}{sortKey === "sourceDate" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  </th>
+                )}
                 <th
                   className={cn(
                     "py-2 pl-3 w-[126px] whitespace-nowrap cursor-pointer hover:text-foreground",
@@ -1209,6 +1232,16 @@ export function NoteListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
+                  {hasSourceDateColumn && (
+                    <td
+                      className={cn(
+                        "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
+                        hide.has("sourceDate") && "hidden",
+                      )}
+                    >
+                      {entry.sourceDate ?? ""}
+                    </td>
+                  )}
                   <td
                     className={cn(
                       "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
