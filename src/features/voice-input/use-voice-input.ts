@@ -14,6 +14,7 @@ import {
 } from "./api";
 import { initialAutoStopState, stepAutoStop, type AutoStopState } from "./auto-stop";
 import { cleanVoiceText } from "./clean-text";
+import { buildVoiceHint, currentVoiceHintTerms } from "./hint-terms";
 
 export type VoiceInputStatus = "idle" | "recording" | "transcribing";
 export type VoiceInputError = "model-missing" | "no-speech" | "no-device" | "failed";
@@ -57,7 +58,8 @@ export function useVoiceInput({ onText }: { onText: (text: string) => void }) {
       const result = await stopVoiceInput({
         language: s.meetingLanguage,
         modelSize: s.meetingModelSize,
-        vocabulary: s.meetingVocabulary || undefined,
+        // 自分のノートの化学式・略語を先に、設定の用語を末尾に（hint-terms.ts の測定メモ）
+        vocabulary: buildVoiceHint(currentVoiceHintTerms(), s.meetingVocabulary ?? "") || undefined,
       });
       if (!mountedRef.current) return;
       const text = cleanVoiceText(result.text ?? "");

@@ -409,4 +409,27 @@ mod tests {
         assert!(!push_capped(&mut small, &[0.1; 100]));
         assert_eq!(small.len(), 100);
     }
+
+    /// 用語のヒントの効き目を測る（手で回す。`cargo test --lib voice_hint_probe -- --ignored --nocapture`）。
+    /// VOICE_PROBE_MODEL: ggml のモデルファイル / VOICE_PROBE_CASES: 1 行 1 件の `wav のパス<TAB>言語<TAB>ヒント`
+    /// （ヒントは空でよい）。結果は 1 行 1 件の `wav<TAB>ヒントの有無<TAB>文字` で出す
+    #[test]
+    #[ignore]
+    fn voice_hint_probe() {
+        let (Ok(model), Ok(cases)) = (std::env::var("VOICE_PROBE_MODEL"), std::env::var("VOICE_PROBE_CASES")) else {
+            return;
+        };
+        let engine = Engine::load(std::path::Path::new(&model)).expect("model");
+        for line in std::fs::read_to_string(cases).expect("cases").lines() {
+            let mut cols = line.split('\t');
+            let (Some(wav), Some(lang)) = (cols.next(), cols.next()) else { continue };
+            let hint = normalize_vocabulary(cols.next());
+            let mut reader = hound::WavReader::open(wav).expect("wav");
+            let samples: Vec<f32> = reader.samples::<i16>().map(|s| s.unwrap_or(0) as f32 / 32768.0).collect();
+            let mut st = engine.new_track().expect("track");
+            let segs = engine.transcribe(&mut st, &samples, 0, lang, hint.as_deref()).expect("transcribe");
+            let text = join_segments(segs.iter().map(|s| s.text.as_str()));
+            println!("PROBE\t{wav}\t{}\t{text}", if hint.is_some() { "hint" } else { "none" });
+        }
+    }
 }

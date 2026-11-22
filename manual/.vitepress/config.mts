@@ -77,6 +77,7 @@ const enSidebar = [
     collapsed: true,
     items: [
       { text: 'About these evaluations', link: '/evaluations/' },
+      { text: 'Hints for voice input', link: '/evaluations/voice-input-hints' },
       { text: 'Insights from AI conversations', link: '/evaluations/ai-conversation-claims' },
       { text: 'Asking another AI about past conversations', link: '/evaluations/ai-conversation-recall' },
       { text: 'Large data tables', link: '/evaluations/large-data-tables' },
@@ -164,6 +165,7 @@ const jaSidebar = [
     collapsed: true,
     items: [
       { text: 'この記録について', link: '/ja/evaluations/' },
+      { text: '声の入力のヒント', link: '/ja/evaluations/voice-input-hints' },
       { text: 'AI との会話から知見を作る', link: '/ja/evaluations/ai-conversation-claims' },
       { text: '過去の会話のことを別の AI に聞く', link: '/ja/evaluations/ai-conversation-recall' },
       { text: '大きなデータ表', link: '/ja/evaluations/large-data-tables' },

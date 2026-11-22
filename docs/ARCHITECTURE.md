@@ -3955,7 +3955,15 @@ The same `src/` tree is built four different ways.
   silence following speech, or after 8 s with no speech at all).
   `voice_input_stop` takes the samples and runs the same whisper engine
   with the meeting settings (language, model size, vocabulary), and returns
-  the text; nothing is written to `media/`, the index or PROV, and the
+  the text. The vocabulary hint is built on the screen side
+  (`voice-input/hint-terms.ts`): Latin-script terms from the titles and
+  headings of the user's notes (chemical formulas, model numbers, acronyms —
+  a term with a digit or two capitals), ranked by how many notes use them and
+  joined by spaces, then the "Frequent terms" setting at the end, within the
+  160 characters Rust keeps. Japanese words are not picked automatically:
+  in a measurement with synthesized speech, common Japanese words from the
+  titles did not help, and listing Japanese words made the output split
+  into the same pieces; nothing is written to `media/`, the index or PROV, and the
   screen only places the text in the input — it never sends or runs it.
   Language is accepted only as `auto` / `ja` / `en`, the model only if it is
   already downloaded (`model-missing` otherwise), and the vocabulary goes

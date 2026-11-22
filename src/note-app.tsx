@@ -672,6 +672,7 @@ import {
 import { ResizeHandle } from "./components/ResizeHandle";
 import { useListSearchHotkey } from "./hooks/use-list-search-hotkey";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
+import { setVoiceHintSource } from "./features/voice-input/hint-terms";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
 import { cleanSuggestionText, deriveSuggestionTitle, type KnowledgeCandidate } from "./features/composer/verb-suggestion-doc";
 import { convertCitationsToSourceRefs } from "./features/ai-assistant/citation-normalize";
@@ -9698,6 +9699,10 @@ export function NoteApp() {
   // そのまま読むと、同じバッチの前のジョブが作った知見が見えず、同じ主張をまた新規で作る。
   const latestNoteIndexRef = useRef(fm.noteIndex);
   latestNoteIndexRef.current = fm.noteIndex;
+  // 声の入力のヒント（ノートの化学式・略語）は、録音を止めた時点の一覧から作る
+  useEffect(() => {
+    setVoiceHintSource(fm.noteIndex);
+  }, [fm.noteIndex]);
   const latestRawNoteIndexRef = useRef(fm.rawNoteIndex);
   latestRawNoteIndexRef.current = fm.rawNoteIndex;
   // 取り込みで作った知見の控え。保存直後は索引への反映（再描画）より次のジョブの開始が
