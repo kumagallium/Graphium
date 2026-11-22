@@ -22,6 +22,7 @@
 
 import type { GraphiumDocument } from "./document-types";
 import { normalizeLabel, classifyLabel } from "../features/context-label/labels";
+import { resolveNoteKind } from "../features/note-context/reserved-folders";
 
 export const LATEST_DOCUMENT_VERSION = 6;
 
@@ -90,6 +91,15 @@ export function migrateToLatest(doc: GraphiumDocument, selfId?: string): Graphiu
   // （version 非依存、毎回 idempotent）。詳細は stripBookmarkOgImage を参照。
   // 上の掃除とは対象が別（links / bookmark props）なので順序に依存しない。
   stripBookmarkOgImage(doc);
+
+  // ノートの種類（kind）を埋める（version 非依存、毎回 idempotent）。
+  // kind を持たない旧ノートは旧予約フォルダ「計画」に入っているかで読み替え、その値を
+  // ここで持たせる。次に保存されたときに書き込まれるので、以後はフォルダを動かしても
+  // （「計画」フォルダの改名・削除も）計画のまま。ファイルを一斉に書き換えはしない。
+  // ナレッジ（wikiMeta）とスキル（skillMeta）のページは計画にならないので触らない。
+  if (doc.kind === undefined && !doc.wikiMeta && !doc.skillMeta) {
+    doc.kind = resolveNoteKind(doc);
+  }
 
   return doc;
 }

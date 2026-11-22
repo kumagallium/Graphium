@@ -170,6 +170,8 @@ export const ja: Record<string, string> = {
   "editor.deriveWholeNoteHint": "中身をコピーした新しいノートを開きます。元のノートとのつながりは来歴に残ります",
   "editor.fullWidth": "幅いっぱいに表示",
   "editor.paperA4": "A4 の幅で書く",
+  "editor.treatAsPlan": "計画として扱う",
+  "editor.treatAsPlanHint": "表のノートごとの行が工程になり、工程グラフと計画の来歴の書き出しの起点になります。フォルダには関係しません",
   "editor.deleteNote": "ゴミ箱へ移動",
   "editor.archiveNote": "アーカイブ",
   "editor.archiveNoteHint": "一覧から隠れますが、元にしたノートとのつながりや引用は切れません。「ゴミ箱・アーカイブ」からいつでも戻せます。",
@@ -752,13 +754,11 @@ export const ja: Record<string, string> = {
   "template.edit.done": "完了",
   "template.edit.notFound": "このテンプレートが見つかりませんでした。別の場所で削除された可能性があります。",
   "template.tag.plan": "計画",
-  "template.tag.experiment": "実験",
-  "template.tag.run": "実施",
+  "template.tag.run": "工程",
   "template.tag.indexTable": "行ごとのノートを持つ表",
   "template.tag.prov": "PROV ラベル",
   "template.plan.title": "計画テンプレート",
   "template.plan.desc": "対象ごとに詳細ノートを持てる表が付いた比較プラン",
-  "template.plan.folder": "計画",
   // 生成ノートの種類のフォルダ（generated-folders.ts）。翻訳・論文からの手順抽出が作るノートの受け皿
   "generatedFolder.translation": "翻訳",
   "generatedFolder.procedure": "手順",
@@ -771,7 +771,7 @@ export const ja: Record<string, string> = {
   "template.plan.colTemperature": "条件1",
   "template.plan.colDuration": "条件2",
   "template.plan.hypothesisHeading": "期待する成果",
-  "template.experiment.title": "実施テンプレート",
+  "template.experiment.title": "工程テンプレート",
   "template.experiment.desc": "対象単位の詳細記録。PROV ラベル付き手順と前手順リンクを含む",
   "template.experiment.h1Placeholder": "対象名（例: A-01）",
   "template.experiment.overviewHeading": "Overview",
@@ -4452,7 +4452,6 @@ export const ja: Record<string, string> = {
   "planFlow.unresolvedPlannedHint": "表の「入力元」に、工程の行名と一致しない名前があります。行名に合わせて直してください",
   "planFlow.plannedCycle": "予定が循環します（元の工程に戻る線は引けません）",
   "planFlow.workStepsEmptyHint": "『作業手順を追加』から、ここで手順を組み立てられます",
-  "nav.reservedPlanFolderHint": "「計画」は予約されたフォルダです。ここに入れたノートは工程の親（計画ノート）として扱われます",
 
   // ── 出典照合（Source check, v1） ──
   // 世界照合（wikiBanner.worldVerdict.*）と対になる別レーン。「命題が真か」ではなく

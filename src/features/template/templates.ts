@@ -11,6 +11,7 @@
 import type { CoreLabel } from "../context-label/labels";
 import type { StepAttributes } from "../context-label/label-attributes";
 import type { ColumnType } from "../../lib/document-types";
+import type { NoteKind } from "../note-context/reserved-folders";
 
 export type TemplateSource = "official" | "user";
 
@@ -50,10 +51,11 @@ export type TemplateDef = {
   /** 検索・カテゴリ表示用のタグキー */
   tagKeys?: string[];
   /**
-   * 新しいノートとして作るときに付けるフォルダ（noteContexts）の i18n キー。
-   * 開いているノートへの差し込みでは使わない（そのノートのフォルダは変えない）。
+   * 新しいノートとして作るときのノートの種類。"plan" なら計画ノートとして始める
+   * （表のノートごとの行が工程になる）。省略は "note"。
+   * 開いているノートへの差し込みでは使わない（そのノートの種類は変えない）。
    */
-  folderKeys?: string[];
+  kind?: NoteKind;
   /** テンプレート適用後にカーソルを置くブロックのパス */
   focusPath: number[];
   build: (t: (key: string) => string) => TemplateBuildResult;
@@ -75,9 +77,9 @@ const planTemplate: TemplateDef = {
   titleKey: "template.plan.title",
   descKey: "template.plan.desc",
   tagKeys: ["template.tag.plan", "template.tag.indexTable"],
-  // 予約フォルダ「計画」（note-context/reserved-folders.ts）に入れて、表の行を工程として扱う
-  // 計画ノートとして始める。ja は「計画」、en は「Plan」、ko は「계획」— いずれも予約語として判定される
-  folderKeys: ["template.plan.folder"],
+  // 計画ノートとして始める（表の行を工程として扱う）。置き場（フォルダ）は付けない —
+  // 計画かどうかはノートの種類で決まる（note-context/reserved-folders.ts）
+  kind: "plan",
   focusPath: [0],
   build: (t) => ({
     blocks: [

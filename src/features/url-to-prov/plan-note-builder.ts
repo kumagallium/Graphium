@@ -184,7 +184,8 @@ export function buildPlanDocument(params: {
   plan: ExperimentPlanDraft;
   stepNames: string[];
   references: { id: string; title: string }[];
-  folder: string;
+  /** 置き場（noteContexts）。計画かどうかは kind で決まるので、フォルダは置き場としてだけ使う */
+  folders?: string[];
   words: PlanNoteWords;
   model?: string | null;
 }): PlanDocumentResult {
@@ -259,7 +260,9 @@ export function buildPlanDocument(params: {
         tableMeta: { [table.id]: { columns: { [words.sampleColumn]: ["note-link"] } } },
       },
     ],
-    noteContexts: [params.folder],
+    // 計画ノートの印。フォルダ（置き場）とは別軸
+    kind: "plan",
+    ...(params.folders && params.folders.length > 0 ? { noteContexts: params.folders } : {}),
     ...(noteLinks.length > 0 ? { noteLinks } : {}),
     ...(params.model ? { generatedBy: { agent: "graphium-plan", sessionId: "", model: params.model } } : {}),
     createdAt: now,

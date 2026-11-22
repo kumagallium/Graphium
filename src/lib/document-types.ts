@@ -1280,6 +1280,15 @@ export type GraphiumDocument = {
    */
   noteContexts?: string[];
   /**
+   * ノートの種類（v0.154〜）。"plan" は計画ノート（表の行が工程ノートになり、工程グラフ・
+   * 計画の PROV 書き出しの起点になる）、"note" はそれ以外。アプリが作るノートは必ず持つ。
+   * 無い（それより前に保存された・アプリの外で作られた）ノートは、旧予約フォルダ「計画」に
+   * 入っているかで読み替える（note-context/reserved-folders.ts の resolveNoteKind）。
+   * 読み込み時に読み替えた値で埋まり、次に保存されたときに書き込まれる。
+   * 置き場（noteContexts）とは別軸。フォルダを動かしても種類は変わらない。
+   */
+  kind?: "plan" | "note";
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
