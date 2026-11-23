@@ -63,7 +63,7 @@
 - Anthropic・Google・GitHub Copilot・OpenAI のモデル（gpt-3.5・o1-mini・o3-mini・gpt-oss を除く）
 - モデル名から画像対応だと分かる、OpenAI 互換のサーバー（LM Studio・Ollama など）。名前に `vl`・`vision`・`llava`・`pixtral`・`gemma-3`・`llama-4` などを含むものが当たります。
 
-## 声で入力する {#speaking-instead-of-typing}
+## 声で入力する <Badge type="tip" text="v0.156.0 (2026-11-23) で追加" /> {#speaking-instead-of-typing}
 
 デスクトップ版では、`⌘K` の入力欄の右と、2 つのチャット欄（ノートの横のパネルと、ノートを開かないチャット）の画像ボタンの隣に、マイクのボタンがあります。押して探したいことを話し、話し終えて 1.5 秒ほど黙ると録音が止まります（もう一度押しても止まります）。文字は入力欄に入るだけで、`Enter` を押すまで送信も実行もしません。聞き違いがあれば先に直せます。録音中に `Esc` を押すと、録った声を捨てます。
 

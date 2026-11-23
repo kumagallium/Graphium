@@ -49,7 +49,7 @@ To ask about a photo, a screenshot or a page you took a picture of, add the imag
 
 Models treated as able to see images: Anthropic, Google, GitHub Copilot, OpenAI (except gpt-3.5, o1-mini, o3-mini and gpt-oss), and OpenAI-compatible servers (LM Studio, Ollama and the like) whose model name marks a vision model — for example one containing `vl`, `vision`, `llava`, `pixtral`, `gemma-3` or `llama-4`.
 
-## Speaking instead of typing {#speaking-instead-of-typing}
+## Speaking instead of typing <Badge type="tip" text="Added in v0.156.0 (2026-11-23)" /> {#speaking-instead-of-typing}
 
 In the desktop app, a microphone button sits at the right of the `⌘K` box and next to the image button in both chat inputs (the panel beside a note and the chat without a note). Press it, say what you are looking for, and stop talking: recording ends by itself after about 1.5 seconds of silence, or press the button again. The words are typed into the input — nothing is sent or run until you press `Enter`, so you can fix a misheard word first. `Esc` while recording throws the recording away.
 
