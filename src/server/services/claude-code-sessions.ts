@@ -269,18 +269,50 @@ export async function listClaudeWorkdirs(
 export type ClaudeConversationRef = { dirName: string; fileName: string };
 export type ClaudeConversationListing = { ref: ClaudeConversationRef; summary: ConversationSummary };
 
+/**
+ * 会話ごとの集計の覚え。鍵は「読む場所・フォルダ名・ファイル名」、中身が同じかは大きさと更新時刻で見る。
+ *
+ * 記録は使い込むほど増える（数 GB・数千本）。一覧を開くたびに全部を読み直すと数十秒かかり、
+ * 画面側の通信が打ち切られる。変わっていない記録は読み直さず、ここから返す。
+ * 本文は持たない（集計だけ）ので、本数が増えても小さい。
+ */
+const summaryCache = new Map<string, { bytes: number; modifiedAt: string; summary: ConversationSummary }>();
+
+export function __resetConversationSummaryCacheForTest(): void {
+  summaryCache.clear();
+}
+
 /** 記録のフォルダを全部読み、会話ごとの集計と、その会話を指す名前の組を返す（本文は持たない） */
 export async function listClaudeConversations(
   baseDir: string = defaultClaudeProjectsDir(),
 ): Promise<ClaudeConversationListing[]> {
   const out: ClaudeConversationListing[] = [];
+  const seen = new Set<string>();
+  const prefix = `${baseDir}\0`;
   for (const dir of await listClaudeProjectDirs(baseDir)) {
     for (const file of await listClaudeSessionFiles(dir.dirName, baseDir)) {
+      const key = `${prefix}${dir.dirName}\0${file.fileName}`;
+      seen.add(key);
+      const ref = { dirName: dir.dirName, fileName: file.fileName };
+      const hit = summaryCache.get(key);
+      if (hit && hit.bytes === file.bytes && hit.modifiedAt === file.modifiedAt) {
+        out.push({ ref, summary: hit.summary });
+        continue;
+      }
       const material = await readClaudeSession(dir.dirName, file.fileName, { includeAssistant: false }, baseDir);
-      // 読めなかった会話は飛ばす
-      if (!material) continue;
-      out.push({ ref: { dirName: dir.dirName, fileName: file.fileName }, summary: summarizeConversation(material) });
+      // 読めなかった会話は飛ばす（覚えない。次に開いたときにもう一度読む）
+      if (!material) {
+        summaryCache.delete(key);
+        continue;
+      }
+      const summary = summarizeConversation(material);
+      summaryCache.set(key, { bytes: file.bytes, modifiedAt: file.modifiedAt, summary });
+      out.push({ ref, summary });
     }
+  }
+  // 消えた記録の覚えを捨てる（同じ読む場所の分だけ）
+  for (const key of summaryCache.keys()) {
+    if (key.startsWith(prefix) && !seen.has(key)) summaryCache.delete(key);
   }
   return out;
 }

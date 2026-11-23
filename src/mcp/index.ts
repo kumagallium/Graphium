@@ -24,6 +24,7 @@ import { cleanupTempFiles } from "./upkeep/cleanup";
 import { createMcpUsageRecorder } from "./usage-recorder";
 import { createFileActivityLog } from "./activity";
 import { registerUpkeepTools } from "./upkeep/tools";
+import { registerSourceDateTool } from "./upkeep/source-date";
 import { appDataDir, resolveGraphiumRoot, vaultExists } from "./vault";
 
 /** bundle 時に esbuild の --define で埋め込む。dev 実行では既定値のまま */
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
   registerTools(server, ctx);
   registerReadTools(server, ctx);
   registerUpkeepTools(server, ctx);
+  registerSourceDateTool(server, ctx);
   registerClaimTools(server, ctx);
   registerInsightTools(server, ctx);
   registerProcedureTools(server, ctx);

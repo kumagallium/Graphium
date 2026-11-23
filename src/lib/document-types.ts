@@ -1312,6 +1312,21 @@ export type GraphiumDocument = {
     /** 取り込み日時（ISO 8601） */
     importedAt: string;
   };
+  /**
+   * 資料の日付（v0.155〜）。そのノートが記録している資料がいつのものか
+   * （論文の出版日・ブログの公開日・議事録の日付など）。分かっている桁までを
+   * "YYYY" / "YYYY-MM" / "YYYY-MM-DD" で持つ（日を知らないのに -01 で埋めない）。
+   * createdAt（Graphium で作った日時）とは別物で、こちらを書き換えても作成日時は変わらない。
+   * 付けるのはノートの題の下のチップか、MCP の create_note / set_source_date。
+   * 読み書きの検査は lib/source-date.ts。additive optional のため旧データは従来通り動く。
+   */
+  sourceDate?: string;
+  /**
+   * 資料の日付の種類（v0.155〜）。"published"（出版・公開）/ "presented"（発表）/
+   * "recorded"（記録した日。議事録・実験の日など）/ "other"。無ければ「種類は分からない」。
+   * sourceDate が無いときは持たない。時点で切った評価で日付の意味を区別するための余地。
+   */
+  sourceDateKind?: "published" | "presented" | "recorded" | "other";
   createdAt: string;
   modifiedAt: string;
 };

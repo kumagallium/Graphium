@@ -39,7 +39,7 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 | Control | What it does |
 |---|---|
-| **Sort by modified** / **Sort by created** / **Sort by title** / **Sort by outgoing links** | Reorders the list. The default is by creation date. |
+| **Sort by modified** / **Sort by created** / **Sort by title** / **Sort by outgoing links** | Reorders the list. The default is by creation date. **Source date** joins the menu once a note has a [source date](#source-date). |
 | **Filter by label** | Show only notes that contain a given provenance label. |
 | **Filter by author** | Filter by who wrote the note — and which LLM assisted. |
 | **Filter by folder** | Filter by [folder](#folders). |
@@ -74,7 +74,21 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
-When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Source date**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+
+### Source date <Badge type="tip" text="Added in v0.155.0 (2026-11-22)" /> {#source-date}
+
+A note made today from a 2012 paper is still about something from 2012. The **source date** says when the source itself is from — a paper's publication date, a blog post's date, the date of a meeting — and is kept apart from the date the note was made, which never changes. That way a note you bring in later does not pretend to be older than it is, and you can still line up your notes by when things happened.
+
+- **Setting it.** Under the note's title, next to the folder chips, press **+ Source date** and type the date. Write only what you know: `2012`, `2012-03` or `2012-03-15` (`2012/3/15` and `2012年3月15日` are read too). A year stays a year; it is not filled in as January 1. Below the box you see how it will be saved, for example "Will be set to 2012-03 (year and month)". Press **Set** or `Enter`.
+- **Changing or removing it.** Press the chip (**Source date 2012-03**) to change the date, or **Remove** to take it off.
+
+![Under the note title "Hydration level and crumb structure in sourdough": the folder chip Sources/Papers, + Folder, and the chip Source date 2012-03. The chip is open: a box with 2012-03 typed in, the line "Will be set to 2012-03 (year and month)", and the Remove and Set buttons](/screenshots/source-date-chip.png)
+- **In the notes list.** Once any note has a source date, a **Source date** column appears and **Source date** joins the sort menu. Sorting by it puts notes without a source date by their creation date, so your own notes and the sources you brought in fall into one timeline. A year-only date sorts at the start of its year.
+
+![The notes list sorted by Source date, newest first. The two loaf trials have no source date and sit at their creation dates in November 2026; below them come a blog post from 2026-11-01, a talk from 2019 and a paper from 2012-03, although all three notes were created on 2026-11-22](/screenshots/notes-list-source-date.png)
+- **Elsewhere.** Topics date each citation in their *Disagreements & open questions* section with the source date (see [Knowledge](/knowledge-layer)). **Home** stays a log of when you kept things, so it keeps using the creation date.
+- **From an assistant.** An assistant connected through [MCP](/mcp-server#source-date-from-your-assistant) can pass the source date when it saves a note, and can add it to notes you already have while Graphium is closed.
 
 ## Editor basics
 

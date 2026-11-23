@@ -20,6 +20,7 @@ import type { BlockLink } from "../lib/block-link-types";
 import type { GraphiumDocument } from "../lib/document-types";
 import { makeProps, markdownToBlocks, parseInlineContent, type Block } from "./markdown-to-blocks";
 import { normalizeFolderScope } from "../features/note-context/folder-scope";
+import { normalizeSourceDateKind, parseSourceDate, type SourceDateKind } from "../lib/source-date";
 import { notesDir, readNote, resolveGraphiumRoot } from "./vault";
 
 /** 回答が引いた Graphium 内のページ/ノートの参照。id は noteId（wiki も同じ id 空間で読める） */
@@ -49,6 +50,15 @@ export type CreateNoteInput = {
    * サイドバーのフォルダに並ぶ。フォルダはタグなので、まだ無い名前でもそのまま作られる。
    */
   folder?: string;
+  /**
+   * 資料の日付（その資料がいつのものか。論文の出版日・ブログの公開日など）。
+   * "2012" / "2012-03" / "2012-03-15" / "2012年3月" などを受け、保存形（YYYY / YYYY-MM / YYYY-MM-DD）にして
+   * doc.sourceDate に入れる。読めない値は投げる（黙って捨てると、付いたと思われてしまう）。
+   * 作成日時（createdAt）は書き込んだ時刻のまま変えない。
+   */
+  sourceDate?: string;
+  /** 資料の日付の種類（published / presented / recorded / other）。sourceDate があるときだけ入れる */
+  sourceDateKind?: SourceDateKind;
 };
 
 export type CreateNoteResult = {
@@ -161,6 +171,20 @@ export function buildNoteDocument(input: CreateNoteInput, root = resolveGraphium
   };
   const folder = normalizeFolderScope(input.folder);
   if (folder) doc.noteContexts = [folder];
+  if (input.sourceDate !== undefined && input.sourceDate.trim() !== "") {
+    const sourceDate = parseSourceDate(input.sourceDate);
+    if (!sourceDate) {
+      throw new Error(
+        `sourceDate を日付として読めません: "${input.sourceDate}"（例: 2012 / 2012-03 / 2012-03-15）`,
+      );
+    }
+    doc.sourceDate = sourceDate;
+    if (input.sourceDateKind !== undefined) {
+      const kind = normalizeSourceDateKind(input.sourceDateKind);
+      if (!kind) throw new Error(`sourceDateKind が不明です: "${input.sourceDateKind}"`);
+      doc.sourceDateKind = kind;
+    }
+  }
   return doc;
 }
 
