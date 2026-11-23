@@ -105,6 +105,7 @@ const enSidebar = [
         text: 'Choosing a model',
         collapsed: true,
         items: [
+          { text: 'gemma on a lab workstation', link: '/evaluations/workstation-gemma' },
           { text: 'Cloud and local models by feature', link: '/evaluations/cloud-and-local-models-by-feature' },
           { text: 'Open models by feature', link: '/evaluations/open-models-by-feature' },
           { text: 'Model size by feature', link: '/evaluations/model-tiers-by-feature' },
@@ -235,6 +236,7 @@ const jaSidebar = [
         text: 'モデルの選び方',
         collapsed: true,
         items: [
+          { text: '研究室のワークステーションの gemma', link: '/ja/evaluations/workstation-gemma' },
           { text: 'クラウド・手元のモデルと AI 機能', link: '/ja/evaluations/cloud-and-local-models-by-feature' },
           { text: '公開モデルと AI 機能', link: '/ja/evaluations/open-models-by-feature' },
           { text: 'AI 機能とモデルの大きさ', link: '/ja/evaluations/model-tiers-by-feature' },

@@ -42,6 +42,7 @@ The model guide in Settings has been revised each time I measured again. Part of
 
 | What it does now | What it rests on | Measurement |
 |---|---|---|
+| The model on the lab workstation (one GPU) stays the 4-bit `gemma-4-31B-it`. If you lean on world grounding, another model fits better | It beat `gpt-oss-120b` (API) on 21 of 45 metrics and fell behind on 11. It was about level with gemma through an API. World grounding dropped to .40, and long tasks take more than 4 minutes per call | [gemma on a lab workstation](/evaluations/workstation-gemma) (2026-11-20) |
 | For the light work tier, local ~30B is "conditional". The tier structure stays, and four features were moved (duplicate-insight judging and topic routing to Light, procedure extraction to Standard, translation to Advanced) | The two ~30B models measured on a computer were close to the reference point on only 3 and 4 of the 6 tasks. The differences between models showed up between checking work and writing work, not between tiers by difficulty | [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14) |
 | For the advanced work tier, open large models are "conditional" | For the three models of 100B and up, the intervals overlapped with the reference point on cross-checking work (such as checking grounds and matching names), and they were far from it on plan drafting and generalizing findings. Overlapping intervals do not prove there is no difference | [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12) |
 | For the standard work tier, open large models are "conditional" | When I measured making claims again on 20 notes, the spread inside this class was wide | [Claims within the note](/evaluations/claim-scope) (2026-11-11; the additional measurement is on 11-12) |
@@ -115,6 +116,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 | Measured | Question | Area |
 |---|---|---|
 | 2026-11-22 | [Do hints from my own notes help voice input spell technical words?](/evaluations/voice-input-hints) | Voice input |
+| 2026-11-20 | [Does gemma on one lab GPU keep the quality measured through an API?](/evaluations/workstation-gemma) | Choosing a model |
 | 2026-11-19 | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) | Answers and search |
 | 2026-11-18 | [Insights from AI conversations](/evaluations/ai-conversation-claims) | Knowledge |
 | 2026-11-18 | [Can a downloaded model read handwriting that the built-in OCR cannot?](/evaluations/ocr-engines) | Importing images and data |
