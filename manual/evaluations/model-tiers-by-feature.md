@@ -1,6 +1,6 @@
 # Which AI feature needs which size of model? <Badge type="info" text="Measured 2026-11-07 · v0.124.1" />
 
-After this measurement, I measured again twice. Newest first: [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14) and [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12). Some places in the model guide in Settings and in how the tiers are split were fixed by the later measurements.
+After this measurement, I measured again twice. Newest first: [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14) and [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12). Some places in the model guide in Settings, and in which feature sits in which tier, were fixed by the later measurements. The three-tier structure itself is unchanged.
 
 **What we checked.** Graphium splits the jobs it gives an AI into five assignment slots (Default, Chat, Insight, World grounding, and the clean copy and summary of voice notes), and lets you pick a different model for each. But we had never measured which slot needs which size of model. The settings text described the default model as "a fast, cheap model is fine". So we listed every feature that calls an AI, slot by slot, and ran the same inputs through five models, from a top cloud model down to a ~10B model run locally, and compared them.
 

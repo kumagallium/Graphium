@@ -18,10 +18,10 @@ What goes here are the measurements that decided the app's defaults or behavior.
 
 | What it does now | What it rests on | Measurement |
 |---|---|---|
-| For finding by meaning, `bge-m3` on your computer is the default embedding model (v0.99.0) | I compared how often each model finds the right passage | [Embedding models](/evaluations/embedding-models) (2026-10-27) |
-| **Research before answering** is off by default | If you often ask questions that span several notes, I think it is worth turning on with a model like Claude Opus 5 | [Research before answering](/evaluations/research-before-answering) (2026-11-05) |
+| In the desktop app, `bge-m3` on your computer is the default embedding model for finding by meaning (v0.99.0) | I compared how often each model finds the right passage | [Embedding models](/evaluations/embedding-models) (2026-10-27) |
+| **Research before answering** is off by default | The result split by model. With Claude Opus 5 the score rose by 8 points out of 30. With `gpt-oss-120b` the score did not rise and made-up facts increased | [Research before answering](/evaluations/research-before-answering) (2026-11-05) |
 | The provenance tools stay inside "Research before answering". @ links are read as connections without direction (v0.120.2) | I checked whether they can answer questions about steps and lineage | [Provenance tools](/evaluations/provenance-tools) (2026-11-05) |
-| The search and citation rules are unchanged. A gap where packing stopped at a long section is fixed | A question with a topic's or claim's title in it brought that page to the AI, and the form of the question made little difference. A targeted topic or insight was nearly always cited once it arrived | [What reaches the AI](/evaluations/what-reaches-the-ai) (2026-11-10) |
+| The search and citation rules are unchanged. A gap where packing stopped at a long section is fixed | For questions with a topic's title in them, the topic's body reached the AI in 32 to 36 of 40 questions, and the form of the question made little difference (only questions that contain a title were measured). A targeted topic or insight was nearly always cited once it arrived | [What reaches the AI](/evaluations/what-reaches-the-ai) (2026-11-10) |
 | Searching conversation text and making Knowledge stay as separate choices. Search results now say how to open a topic | I asked another AI about past conversations and checked its answers | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) (2026-11-19) |
 | Long sources are read in overlapping windows, with a map of the whole (v0.80.0) | I split long sources into windows and had them read | [Reading a long source in windows](/evaluations/long-sources) (2026-09) |
 
@@ -43,7 +43,7 @@ The model guide in Settings has been revised each time I measured again. Part of
 | What it does now | What it rests on | Measurement |
 |---|---|---|
 | For the light work tier, local ~30B is "conditional". The tier structure stays, and four features were moved (duplicate-insight judging and topic routing to Light, procedure extraction to Standard, translation to Advanced) | The two ~30B models measured on a computer were close to the reference point on only 3 and 4 of the 6 tasks. The differences between models showed up between checking work and writing work, not between tiers by difficulty | [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14) |
-| For the advanced work tier, open large models are "conditional" | The three models of 100B and up were close to the reference point on cross-checking work, and far from it on plan drafting and generalizing findings | [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12) |
+| For the advanced work tier, open large models are "conditional" | For the three models of 100B and up, the intervals overlapped with the reference point on cross-checking work (such as checking grounds and matching names), and they were far from it on plan drafting and generalizing findings. Overlapping intervals do not prove there is no difference | [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12) |
 | For the standard work tier, open large models are "conditional" | When I measured making claims again on 20 notes, the spread inside this class was wide | [Claims within the note](/evaluations/claim-scope) (2026-11-11; the additional measurement is on 11-12) |
 | AI work is split into three tiers (light, standard, advanced), and a model is chosen per tier. Each tier shows a model guide | The size of model needed differed clearly by feature | [Model size by feature](/evaluations/model-tiers-by-feature) (2026-11-07) |
 | A small model on your own computer is not the default AI. Instead, GitHub Copilot connects with a single button (v0.92.2) | Of 9 small-model outputs, only 1 to 2 were good enough to show as they were | [A local model as the default](/evaluations/local-models-as-default) (2026-10-20) |
@@ -61,7 +61,7 @@ The model guide in Settings has been revised each time I measured again. Part of
 | What it does now | What it rests on | Measurement |
 |---|---|---|
 | The desktop app reads images with PP-OCRv6 small (v0.142.0). On macOS, from the release after that, the OS's own reading is kept as well, for finding only | The old OCR found none of 160 handwritten phrases | [OCR engines](/evaluations/ocr-engines) (2026-11-18) |
-| Data tables get no row limit | With synthetic data of 233,000 rows, the longest freeze before the import screen opened went from 16.3–17.1 seconds to 0.50–0.55 seconds | [Large data tables](/evaluations/large-data-tables) (2026-11-18) |
+| Data tables get no row limit | With synthetic data of 230,000 rows, the longest freeze before the import screen opened went from 16.3–17.1 seconds to 0.50–0.55 seconds | [Large data tables](/evaluations/large-data-tables) (2026-11-18) |
 
 ### Speed and memory
 
@@ -74,15 +74,15 @@ These are not measurements made to decide a setting. They are records of looking
 
 ## Tried and not adopted
 
-I also keep results that did not work out, and points I could not settle. These are pulled out of the measurements above.
+I also keep results that did not work out, points I could not settle, and points still not reached. These are pulled out of the measurements above.
 
 | What I tried | What I found | Measurement |
 |---|---|---|
 | Making a small model on your own computer the default AI | Not the default. Of 9 small-model outputs, only 1 to 2 were good enough to show as they were | [A local model as the default](/evaluations/local-models-as-default) (2026-10-20) |
 | Letting the AI merge bodies when merging pages by thing | Not adopted. Of 54 kinds of numbers with units, 22 stayed in the same notation | [Merging pages by thing](/evaluations/merging-pages-by-thing) |
 | Using the "name it after the thing itself" rule when tidying up existing topics | It could not be used. Many titles had no page to merge into | [Topic granularity](/evaluations/topic-granularity) |
-| Using the same rule in a library with many "X's Y" titles | The effect was not clear | [Topic granularity](/evaluations/topic-granularity) |
-| Reading handwritten sentences with detection and recognition models of 22 to 180 MB (PP-OCR) | They reached dates and numbers but not sentences. Windows was not measured | [OCR engines](/evaluations/ocr-engines) |
+| Using the same rule in a library with many "X's Y" titles | Undecided. Six runs could not say whether it worked or not. The rule is still used when a source is imported | [Topic granularity](/evaluations/topic-granularity) |
+| Reading handwritten sentences with OCR of the size that was adopted (PP-OCR, 22 to 180 MB) | Not reached. In handwriting it read dates and numbers but not sentences. The engine itself is adopted. Windows was not measured | [OCR engines](/evaluations/ocr-engines) |
 | Checking a plan by hindsight | On hold until the answer key is rebuilt | [Checking where a plan comes from](/evaluations/plan-grounding-check) |
 
 ## How I measure
