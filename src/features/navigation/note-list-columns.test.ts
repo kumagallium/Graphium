@@ -33,6 +33,21 @@ describe("buildNoteListColumnPlan", () => {
     ]);
   });
 
+  it("資料の日付の列は付いたノートがあるときだけ、作成日の次に隠す。資料の日付順なら隠さない", () => {
+    const plan = buildNoteListColumnPlan({ ...FULL, hasSourceDate: true });
+    expect(plan.hideable.map((c) => c.key)).toEqual([
+      "author",
+      "createdAt",
+      "sourceDate",
+      "folder",
+      "labels",
+      "knowledge",
+    ]);
+    expect(requiredWidth(plan, 0) - requiredWidth(buildNoteListColumnPlan(FULL), 0)).toBe(W.sourceDate);
+    const pinned = buildNoteListColumnPlan({ ...FULL, hasSourceDate: true, pinned: new Set(["sourceDate"]) });
+    expect(pinned.hideable.map((c) => c.key)).not.toContain("sourceDate");
+  });
+
   it("ラベル列が無い一覧では、ラベルを隠す候補にも幅にも入れない", () => {
     const withLabels = buildNoteListColumnPlan(FULL);
     const without = buildNoteListColumnPlan({ ...FULL, hasLabels: false });

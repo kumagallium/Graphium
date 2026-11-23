@@ -192,11 +192,11 @@ Every AI reply has action buttons underneath:
 | **Insert into note** | Inserts the answer into the note as blocks |
 | **Replace in note** | Replaces the source blocks with the answer (shown when the chat was started from specific blocks) |
 | **Derive as note** | Creates a new note from the question and answer, with provenance linking back to the source note, and opens it in the side peek |
-| **Make an experiment plan** | Turns the next experiment the answer proposes into a plan note with a table of conditions, and one run note per row (below) |
 | **Make Knowledge** | Extracts knowledge candidates from the answer (below) |
 | **Keep as knowledge** | Saves the whole answer as-is, as a Q&A page in the Knowledge layer (below) |
+| Clipboard icon (**Make an experiment plan**) | At the end of the row, after regenerate and fork. Turns the next experiment the answer proposes into a plan note with a table of conditions, and one operation note per row (below) |
 
-![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Make an experiment plan, Keep as knowledge, Make Knowledge, regenerate and fork, beside the note body.](/screenshots/chat-answer.png)
+![The note's right-hand Chat panel showing one green user question with its edit pencil and one AI answer about 70% versus 75% hydration, followed by a "From your notes" list of three linked sources and the buttons Insert into note, Derive as note, Keep as knowledge and Make Knowledge, then the regenerate, fork and make-an-experiment-plan icons, beside the note body.](/screenshots/chat-answer.png)
 
 ### Extracting knowledge from a chat <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
@@ -208,16 +208,16 @@ If the answer already reads well as a self-contained explanation — not somethi
 
 ### Making an experiment plan from an answer <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#making-an-experiment-plan}
 
-Once you have asked the AI what to try next after reading the procedures of the papers you brought in, the answer can become the plan. Press **Make an experiment plan** under the answer and Graphium makes two kinds of notes and opens the plan note.
+Once you have asked the AI what to try next after reading the procedures of the papers you brought in, the answer can become the plan. Press the clipboard icon (**Make an experiment plan**) at the end of the buttons under the answer and Graphium makes two kinds of notes and opens the plan note.
 
-- **A plan note** (in the Plan folder) with background, a **Items & Conditions** table, the common procedure and the expected outcome. Each row of the table is one sample, and the columns after the first are the parameters you vary (for example the substitution x and the calcination temperature). Notes the answer cited are linked with @ under the background.
-- **One run note per row** holding the common procedure with that row's values. Steps, materials, tools and conditions are highlighted from the start, and the first column of the table links to it. They also appear in the plan note's **Operations** tab.
+- **A plan note** (filed in **Procedures** with its operation notes) with background, a **Items & Conditions** table, the common procedure and the expected outcome. Each row of the table is one sample, and the columns after the first are the parameters you vary (for example the substitution x and the calcination temperature). Notes the answer cited are linked with @ under the background.
+- **One operation note per row** holding the common procedure with that row's values. Steps, materials, tools and conditions are highlighted from the start, and the first column of the table links to it. They also appear in the plan note's **Operations** tab.
 
 ![The buttons under a chat answer: Make an experiment plan, Keep as knowledge, regenerate and fork.](/screenshots/chat-make-plan.png)
 
-![The Items & Conditions table of a plan note made from a chat answer: the first column links each row to its run note (for example BaFe12O19 800 °C / 4 h), and the other columns are the varied calcination temperature and hold time.](/screenshots/plan-note-from-chat.png)
+![The Items & Conditions table of a plan note made from a chat answer: the first column links each row to its operation note (for example BaFe12O19 800 °C / 4 h), and the other columns are the varied calcination temperature and hold time.](/screenshots/plan-note-from-chat.png)
 
-The procedure goes through the same extraction and [name alignment](/materials-and-citations#aligning-extracted-names) as **Extract steps into a note** does for papers, so names it can tell are the same line up with your paper notes. In the provenance graph, the materials and instruments of the papers connect to the run notes.
+The procedure goes through the same extraction and [name alignment](/materials-and-citations#aligning-extracted-names) as **Extract steps into a note** does for papers, so names it can tell are the same line up with your paper notes. In the provenance graph, the materials and instruments of the papers connect to the operation notes.
 
 ::: tip
 Turn on **Research before answering** (above) and ask something like "compare the procedures of these papers and suggest which conditions to vary next". The AI follows the procedures in your paper notes before it answers. Then press **Make an experiment plan**.

@@ -210,7 +210,7 @@ With the status **No change** or **The original has changed**, **Open the origin
 
 Graphium compares only size and modified time. An edit that leaves both unchanged is not noticed.
 
-### Show the contents or import it as a table {#linked-read}
+### Show the contents or import it as a table <Badge type="tip" text="Added in v0.153.0 (2026-11-20)" /> {#linked-read}
 
 Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
 
@@ -355,7 +355,7 @@ The menu on a PDF, Word, or URL material offers three AI-powered conversions. Al
 - **Translate into a note** <Badge type="tip" text="Added in v0.14.0 (2026-06-05)" /> — translates the full PDF or web page into your display language, page by page, keeping the original structure. A glossary is extracted first so terminology stays consistent, and embedded figures are placed back near their captions in the translated note.
 - **Add to Knowledge** — distills the source into your [Knowledge layer](/knowledge-layer).
 
-<Badge type="tip" text="Added in v0.129.6 (2026-11-10)" /> Notes made by extracting steps or translating go into a **Procedures** or **Translations** folder. If the source material is in a folder (including through a note in that folder that uses it), the note goes there too. So converting a material you never filed doesn't leave the note in **Unfiled**. Afterwards you can add or remove folders like on any other note. The run notes of a plan made from a chat answer also go into **Procedures**, and a new [voice note](/voice-notes) goes into **Voice notes**. <Badge type="tip" text="Added in v0.129.15 (2026-11-12)" />
+<Badge type="tip" text="Added in v0.129.6 (2026-11-10)" /> Notes made by extracting steps or translating go into a **Procedures** or **Translations** folder. If the source material is in a folder (including through a note in that folder that uses it), the note goes there too. So converting a material you never filed doesn't leave the note in **Unfiled**. Afterwards you can add or remove folders like on any other note. A plan made from a chat answer and its operation notes also go into **Procedures**, and a new [voice note](/voice-notes) goes into **Voice notes**. <Badge type="tip" text="Added in v0.129.15 (2026-11-12)" />
 
 Bulk versions of these appear when you multi-select materials in the gallery. Memos have an equivalent: select memos in the Memos gallery and turn them into Knowledge in one step.
 

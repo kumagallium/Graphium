@@ -18,6 +18,7 @@ import { setTemplatePickerCallback } from "./slash-menu-item";
 import { getUserTemplate } from "./user-template-store";
 import { getUserTemplateEditHandler } from "./template-edit";
 import { getAllTemplates } from "./templates";
+import type { NoteKind } from "../note-context/reserved-folders";
 
 type Options = {
   /**
@@ -27,6 +28,13 @@ type Options = {
   stores: TemplateTargetStores;
   /** 共有テンプレート内の画像・ファイルを自分の素材へ取り込む経路 */
   uploadFile?: (file: File) => Promise<string>;
+  /**
+   * 種類を持つテンプレート（計画テンプレート = "plan"）を差し込んだとき、開いているノートを
+   * その種類にする。計画の表を差し込んでも普通のノートのままだと、表の行が工程にならず、
+   * 「…」の「計画として扱う」に気づかないと計画として使えないため。
+   * ホストが種類を持てないノート（ナレッジ等）なら渡さない
+   */
+  onApplyKind?: (kind: NoteKind) => void;
 };
 
 /**
@@ -35,7 +43,7 @@ type Options = {
  */
 export function useTemplatePicker(
   editor: any | null,
-  { stores, uploadFile }: Options,
+  { stores, uploadFile, onApplyKind }: Options,
 ): { open: boolean; dialog: ReactNode } {
   const [open, setOpen] = useState(false);
   // スラッシュを打ったブロック（挿入位置）。ピッカーを出している間にカーソルが
@@ -45,6 +53,8 @@ export function useTemplatePicker(
   storesRef.current = stores;
   const uploadFileRef = useRef(uploadFile);
   uploadFileRef.current = uploadFile;
+  const onApplyKindRef = useRef(onApplyKind);
+  onApplyKindRef.current = onApplyKind;
 
   useEffect(() => {
     if (!editor) return;
@@ -69,6 +79,8 @@ export function useTemplatePicker(
       const template = getAllTemplates().find((x) => x.id === templateId);
       if (!editor || !triggerBlock || !template) return;
       insertTemplateDef(editor, triggerBlock, template, storesRef.current);
+      // 計画テンプレートなら、このノートを計画にする（普通のノートに戻すことはしない）
+      if (template.kind === "plan") onApplyKindRef.current?.("plan");
     },
     [editor, takeTriggerBlock],
   );

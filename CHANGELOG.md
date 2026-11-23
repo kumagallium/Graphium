@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.155.0](https://github.com/kumagallium/Graphium/compare/v0.154.1...v0.155.0) - 2026-11-22
+
+- [feat] Keep a note's source date apart from its creation date by @kumagallium in https://github.com/kumagallium/Graphium/pull/1806
+
+## [v0.154.1](https://github.com/kumagallium/Graphium/compare/v0.154.0...v0.154.1) - 2026-11-22
+
+- [fix] Conversation import: stop calling a slow listing "desktop only", and remember summaries by @kumagallium in https://github.com/kumagallium/Graphium/pull/1805
+
+## [v0.154.0](https://github.com/kumagallium/Graphium/compare/v0.153.0...v0.154.0) - 2026-11-22
+
+- [fix] Shrink the Rust Checks cache and save it only on main by @kumagallium in https://github.com/kumagallium/Graphium/pull/1803
+- [feat] Mark plan notes on the note itself instead of the reserved Plan folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/1798
+
 ## [v0.153.0](https://github.com/kumagallium/Graphium/compare/v0.152.2...v0.153.0) - 2026-11-20
 
 - feat: read linked files on demand (show PDF/images, import CSV as a table) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1797

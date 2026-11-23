@@ -12,6 +12,7 @@ export type SortKey =
   | "incomingLinkCount"
   | "modifiedAt"
   | "createdAt"
+  | "sourceDate"
   | "title"
   | "labels"
   | "noteContexts"
@@ -19,15 +20,18 @@ export type SortKey =
   | "author";
 export type SortDirection = "asc" | "desc";
 
-const SORT_KEYS: { key: SortKey; labelKey: string }[] = [
+// 資料の日付（sourceDate）は、どのノートにも付いていない一覧では出さない（作成日順と同じ並びになるだけなので）。
+// NoteListView が sortOptions に NOTE_LIST_SORT_KEYS から外して渡す
+export const NOTE_LIST_SORT_KEYS: { key: SortKey; labelKey: string }[] = [
   { key: "outgoingLinkCount", labelKey: "nav.outgoing" },
   { key: "incomingLinkCount", labelKey: "nav.incoming" },
   { key: "modifiedAt", labelKey: "nav.modifiedDate" },
   { key: "createdAt", labelKey: "nav.createdDate" },
+  { key: "sourceDate", labelKey: "nav.sourceDate" },
   { key: "title", labelKey: "nav.title" },
 ];
 // 2026-05-21 ユーザー要望「全ての列が並び替え対象になるよう」に従い、列ヘッダから
-// labels / knowledgeCount / author でもソートできる。ツールバー側の SORT_KEYS には
+// labels / knowledgeCount / author でもソートできる。ツールバー側の NOTE_LIST_SORT_KEYS には
 // あえて入れない（一覧上で使うことが少ない sort key を吸い込んで肥大化させない）。
 
 // K は並び替えキーの型。省略時は既存の SortKey（ノート一覧用）のまま動く。
@@ -47,7 +51,7 @@ export function NoteListToolbar<K extends string = SortKey>({
   onSort: (key: K) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  /** 並び替え候補を差し替える（省略時は既定の SORT_KEYS） */
+  /** 並び替え候補を差し替える（省略時は既定の NOTE_LIST_SORT_KEYS） */
   sortOptions?: { key: K; labelKey: string }[];
   /** 検索欄に外部からフォーカスを当てるための ref（復元レポートの「ノートを検索する」から使う） */
   searchInputRef?: Ref<HTMLInputElement>;
@@ -59,7 +63,7 @@ export function NoteListToolbar<K extends string = SortKey>({
   const sortWasOpenRef = useRef(false);
   // 省略時のみ既定候補を使う。K は呼び出し元の sortKey から推論されるため、
   // sortOptions 未指定の呼び出しでは K = SortKey に固定される（呼び出し側で保証）。
-  const options = sortOptions ?? (SORT_KEYS as unknown as { key: K; labelKey: string }[]);
+  const options = sortOptions ?? (NOTE_LIST_SORT_KEYS as unknown as { key: K; labelKey: string }[]);
 
   return (
     <div className="flex items-center gap-2 px-6 py-2 border-b border-border/50">

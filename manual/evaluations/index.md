@@ -2,11 +2,89 @@
 
 Before I change how Graphium's AI works, or decide what is on by default, I measure it. This section keeps those measurements: what I wanted to know, how I measured it, what came out, and what I decided.
 
-## Why these are public
+## Where to look
 
-- **So you can see why a default is what it is.** "Off by default" or "this model by default" is a choice. Here is what it rests on.
-- **So I don't forget either.** A result I cannot find again cannot inform the next decision.
-- **Graphium is about keeping where things came from.** A product that records provenance should show the evidence behind its own design.
+| What you want to know | Where to look |
+|---|---|
+| What reasons lie behind the current settings and behavior | [What Graphium does now, and why](#what-graphium-does-now-and-why) (by feature) |
+| Why a feature is missing or off by default | [Tried and not adopted](#tried-and-not-adopted) |
+| What was measured, and when | [By date](#by-date) |
+
+What goes here are the measurements that decided the app's defaults or behavior. One measurement is one page. If I measure again, it becomes a new page. Old pages are kept.
+
+## What Graphium does now, and why
+
+### Answers and search
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| In the desktop app, `bge-m3` on your computer is the default embedding model for finding by meaning (v0.99.0) | I compared how often each model finds the right passage | [Embedding models](/evaluations/embedding-models) (2026-10-27) |
+| **Research before answering** is off by default | The result split by model. With Claude Opus 5 the score rose by 8 points out of 30. With `gpt-oss-120b` the score did not rise and made-up facts increased | [Research before answering](/evaluations/research-before-answering) (2026-11-05) |
+| The provenance tools stay inside "Research before answering". @ links are read as connections without direction (v0.120.2) | I checked whether they can answer questions about steps and lineage | [Provenance tools](/evaluations/provenance-tools) (2026-11-05) |
+| The search and citation rules are unchanged. A gap where packing stopped at a long section is fixed | For questions with a topic's title in them, the topic's body reached the AI in 32 to 36 of 40 questions, and the form of the question made little difference (only questions that contain a title were measured). A targeted topic or insight was nearly always cited once it arrived | [What reaches the AI](/evaluations/what-reaches-the-ai) (2026-11-10) |
+| Searching conversation text and making Knowledge stay as separate choices. Search results now say how to open a topic | I asked another AI about past conversations and checked its answers | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) (2026-11-19) |
+| Long sources are read in overlapping windows, with a map of the whole (v0.80.0) | I split long sources into windows and had them read | [Reading a long source in windows](/evaluations/long-sources) (2026-09) |
+
+### Knowledge (claims, insights, topics)
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| Claims go only as far as being split apart and readable without the note. The body gives the point first, then the note's record | With `gpt-5.6-luna`, outputs passing every criterion went from 4 to 10 of 20, and claims stretching beyond the note from 20% to 3%. With `gpt-oss-120b` the improvement was small | [Claims within the note](/evaluations/claim-scope) (2026-11-11) |
+| One section is added to the claim instructions, only when the source is an AI conversation | Claims grounded only in the user's own words went from 69% to 85%. Run-to-run variation is large | [Insights from AI conversations](/evaluations/ai-conversation-claims) (2026-11-18) |
+| The AI names the existing insight, and only claims that pass a separate call's check are added. Nothing is added if the check cannot be obtained | Closeness of wording is not used as an entry | [Reinforcing existing insights](/evaluations/insight-reinforcement) (2026-11-11) |
+| In topic and Q&A revisions, each citation copies the passage of the source that the sentence restates. Before saving, each passage is checked against the source, and a passage that cannot be found is kept with a mark | With `gpt-oss-120b`, 72 of the 73 passages in the final instructions were found in the source. Output tokens grew 1.5 to 1.8 times | [Source passages behind sentences](/evaluations/sentence-passages) (2026-11-14) |
+| Merging pages by thing uses no AI: each page's body is joined as a section | In the 27-page group, the AI merge left source marks at about 30% | [Merging pages by thing](/evaluations/merging-pages-by-thing) (2026-11-10) |
+| New topics are named after the thing itself, only when a source is ingested | With no existing topics, "X's Y" titles went from 9% to 0% | [Topic granularity](/evaluations/topic-granularity) (2026-11-10) |
+
+### Choosing a model
+
+The model guide in Settings has been revised each time I measured again. Part of an older measurement's conclusion has been replaced by a later one. The table below is newest first, and where rows disagree, the upper row is what Graphium does now.
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| The model on the lab workstation (one GPU) stays the 4-bit `gemma-4-31B-it`. If you lean on world grounding, another model fits better | It beat `gpt-oss-120b` (API) on 21 of 45 metrics and fell behind on 11. It was about level with gemma through an API. World grounding dropped to .40, and long tasks take more than 4 minutes per call | [gemma on a lab workstation](/evaluations/workstation-gemma) (2026-11-20) |
+| For the light work tier, local ~30B is "conditional". The tier structure stays, and four features were moved (duplicate-insight judging and topic routing to Light, procedure extraction to Standard, translation to Advanced) | The two ~30B models measured on a computer were close to the reference point on only 3 and 4 of the 6 tasks. The differences between models showed up between checking work and writing work, not between tiers by difficulty | [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14) |
+| For the advanced work tier, open large models are "conditional" | For the three models of 100B and up, the intervals overlapped with the reference point on cross-checking work (such as checking grounds and matching names), and they were far from it on plan drafting and generalizing findings. Overlapping intervals do not prove there is no difference | [Open models by feature](/evaluations/open-models-by-feature) (2026-11-12) |
+| For the standard work tier, open large models are "conditional" | When I measured making claims again on 20 notes, the spread inside this class was wide | [Claims within the note](/evaluations/claim-scope) (2026-11-11; the additional measurement is on 11-12) |
+| AI work is split into three tiers (light, standard, advanced), and a model is chosen per tier. Each tier shows a model guide | The size of model needed differed clearly by feature | [Model size by feature](/evaluations/model-tiers-by-feature) (2026-11-07) |
+| A small model on your own computer is not the default AI. Instead, GitHub Copilot connects with a single button (v0.92.2) | Of 9 small-model outputs, only 1 to 2 were good enough to show as they were | [A local model as the default](/evaluations/local-models-as-default) (2026-10-20) |
+
+### Papers and plans
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| Plan notes get a "Where this plan comes from" section | Claude and Copilot's `gpt-5.6-luna` caught every planted mistake (a small measurement) | [Checking where a plan comes from](/evaluations/plan-grounding-check) (2026-11-06) |
+| Procedure extraction asks the AI to name what is handed from one step to the next | After I scored by meaning instead of exact match, the weak spots turned out to be the links between steps and the conditions | [Extraction accuracy by meaning](/evaluations/extraction-accuracy-by-meaning) (2026-11-06) |
+| Name alignment leans toward not merging when unsure. For steps, parameters, materials and outputs, a merge that only drops a qualifier is rejected by rule | I checked how much of a paper's procedure comes out of the PDF and how well the names line up | [Procedures from papers](/evaluations/papers-to-procedures) (2026-11-06) |
+
+### Importing images and data
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| The desktop app reads images with PP-OCRv6 small (v0.142.0). On macOS, from the release after that, the OS's own reading is kept as well, for finding only | The old OCR found none of 160 handwritten phrases | [OCR engines](/evaluations/ocr-engines) (2026-11-18) |
+| Data tables get no row limit | With synthetic data of 230,000 rows, the longest freeze before the import screen opened went from 16.3–17.1 seconds to 0.50–0.55 seconds | [Large data tables](/evaluations/large-data-tables) (2026-11-18) |
+
+### Speed and memory
+
+These are not measurements made to decide a setting. They are records of looking into the cause of a problem.
+
+| What happened | What I changed | Measurement |
+|---|---|---|
+| Twenty minutes after launch, the desktop app's window was using 5 GB | The full-text index is now stored packed into typed arrays. In the build with the fix, 1.0–2.6 GB from one minute after launch (excluding the first launch, which rewrites the index; values after long use were not measured) | [Memory of the search index](/evaluations/search-index-memory) (2026-11-11) |
+| "Tidy up automatically" made the desktop app use 11 GB | The embedding engine is pinned to `fastembed` 5.13.0 (which bundles ONNX Runtime 1.23) and embeds 8 sections at a time | [Memory while tidying up](/evaluations/embedding-memory) (2026-11-05) |
+
+## Tried and not adopted
+
+I also keep results that did not work out, points I could not settle, and points still not reached. These are pulled out of the measurements above.
+
+| What I tried | What I found | Measurement |
+|---|---|---|
+| Making a small model on your own computer the default AI | Not the default. Of 9 small-model outputs, only 1 to 2 were good enough to show as they were | [A local model as the default](/evaluations/local-models-as-default) (2026-10-20) |
+| Letting the AI merge bodies when merging pages by thing | Not adopted. Of 54 kinds of numbers with units, 22 stayed in the same notation | [Merging pages by thing](/evaluations/merging-pages-by-thing) |
+| Using the "name it after the thing itself" rule when tidying up existing topics | It could not be used. Many titles had no page to merge into | [Topic granularity](/evaluations/topic-granularity) |
+| Using the same rule in a library with many "X's Y" titles | Undecided. Six runs could not say whether it worked or not. The rule is still used when a source is imported | [Topic granularity](/evaluations/topic-granularity) |
+| Reading handwritten sentences with OCR of the size that was adopted (PP-OCR, 22 to 180 MB) | Not reached. In handwriting it read dates and numbers but not sentences. The engine itself is adopted. Windows was not measured | [OCR engines](/evaluations/ocr-engines) |
+| Checking a plan by hindsight | On hold until the answer key is rebuilt | [Checking where a plan comes from](/evaluations/plan-grounding-check) |
 
 ## How I measure
 
@@ -20,31 +98,37 @@ Before I change how Graphium's AI works, or decide what is on by default, I meas
 
 Most of these use my own working notes, so the questions and answers themselves are not published. Each page shows the totals, the method and the limits.
 
-## The evaluations
+## Why these are public
 
-| Measured | Question | Decision |
+- **So you can see why a default is what it is.** "Off by default" or "this model by default" is a choice. Here is what it rests on.
+- **So I don't forget either.** A result I cannot find again cannot inform the next decision.
+- **Graphium is about keeping where things came from.** A product that records provenance should show the evidence behind its own design.
+
+## By date
+
+| Measured | Question | Area |
 |---|---|---|
-| 2026-11-20 | [Does gemma on one lab GPU keep the quality measured through an API?](/evaluations/workstation-gemma) | Kept `gemma-4-31B-it` as the lab workstation default. With the 4-bit version on one A6000, it beat `gpt-oss-120b` (API) on 21 of 45 metrics and fell behind on 11. World grounding dropped to .40, and long tasks take minutes. |
-| 2026-11-19 | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) | Keep searching conversation text and making Knowledge as separate choices. Search results now say how to open a topic |
-| 2026-11-18 | [Insights from AI conversations](/evaluations/ai-conversation-claims) | Add one section to the claim instructions (only when the source is a conversation; the app now does this). Claims grounded only in the user's own words went from 69% to 85%. The AI excerpt stays at the first 200 and last 300 characters. The one single-line conversation gave 0 claims. Run-to-run variation is large |
-| 2026-11-18 | [Can a downloaded model read handwriting that the built-in OCR cannot?](/evaluations/ocr-engines) | The desktop app reads images with PP-OCRv6 small (v0.142.0); on macOS the OS's own reading is kept as well, for finding only. The old OCR (tesseract.js) found none of 160 handwritten phrases. Detection and recognition models of 22 to 180 MB (PP-OCR) reach dates and numbers but not sentences; macOS Vision and the gigabyte-class glm-ocr found most of the phrases checked (answer key not yet confirmed by the owner). Windows was not measured |
-| 2026-11-18 | [How long does the screen freeze when a 230,000-row CSV is imported?](/evaluations/large-data-tables) | Data tables still get no row limit. With synthetic data of 233,000 rows (188 MB), the longest freeze between dropping the file and the import screen opening went from 16.3–17.1 seconds to 0.50–0.55 seconds. The import screen infers its settings from a leading sample, and parsing all rows and reading the columns are done in slices. Memory use was not reduced |
-| 2026-11-14 | [Keeping the source passage behind each topic sentence](/evaluations/sentence-passages) | Topic and Q&A revisions copy, inside each citation, the passage of the source the sentence restates. Graphium checks it against the source before saving and removes any passage it can't find. With `gpt-oss-120b`, 99% of passages were found with the final instructions; the number of points did not drop consistently; output tokens grew 1.5 to 1.8 times |
-| 2026-11-14 | [Adding top cloud models and models on a computer, measured per AI feature](/evaluations/cloud-and-local-models-by-feature) | In the model guide in Settings, I moved local ~30B on the Light work tier down to "conditional". The 3 tiers, split by difficulty, did not separate the models. What separated them was checking work versus writing work |
-| 2026-11-12 | [How far can open models alone take each AI feature?](/evaluations/open-models-by-feature) | In the model guide in Settings, open large is now "conditional" for the Advanced work tier. If you pick the model per task, on 13 of 18 tasks the best model scored at least 90% of the reference point's score |
-| 2026-11-11 | [Should claims generalize, or stay inside what the note supports?](/evaluations/claim-scope) | Claims go only as far as being split apart and readable without the note. The body gives the point first, then the note's record. With gpt-5.6-luna, outputs passing every criterion went from 4 to 10 of 20 and claims stretching beyond the note from 20% to 3%. With gpt-oss-120b the improvement was small. A follow-up the next day found that the wording of claims does not show up in the quality of insights, and the model guide in Settings lowered open large models to conditional for the Standard tier |
-| 2026-11-11 | [Do claims from other sources reach the insights that already exist?](/evaluations/insight-reinforcement) | The AI names the existing insight, and only claims that pass a separate call's check are added; closeness of wording is not an entry, and nothing is added if the check cannot be obtained |
-| 2026-11-11 | [Why the desktop app's window was using 5 GB twenty minutes after launch](/evaluations/search-index-memory) | The full-text index is stored packed into typed arrays. In a replay on the same engine, memory right after the restore went from about 4 GB to about 0.7 GB, and after 200 searches from about 4.6 GB to about 1.4 GB. In the real app with the fix, the web view went from 5.0–5.6 GB to 1.0–2.6 GB from one minute after launch |
-| 2026-11-10 | [Do topics and insights reach the AI's answers?](/evaluations/what-reaches-the-ai) | The search and citation rules stay as they are. A question with a topic's title in it brought topics and one with a claim's title brought claims, and the form of the question made little difference. A target page that arrived was nearly always cited. Found and fixed a gap where packing stopped at a long section (it is now cut and retried, or skipped). The handling of sections that only list source names was measured again and stays as it is. The title list is not shrunk, and for Claude models it is now sent so that it can be read from the cache |
-| 2026-11-10 | [Merging pages by thing: join, or summarize?](/evaluations/merging-pages-by-thing) | Grouping uses no AI: each page's body is joined as a section. In the 27-page group the AI merge kept about 30% of the source marks and 22 of 54 kinds of numbers with units in the same notation |
-| 2026-11-10 | [Should topics be named after the thing itself?](/evaluations/topic-granularity) | New topics are named after the thing itself, only when a source is ingested; in a library with many "X's Y" pages the effect was not clear. Tidying up existing topics keeps the old rule |
-| 2026-11-07 | [Which AI feature needs which size of model?](/evaluations/model-tiers-by-feature) | Insight, World grounding, and clean copy and summary use the default model when left empty. The default model's description is fixed, and each slot shows a model guide |
-| 2026-11-06 | [Does the plan's grounding check catch planted mistakes?](/evaluations/plan-grounding-check) | Plan notes get a "Where this plan comes from" section. Claude and Copilot's gpt-5.6-luna caught every planted mistake (a small measurement). The hindsight check is on hold until its answer key is rebuilt |
-| 2026-11-06 | [Where is procedure extraction weak? Measured again by meaning, and the links fixed](/evaluations/extraction-accuracy-by-meaning) | Score by meaning; the extraction instructions now ask to name hand-offs (links improve with Claude and Copilot) |
-| 2026-11-06 | [How much of a paper's procedure comes out of the PDF, and how well do the names line up?](/evaluations/papers-to-procedures) | Name alignment runs by default and leans toward not merging; for steps, parameters and materials a merge that only drops a qualifier is rejected by rule |
-| 2026-11-05 | [Why the desktop app ate 11 GB while tidying up](/evaluations/embedding-memory) | The embedding engine is pinned to ONNX Runtime 1.23 and embeds 8 sections at a time |
-| 2026-11-05 | [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools) | Keep them in Research before answering. @ links are now connections without direction (v0.120.2) |
-| 2026-11-05 | [Research before answering: does it help?](/evaluations/research-before-answering) | Off by default. Worth turning on with a model like Claude Opus 5 |
-| 2026-10-27 | [Which embedding model finds the right passage?](/evaluations/embedding-models) | `bge-m3` on your computer by default (v0.99.0) |
-| 2026-10-20 | [Can a small model on your own computer be the default AI?](/evaluations/local-models-as-default) | Not the default. One-button Copilot connection instead (v0.92.2) |
-| 2026-09 | [Reading a long source in windows](/evaluations/long-sources) | Long sources are read in overlapping windows with a map (v0.80.0) |
+| 2026-11-20 | [Does gemma on one lab GPU keep the quality measured through an API?](/evaluations/workstation-gemma) | Choosing a model |
+| 2026-11-19 | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) | Answers and search |
+| 2026-11-18 | [Insights from AI conversations](/evaluations/ai-conversation-claims) | Knowledge |
+| 2026-11-18 | [Can a downloaded model read handwriting that the built-in OCR cannot?](/evaluations/ocr-engines) | Importing images and data |
+| 2026-11-18 | [How long does the screen freeze when a 230,000-row CSV is imported?](/evaluations/large-data-tables) | Importing images and data |
+| 2026-11-14 | [Keeping the source passage behind each topic sentence](/evaluations/sentence-passages) | Knowledge |
+| 2026-11-14 | [Adding top cloud models and models on a computer, measured per AI feature](/evaluations/cloud-and-local-models-by-feature) | Choosing a model |
+| 2026-11-12 | [How far can open models alone take each AI feature?](/evaluations/open-models-by-feature) | Choosing a model |
+| 2026-11-11 | [Should claims generalize, or stay inside what the note supports?](/evaluations/claim-scope) | Knowledge |
+| 2026-11-11 | [Do claims from other sources reach the insights that already exist?](/evaluations/insight-reinforcement) | Knowledge |
+| 2026-11-11 | [Why the desktop app's window was using 5 GB twenty minutes after launch](/evaluations/search-index-memory) | Speed and memory |
+| 2026-11-10 | [Do topics and insights reach the AI's answers?](/evaluations/what-reaches-the-ai) | Answers and search |
+| 2026-11-10 | [Merging pages by thing: join, or summarize?](/evaluations/merging-pages-by-thing) | Knowledge |
+| 2026-11-10 | [Should topics be named after the thing itself?](/evaluations/topic-granularity) | Knowledge |
+| 2026-11-07 | [Which AI feature needs which size of model?](/evaluations/model-tiers-by-feature) | Choosing a model |
+| 2026-11-06 | [Does the plan's grounding check catch planted mistakes?](/evaluations/plan-grounding-check) | Papers and plans |
+| 2026-11-06 | [Where is procedure extraction weak? Measured again by meaning, and the links fixed](/evaluations/extraction-accuracy-by-meaning) | Papers and plans |
+| 2026-11-06 | [How much of a paper's procedure comes out of the PDF, and how well do the names line up?](/evaluations/papers-to-procedures) | Papers and plans |
+| 2026-11-05 | [Why the desktop app ate 11 GB while tidying up](/evaluations/embedding-memory) | Speed and memory |
+| 2026-11-05 | [Provenance tools: do they answer step and lineage questions?](/evaluations/provenance-tools) | Answers and search |
+| 2026-11-05 | [Research before answering: does it help?](/evaluations/research-before-answering) | Answers and search |
+| 2026-10-27 | [Which embedding model finds the right passage?](/evaluations/embedding-models) | Answers and search |
+| 2026-10-20 | [Can a small model on your own computer be the default AI?](/evaluations/local-models-as-default) | Choosing a model |
+| 2026-09 | [Reading a long source in windows](/evaluations/long-sources) | Answers and search |

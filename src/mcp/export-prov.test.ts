@@ -118,20 +118,26 @@ describe("buildProvJsonLdText scope / includeChats / plan", () => {
     expect(on).toContain("秘密のチャット質問");
   });
 
-  it("索引が無くても doc.noteContexts が計画なら scope の既定は plan", () => {
+  it("索引が無くても doc が計画なら scope の既定は plan（kind の無い旧ノートは旧予約フォルダで読み替え）", () => {
     expect(resolveExportScope(undefined, "plan1", null, planDoc() as any)).toEqual({ scope: "plan" });
     expect(resolveExportScope(undefined, "step1", null, stepDoc() as any)).toEqual({ scope: "note" });
     // 索引のエントリが無い場合も doc に fallback する
     expect(resolveExportScope(undefined, "plan1", { notes: [] } as any, planDoc() as any)).toEqual({ scope: "plan" });
-    // 索引のエントリがあればそちらを優先する
-    expect(resolveExportScope(undefined, "plan1", { notes: [entry("plan1", ["その他"])] } as any, planDoc() as any)).toEqual({ scope: "note" });
+    // kind を持つ索引のエントリ（v37〜）があればそちらを優先する
+    expect(resolveExportScope(undefined, "plan1", { notes: [{ ...entry("plan1", ["その他"]), kind: "note" }] } as any, planDoc() as any)).toEqual({ scope: "note" });
+    // kind の無い古い索引のエントリなら doc で見る（doc の方が新しい）
+    expect(resolveExportScope(undefined, "plan1", { notes: [entry("plan1", ["その他"])] } as any, planDoc() as any)).toEqual({ scope: "plan" });
+    // フォルダに関わらず kind が plan なら計画
+    expect(resolveExportScope(undefined, "x", null, { ...stepDoc(), kind: "plan" } as any)).toEqual({ scope: "plan" });
+    expect(resolveExportScope(undefined, "x", null, { ...planDoc(), kind: "note" } as any)).toEqual({ scope: "note" });
   });
 
-  it("scope=plan で索引が読めず doc でも判定できないときは索引の案内を返す", () => {
-    const r = resolveExportScope("plan", "step1", null, stepDoc() as any);
+  it("scope=plan で索引も doc も読めないときは索引の案内を返す（doc があれば doc で判定する）", () => {
+    const r = resolveExportScope("plan", "plan1", null);
     expect("error" in r && r.error).toContain("索引を読めません");
     expect("error" in r && r.error).toContain("Graphium を一度起動してください");
-    expect("error" in resolveExportScope("plan", "plan1", null)).toBe(true);
+    const step = resolveExportScope("plan", "step1", null, stepDoc() as any);
+    expect("error" in step && step.error).toContain("計画ノートにだけ使えます");
     expect(resolveExportScope("plan", "plan1", null, planDoc() as any)).toEqual({ scope: "plan" });
   });
 

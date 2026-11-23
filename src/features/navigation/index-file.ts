@@ -17,9 +17,11 @@ import type {
 import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
 import { normalizeNoteContexts } from "../note-context/context-tags";
+import { resolveNoteKind } from "../note-context/reserved-folders";
 import { collectOcrAltText, collectOcrText } from "../media-ocr/collect";
 import { inlineContentToText } from "../markdown-export/inline-text";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool";
+import { normalizeSourceDateKind, normalizeStoredSourceDate } from "../../lib/source-date";
 
 // ── 型定義 ──
 
@@ -187,7 +189,21 @@ import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool
 //      読める（後方互換）。プロジェクトの決まり（NoteIndexEntry を変えたら bump）に従う。
 //      bump を必ず実地確認する: Graphium 起動時に v35 インデックスが v36 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 36;
+// v37: ノートの種類（kind: "plan" / "note"）を NoteIndexEntry.kind に写す。
+//      計画かどうかをフォルダ（旧予約フォルダ「計画」）ではなくノート自身の印で決めるようにしたため、
+//      工程グラフ・計画の PROV 書き出し・MCP の export_prov が本体を読まずに計画を見分けられるよう
+//      索引に持つ。kind の無い旧ノートは resolveNoteKind（旧予約フォルダでの読み替え）の結果を写す。
+//      ナレッジ・スキルのページは undefined。保存されたノートは書き換えない。
+//      v36 以前の索引（項目が無い）を読む側は、noteContexts で読み替える（isPlanNote が同じ規則）。
+//      bump を必ず実地確認する: Graphium 起動時に v36 インデックスが v37 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+// v38: 資料の日付（sourceDate）とその種類（sourceDateKind）を NoteIndexEntry に写す。
+//      ノートの作成日時（createdAt）とは別に「その資料がいつのものか」を持たせ、一覧の
+//      「資料の日付」の列と並べ替えに使う。保存形（YYYY / YYYY-MM / YYYY-MM-DD）でない値は写さない。
+//      保存されたノートは書き換えない。v37 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v37 インデックスが v38 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 38;
 
 export type GraphiumIndex = {
   version: number;
@@ -362,6 +378,20 @@ export type NoteIndexEntry = {
    * 未付与ノートは undefined（「未分類」として扱う）。
    */
   noteContexts?: string[];
+  /**
+   * ノートの種類（v37）。doc.kind を写す（無い旧ノートは resolveNoteKind の読み替え結果）。
+   * 計画を見分けるときは直接比べず isPlanNote(entry) を通す（v36 以前の索引の読み替えも兼ねる）。
+   * ナレッジ・スキルのページは undefined。
+   */
+  kind?: "plan" | "note";
+  /**
+   * 資料の日付（v38）。doc.sourceDate を写す（"YYYY" / "YYYY-MM" / "YYYY-MM-DD"）。
+   * 一覧の「資料の日付」の列と並べ替えに使う。無いノート・保存形でない値は undefined。
+   * createdAt（Graphium で作った日時）とは別物。
+   */
+  sourceDate?: string;
+  /** 資料の日付の種類（v38）。doc.sourceDateKind を写す。sourceDate が無ければ持たない */
+  sourceDateKind?: "published" | "presented" | "recorded" | "other";
   /**
    * Claim / Atom の認識論的ステータス（Phase η, v15）。
    * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
@@ -742,6 +772,11 @@ export function buildIndexEntry(
     // ユーザーが手で付ける文脈ラベル（v21）。trim + 空除去 + 重複除去してから mirror。
     // 1 つも無ければ undefined（「未分類」）にして一覧側の分岐を単純化する。
     noteContexts: normalizeNoteContexts(doc.noteContexts),
+    // ノートの種類（v37）。ナレッジ・スキルのページは持たない
+    kind: doc.wikiMeta || doc.skillMeta ? undefined : resolveNoteKind(doc),
+    // 資料の日付（v38）。保存形でない値は写さない
+    sourceDate: normalizeStoredSourceDate(doc.sourceDate),
+    sourceDateKind: normalizeStoredSourceDate(doc.sourceDate) ? normalizeSourceDateKind(doc.sourceDateKind) : undefined,
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
     rebuttalConditions:
       doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0

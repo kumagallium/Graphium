@@ -1,5 +1,7 @@
 # How far can open models alone take each AI feature? <Badge type="info" text="Measured 2026-11-12 · v0.129" />
 
+After this measurement, I measured again with top cloud models and models on a computer added: [Cloud and local models by feature](/evaluations/cloud-and-local-models-by-feature) (2026-11-14).
+
 **What I wanted to know.** The [previous measurement](/evaluations/model-tiers-by-feature) ran each task on 1 to 16 items, once, and one item could swap the ranking. Of the open models, it measured only one through an API (`gpt-oss-120b`). So I increased the items and the runs, fixed the grading procedure first, and measured 9 open models again on the same 18 tasks. What I wanted to know was how far open models can cover the features without a top cloud model.
 
 **In short.** If you pick the model per task, on 13 of the 18 tasks the best model scored at least 90% of the reference point's (`gpt-5.6-luna`) score.

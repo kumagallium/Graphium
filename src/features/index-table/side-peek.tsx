@@ -536,6 +536,14 @@ function SidePeekInner({
         tableMetaStoreRef.current.addColumnType(blockId, columnName, type),
     },
     uploadFile,
+    // 計画テンプレートを差し込んだら、このノートを計画にする。docRef に書けば、差し込みで走る
+    // 自動保存（doSave は ...docRef.current を spread する）が一緒に書き出す
+    onApplyKind: (kind) => {
+      const current = docRef.current;
+      if (!current || current.wikiMeta || current.skillMeta || current.kind === kind) return;
+      docRef.current = { ...current, kind };
+      setDoc((d) => (d ? { ...d, kind } : d));
+    },
   });
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);

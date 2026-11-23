@@ -26,6 +26,7 @@ export function activityTypeLabelKey(type: string): string | null {
     case "snapshot_restore": return "history.type.snapshotRestore";
     case "proposal_adopt": return "history.type.proposalAdopt";
     case "maintenance_undo": return "history.type.maintenanceUndo";
+    case "source_date_set": return "history.type.sourceDateSet";
     default: return null;
   }
 }

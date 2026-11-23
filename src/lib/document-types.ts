@@ -1280,6 +1280,15 @@ export type GraphiumDocument = {
    */
   noteContexts?: string[];
   /**
+   * ノートの種類（v0.154〜）。"plan" は計画ノート（表の行が工程ノートになり、工程グラフ・
+   * 計画の PROV 書き出しの起点になる）、"note" はそれ以外。アプリが作るノートは必ず持つ。
+   * 無い（それより前に保存された・アプリの外で作られた）ノートは、旧予約フォルダ「計画」に
+   * 入っているかで読み替える（note-context/reserved-folders.ts の resolveNoteKind）。
+   * 読み込み時に読み替えた値で埋まり、次に保存されたときに書き込まれる。
+   * 置き場（noteContexts）とは別軸。フォルダを動かしても種類は変わらない。
+   */
+  kind?: "plan" | "note";
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
@@ -1303,6 +1312,21 @@ export type GraphiumDocument = {
     /** 取り込み日時（ISO 8601） */
     importedAt: string;
   };
+  /**
+   * 資料の日付（v0.155〜）。そのノートが記録している資料がいつのものか
+   * （論文の出版日・ブログの公開日・議事録の日付など）。分かっている桁までを
+   * "YYYY" / "YYYY-MM" / "YYYY-MM-DD" で持つ（日を知らないのに -01 で埋めない）。
+   * createdAt（Graphium で作った日時）とは別物で、こちらを書き換えても作成日時は変わらない。
+   * 付けるのはノートの題の下のチップか、MCP の create_note / set_source_date。
+   * 読み書きの検査は lib/source-date.ts。additive optional のため旧データは従来通り動く。
+   */
+  sourceDate?: string;
+  /**
+   * 資料の日付の種類（v0.155〜）。"published"（出版・公開）/ "presented"（発表）/
+   * "recorded"（記録した日。議事録・実験の日など）/ "other"。無ければ「種類は分からない」。
+   * sourceDate が無いときは持たない。時点で切った評価で日付の意味を区別するための余地。
+   */
+  sourceDateKind?: "published" | "presented" | "recorded" | "other";
   createdAt: string;
   modifiedAt: string;
 };

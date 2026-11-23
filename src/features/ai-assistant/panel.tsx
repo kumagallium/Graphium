@@ -1057,16 +1057,6 @@ export function ChatBubble({
                 {t("aiChat.deriveAsNote")}
               </button>
             )}
-            {onMakePlan && (
-              <button
-                onClick={onMakePlan}
-                data-tooltip={t("aiChat.makePlanNoteTitle")}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
-              >
-                <ClipboardList size={10} />
-                {t("aiChat.makePlanNote")}
-              </button>
-            )}
             {onSaveAsAnswer && !savedAnswerId && (
               <button
                 onClick={handleSaveAsAnswer}
@@ -1114,7 +1104,9 @@ export function ChatBubble({
             {/* 回答に付く操作（再生成・分岐）は、同じ回答の「ナレッジに残す」の隣に並べる。
                 以前は ml-auto で行の右端に押し出していたが、幅の広い画面（ノートに紐づかない
                 チャットの全画面）では本文から離れて浮いて見えた。 */}
-            {(onRegenerate || onFork) && (
+            {/* 実験計画ノートにするは、使う人が限られる（ナレッジに残す方が多い）ので、文字のボタンに
+                並べず、再生成・分岐と同じアイコンだけの控えめな操作として後ろに置く。説明はツールチップ */}
+            {(onRegenerate || onFork || onMakePlan) && (
               <span className="flex gap-0.5">
                 {onRegenerate && (
                   <button
@@ -1136,6 +1128,16 @@ export function ChatBubble({
                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                   >
                     <GitFork size={10} />
+                  </button>
+                )}
+                {onMakePlan && (
+                  <button
+                    onClick={onMakePlan}
+                    data-tooltip={t("aiChat.makePlanNoteTitle")}
+                    aria-label={t("aiChat.makePlanNote")}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <ClipboardList size={10} />
                   </button>
                 )}
               </span>

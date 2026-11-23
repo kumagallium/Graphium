@@ -68,6 +68,7 @@ const EXPECTED_TOOLS = [
   "find_notes_using", "list_entities", "trace_lineage", "create_note", "save_answer", "list_folders",
   // 手入れ
   "revise_topic", "merge_topics", "archive_page", "restore_page", "list_operations", "undo_operation",
+  "set_source_date",
   // 知見を外の AI に作らせる（課題を配って答えを受け取る）
   "start_claim_task", "find_claims_for_task", "submit_claims", "submit_rewrite",
   "start_insight_task", "submit_insights", "submit_insight_review",
@@ -576,6 +577,17 @@ try {
   check("モデル ID が generatedBy に残る", newDoc.generatedBy?.model === "test-model");
   check("Markdown がブロックに変換される", newDoc.pages[0].blocks.some((b) => b.type === "heading"));
 
+  const withDate = await call("create_note", { title: "2012 年の論文の要点", body: "本文", sourceDate: "2012-03-15" });
+  const withDateId = withDate.match(/noteId: ([0-9a-f-]{36})/)?.[1];
+  const withDateDoc = JSON.parse(readFileSync(join(root, "notes", `${withDateId}.json`), "utf8"));
+  check(
+    "create_note の sourceDate が資料の日付になり、作成日時は書いた時刻のまま",
+    withDate.includes("資料の日付: 2012-03-15") &&
+      withDateDoc.sourceDate === "2012-03-15" &&
+      withDateDoc.createdAt.slice(0, 4) !== "2012",
+    withDate,
+  );
+
   const research = await call("search_notes", { query: "MCP から書いた" });
   check("作ったノートがそのまま検索で引ける", research.includes(newId));
 
@@ -778,6 +790,26 @@ try {
   check("archive_page が成功し archivedAt が立つ", archived.includes("アーカイブしました") && Boolean(entryOf(TOPIC_2)?.archivedAt), archived);
   const restored = await call("restore_page", { pageId: TOPIC_2 });
   check("restore_page で戻る", restored.includes("戻しました") && !entryOf(TOPIC_2)?.archivedAt, restored);
+
+  // set_source_date: 既存ノートに資料の日付だけを付け、作成日時・本文は変えない。null で外せる
+  const noteAPath = join(root, "notes", `${NOTE_A}.json`);
+  const noteABefore = JSON.parse(readFileSync(noteAPath, "utf8"));
+  const dated = await call("set_source_date", { items: [{ noteId: NOTE_A, sourceDate: "2012年3月" }] });
+  const noteAAfter = JSON.parse(readFileSync(noteAPath, "utf8"));
+  check(
+    "set_source_date が資料の日付だけを付ける（作成日時・本文はそのまま）",
+    dated.includes("資料の日付を付けました") &&
+      noteAAfter.sourceDate === "2012-03" &&
+      noteAAfter.createdAt === noteABefore.createdAt &&
+      JSON.stringify(noteAAfter.pages[0].blocks) === JSON.stringify(noteABefore.pages[0].blocks),
+    dated,
+  );
+  check("note-index.json に資料の日付が写る", entryOf(NOTE_A)?.sourceDate === "2012-03");
+  check("get_note が資料の日付を出す", (await call("get_note", { noteId: NOTE_A })).includes("資料の日付: 2012-03"));
+  const badDate = await call("set_source_date", { items: [{ noteId: NOTE_A, sourceDate: "そのうち" }] });
+  check("読めない日付では何も変えない", badDate.startsWith("INVALID_ARGUMENT") && JSON.parse(readFileSync(noteAPath, "utf8")).sourceDate === "2012-03", badDate);
+  const undated = await call("set_source_date", { items: [{ noteId: NOTE_A, sourceDate: null }] });
+  check("null で資料の日付を外せる", undated.includes("なし（外した）") && JSON.parse(readFileSync(noteAPath, "utf8")).sourceDate === undefined, undated);
 
   // 索引に無い wiki ページを直接置いて archive_page
   const UNLISTED = "dddddddd-0000-4000-8000-000000000013";

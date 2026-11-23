@@ -39,7 +39,7 @@ A new note starts as "New note". If you would rather name it once it is written,
 
 | Control | What it does |
 |---|---|
-| **Sort by modified** / **Sort by created** / **Sort by title** / **Sort by outgoing links** | Reorders the list. The default is by creation date. |
+| **Sort by modified** / **Sort by created** / **Sort by title** / **Sort by outgoing links** | Reorders the list. The default is by creation date. **Source date** joins the menu once a note has a [source date](#source-date). |
 | **Filter by label** | Show only notes that contain a given provenance label. |
 | **Filter by author** | Filter by who wrote the note — and which LLM assisted. |
 | **Filter by folder** | Filter by [folder](#folders). |
@@ -74,7 +74,21 @@ Selecting rows lets you act in bulk: move notes to trash, archive them, or add a
 
 ![The notes list with link counts, labels, and folder columns](/screenshots/notes-list.png)
 
-When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+When the window is narrow, the list leaves out some columns so the title keeps a readable width: **Author** first, then **Created**, **Source date**, **Folder**, **Labels**, and the book icon that counts knowledge items. When even that is not enough, the title column is narrowed a little further so the **Modified** column is never cut off. **Created** order stays available in the sort menu at the top left even when that column is hidden. A column you are filtering or sorting by stays visible.
+
+### Source date <Badge type="tip" text="Added in v0.155.0 (2026-11-22)" /> {#source-date}
+
+A note made today from a 2012 paper is still about something from 2012. The **source date** says when the source itself is from — a paper's publication date, a blog post's date, the date of a meeting — and is kept apart from the date the note was made, which never changes. That way a note you bring in later does not pretend to be older than it is, and you can still line up your notes by when things happened.
+
+- **Setting it.** Under the note's title, next to the folder chips, press **+ Source date** and type the date. Write only what you know: `2012`, `2012-03` or `2012-03-15` (`2012/3/15` and `2012年3月15日` are read too). A year stays a year; it is not filled in as January 1. Below the box you see how it will be saved, for example "Will be set to 2012-03 (year and month)". Press **Set** or `Enter`.
+- **Changing or removing it.** Press the chip (**Source date 2012-03**) to change the date, or **Remove** to take it off.
+
+![Under the note title "Hydration level and crumb structure in sourdough": the folder chip Sources/Papers, + Folder, and the chip Source date 2012-03. The chip is open: a box with 2012-03 typed in, the line "Will be set to 2012-03 (year and month)", and the Remove and Set buttons](/screenshots/source-date-chip.png)
+- **In the notes list.** Once any note has a source date, a **Source date** column appears and **Source date** joins the sort menu. Sorting by it puts notes without a source date by their creation date, so your own notes and the sources you brought in fall into one timeline. A year-only date sorts at the start of its year.
+
+![The notes list sorted by Source date, newest first. The two loaf trials have no source date and sit at their creation dates in November 2026; below them come a blog post from 2026-11-01, a talk from 2019 and a paper from 2012-03, although all three notes were created on 2026-11-22](/screenshots/notes-list-source-date.png)
+- **Elsewhere.** Topics date each citation in their *Disagreements & open questions* section with the source date (see [Knowledge](/knowledge-layer)). **Home** stays a log of when you kept things, so it keeps using the creation date.
+- **From an assistant.** An assistant connected through [MCP](/mcp-server#source-date-from-your-assistant) can pass the source date when it saves a note, and can add it to notes you already have while Graphium is closed.
 
 ## Editor basics
 
@@ -346,11 +360,11 @@ Opening a note that uses columns in an **older version of Graphium** silently re
 | Template | What you get |
 |---|---|
 | **Plan Template** | "Comparison plan with a table where each item has its own detail note" |
-| **Run Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
+| **Operation Template** | "Per-item record with PROV-labeled steps and prev-step linking" |
 
-The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate a Run note per row of its table.
+The modal is searchable and lists each template's **Source** (**Official** or **Mine**) and **Tags**. The two templates are designed as a pair: plan the comparison in one note, then generate an Operation note per row of its table.
 
-![The Insert Template modal with the Plan and Run templates](/screenshots/template-picker.png)
+![The Insert Template modal with the Plan and Operation templates](/screenshots/template-picker.png)
 
 <Badge type="tip" text="Added in v0.88.0 (2026-10-09)" /> To keep a page as your own template, open the note's **⋯** menu and choose **Save as template**, then give it a name and an optional description. It is stored in your current storage, so no shared folder is needed. Your templates appear in the same table, after the built-in ones and before the team's, marked **Mine** in the Source column; selecting one inserts it into the current note. Hover a row to show **Rename** and **Delete** at its right edge: rename in place (Enter to confirm, Esc to cancel), and delete asks for confirmation first.
 
@@ -358,7 +372,7 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 
 ![A personal template open for editing, with the Editing template bar, Revert changes and Done](/screenshots/template-edit.png)
 
-A template can also start a **new note** instead of being inserted into the one you have open. In the left nav, open the **▾** next to **+ Note** and choose **From a template…**: built-in, your own and your team's templates are listed together. Selecting one creates a new note from its contents and opens it. The note takes the template's name as its title and keeps a record of which template it came from. Creating a note from a personal template does not carry over a step's linked attributes (such as who ran it and its status). <Badge type="tip" text="Added in v0.109.2 (2026-11-02)" /> A new note from the **Plan template** is filed in the **Plan** folder, so it starts out as a [Plan note](#folders) and the rows of its table become operations.
+A template can also start a **new note** instead of being inserted into the one you have open. In the left nav, open the **▾** next to **+ Note** and choose **From a template…**: built-in, your own and your team's templates are listed together. Selecting one creates a new note from its contents and opens it. The note takes the template's name as its title and keeps a record of which template it came from. Creating a note from a personal template does not carry over a step's linked attributes (such as who ran it and its status). <Badge type="tip" text="Added in v0.109.2 (2026-11-02)" /> A new note from the **Plan template** starts out as a [Plan note](#folders), so the rows of its table become operations. <Badge type="tip" text="Changed in v0.154.0 (2026-11-22)" /> It is no longer filed in a **Plan** folder.
 
 If your team has a shared folder set up, pages your teammates have shared as templates appear as more rows in the same table, after the built-in ones, marked with a **Team** badge in the Source column — see [Storage & sync](/storage-and-sync#sharing-notes-with-your-team). <Badge type="tip" text="Added in v0.54.0 (2026-09-04)" />
 
@@ -714,7 +728,7 @@ Under the title of every note sits a **Folder** button. Folder names are free-fo
 
 ![The Folder button under a note title with its dropdown open: a "Folder" heading, a "Search folders, or type to create…" field, and two unchecked folder rows, Bread (3) and Reading (2).](/screenshots/folder-picker.png)
 
-One name is reserved <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" />: a folder named **Plan** (or its Japanese equivalent, "計画" — matching is not case-sensitive, and it applies to subfolders of Plan too) turns any note filed there into a **Plan note**, and the rows of its [table with a note per row](#the-index-table) into **Operation notes**. Plan and Plan/anything folders don't offer Rename or Delete in the folder menu — emptying the folder (moving its notes elsewhere) removes it the same way any folder with nothing left in it does.
+**Plan notes** <Badge type="tip" text="Added in v0.74.0 (2026-09-15)" /> <Badge type="tip" text="Changed in v0.154.0 (2026-11-22)" />: choose **Treat as a plan** in a note's **⋯** menu (a check mark shows it is on) and the note becomes a **Plan note** — the rows of its [table with a note per row](#the-index-table) become **Operation notes**. Choose it again to turn the note back into an ordinary note. The **Plan Template** and **Make an experiment plan** in [AI chat](/ai-chat-and-ask) start a note that is already a plan, and inserting the Plan Template into a note you have open (`/` → **Template**) turns that note into a plan too. Folders have nothing to do with it: a plan stays a plan wherever you file it. Earlier versions made a note a plan by filing it in a folder named **Plan** ("計画" in Japanese); notes you filed there stay plans, and that folder is now an ordinary folder you can rename or delete.
 
 <Badge type="tip" text="Added in v0.49.0 (2026-08-31)" /> The sidebar's **Notes** tab lists your **Folders** too (open or close the list with the **▸** beside **All Notes**). Folders holding the most notes come first (a folder counts the notes in its subfolders too; folders with the same count go by name). It shows up to eight top-level folders; with more, **Show N more** appears — press it to see them all, and it turns into **Show less**. If the selected folder is among the hidden ones, the full list is open from the start. Click one and the notes list shows only what is inside it. Its subfolders sit as rows at the top of the list — click one to open it; the notes inside a subfolder don't mix into the parent's list, just as in Finder or File Explorer. Notes that are in no folder collect under **Unfiled**. **New folder** creates an empty folder to fill later, and the **+** that appears when you hover a folder creates one inside it (nesting goes one level deep).
 

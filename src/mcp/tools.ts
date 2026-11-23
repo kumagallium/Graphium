@@ -20,6 +20,7 @@ import { exportAsterismKnowledge } from "./export-knowledge";
 import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { noteLinkKind } from "../lib/note-link-kind";
+import { SOURCE_DATE_KINDS, normalizeSourceDateKind, normalizeStoredSourceDate } from "../lib/source-date";
 import { traceLineage, upstreamOf } from "./lineage";
 import { collectSteps, noteToMarkdown } from "./note-text";
 import { saveAnswer } from "./save-answer";
@@ -278,6 +279,12 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
       const parts: string[] = [`# ${doc.title ?? "(untitled)"}`, `noteId: ${noteId}`];
 
       if (entry?.modifiedAt) parts.push(`更新: ${entry.modifiedAt}`);
+      // 資料の日付（その資料がいつのものか。作成・更新の日時とは別）
+      const sourceDate = normalizeStoredSourceDate((doc as { sourceDate?: unknown }).sourceDate);
+      if (sourceDate) {
+        const kind = normalizeSourceDateKind((doc as { sourceDateKind?: unknown }).sourceDateKind);
+        parts.push(`資料の日付: ${sourceDate}${kind ? `（${kind}）` : ""}`);
+      }
       if (doc.generatedBy) {
         const g = doc.generatedBy as { agent?: string; model?: string };
         parts.push(`書いたもの: ${g.agent ?? "human"}${g.model ? ` / ${g.model}` : ""}`);
@@ -691,13 +698,30 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
               "合うものがあればその path を使う。会話の記録をまとめておくと、" +
               "search_notes / list_topics の folder でその範囲だけを探せる",
           ),
+        sourceDate: z
+          .string()
+          .optional()
+          .describe(
+            "資料の日付（その資料がいつのものか）。論文の出版日・ブログの公開日・議事録の日付など、" +
+              "ノートが記録している資料に日付があるときに渡す。分かっている桁まで書く: " +
+              "\"2012\"（年だけ）/ \"2012-03\"（年月）/ \"2012-03-15\"。日を知らないのに -01 で埋めない。" +
+              "ノートの作成日時は書き込んだ時刻のまま変わらない（資料の日付は別に持つ）。" +
+              "会話のメモなど、資料の日付が無いノートでは省く",
+          ),
+        sourceDateKind: z
+          .enum(SOURCE_DATE_KINDS)
+          .optional()
+          .describe(
+            "資料の日付の種類（sourceDate を渡すときだけ）: published（出版・公開）/ presented（発表）/ " +
+              "recorded（記録した日。議事録・実験の日など）/ other。分からなければ省く",
+          ),
       },
       // 対応しているクライアントでは、作ったノートを会話の中にプレビューとして描く（app-tools.ts）
       _meta: NOTE_PREVIEW_TOOL_META,
       // 新しいノートを足すだけ（呼ぶたびに別のノートができる）
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ title, body, sessionId, model, citations, folder }) => {
+    async ({ title, body, sessionId, model, citations, folder, sourceDate, sourceDateKind }) => {
       try {
         const result = createNote({
           title,
@@ -706,6 +730,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
           model,
           citations,
           folder,
+          sourceDate,
+          sourceDateKind,
           client: ctx.getClientName?.(),
         });
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
@@ -722,6 +748,9 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             `  タイトル: ${result.title}`,
             `  noteId: ${result.noteId}`,
             ...(result.doc.noteContexts ? [`  フォルダ: ${result.doc.noteContexts[0]}`] : []),
+            ...(result.doc.sourceDate
+              ? [`  資料の日付: ${result.doc.sourceDate}${result.doc.sourceDateKind ? `（${result.doc.sourceDateKind}）` : ""}`]
+              : []),
             `  ファイル: ${result.filePath}`,
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,

@@ -116,6 +116,27 @@ describe("buildIndexEntry", () => {
     expect(buildIndexEntry("file-2", mockDoc()).derivedFromNoteId).toBeUndefined();
   });
 
+  it("ノートの種類（kind）を写す。無い旧ノートは旧予約フォルダで読み替える（v37）", () => {
+    expect(buildIndexEntry("n", mockDoc({ kind: "plan" })).kind).toBe("plan");
+    expect(buildIndexEntry("n", mockDoc({ kind: "note", noteContexts: ["計画"] })).kind).toBe("note");
+    expect(buildIndexEntry("n", mockDoc({ noteContexts: ["計画"] })).kind).toBe("plan");
+    expect(buildIndexEntry("n", mockDoc({ noteContexts: ["焼結"] })).kind).toBe("note");
+    // ナレッジのページは種類を持たない
+    expect(
+      buildIndexEntry("n", mockDoc({ wikiMeta: { kind: "claim" } as GraphiumDocument["wikiMeta"] })).kind,
+    ).toBeUndefined();
+  });
+
+  it("資料の日付（sourceDate）を写す。保存形でない値は写さない（v38）", () => {
+    expect(buildIndexEntry("n", mockDoc({ sourceDate: "2012-03" })).sourceDate).toBe("2012-03");
+    expect(buildIndexEntry("n", mockDoc({ sourceDate: "2012" })).sourceDate).toBe("2012");
+    expect(buildIndexEntry("n", mockDoc({ sourceDate: "2012/03" })).sourceDate).toBeUndefined();
+    expect(buildIndexEntry("n", mockDoc()).sourceDate).toBeUndefined();
+    // 作成日時は資料の日付に引きずられない
+    const entry = buildIndexEntry("n", mockDoc({ sourceDate: "2012-03", createdAt: "2026-11-22T00:00:00Z" }));
+    expect(entry.createdAt).toBe("2026-11-22T00:00:00Z");
+  });
+
   it("templateFrom を種類 + id にして写す（v34）", () => {
     const from = (extra: object) =>
       buildIndexEntry("n", mockDoc({ templateFrom: { title: "T", usedAt: "2026-11-01T00:00:00Z", ...extra } })).templateFrom;
@@ -735,7 +756,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(36);
+    expect(INDEX_SCHEMA_VERSION).toBe(38);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");

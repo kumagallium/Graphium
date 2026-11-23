@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // 計画（Plan）の PROV-JSON-LD 書き出し
 //
-// 計画ノート（「計画」フォルダのノート）の表の行 = 工程ノートを、P-Plan の
+// 計画ノート（kind が plan のノート。isPlanNote）の表の行 = 工程ノートを、P-Plan の
 // Plan / Step / Variable と、各工程ノートの手順グラフ（Activity / Entity）を
 // 1 つの @graph に並置して書き出す。
 //
@@ -184,7 +184,7 @@ function dedupeIdentical(nodes: W3CProvNode[]): W3CProvNode[] {
 export function buildPlanProvJsonLd(input: PlanProvExportInput): W3CProvDocument {
   const { planNoteId, index, docs, notes } = input;
   const entryOf = (id: string) => index.notes.find((n) => n.noteId === id);
-  const isPlan = (id: string) => isPlanNote(entryOf(id)?.noteContexts);
+  const isPlan = (id: string) => isPlanNote(entryOf(id));
 
   // ── 警告 ──
   const warningNodes: W3CProvNode[] = [];

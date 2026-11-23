@@ -1,7 +1,8 @@
 // ノート一覧（すべてのノート）の列の幅と、狭いときに隠す順
 //
-// 隠す順: 作者 → 作成日 → フォルダ → ラベル → 本アイコン（知見の数）。参照先・被参照・チェック・
-// 更新日は隠さない（中身を識別する・操作に要る列）。作成日順はツールバーの並べ替えから選べるので、
+// 隠す順: 作者 → 作成日 → 資料の日付 → フォルダ → ラベル → 本アイコン（知見の数）。参照先・被参照・チェック・
+// 更新日は隠さない（中身を識別する・操作に要る列）。資料の日付の列は、どのノートにも資料の日付が
+// 無いときは列ごと出さない（ラベル列と同じ）。資料の日付順で並べている間は隠さない。作成日順はツールバーの並べ替えから選べるので、
 // 列が隠れても並べ替えは効いたまま。作者・フォルダ・ラベル・本アイコンは列ヘッダからしか
 // 並べ替えられないので、その基準で並べている間や絞り込み中は隠さない（pinned）。
 // 全部隠してもなお枠（表の内側）が 635px（= 隠さない列 378 + タイトル 240 + スクロールバー 17）
@@ -13,7 +14,7 @@
 
 import type { ColumnPlan, HideableColumn } from "../../lib/responsive-columns";
 
-export type NoteListHideableColumn = "author" | "createdAt" | "folder" | "labels" | "knowledge";
+export type NoteListHideableColumn = "author" | "createdAt" | "sourceDate" | "folder" | "labels" | "knowledge";
 
 /** タイトル列の最小幅（日本語で 1 行 12 字前後。これを割るなら列を隠す） */
 export const NOTE_LIST_TITLE_MIN_WIDTH = 240;
@@ -34,6 +35,8 @@ export const NOTE_LIST_COLUMN_WIDTH = {
   author: 96,
   /** 「YYYY-MM-DD HH:MM」が nowrap で収まる実幅（w-[100px] は実測 126px に広がっていた） */
   createdAt: 126,
+  /** 「YYYY-MM-DD」と英語の見出し "Source date" が nowrap で収まる幅 */
+  sourceDate: 104,
   folder: 150,
   labels: 140,
 } as const;
@@ -45,6 +48,8 @@ export interface NoteListColumnOptions {
   hasActions: boolean;
   /** ラベル列（どのノートにもラベルが無いときは列ごと無い） */
   hasLabels: boolean;
+  /** 資料の日付の列（どのノートにも資料の日付が無いときは列ごと無い）。省略時は無い扱い */
+  hasSourceDate?: boolean;
   /** 参照先の列（どのノートにも値が無いときは列ごと無い）。省略時は出ている扱い */
   hasOutgoing?: boolean;
   /** 被参照の列（同上）。省略時は出ている扱い */
@@ -64,6 +69,7 @@ export function buildNoteListColumnPlan(
   const order: HideableColumn<NoteListHideableColumn>[] = [
     { key: "author", width: W.author },
     { key: "createdAt", width: W.createdAt },
+    ...(opts.hasSourceDate ? [{ key: "sourceDate" as const, width: W.sourceDate }] : []),
     { key: "folder", width: W.folder },
   ];
   if (opts.hasLabels) order.push({ key: "labels", width: W.labels });

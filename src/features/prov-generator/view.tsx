@@ -22,7 +22,6 @@ import {
   subscribeLatestProcessIndex,
 } from "../network-graph/process-index";
 import { PlanFlowEditor } from "../network-graph/plan-flow-editor";
-import { isPlanNote } from "../note-context/reserved-folders";
 import { useLinkStore } from "../block-link/store";
 import { t, getDisplayLabelName } from "../../i18n";
 import { normalizeFaviconUrl } from "../asset-browser/media-index";
@@ -251,7 +250,7 @@ export function ProvGraphPanel({
   doc,
   noteId,
   editorRef,
-  noteContexts,
+  isPlan = false,
   index,
   captureIndex,
   onCreateEdgeMemo,
@@ -262,8 +261,8 @@ export function ProvGraphPanel({
   noteId?: string | null;
   /** メインエディタへの参照。フロービューのノード操作（追加・リネーム・削除）に使う */
   editorRef?: { current: any };
-  /** 計画ノート判定（「計画」フォルダ）に使う。計画ノートだけサブタブ「作業手順 / 工程」を出す */
-  noteContexts?: string[];
+  /** 計画ノートか（isPlanNote の結果）。計画ノートだけサブタブ「作業手順 / 工程」を出す */
+  isPlan?: boolean;
   index?: GraphiumIndex | null;
   /**
    * 線（つながり）のメモの一覧を引く元。noteId と一緒に渡すと、作業手順・工程の線にメモの印が付き、
@@ -276,7 +275,6 @@ export function ProvGraphPanel({
   onOpenMemo?: (memoId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isPlan = isPlanNote(noteContexts);
   const [subTab, setSubTab] = useState<"workSteps" | "operations">("operations");
   // 「工程」タブの統計は PlanFlowEditor から onGraphChange で受け取る
   const [planFlowInfo, setPlanFlowInfo] = useState<{ graph: FlowGraphData; unresolvedPlanned?: number } | null>(null);

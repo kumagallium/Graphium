@@ -73,8 +73,18 @@ function recordingStores() {
   return { stores, calls };
 }
 
-function Host({ name, editor, stores }: { name: string; editor: any; stores: TemplateTargetStores }) {
-  const picker = useTemplatePicker(editor, { stores });
+function Host({
+  name,
+  editor,
+  stores,
+  onApplyKind,
+}: {
+  name: string;
+  editor: any;
+  stores: TemplateTargetStores;
+  onApplyKind?: (kind: "plan" | "note") => void;
+}) {
+  const picker = useTemplatePicker(editor, { stores, onApplyKind });
   return (
     <div data-testid={name} data-open={String(picker.open)}>
       {picker.dialog}
@@ -88,13 +98,13 @@ function Host({ name, editor, stores }: { name: string; editor: any; stores: Tem
  * 登録 → 解除 → 登録と二重に走るので、その後も受け口が残っていることを含めて見る
  */
 function renderBoth() {
-  const main = { editor: makeEditor(), ...recordingStores() };
-  const peek = { editor: makeEditor(), ...recordingStores() };
+  const main = { editor: makeEditor(), ...recordingStores(), kinds: [] as string[] };
+  const peek = { editor: makeEditor(), ...recordingStores(), kinds: [] as string[] };
   const view = render(
     <StrictMode>
       <LocaleProvider>
-        <Host name="main" editor={main.editor} stores={main.stores} />
-        <Host name="peek" editor={peek.editor} stores={peek.stores} />
+        <Host name="main" editor={main.editor} stores={main.stores} onApplyKind={(k) => void main.kinds.push(k)} />
+        <Host name="peek" editor={peek.editor} stores={peek.stores} onApplyKind={(k) => void peek.kinds.push(k)} />
       </LocaleProvider>
     </StrictMode>,
   );
@@ -161,6 +171,26 @@ describe("スラッシュメニューの「テンプレート」", () => {
     expect(main.calls).toEqual([]);
     // 選んだらピッカーは閉じる
     expect(host("peek").dataset.open).toBe("false");
+    // 計画テンプレートを差し込んだノート（ピーク）だけが計画になる
+    expect(peek.kinds).toEqual(["plan"]);
+    expect(main.kinds).toEqual([]);
+  });
+
+  it("計画以外の公式テンプレートを差し込んでも、ノートの種類は変えない", () => {
+    const { main, host } = renderBoth();
+
+    pressTemplateItem(main.editor);
+    const opRow = within(host("main"))
+      .getAllByTestId("official-template-row")
+      .find((row) => row.textContent?.includes(t("template.experiment.title")));
+    expect(opRow).toBeDefined();
+    fireEvent.click(opRow!);
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(main.editor.getBlock("slash")).toBeNull();
+    expect(main.kinds).toEqual([]);
   });
 
   it("閉じた（アンマウントした）エディタの受け口は外れ、押しても何も起きない", () => {

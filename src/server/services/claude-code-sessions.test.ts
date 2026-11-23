@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  __resetConversationSummaryCacheForTest,
   listClaudeConversations,
   listClaudeProjectDirs,
   listClaudeSessionFiles,
@@ -252,5 +253,38 @@ describe("listClaudeConversations", () => {
 
   it("存在しない baseDir は空配列", async () => {
     expect(await listClaudeConversations(join(base, "no-such-dir"))).toEqual([]);
+  });
+
+  it("大きさと更新時刻が同じ記録は読み直さず、変わった記録だけ読み直す", async () => {
+    __resetConversationSummaryCacheForTest();
+    putSession(DIR, SID1, [rec("user", "生地をこねる")]);
+    const path = join(base, DIR, `${SID1}.jsonl`);
+    const fixed = new Date("2026-01-02T03:04:05.000Z");
+    utimesSync(path, fixed, fixed);
+    const first = await listClaudeConversations(base);
+    expect(first[0]?.summary.ownTurns).toBe(1);
+
+    // 中身だけ差し替えて、大きさと更新時刻を戻す → 覚えた集計が返る（読み直していない）
+    const original = readFileSync(path, "utf8");
+    writeFileSync(path, original.replace("生地をこねる", "生地をまるめ"));
+    expect(statSync(path).size).toBe(Buffer.byteLength(original));
+    utimesSync(path, fixed, fixed);
+    const second = await listClaudeConversations(base);
+    expect(second[0]?.summary).toBe(first[0]?.summary);
+
+    // 発言が増えて更新時刻も変わる → 読み直す
+    putSession(DIR, SID1, [rec("user", "生地をこねる"), rec("user", "一次発酵を待つ")]);
+    const third = await listClaudeConversations(base);
+    expect(third[0]?.summary.ownTurns).toBe(2);
+  });
+
+  it("消えた記録は一覧から外れる", async () => {
+    __resetConversationSummaryCacheForTest();
+    putSession(DIR, SID1, [rec("user", "生地をこねる")]);
+    putSession(DIR, SID2, [rec("user", "窯を温める")]);
+    expect(await listClaudeConversations(base)).toHaveLength(2);
+    rmSync(join(base, DIR, `${SID2}.jsonl`));
+    const list = await listClaudeConversations(base);
+    expect(list.map((l) => l.ref.fileName)).toEqual([`${SID1}.jsonl`]);
   });
 });

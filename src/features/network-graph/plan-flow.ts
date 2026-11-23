@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // 工程フローのグラフ構築（純関数）
 //
-// 計画ノート（「計画」フォルダに入っているノート）のインデックステーブル
+// 計画ノート（kind が plan のノート。isPlanNote）のインデックステーブル
 // （note-link 列を持つ表）の行 = 工程ノートを、StepFlowView に流す
 // FlowGraphData へ組み立てる。docs/internal/note-chain-plan.md §2.3。
 //
@@ -414,7 +414,7 @@ export function collectOperationNoteIds(index: GraphiumIndex, planNoteId: string
 export function findPlanNotesOf(index: GraphiumIndex | null, noteId: string): NoteIndexEntry[] {
   if (!index) return [];
   return findIncomingReferences(index, noteId)
-    .filter((n) => isPlanNote(n.noteContexts) && !n.archivedAt && !n.deletedAt)
+    .filter((n) => isPlanNote(n) && !n.archivedAt && !n.deletedAt)
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
@@ -551,7 +551,7 @@ export function buildPlanFlowGraph(input: {
     }
 
     const entry = noteEntryOf(deepNoteId);
-    const isPlan = index ? isPlanNote(entry?.noteContexts) : false;
+    const isPlan = index ? isPlanNote(entry) : false;
 
     if (isPlan && index) {
       const childIds = collectOperationNoteIds(index, deepNoteId);

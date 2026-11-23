@@ -1078,8 +1078,8 @@ stubs that mark chat-derived Wiki sources.
 
 ##### The plan export
 
-`buildPlanProvJsonLd` takes a plan note (a note in the reserved "plan"
-folder), the index, and the documents of the plan and of every operation note
+`buildPlanProvJsonLd` takes a plan note (a note with `kind: "plan"`),
+the index, and the documents of the plan and of every operation note
 it reaches (nested plans too, with a set of ancestors to stop cycles: the
 root plan's row notes are depth 0 and the walk stops past depth 8). It reads the **first page's** table only
 (`collectOperationRows`), as the plan graph does. A note that is missing from
@@ -1444,7 +1444,7 @@ field is never written.
 
 Note the naming collision: this "plan note" (an ingestion output linked
 to execution notes via `partOfPlanNoteId`) is a different concept from
-the "plan note" defined by the reserved "計画"/"plan" folder
+the "plan note" marked by `kind: "plan"` on the note
 (`src/features/note-context/reserved-folders.ts`) — the latter is the
 parent of a set of operation notes, made by hand or from a chat answer
 (below). They may converge in the future, but today they are independent.
@@ -1452,7 +1452,7 @@ parent of a set of operation notes, made by hand or from a chat answer
 #### Chat answer → experiment plan
 
 An AI chat answer that proposes the next experiment can be turned into
-a plan note of the reserved-folder kind (**Make an experiment plan**
+a plan note (`kind: "plan"`; **Make an experiment plan**
 under the answer, in note chat and standalone chat):
 
 1. `POST /api/prov/plan-from-answer`
@@ -1464,8 +1464,8 @@ under the answer, in note chat and standalone chat):
    rules.
 2. The client aligns the names with the library (same two passes as
    above) and builds the documents
-   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note in the
-   reserved plan folder whose table has a `note-link` first column and one
+   (`src/features/url-to-prov/plan-note-builder.ts`): a plan note
+   (`kind: "plan"`, filed with its run notes in "Procedures") whose table has a `note-link` first column and one
    column per varied parameter, and one run note per row holding the
    common procedure with that row's values substituted into the matching
    attribute keys.
@@ -1793,8 +1793,8 @@ Notes:
   becomes the link's `targetQuote` so the `@source` mention opens a PDF at
   that passage, and is the source check's fallback quote (below). Under
   *Disagreements & open questions*, each citation is followed by the
-  source's date — a note's creation date, or a paper's year from its
-  source info — added mechanically when the body is rendered
+  source's date — a note's source date (`sourceDate`), else its creation
+  date, or a paper's year from its source info — added mechanically when the body is rendered
   (`setSourceDateLookup`, set by `note-app`), so a reader can tell which
   figure came later. A note can also change after the page was written,
   and the page isn't revised until the note is read again. So when a
@@ -4573,8 +4573,8 @@ editing the notes themselves.
   `scripts/claude-code-skill/save-to-graphium/`
 - Reading, searching and adding notes (`create_note` / `save_answer`) need no
   running Graphium: the app can be closed, or not installed at all. The tools
-  that rewrite knowledge pages refuse while the app runs (see "Running app"
-  below)
+  that rewrite knowledge pages — and `set_source_date`, the one tool that edits
+  an existing note — refuse while the app runs (see "Running app" below)
 
 This target deliberately does **not** reuse the Node server (§6). The server
 exists to hold API keys and talk to LLMs; the MCP server holds neither, because
@@ -4592,7 +4592,7 @@ Tools:
 | `list_topics` | index of topics (title + one-line summary + how many sources, or claims for a legacy topic, it draws on), with the total before `limit` — read this before `get_topic`. `folder` keeps only topics derived from notes in that folder |
 | `get_topic` | one topic's body plus what it cites: for a source-based topic the sources themselves (notes, PDFs, Word files, web pages, by name); for a legacy claim-based topic its member claims and each claim's sources (the 2-hop topic → claim → note) |
 | `trace_lineage` | what a note was derived from, and what was derived from it — walks both the PROV layer and the knowledge layer, tagging which one each edge is. Imported sources (`pdf:` / `document:` / `url:`) appear as named terminal nodes, and can also be the starting point ("what came from this PDF?"). Notes linked with an `@` mention are listed separately as connections: they have no direction (a later note often mentions an earlier one), so the assistant is told to judge order from the notes themselves. `get_note` splits the same way (upstream / notes derived from this one / notes linked with `@`) |
-| `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later |
+| `create_note` | write a new note (never edits existing ones). `folder` puts it in a folder (`noteContexts`), so conversation records can be gathered in one place and searched with `folder` later. `sourceDate` sets the date of the source the note records (`GraphiumDocument.sourceDate`, parsed by `parseSourceDate`; an unreadable value fails the call instead of being dropped) and `sourceDateKind` its kind; `createdAt` stays the write time |
 | `list_folders` | the folder tree the sidebar shows (`collectFolderSource` + `buildFolderTree` over the index, merged with the empty-folder definitions in `appdata/folders.json`), with note counts and the number of unfiled notes. Lets the agent pick an existing `folder` for `create_note` / `search_notes` / `list_topics` instead of inventing a near-duplicate |
 | `save_answer` | write a new answer page (`WikiKind === "answer"`) into the knowledge layer — the MCP-side counterpart of the in-app "Keep as knowledge" action on a chat message (§3.1c). Unlike `create_note`, the page it creates is later revised by Graphium's own knowledge-layer maintenance (ingest, lint, source check) |
 | `export_prov` | a note's or a plan's PROV-DM as W3C PROV JSON-LD. `scope: "note"` → `buildNoteProvJsonLd` (procedure graph, note `Entity`, body text, memos from `readCaptureIndex`, materials from the media index, named tables), `scope: "plan"` → `buildPlanProvJsonLd` (the plan note and the operation notes it links to). The default is `plan` when the target is a plan note, else `note`. `includeBody` (default true) and `includeChats` (default false) switch the body text and AI chats. See "Note records, annotations and plan export in PROV-JSON-LD" in §3.2 |
@@ -4608,6 +4608,7 @@ Tools:
 | `archive_page` / `restore_page` | archive / un-archive (or restore from the Trash). `restore_page` is not recorded, like the app's un-archive |
 | `list_operations` | maintenance operations (from `maint-run-*`), including ones done in the app, with undo state |
 | `undo_operation` | undo one operation, with an impact estimate first (`confirm: true` when pages were edited afterwards or checks would revert) |
+| `set_source_date` | the one tool that edits an existing human note (`notes/` only, never `wiki/`): sets, changes or removes `sourceDate` for up to 500 notes in one call (`src/mcp/upkeep/source-date.ts`). Same guard as the tools above (refused while Graphium runs, write lock). Every item is checked first; one unreadable date, unknown kind, unknown id, Knowledge/skill page or note without `pages` writes nothing. Only `sourceDate` / `sourceDateKind` change — body, title, folders, `createdAt` and `modifiedAt` stay, so re-dating many notes does not reorder the list by modified date — and each note gets a `source_date_set` revision with `force` unless its latest activity already is one. The reply carries note titles, so it goes out through `textWithGuard`. Not a maintenance run: the reply lists each note's previous value, and calling again with it (or `null`) puts it back |
 | `start_claim_task` | hand out a claim-extraction task for one note, memo or material (PDF, .docx, URL): the same system prompt and user message `/ingest` would send (`buildIngestPrompt`, shared with the route), a `taskId` and the expected JSON shape. See "Claims made through MCP" below |
 | `find_claims_for_task` | look up more existing claims for a claim task by a query (bigram relevance over active claims); new ones get the next short ids on the task, which `submit_claims` then accepts as merge targets |
 | `submit_claims` | take the client's answer to a claim task, run it through `parseIngesterOutput` and save the claims; recorded (`mcp_generate`) |
@@ -5860,7 +5861,7 @@ people most often need to find.
 | Index file (note list, schema version) | `src/features/navigation/index-file.ts` |
 | Process index (cross-note step graphs, step reuse) | `src/features/network-graph/process-index.ts` |
 | Cross-note output references (durable row ids, upstream overlay) | `src/lib/table-row-identity.ts`, `src/features/network-graph/cross-note-flow.ts` |
-| Reserved "plan" folder detection | `src/features/note-context/reserved-folders.ts` |
+| Plan note detection (`kind`, and the former reserved "plan" folder for notes saved before v0.154) | `src/features/note-context/reserved-folders.ts` |
 | Plan/operation flow graph (plan note → operation notes) | `src/features/network-graph/plan-flow.ts` — planned edges come from the `planned-input` column of the plan note's table; executed edges come from cross-note references. The flow draws one band per table (ELK compound layout; `elk-flow-layout.ts` / `group-flow-node.tsx`) |
 | Sharing / Library / Fork | `src/features/sharing/`, `src/lib/storage/shared/` |
 | Settings UI (model, profile, fonts) | `src/features/settings/` |

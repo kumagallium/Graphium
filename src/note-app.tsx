@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, ClipboardList, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -437,8 +437,9 @@ import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
+import { SourceDateChip } from "./features/source-date/SourceDateChip";
+import { normalizeStoredSourceDate } from "./lib/source-date";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
-import { isPlanFolderPath } from "./features/note-context/reserved-folders";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import {
   planAutoTidy, leftoverReport, topicConsolidationIssues,
@@ -621,7 +622,7 @@ import { buildPlanProvJsonLd, type PlanProvExportInput } from "./features/prov-e
 import { generateProvDocument } from "./features/prov-generator/generator";
 import { pageToGeneratorInput } from "./features/prov-generator/page-input";
 import { collectOperationRows, PLAN_FLOW_MAX_DEPTH } from "./features/network-graph/plan-flow";
-import { isPlanNote } from "./features/note-context/reserved-folders";
+import { isPlanNote, resolveNoteKind, type NoteKind } from "./features/note-context/reserved-folders";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -917,6 +918,8 @@ function NoteHeaderMenu({
   onExportProvJsonLd,
   provExportDisabled,
   onExportPlanProv,
+  isPlan,
+  onTogglePlan,
   onDeriveWholeNote,
   deriveDisabled,
   onIngestToWiki,
@@ -970,6 +973,10 @@ function NoteHeaderMenu({
   provExportDisabled: boolean;
   /** 計画ノートのときだけ渡される「計画の PROV を書き出す」 */
   onExportPlanProv?: () => void;
+  /** 計画ノートか。ON で「計画として扱う」にチェックを表示 */
+  isPlan?: boolean;
+  /** 計画として扱うかの切り替え。undefined なら項目ごと隠す（ナレッジ・スキル・アーカイブ/ゴミ箱） */
+  onTogglePlan?: () => void;
   onDeriveWholeNote?: () => void;
   deriveDisabled?: boolean;
   onIngestToWiki?: () => void;
@@ -1196,6 +1203,21 @@ function NoteHeaderMenu({
               <Share2 size={14} />
               {t("prov.exportPlan")}
             </button>
+          )}
+          {/* ノートの種類。計画にすると、表のノートごとの行が工程になり、工程グラフ・計画の PROV の起点になる */}
+          {onTogglePlan && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                className={itemClass}
+                onClick={() => { onTogglePlan(); setOpen(false); }}
+                data-tooltip={t("editor.treatAsPlanHint")}
+              >
+                <ClipboardList size={14} />
+                <span className="flex-1 text-left">{t("editor.treatAsPlan")}</span>
+                {isPlan && <Check size={14} className="text-primary" />}
+              </button>
+            </>
           )}
           {/* 4. 表示 */}
           {onToggleFullWidth && (
@@ -2400,6 +2422,19 @@ function NoteEditorInner({
   // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
   const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
   const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  // ノートの種類（計画か）。置き場（noteContexts）とは別軸で、ヘッダーの「…」から切り替える。
+  // buildDocument がスクラッチで組むので ref も併置する（noteContexts と同じ流儀）。
+  // ナレッジ・スキルのページは種類を持たない（buildDocument で書かない）
+  const hasNoteKind = !initialDoc?.wikiMeta && !initialDoc?.skillMeta;
+  const [noteKind, setNoteKind] = useState<NoteKind>(resolveNoteKind(initialDoc));
+  const noteKindRef = useRef<NoteKind>(resolveNoteKind(initialDoc));
+  // 資料の日付（その資料がいつのものか）。作成日時とは別に持つ。題の下のチップから付ける。
+  // buildDocument がスクラッチで組むので ref も併置する（noteContexts と同じ流儀）。
+  // ナレッジ・スキルのページは持たない（チップを出さない・buildDocument で素通しする）
+  const [sourceDate, setSourceDate] = useState<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
+  const sourceDateRef = useRef<string | undefined>(normalizeStoredSourceDate(initialDoc?.sourceDate));
+  // 日付の種類（出版・発表・記録など）は画面では選ばない（MCP から付く）。日付を外したら一緒に外す
+  const sourceDateKindRef = useRef(initialDoc?.sourceDateKind);
   // 一覧・サイドバーからのフォルダの変更（一覧での付け外し・フォルダの改名や削除）は activeDoc だけを
   // 差し替え、エディタは作り直さない。開いたままのエディタが古いフォルダを持ち続けると、次の自動保存が
   // それを書き戻す（改名したフォルダが元の名前で復活し、ノートが新しい名前のフォルダから抜けた）。
@@ -2718,6 +2753,15 @@ function NoteEditorInner({
       addColumnType: tableMetaStore.addColumnType,
     },
     uploadFile,
+    // 計画テンプレートを差し込んだら、このノートを計画にする（ナレッジ・スキルのページは種類を持たない）
+    onApplyKind: hasNoteKind
+      ? (kind) => {
+          if (noteKindRef.current === kind) return;
+          noteKindRef.current = kind;
+          setNoteKind(kind);
+          markDirtyRef.current();
+        }
+      : undefined,
   });
 
   // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
@@ -4113,6 +4157,12 @@ function NoteEditorInner({
         citedAssetFileIdsRef.current.length > 0 ? citedAssetFileIdsRef.current : undefined,
       noteContexts:
         noteContextsRef.current.length > 0 ? noteContextsRef.current : undefined,
+      kind: hasNoteKind ? noteKindRef.current : undefined,
+      // 資料の日付。チップの付け外しで変わるため ref から読む（ナレッジ・スキルは元の値を素通し）
+      sourceDate: hasNoteKind ? sourceDateRef.current : initialDoc?.sourceDate,
+      sourceDateKind: hasNoteKind
+        ? (sourceDateRef.current ? sourceDateKindRef.current : undefined)
+        : initialDoc?.sourceDateKind,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -7758,7 +7808,19 @@ function NoteEditorInner({
           onExportDocx={handleExportDocx}
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!fileId}
-          onExportPlanProv={isPlanNote(noteContexts) && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
+          onExportPlanProv={noteKind === "plan" && hasNoteKind && onExportPlanProv ? () => onExportPlanProv(captureDocument()) : undefined}
+          isPlan={noteKind === "plan"}
+          onTogglePlan={
+            // 普通のノートだけ。read-only（アーカイブ/ゴミ箱）では保存できないので隠す
+            hasNoteKind && !isWikiDoc && !isSkillDoc && !archived && !trashed
+              ? () => {
+                  const next: NoteKind = noteKindRef.current === "plan" ? "note" : "plan";
+                  noteKindRef.current = next;
+                  setNoteKind(next);
+                  markDirty();
+                }
+              : undefined
+          }
           onIngestToWiki={onIngestToWiki}
           ingestDisabled={!fileId || saving}
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
@@ -8087,6 +8149,19 @@ function NoteEditorInner({
                     onClear={() => {
                       noteContextsRef.current = [];
                       setNoteContexts([]);
+                      markDirty();
+                    }}
+                  />
+                )}
+                {/* 資料の日付（作成日時とは別。年だけ・年月だけでも付けられる） */}
+                {(sourceDate || (!archived && !trashed)) && (
+                  <SourceDateChip
+                    value={sourceDate}
+                    onChange={(next) => {
+                      if (archived || trashed) return;
+                      sourceDateRef.current = next;
+                      if (!next) sourceDateKindRef.current = undefined;
+                      setSourceDate(next);
                       markDirty();
                     }}
                   />
@@ -8558,7 +8633,7 @@ function NoteEditorInner({
                     doc={provDoc}
                     editorRef={editorRef}
                     noteId={fileId}
-                    noteContexts={noteContexts}
+                    isPlan={hasNoteKind && noteKind === "plan"}
                     // deletedAt / archivedAt を含む未フィルタの index を渡す（工程ノードの
                     // 「ゴミ箱にあります」判定に要る。noteIndex は両方を除外済み）
                     index={rawNoteIndex ?? null}
@@ -11599,7 +11674,7 @@ export function NoteApp() {
   const handleStandaloneChatOpenWiki = useCallback((wikiId: string) => {
     handleStandaloneChatOpenNote(`wiki:${wikiId}`);
   }, [handleStandaloneChatOpenNote]);
-  // チャットの回答（次の実験の提案）から、計画ノート（「計画」フォルダ・振る条件の表）と
+  // チャットの回答（次の実験の提案）から、計画ノート（kind: plan・振る条件の表）と
   // 行ごとの工程ノートを作る。ノート内チャット・ノートなしチャットの両方から呼ぶ。
   // 共通手順は論文と同じ手順抽出と名寄せを通すので、名前が論文のノートと揃う。
   const handleCreatePlanFromChat = useCallback(
@@ -11640,7 +11715,8 @@ export function NoteApp() {
             plan: res.plan,
             stepNames: procedureStepNames(blocks),
             references,
-            folder: tStatic("template.plan.folder"),
+            // 工程ノートと同じ置き場に入れる。計画かどうかは kind（buildPlanDocument が付ける）で決まる
+            folders: generatedNoteFolders("procedure"),
             words,
             model: res.model,
           });
@@ -11657,7 +11733,6 @@ export function NoteApp() {
             });
             runDoc.derivedFromNoteId = planId;
             runDoc.derivedFromBlockId = tableBlockId;
-            // 計画ノートの「計画」フォルダは引き継がない（工程ノートが計画ノート扱いになる）
             runDoc.noteContexts = generatedNoteFolders("procedure");
             runNotes.push({ name: run.name, id: await fm.handleCreateNoteFromDocument(runDoc) });
           }
@@ -11755,10 +11830,6 @@ export function NoteApp() {
   // 呼ばれる共通関数。
   const renameFolderEverywhere = useCallback(
     async (from: string, to: string) => {
-      // 予約フォルダ「計画」（またはその子）は改名しない（FolderMenu 側で項目自体も
-      // 出さないが、他の呼び出し口（ギャラリーの改名入口）向けの保険として実体側にも
-      // ガードを入れる）
-      if (isPlanFolderPath(from)) return;
       // ノートのタグ、メモ、素材、まだノートが無いフォルダの定義。
       // どれも子を連れて動く。ひとつでも取り残すと、同じフォルダのはずのものが
       // 古い名前に取り残されて行方不明になる
@@ -11780,8 +11851,6 @@ export function NoteApp() {
   // フォルダの削除（タグ剥がし）。中のノートは消さない。
   const deleteFolderEverywhere = useCallback(
     async (path: string) => {
-      // 予約フォルダ「計画」は削除しない（所属を戻せないため。空にすれば自然に消える）
-      if (isPlanFolderPath(path)) return;
       await fm.deleteNoteContextEverywhere(path);
       await capture.remapCaptureContextsEverywhere(path, null);
       await fm.remapMediaContextsEverywhere(path, null);
@@ -12101,7 +12170,7 @@ export function NoteApp() {
     planExportingRef.current = true;
     try {
       const planIds = new Set(
-        index.notes.filter((n) => isPlanNote(n.noteContexts)).map((n) => n.noteId),
+        index.notes.filter((n) => isPlanNote(n)).map((n) => n.noteId),
       );
       const docs = new Map<string, GraphiumDocument>();
       docs.set(planNoteId, openDoc);
@@ -12631,10 +12700,11 @@ export function NoteApp() {
     </>
   );
 
-  // 食い違いの節で引用に添える資料の日付（ノートは作成日、論文は出どころ情報の年）。
+  // 食い違いの節で引用に添える資料の日付（ノートは資料の日付、無ければ作成日。論文は出どころ情報の年）。
+  // 2012 年の論文を今日ノートにしても 2026 年の資料に見えないよう、資料の日付を先に見る。
   // トピックの組み立て（wiki-service）が引く。ノート一覧・素材一覧が変わるたびに渡し直す
   useEffect(() => {
-    const notes = new Map((fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n.createdAt]));
+    const notes = new Map((fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n.sourceDate ?? n.createdAt]));
     const media = new Map((fm.mediaIndex?.media ?? []).map((m) => [m.fileId, m.sourceInfo?.year]));
     setSourceDateLookup((sourceId) => {
       const ext = parseExternalSource(sourceId);
@@ -18762,8 +18832,8 @@ export function NoteApp() {
           onClose={() => setFolderMenu(null)}
           // 予約フォルダ「計画」（またはその子）は改名・削除の項目自体を出さない
           // （復元できない「所属」を戻す仕組みを作るより軽い。§2.1）
-          onRename={isPlanFolderPath(folderMenu.path) ? undefined : (from, to) => void renameFolderEverywhere(from, to)}
-          onDelete={isPlanFolderPath(folderMenu.path) ? undefined : (path) => void deleteFolderEverywhere(path)}
+          onRename={(from, to) => void renameFolderEverywhere(from, to)}
+          onDelete={(path) => void deleteFolderEverywhere(path)}
         />
       )}
       {listMaterialPeekEntry && (
