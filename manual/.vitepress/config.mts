@@ -130,6 +130,13 @@ const enSidebar = [
         ],
       },
       {
+        text: 'Voice input',
+        collapsed: true,
+        items: [
+          { text: 'Hints for voice input', link: '/evaluations/voice-input-hints' },
+        ],
+      },
+      {
         text: 'Speed and memory',
         collapsed: true,
         items: [
@@ -251,6 +258,13 @@ const jaSidebar = [
         items: [
           { text: 'OCR エンジンの比較', link: '/ja/evaluations/ocr-engines' },
           { text: '大きなデータ表', link: '/ja/evaluations/large-data-tables' },
+        ],
+      },
+      {
+        text: '声の入力',
+        collapsed: true,
+        items: [
+          { text: '声の入力のヒント', link: '/ja/evaluations/voice-input-hints' },
         ],
       },
       {

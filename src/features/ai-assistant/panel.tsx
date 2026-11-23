@@ -22,6 +22,8 @@ import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { formatDateTime } from "../../lib/format-datetime";
 import { t as tStatic, useT } from "../../i18n";
 import { formatShortcut } from "../../lib/shortcut-label";
+import { VoiceInputButton } from "../voice-input/VoiceInputButton";
+import { appendVoiceText } from "../voice-input/clean-text";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
 import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
 import { useWebSearchAvailability } from "../composer/use-web-search-availability";
@@ -338,6 +340,17 @@ export function AiAssistantPanel({
   );
 
   // テキスト入力時の @ 検出
+  // 声の入力: 空ならそのまま、あれば空白でつないで末尾に足す。入れたら欄に戻してカーソルを末尾へ（送信はしない）
+  const handleVoiceText = useCallback((text: string) => {
+    setInput((cur) => appendVoiceText(cur, text));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
+
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
@@ -697,6 +710,7 @@ export function AiAssistantPanel({
             <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
               <span className="flex items-center gap-1.5">
                 <ChatImageAttachButton onFiles={(files) => void imageInput.addFiles(files)} disabled={loading} />
+                <VoiceInputButton onText={handleVoiceText} disabled={loading} className="-ml-1" />
                 {t("aiChat.sendHint", { shortcut: formatShortcut(["mod", "Enter"], { macSeparator: "+" }) })}
               </span>
               <span className="ml-auto">

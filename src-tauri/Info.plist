@@ -17,13 +17,14 @@
 		dialog needs to appear on first launch.
 
 		NSMicrophoneUsageDescription: shown the first time the meeting
-		recorder opens the default input device (cpal). Without it macOS
-		terminates the app on microphone access. The recorder only runs
-		when the user presses the record button.
+		recorder or voice input opens the default input device (cpal).
+		Without it macOS terminates the app on microphone access. Both
+		only run when the user presses their button; voice input keeps
+		the audio in memory and saves nothing.
 	-->
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Graphium needs access to the Documents folder to read and write your notes, wiki, media, and skills stored under ~/Documents/Graphium/.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Graphium records your microphone only while you are recording a meeting, so that your voice can be transcribed into meeting notes. Audio is saved locally under ~/Documents/Graphium/media/.</string>
+	<string>Graphium uses your microphone only when you press record: to record a meeting, whose audio is saved locally under ~/Documents/Graphium/media/, or to speak into a search or chat box, which keeps the audio in memory, turns it into text on this computer, and saves nothing.</string>
 </dict>
 </plist>

@@ -64,6 +64,12 @@ The model guide in Settings has been revised each time I measured again. Part of
 | The desktop app reads images with PP-OCRv6 small (v0.142.0). On macOS, from the release after that, the OS's own reading is kept as well, for finding only | The old OCR found none of 160 handwritten phrases | [OCR engines](/evaluations/ocr-engines) (2026-11-18) |
 | Data tables get no row limit | With synthetic data of 230,000 rows, the longest freeze before the import screen opened went from 16.3–17.1 seconds to 0.50–0.55 seconds | [Large data tables](/evaluations/large-data-tables) (2026-11-18) |
 
+### Voice input
+
+| What it does now | What it rests on | Measurement |
+|---|---|---|
+| Voice input passes the Latin-script terms (formulas, acronyms) from note titles and headings as a hint, space-separated, with Frequent terms at the end | With synthesized speech, Latin-script words spelled correctly went from 7 to 15 of 26, the same as giving the exact answers | [Hints for voice input](/evaluations/voice-input-hints) (2026-11-22) |
+
 ### Speed and memory
 
 These are not measurements made to decide a setting. They are records of looking into the cause of a problem.
@@ -85,6 +91,7 @@ I also keep results that did not work out, points I could not settle, and points
 | Using the same rule in a library with many "X's Y" titles | Undecided. Six runs could not say whether it worked or not. The rule is still used when a source is imported | [Topic granularity](/evaluations/topic-granularity) |
 | Reading handwritten sentences with OCR of the size that was adopted (PP-OCR, 22 to 180 MB) | Not reached. In handwriting it read dates and numbers but not sentences. The engine itself is adopted. Windows was not measured | [OCR engines](/evaluations/ocr-engines) |
 | Checking a plan by hindsight | On hold until the answer key is rebuilt | [Checking where a plan comes from](/evaluations/plan-grounding-check) |
+| Picking Japanese hint words for voice input from my notes | Not adopted. Frequent words did not help (8 → 9 of 26), and words that share characters with a misheard word were mostly unrelated. Japanese words are left to Frequent terms | [Hints for voice input](/evaluations/voice-input-hints) |
 
 ## How I measure
 
@@ -108,6 +115,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Area |
 |---|---|---|
+| 2026-11-22 | [Do hints from my own notes help voice input spell technical words?](/evaluations/voice-input-hints) | Voice input |
 | 2026-11-20 | [Does gemma on one lab GPU keep the quality measured through an API?](/evaluations/workstation-gemma) | Choosing a model |
 | 2026-11-19 | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) | Answers and search |
 | 2026-11-18 | [Insights from AI conversations](/evaluations/ai-conversation-claims) | Knowledge |

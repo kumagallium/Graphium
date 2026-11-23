@@ -23,6 +23,7 @@ mod ocr_models;
 #[cfg(target_os = "macos")]
 mod ocr_vision;
 mod ui_zoom;
+mod voice_input;
 
 // --- sidecar ログファイル ---
 //
@@ -817,7 +818,7 @@ fn graphium_root() -> Result<PathBuf, String> {
 /// 削除・外部で開く・保存先の変更のような影響の大きいコマンドは、メインウィンドウからだけ受ける。
 /// 別ウィンドウ（viewer）が読むのは共有ノートなど外から来た内容を含み、capabilities の ACL は
 /// アプリ自前のコマンドには効かないため、ここで呼び出し元のラベルを見る。
-fn require_main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+pub(crate) fn require_main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     check_main_label(window.label())
 }
 
@@ -6250,6 +6251,9 @@ pub fn run() {
             meeting_transcribe::meeting_model_cancel,
             meeting_transcribe::meeting_model_delete,
             meeting_transcribe::meeting_transcribe_start,
+            voice_input::voice_input_start,
+            voice_input::voice_input_stop,
+            voice_input::voice_input_cancel,
             meeting_transcribe::meeting_transcribe_cancel,
             meeting_transcribe::meeting_transcribe_input_begin,
             meeting_transcribe::meeting_transcribe_input_append,
@@ -6348,6 +6352,7 @@ pub fn run() {
         ])
         .manage(meeting_audio::MeetingRecState::default())
         .manage(meeting_transcribe::TranscribeState::default())
+        .manage(voice_input::VoiceInputState::default())
         .manage(embedding_models::EmbeddingState::default())
         .manage(ocr_models::OcrState::default())
         .manage(ui_zoom::ZoomState::default())
