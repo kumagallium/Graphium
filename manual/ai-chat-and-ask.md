@@ -49,6 +49,16 @@ To ask about a photo, a screenshot or a page you took a picture of, add the imag
 
 Models treated as able to see images: Anthropic, Google, GitHub Copilot, OpenAI (except gpt-3.5, o1-mini, o3-mini and gpt-oss), and OpenAI-compatible servers (LM Studio, Ollama and the like) whose model name marks a vision model — for example one containing `vl`, `vision`, `llava`, `pixtral`, `gemma-3` or `llama-4`.
 
+## Speaking instead of typing {#speaking-instead-of-typing}
+
+In the desktop app, a microphone button sits at the right of the `⌘K` box and next to the image button in both chat inputs (the panel beside a note and the chat without a note). Press it, say what you are looking for, and stop talking: recording ends by itself after about 1.5 seconds of silence, or press the button again. The words are typed into the input — nothing is sent or run until you press `Enter`, so you can fix a misheard word first. `Esc` while recording throws the recording away.
+
+- In `⌘K`, short phrases work best ("bread salt ratio"): the search lists notes that contain every word you said. A whole sentence is better asked through the **Ask AI** row in the same box.
+- Speech is turned into text on your computer with the same model as [voice notes](/voice-notes#settings), using its **Language** and **Frequent terms** settings. Graphium also hands the model the chemical formulas and acronyms that appear most in your note titles and headings (`NaCl`, `HPLC`, `XRD` …), so they are more likely to come out spelled the way you write them. Japanese technical words are not picked up this way: if a word keeps coming out in hiragana (はっこう for 発酵), add it to **Frequent terms**. See [the measurement](/evaluations/voice-input-hints). If no model is downloaded yet, the button says so — download one in **Settings → AI → Voice notes**.
+- One recording is up to 30 seconds. Neither the audio nor the text is saved anywhere; you decide whether to send what ends up in the input.
+- If you see **No voice was heard. Please check the microphone permission.**, check that Graphium may use the microphone (macOS: System Settings → Privacy & Security → Microphone).
+- The web version has no button: the browser's speech recognition sends the audio to an outside service.
+
 ## Choosing what grounds the answer <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 
 The **Grounding** chip next to the input controls what evidence the AI draws on. The same chip appears in the Composer.

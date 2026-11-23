@@ -441,7 +441,7 @@ fn drain_windows(buf: &mut Vec<f32>, threshold: f32, force: bool) -> Vec<Vec<f32
 }
 
 /// 文字（英数字・かな・漢字など）を 1 つでも含むか。「ー」「—」「...」「♪」だけの残りかすを捨てる
-fn has_speech_text(text: &str) -> bool {
+pub(crate) fn has_speech_text(text: &str) -> bool {
     // 長音符「ー」（U+30FC）は Unicode 上は文字（Lm）だが、単独の残りかすなので文字に数えない
     text.trim().chars().any(|c| c.is_alphanumeric() && c != 'ー')
 }
@@ -460,7 +460,7 @@ const STOCK_HALLUCINATIONS: &[&str] = &[
 ];
 
 /// 句読点と空白を除いて小文字化した全文が、既知の定型句に完全一致するか（部分一致はしない）
-fn is_stock_hallucination(text: &str) -> bool {
+pub(crate) fn is_stock_hallucination(text: &str) -> bool {
     STOCK_HALLUCINATIONS.contains(&normalize_text(text).as_str())
 }
 
@@ -617,7 +617,7 @@ const VOCABULARY_MAX_CHARS: usize = 160;
 /// 制御文字を除き（改行・タブは空白に。NUL は set_initial_prompt が panic する）、前後の空白を除いて、
 /// 末尾側の 160 文字を残す（whisper.cpp は prompt の末尾側を残すため。先頭はノートのタイトル、
 /// 末尾が設定の用語なので、あふれたらタイトル側が落ちる）。空なら None
-fn normalize_vocabulary(v: Option<&str>) -> Option<String> {
+pub(crate) fn normalize_vocabulary(v: Option<&str>) -> Option<String> {
     let cleaned: String = v?
         .chars()
         .filter_map(|c| match c {
@@ -636,11 +636,11 @@ fn normalize_vocabulary(v: Option<&str>) -> Option<String> {
     (!tail.is_empty()).then(|| tail.to_string())
 }
 
-fn model_path(size: &str) -> Result<PathBuf, String> {
+pub(crate) fn model_path(size: &str) -> Result<PathBuf, String> {
     Ok(models_dir()?.join(model_file_name(size)))
 }
 
-fn model_present(size: &str) -> bool {
+pub(crate) fn model_present(size: &str) -> bool {
     let Ok((_, _, expected)) = model_spec(size) else { return false };
     model_path(size)
         .ok()
@@ -915,7 +915,7 @@ mod engine {
     }
 }
 
-use engine::{Engine, TrackState};
+pub(crate) use engine::{Engine, TrackState};
 
 // ---------------------------------------------------------------------------
 // 保存

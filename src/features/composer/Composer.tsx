@@ -76,6 +76,8 @@ import { isTauri } from "../../lib/platform";
 import type { SharedEntry } from "../../lib/storage/shared";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { VoiceInputButton } from "../voice-input/VoiceInputButton";
+import { appendVoiceText } from "../voice-input/clean-text";
 import { formatShortcut } from "../../lib/shortcut-label";
 
 type ComposerProps = {
@@ -659,6 +661,18 @@ export function Composer(props: ComposerProps) {
               color: "var(--ink)",
               fontFamily: "inherit",
             }}
+          />
+          <VoiceInputButton
+            onText={(text) => {
+              onPromptChange(appendVoiceText(prompt, text));
+              requestAnimationFrame(() => {
+                const el = inputRef.current;
+                if (!el) return;
+                el.focus();
+                el.setSelectionRange(el.value.length, el.value.length);
+              });
+            }}
+            className="shrink-0"
           />
         </div>
 
