@@ -1,22 +1,32 @@
-// 「資料の日付」チップのカタログ。
-// 議論用途: ノートの題の下（フォルダのチップの隣）に置くチップの見た目と、
+// 題の下の「日付の静かな 1 行」のカタログ。
+// 議論用途: フォルダのチップの隣に、資料の日付と作成日を同じ重さの文字で並べる見た目と、
 // 押したときの入力欄（年だけ・年月だけ・読めない書き方）を小さく合意する。
 
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ContextBadge } from "../note-context/ContextBadge";
-import { SourceDateChip } from "./SourceDateChip";
+import { SourceDateLine } from "./SourceDateLine";
 
 const meta: Meta = {
-  title: "Molecules/SourceDateChip",
+  title: "Molecules/SourceDateLine",
   parameters: { layout: "padded" },
 };
 export default meta;
 
 type Story = StoryObj;
 
-/** 題の下の行を再現する（フォルダのチップ → ＋フォルダ → 資料の日付） */
-function HeaderRow({ initial, defaultOpen }: { initial?: string; defaultOpen?: boolean }) {
+const CREATED = "2026-11-22T09:30:00+09:00";
+
+/** 題の下の行を再現する（フォルダのチップ → ＋フォルダ → 日付の 1 行） */
+function HeaderRow({
+  initial,
+  defaultOpen,
+  editable = true,
+}: {
+  initial?: string;
+  defaultOpen?: boolean;
+  editable?: boolean;
+}) {
   const [value, setValue] = useState<string | undefined>(initial);
   return (
     <div className="p-6 bg-background" style={{ minHeight: 260 }}>
@@ -29,7 +39,13 @@ function HeaderRow({ initial, defaultOpen }: { initial?: string; defaultOpen?: b
         >
           ＋ Folder
         </button>
-        <SourceDateChip value={value} onChange={setValue} defaultOpen={defaultOpen} />
+        <SourceDateLine
+          value={value}
+          createdAt={CREATED}
+          editable={editable}
+          onChange={setValue}
+          defaultOpen={defaultOpen}
+        />
       </div>
       <p className="mt-6 text-xs text-muted-foreground">sourceDate: {value ?? "(none)"}</p>
     </div>
@@ -37,8 +53,13 @@ function HeaderRow({ initial, defaultOpen }: { initial?: string; defaultOpen?: b
 }
 
 export const Unset: Story = {
-  name: "付いていない",
+  name: "資料の日付が無い（作成日だけ）",
   render: () => <HeaderRow />,
+};
+
+export const YearOnly: Story = {
+  name: "年だけ付いている",
+  render: () => <HeaderRow initial="2016" />,
 };
 
 export const YearMonth: Story = {
@@ -46,9 +67,9 @@ export const YearMonth: Story = {
   render: () => <HeaderRow initial="2012-03" />,
 };
 
-export const YearOnly: Story = {
-  name: "年だけ付いている",
-  render: () => <HeaderRow initial="2012" />,
+export const ReadOnly: Story = {
+  name: "アーカイブ中（直せない）",
+  render: () => <HeaderRow initial="2016" editable={false} />,
 };
 
 export const Editing: Story = {

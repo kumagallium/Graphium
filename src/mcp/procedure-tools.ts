@@ -60,6 +60,7 @@ import {
 import { buildNotePreview } from "./note-preview";
 import { addCreatedNoteToIndex } from "./search";
 import { readMediaIndex } from "./sources";
+import { normalizeStoredSourceDate } from "../lib/source-date";
 import { resolveFullSourceText } from "./source-text";
 import type { ToolContext } from "./tools";
 import { agentLabelFor, resolveAuthor } from "./upkeep/actor";
@@ -383,6 +384,9 @@ export async function submitProcedure(
   const inherited = [...(p.folder ? [p.folder] : []), ...((media ?? urlMedia)?.noteContexts ?? [])];
   const folders = buildGeneratedNoteFolders(t(GENERATED_NOTE_FOLDER_KEYS.procedure), inherited);
   if (folders) built.noteContexts = folders;
+  // 素材の資料の日付を、そこから作った手順ノートへ引き継ぐ（アプリの素材メニューと同じ）
+  const inheritedDate = normalizeStoredSourceDate((media ?? urlMedia)?.sourceDate);
+  if (inheritedDate) built.sourceDate = inheritedDate;
 
   // 版の記録（アプリの handleCreateNoteFromDocument と同じ ai_derivation。元の資料を used に残す）
   const doc = await recordRevision(built, null, "ai_derivation", {

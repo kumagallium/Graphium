@@ -52,6 +52,16 @@ A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from 
 
 The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
+### The date of a material {#material-source-date}
+
+Like a note, a material can carry a **source date**: when the document itself is from, kept apart from the day you brought it in. It is written the same way as a note's ([Source date](/notes-and-editor#source-date)): a year, a year and month, or a full date.
+
+- **Filled in for you** for Word, PowerPoint, Excel and PDF files. Graphium reads the creation date recorded inside the document, on your device. It does not use the date the document was last saved, or the file's modified date, because both change as soon as someone opens the file and saves it again. Materials you already had are read the same way in the background after the app starts. Images, text and other files with no recorded creation date are left empty.
+- **Check it.** The recorded creation date is when the file was first made, which is not always when the source is from: a document started from an old template, or a PDF that was regenerated when it was downloaded, can carry a different date. A date filled in this way says **from the file's created date** in the material's details.
+- **Setting or changing it.** Open the material: the **Source date** row of its details works like the date under a note's title. Changing or removing it there is final; the background pass never puts back a date you removed, and a new version brought back from Word keeps what you chose.
+- **In the list.** Once a material in the list has a source date, a **Source date** column appears next to **Date**. Click it to sort; materials without one sit at the date they were brought in.
+- **Notes made from it.** A procedure note made from the material takes its source date.
+
 ### Where a material came from (authors, year, publisher, DOI) <Badge type="tip" text="Added in v0.90.1 (2026-10-20)" /> {#source-info}
 
 PDFs, documents and URL bookmarks can carry four pieces of source information: **Authors**, **Year**, **Published in** (a journal, site or publisher) and **DOI**. They appear in the **Source** block of the material's metadata, and show as **Not set** until filled in.

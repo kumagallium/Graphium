@@ -126,8 +126,10 @@ import {
   backfillDocumentInfo,
   canCountPages,
   countDocumentPages,
+  readMaterialCreatedDate,
   recleanFileAuthors,
 } from "../features/asset-browser/document-info";
+import { embeddedDateKind } from "../lib/embedded-created-date";
 import { documentKindOf, isFilelessMediaEntry, type SourceInfo } from "../features/asset-browser/media-index";
 import { parseConversationFileId } from "../lib/conversation/types";
 import { extractPdfSourceInfo } from "../features/asset-browser/source-info";
@@ -1234,12 +1236,13 @@ export function useFileManager(authenticated: boolean) {
         console.warn("素材の著者の整え直しに失敗:", err);
       }
       try {
-        const { pageCounts, sourceInfos } = await backfillDocumentInfo(
+        const { pageCounts, sourceInfos, sourceDates } = await backfillDocumentInfo(
           (fileId, maxBytes) => storage().readMediaBytes!(fileId, maxBytes),
           signal,
         );
         if (pageCounts > 0) console.info(`素材のページ数を ${pageCounts} 件付与しました`);
         if (sourceInfos > 0) console.info(`素材の出どころ（著者・DOI）を ${sourceInfos} 件付与しました`);
+        if (sourceDates > 0) console.info(`素材の資料の日付（文書の中の作成日）を ${sourceDates} 件付与しました`);
       } catch (err) {
         console.warn("素材のページ数・出どころの後追い付与に失敗:", err);
       }
@@ -2760,6 +2763,21 @@ export function useFileManager(authenticated: boolean) {
             sourceInfo = undefined;
           }
         }
+        // 資料の日付: 文書の中に記録された作成日（Word・PowerPoint・Excel・PDF）。最終保存日や
+        // ファイルの更新日は開いて保存し直すと変わるので使わない。読めなければ付けない（人が付ける）
+        let sourceDate: string | null = null;
+        let sourceDateScanned = false;
+        if (embeddedDateKind(result.name, result.mimeType) && file.size <= MAX_HASH_BYTES) {
+          try {
+            sourceDate = await readMaterialCreatedDate(new Uint8Array(await file.arrayBuffer()), {
+              name: result.name,
+              mimeType: result.mimeType,
+            });
+            sourceDateScanned = true;
+          } catch {
+            sourceDate = null;
+          }
+        }
         const entry: MediaIndexEntry = {
           fileId: result.fileId,
           name: result.name,
@@ -2773,6 +2791,8 @@ export function useFileManager(authenticated: boolean) {
           ...(pageCount !== undefined ? { pageCount } : {}),
           ...(sourceInfo ? { sourceInfo } : {}),
           ...(sourceInfoScanned ? { sourceInfoScanned: true } : {}),
+          ...(sourceDate ? { sourceDate, sourceDateFrom: "embedded" as const } : {}),
+          ...(sourceDateScanned ? { sourceDateScanned: true } : {}),
           ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
             ? { derivedFromAssets: options.derivedFromAssets }
             : {}),

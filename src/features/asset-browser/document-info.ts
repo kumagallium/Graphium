@@ -3,6 +3,7 @@
 //   - ページ数: 一覧に出して並び替えられるようにする（巨大な資料をナレッジ化に回す前に気づくため）
 //   - タイトル: ファイル名の代わりに、文書自身が名乗っているタイトルで名前を付け直すため
 //   - 出どころ（PDF の著者・DOI）: 読み取り自体は source-info.ts。既存素材への後追いだけここで一緒に回す
+//   - 資料の日付（文書の中の作成日）: 読み取り自体は lib/embedded-created-date.ts。PDF だけ pdfjs で補う
 //
 // どちらも「分かれば使う、分からなければ何もしない」。読めない・壊れているときは
 // undefined を返し、登録や一覧表示を止めない。
@@ -22,8 +23,17 @@ import {
 import { MAX_HASH_BYTES } from "./dedupe";
 import { resolveSlideOrder, slideNumberOf } from "../office-import/pptx";
 import { cleanAuthorNames, readPdfSourceInfo, type PdfDocLike } from "./source-info";
+import {
+  createdFromOoxmlBytes,
+  createdFromPdfBytes,
+  embeddedDateKind,
+  pdfDateToDay,
+  pdfInfoCreatedFromBytes,
+  pdfXmpCreatedFromBytes,
+} from "../../lib/embedded-created-date";
 
 type EntryLike = { type: MediaIndexEntry["type"]; mimeType: string };
+type NamedEntryLike = EntryLike & { name: string };
 
 /** タイトルの最大文字数（長すぎる行を拾ったときの保険） */
 const MAX_TITLE_LENGTH = 200;
@@ -182,6 +192,44 @@ async function openPdf(bytes: Uint8Array): Promise<{ doc: PdfDoc; destroy: () =>
   const task = pdfjs.getDocument({ data: bytes.slice(), ...PDFJS_DOC_OPTIONS });
   const doc = (await task.promise) as unknown as PdfDoc;
   return { doc, destroy: () => void task.destroy() };
+}
+
+/** 開いた PDF の情報辞書から作成日を読む（圧縮されたオブジェクトの中にあっても読める） */
+async function pdfCreatedFromDoc(doc: PdfDoc): Promise<string | null> {
+  try {
+    const meta = await doc.getMetadata();
+    return pdfDateToDay((meta.info as { CreationDate?: unknown } | undefined)?.CreationDate);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 素材の中に記録された作成日を読む（資料の日付の自動入力）。読めない形式・記録が無いときは null。
+ * PDF は情報辞書を先に見る: バイト列の平文 → 見つからなければ pdfjs で開いて情報辞書
+ * （16 進・UTF-16・圧縮されたもの）→ それでも無ければ XMP
+ */
+export async function readMaterialCreatedDate(
+  bytes: Uint8Array,
+  entry: { name: string; mimeType: string },
+): Promise<string | null> {
+  const kind = embeddedDateKind(entry.name, entry.mimeType);
+  if (kind === "ooxml") return createdFromOoxmlBytes(bytes);
+  if (kind !== "pdf") return null;
+  const quick = pdfInfoCreatedFromBytes(bytes);
+  if (quick) return quick;
+  let fromDoc: string | null = null;
+  try {
+    const { doc, destroy } = await openPdf(bytes);
+    try {
+      fromDoc = await pdfCreatedFromDoc(doc);
+    } finally {
+      destroy();
+    }
+  } catch {
+    fromDoc = null; // 開けない PDF でも XMP は読めることがある
+  }
+  return fromDoc ?? pdfXmpCreatedFromBytes(bytes);
 }
 
 async function countPdfPages(bytes: Uint8Array): Promise<number | undefined> {
@@ -489,8 +537,16 @@ function needsSourceScan(m: MediaIndexEntry): boolean {
   return documentKindOf(m) === "pdf" && !m.sourceInfo && !m.sourceInfoScanned;
 }
 
+/** 資料の日付をまだ読んでいない、中に作成日を持ちうる素材か（人が付けた・外したものは読まない） */
+function needsSourceDate(m: MediaIndexEntry): boolean {
+  return !m.sourceDate && !m.sourceDateScanned && embeddedDateKind(m.name, m.mimeType) !== null;
+}
+
 /** 1 件分の読み取り結果。読めなかった項目は持たない */
 type DocumentInfoResult = {
+  /** 資料の日付を読み終えた（何も無かった場合も true） */
+  dateScanned?: boolean;
+  sourceDate?: string;
   pageCount?: number;
   /** 出どころを読み終えた（何も無かった場合も true） */
   sourceScanned?: boolean;
@@ -500,11 +556,22 @@ type DocumentInfoResult = {
 /** 1 件を読む。PDF は 1 回だけ開いて、ページ数と出どころを一緒に取る */
 async function readDocumentInfo(
   bytes: Uint8Array,
-  entry: EntryLike,
-  want: { pages: boolean; source: boolean },
+  entry: NamedEntryLike,
+  want: { pages: boolean; source: boolean; date: boolean },
 ): Promise<DocumentInfoResult> {
   if (documentKindOf(entry) !== "pdf") {
-    return want.pages ? { pageCount: await countDocumentPages(bytes, entry) } : {};
+    const out: DocumentInfoResult = want.pages ? { pageCount: await countDocumentPages(bytes, entry) } : {};
+    if (want.date) {
+      const day = embeddedDateKind(entry.name, entry.mimeType) === "ooxml" ? createdFromOoxmlBytes(bytes) : null;
+      out.dateScanned = true;
+      if (day) out.sourceDate = day;
+    }
+    return out;
+  }
+  // 日付だけなら情報辞書の平文で済むことが多い（pdfjs で開かずに済ませる）
+  const quickDate = want.date ? pdfInfoCreatedFromBytes(bytes) : null;
+  if (!want.pages && !want.source && (quickDate || !want.date)) {
+    return want.date ? { dateScanned: true, sourceDate: quickDate ?? undefined } : {};
   }
   const { doc, destroy } = await openPdf(bytes);
   try {
@@ -513,6 +580,11 @@ async function readDocumentInfo(
     if (want.source) {
       out.sourceInfo = await readPdfSourceInfo(doc as unknown as PdfDocLike);
       out.sourceScanned = true;
+    }
+    if (want.date) {
+      const day = quickDate ?? (await pdfCreatedFromDoc(doc)) ?? pdfXmpCreatedFromBytes(bytes);
+      out.dateScanned = true;
+      if (day) out.sourceDate = day;
     }
     return out;
   } finally {
@@ -543,19 +615,20 @@ export async function backfillDocumentInfo(
   readBytes: (fileId: string, maxBytes: number) => Promise<Uint8Array | undefined>,
   signal?: { aborted: boolean },
   options: DocumentInfoBackfillOptions = {},
-): Promise<{ pageCounts: number; sourceInfos: number }> {
+): Promise<{ pageCounts: number; sourceInfos: number; sourceDates: number }> {
   const opts = { ...DEFAULT_BACKFILL_OPTIONS, ...options };
-  const result = { pageCounts: 0, sourceInfos: 0 };
+  const result = { pageCounts: 0, sourceInfos: 0, sourceDates: 0 };
   const start = getLatestMediaIndex() ?? (await readMediaIndex());
   if (!start) return result;
 
   const targets = start.media
-    .filter((m) => needsPageCount(m) || needsSourceScan(m))
+    .filter((m) => needsPageCount(m) || needsSourceScan(m) || needsSourceDate(m))
     .map((m) => ({
       fileId: m.fileId,
+      name: m.name,
       type: m.type,
       mimeType: m.mimeType,
-      want: { pages: needsPageCount(m), source: needsSourceScan(m) },
+      want: { pages: needsPageCount(m), source: needsSourceScan(m), date: needsSourceDate(m) },
     }));
   if (targets.length === 0) return result;
 
@@ -575,6 +648,7 @@ export async function backfillDocumentInfo(
       if (!current) return; // サインアウト等でインデックスが無くなった
       let pages = 0;
       let sources = 0;
+      let dates = 0;
       const media = current.media.map((m) => {
         const r = batch.get(m.fileId);
         if (!r) return m;
@@ -582,6 +656,15 @@ export async function backfillDocumentInfo(
         if (r.pageCount !== undefined && m.pageCount === undefined) {
           next = { ...next, pageCount: r.pageCount };
           pages += 1;
+        }
+        // 走査中に人が資料の日付を付けた・外したら、そちらを残す
+        if (r.dateScanned && !m.sourceDateScanned && !m.sourceDate) {
+          next = {
+            ...next,
+            sourceDateScanned: true,
+            ...(r.sourceDate ? { sourceDate: r.sourceDate, sourceDateFrom: "embedded" as const } : {}),
+          };
+          if (r.sourceDate) dates += 1;
         }
         // 走査中に人が出どころを入れていたら、そちらを残す（印だけ付ける）
         if (r.sourceScanned && !m.sourceInfoScanned) {
@@ -602,6 +685,7 @@ export async function backfillDocumentInfo(
       }
       result.pageCounts += pages;
       result.sourceInfos += sources;
+      result.sourceDates += dates;
       notifyMediaIndexChanged({
         reason: "page-count-backfill",
         filled: result.pageCounts,
@@ -637,10 +721,16 @@ export async function backfillDocumentInfo(
     } catch {
       // 実体は読めたのに PDF として開けない＝壊れている。出どころは読み直しても同じなので
       // 読み終えた扱いにして、起動のたびに開き直さない（ページ数は従来どおり毎回試す）
-      info = target.want.source ? { sourceScanned: true } : {};
+      // 日付はバイト列だけで読める分（情報辞書の平文・XMP）を残す。読み終えた印は一方向なので、
+      // ここで捨てると二度と付かない
+      const day = target.want.date ? createdFromPdfBytes(bytes) : null;
+      info = {
+        ...(target.want.source ? { sourceScanned: true } : {}),
+        ...(target.want.date ? { dateScanned: true, ...(day ? { sourceDate: day } : {}) } : {}),
+      };
     }
     if (target.want.pages && info.pageCount === undefined) markFailed();
-    if (info.pageCount === undefined && !info.sourceScanned) return;
+    if (info.pageCount === undefined && !info.sourceScanned && !info.dateScanned) return;
 
     pending.set(target.fileId, info);
     if (pending.size >= opts.flushEvery || Date.now() - lastFlush >= opts.flushIntervalMs) {
