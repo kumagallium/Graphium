@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.156.0](https://github.com/kumagallium/Graphium/compare/v0.155.0...v0.156.0) - 2026-11-23
+
+- [docs] Manual: evaluations index by feature, with what was tried and not adopted by @kumagallium in https://github.com/kumagallium/Graphium/pull/1810
+- [feat] Speak into the ⌘K box and the chat inputs (desktop) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1811
+- [feat] Quiet date line, dates in a narrow list, and source dates for materials by @kumagallium in https://github.com/kumagallium/Graphium/pull/1813
+- [docs] Manual: measurement of gemma-4-31B-it on a lab workstation by @kumagallium in https://github.com/kumagallium/Graphium/pull/1801
+
 ## [v0.155.0](https://github.com/kumagallium/Graphium/compare/v0.154.1...v0.155.0) - 2026-11-22
 
 - [feat] Keep a note's source date apart from its creation date by @kumagallium in https://github.com/kumagallium/Graphium/pull/1806
