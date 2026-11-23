@@ -2,7 +2,7 @@
  * マニュアル用スクリーンショット撮影（資料の日付）
  *
  * 英語 UI・パン作りの世界のノートを隔離した DATA_DIR に置き、動いている dev（vite + API）で撮る。
- *   - ノートの題の下のチップと、押したときの入力欄 → manual/public/screenshots/source-date-chip.png
+ *   - ノートの題の下の日付の 1 行と、押したときの入力欄 → manual/public/screenshots/source-date-line.png
  *   - ノート一覧の「Source date」列と、その順の並び → manual/public/screenshots/notes-list-source-date.png
  *
  * 使い方（本物の vault には触れない。DATA_DIR は使い捨ての場所にする）:
@@ -111,9 +111,9 @@ await page.screenshot({
 });
 console.log(`saved: ${listOut}`);
 
-// 2) ノートの題の下のチップと入力欄
+// 2) ノートの題の下の日付の 1 行と入力欄
 await open("#note/n-paper-2012");
-const chip = page.locator("button", { hasText: "Source date" }).first();
+const chip = page.locator('[data-testid="source-date-line"] button', { hasText: "Source" }).first();
 await chip.waitFor({ state: "visible", timeout: 60000 });
 await chip.click();
 const editor = page.locator('[data-testid="source-date-editor"]');
@@ -123,7 +123,7 @@ const title = page.locator("textarea").first();
 const t = await title.boundingBox();
 const e = await editor.boundingBox();
 if (!t || !e) throw new Error("題か入力欄が見つかりません");
-const chipOut = path.join(OUT_DIR, "source-date-chip.png");
+const chipOut = path.join(OUT_DIR, "source-date-line.png");
 const x = Math.floor(t.x) + 24;
 const y = Math.floor(t.y) - 8;
 await page.screenshot({

@@ -330,6 +330,8 @@ describe("backfillDocumentInfo（ページ数）", () => {
       thumbnailUrl: "",
       uploadedAt: "2026-08-01T00:00:00.000Z",
       usedIn: [],
+      // 資料の日付の後追いはここでは見ない（別の describe）
+      sourceDateScanned: true,
       ...over,
     };
   }
@@ -476,6 +478,8 @@ describe("backfillDocumentInfo（PDF のページ数と出どころをまとめ�
       thumbnailUrl: "",
       uploadedAt: "2026-08-01T00:00:00.000Z",
       usedIn: [],
+      // 資料の日付の後追いはここでは見ない（別の describe）
+      sourceDateScanned: true,
       ...over,
     };
   }
@@ -518,7 +522,7 @@ describe("backfillDocumentInfo（PDF のページ数と出どころをまとめ�
     await readMediaIndex();
     mockPdfs({ 1: { numPages: 12, author: "Alice Smith; Bob Lee", text: "doi: 10.1021/jacs.5b01234" } });
     const result = await backfillDocumentInfo(async () => new Uint8Array([1]));
-    expect(result).toEqual({ pageCounts: 1, sourceInfos: 1 });
+    expect(result).toEqual({ pageCounts: 1, sourceInfos: 1, sourceDates: 0 });
     expect(pdfMock.getDocument).toHaveBeenCalledTimes(1);
     const a = find(store, "a");
     expect(a.pageCount).toBe(12);
@@ -531,11 +535,11 @@ describe("backfillDocumentInfo（PDF のページ数と出どころをまとめ�
     await readMediaIndex();
     mockPdfs({ 1: { numPages: 3 } });
     const read = vi.fn(async () => new Uint8Array([1]));
-    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0 });
+    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0, sourceDates: 0 });
     expect(find(store, "a").sourceInfoScanned).toBe(true);
     expect(find(store, "a").sourceInfo).toBeUndefined();
 
-    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0 });
+    expect(await backfillDocumentInfo(read)).toEqual({ pageCounts: 0, sourceInfos: 0, sourceDates: 0 });
     expect(read).toHaveBeenCalledTimes(1);
   });
 
@@ -618,6 +622,86 @@ describe("backfillDocumentInfo（PDF のページ数と出どころをまとめ�
       { concurrency: 3, flushEvery: 2 },
     );
     expect(store.value.media.map((m) => m.pageCount)).toEqual([1, 2, 1, 2, 1, 2, 1]);
+  });
+});
+
+describe("backfillDocumentInfo（資料の日付 = 文書の中の作成日）", () => {
+  beforeEach(() => {
+    clearMediaIndexCache();
+    vi.clearAllMocks();
+  });
+
+  function doc(over: Partial<MediaIndexEntry> & { fileId: string; name: string }): MediaIndexEntry {
+    return {
+      type: "document",
+      mimeType: "application/octet-stream",
+      url: `local-media://${over.fileId}`,
+      thumbnailUrl: "",
+      uploadedAt: "2026-08-01T00:00:00.000Z",
+      usedIn: [],
+      pageCount: 1,
+      sourceInfoScanned: true,
+      ...over,
+    };
+  }
+  function mockProvider(media: MediaIndexEntry[]) {
+    const store = { value: { version: CURRENT_MEDIA_INDEX_VERSION, updatedAt: "x", media } as MediaIndex };
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn(async () => store.value),
+      writeAppData: vi.fn(async (_k: string, data: unknown) => {
+        store.value = data as MediaIndex;
+      }),
+    } as never);
+    return store;
+  }
+  const created = (iso: string) =>
+    zip({
+      "docProps/core.xml": `<cp:coreProperties><dcterms:created>${iso}</dcterms:created><dcterms:modified>2026-11-01T00:00:00Z</dcterms:modified></cp:coreProperties>`,
+    });
+  const find = (store: { value: MediaIndex }, id: string) => store.value.media.find((m) => m.fileId === id)!;
+
+  it("Excel にも作成日から付け、自動の印と読み終えた印を付ける", async () => {
+    const store = mockProvider([doc({ fileId: "x", name: "budget.xlsx", type: "spreadsheet" as MediaIndexEntry["type"] })]);
+    await readMediaIndex();
+    const result = await backfillDocumentInfo(async () => created("2014-06-10T03:00:00"));
+    expect(result.sourceDates).toBe(1);
+    const x = find(store, "x");
+    expect(x.sourceDate).toBe("2014-06-10");
+    expect(x.sourceDateFrom).toBe("embedded");
+    expect(x.sourceDateScanned).toBe(true);
+  });
+
+  it("作成日が無ければ印だけ付けて、次の起動では読まない", async () => {
+    const store = mockProvider([doc({ fileId: "w", name: "memo.docx" })]);
+    await readMediaIndex();
+    const read = vi.fn(async () => zip({ "word/document.xml": "<w:document/>" }));
+    expect((await backfillDocumentInfo(read)).sourceDates).toBe(0);
+    expect(find(store, "w").sourceDate).toBeUndefined();
+    expect(find(store, "w").sourceDateScanned).toBe(true);
+    clearMediaIndexCache();
+    await readMediaIndex();
+    await backfillDocumentInfo(read);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("人が付けた日付・中に日付を持たない形式（画像）は読まない", async () => {
+    mockProvider([
+      doc({ fileId: "m", name: "paper.docx", sourceDate: "2001" }),
+      doc({ fileId: "i", name: "photo.png", type: "image", mimeType: "image/png" }),
+    ]);
+    await readMediaIndex();
+    const read = vi.fn(async () => created("2014-06-10T03:00:00"));
+    await backfillDocumentInfo(read);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("PDF はバイト列の CreationDate を読み、pdfjs では開かない", async () => {
+    const store = mockProvider([doc({ fileId: "p", name: "a.pdf", type: "pdf", mimeType: "application/pdf" })]);
+    await readMediaIndex();
+    const bytes = new TextEncoder().encode("%PDF-1.4 << /CreationDate (D:20090301120000) >>");
+    await backfillDocumentInfo(async () => bytes);
+    expect(find(store, "p").sourceDate).toBe("2009-03-01");
+    expect(pdfMock.getDocument).not.toHaveBeenCalled();
   });
 });
 

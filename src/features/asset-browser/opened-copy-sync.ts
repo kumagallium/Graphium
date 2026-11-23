@@ -40,8 +40,12 @@ export function decideAdoption(entry: Pick<MediaIndexEntry, "usedIn" | "sharedRe
 }
 
 /**
- * 新しい版の素材に付ける欄。元の版の名前・フォルダ・出どころを引き継ぎ、
+ * 新しい版の素材に付ける欄。元の版の名前・フォルダ・出どころ・資料の日付を引き継ぎ、
  * どの版の改訂かを記録する。
+ *
+ * 資料の日付は、元の版で一度でも決まっていれば（読み終えた印がある）そのまま移す。
+ * 人が付けた日付も、人が外した「日付なし」も含む。新しい版は新規の登録として中の作成日を
+ * 読み直すので、移さないと外した日付が戻ってしまう。値が undefined の欄は保存で落ちる
  */
 export function revisionPatch(previous: MediaIndexEntry): Partial<MediaIndexEntry> {
   return {
@@ -49,6 +53,13 @@ export function revisionPatch(previous: MediaIndexEntry): Partial<MediaIndexEntr
     derivedFromAssets: [previous.fileId],
     ...(previous.noteContexts && previous.noteContexts.length > 0 ? { noteContexts: previous.noteContexts } : {}),
     ...(previous.sourceInfo ? { sourceInfo: previous.sourceInfo } : {}),
+    ...(previous.sourceDateScanned
+      ? {
+          sourceDate: previous.sourceDate,
+          sourceDateFrom: previous.sourceDate ? previous.sourceDateFrom : undefined,
+          sourceDateScanned: true,
+        }
+      : {}),
   };
 }
 

@@ -26,7 +26,7 @@ import { DataSummary, Sparkline } from "../../blocks/chart/data-preview-parts";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import { phraseHitsBySource, useLexicalStatus, type BestHit } from "../lexical-search";
-import { materialListDate, type DocumentKind, type EditMediaContexts, type MediaIndex, type MediaIndexEntry, type MediaType } from "./media-index";
+import { materialListDate, materialSourceDateSortKey, type DocumentKind, type EditMediaContexts, type MediaIndex, type MediaIndexEntry, type MediaType } from "./media-index";
 import { canCountPages, canExtractTitle, hasPageCountFailed } from "./document-info";
 import { BulkTitleRenameDialog } from "./bulk-title-rename-dialog";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, documentKindOf, persistOcrTextPatch, isLocalPreviewRef, isPptxEntry, isFilelessMediaEntry } from "./media-index";
@@ -62,7 +62,7 @@ import { IntakeReceptacle, toIntakeFiles, type IntakeFile, type IntakeSelectionE
 import { listSearchInputProps } from "@/hooks/use-list-search-hotkey";
 import { runFullExit } from "./asset-back";
 
-type SortKey = "uploadedAt" | "name" | "usedIn" | "pageCount";
+type SortKey = "uploadedAt" | "sourceDate" | "name" | "usedIn" | "pageCount";
 
 /**
  * ページ数が無い「—」にどの理由を出すか。
@@ -1354,6 +1354,9 @@ export function AssetGalleryView({
       let cmp = 0;
       if (sortKey === "uploadedAt") {
         cmp = new Date(materialListDate(a)).getTime() - new Date(materialListDate(b)).getTime();
+      } else if (sortKey === "sourceDate") {
+        // 資料の日付（無ければ一覧の日付で補う）。保存形は文字列の順が時間の順
+        cmp = materialSourceDateSortKey(a).localeCompare(materialSourceDateSortKey(b));
       } else if (sortKey === "usedIn") {
         cmp = a.usedIn.length - b.usedIn.length;
       } else {
@@ -1362,6 +1365,10 @@ export function AssetGalleryView({
       return sortAsc ? cmp : -cmp;
     });
   }, [mediaIndex, mediaType, searchQuery, conversationBodyHits, sortKey, sortAsc, docFilter, folderFilter, noteFolderLookup, emptyLookup]);
+
+  // 資料の日付の列は、表示中のどの素材にも付いていないときは出さない（ノート一覧と同じ）。
+  // ただし資料の日付で並べている間は出しておく（絞り込みで列と矢印だけ消え、並びだけ残るのを避ける）
+  const hasSourceDateColumn = sortKey === "sourceDate" || filtered.some((m) => !!m.sourceDate);
 
   // リンクした素材の状態（表示中の分を 1 回でまとめて見る。デスクトップ版でなければ呼ばない）
   const linkStates = useLinkStates(filtered);
@@ -2056,6 +2063,18 @@ export function AssetGalleryView({
                 >
                   {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                 </button>
+                {hasSourceDateColumn && (
+                  <button
+                    onClick={() => handleSort("sourceDate")}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                      sortKey === "sourceDate"
+                        ? "bg-primary/10 text-primary font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t("nav.sourceDate")}{sortKey === "sourceDate" && (sortAsc ? " ↑" : " ↓")}
+                  </button>
+                )}
                 {mediaType === "document" && (
                   <button
                     onClick={() => handleSort("pageCount")}
@@ -2257,10 +2276,11 @@ export function AssetGalleryView({
             </div>
           ) : (
             // 最小幅は「固定幅の列の合計（36+56+88+140+40 = 360px）+ 名前列の最小幅（約 160px）」。
+            // 資料の日付の列（104px）が出ているときは、その分だけ広げる（624px）。
             // 名前セルは max-w-0 + truncate で縮むので、これ以上広く取ると狭い幅で右端の
             // 日付列が切れる（700px だと 853px 幅で日付が「202」だけ見え、横スクロールの
             // 手がかりも無かった）
-            <table className="w-full min-w-[520px] text-sm">
+            <table className={`w-full ${hasSourceDateColumn ? "min-w-[624px]" : "min-w-[520px]"} text-sm`}>
               <thead>
                 <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                   <th className="py-2 px-2 w-[36px]">
@@ -2295,6 +2315,15 @@ export function AssetGalleryView({
                   >
                     {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
                   </th>
+                  {hasSourceDateColumn && (
+                    <th
+                      className="py-2 pl-3 w-[104px] whitespace-nowrap cursor-pointer hover:text-foreground"
+                      onClick={() => handleSort("sourceDate")}
+                      data-tooltip={t("sourceDate.tooltip")}
+                    >
+                      {t("nav.sourceDate")}{sortKey === "sourceDate" && (sortAsc ? " ↑" : " ↓")}
+                    </th>
+                  )}
                   <th
                     className="py-2 pl-3 w-[140px] whitespace-nowrap cursor-pointer hover:text-foreground"
                     onClick={() => handleSort("uploadedAt")}
@@ -2483,6 +2512,11 @@ export function AssetGalleryView({
                       <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
                         {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
                       </td>
+                      {hasSourceDateColumn && (
+                        <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                          {entry.sourceDate ?? ""}
+                        </td>
+                      )}
                       <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                         {formatDateTime(materialListDate(entry))}
                       </td>

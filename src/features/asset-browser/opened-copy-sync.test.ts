@@ -52,6 +52,28 @@ describe("revisionPatch", () => {
     });
   });
 
+  it("人が付けた資料の日付を移す", () => {
+    const patch = revisionPatch(entryOf({ sourceDate: "2012", sourceDateScanned: true }));
+    expect(patch.sourceDate).toBe("2012");
+    expect(patch.sourceDateFrom).toBeUndefined();
+    expect(patch.sourceDateScanned).toBe(true);
+  });
+
+  it("人が外した資料の日付は、新しい版でも外したまま（中の作成日で上書きしない）", () => {
+    const patch = revisionPatch(entryOf({ sourceDateScanned: true }));
+    expect("sourceDate" in patch).toBe(true);
+    expect(patch.sourceDate).toBeUndefined();
+    expect(patch.sourceDateScanned).toBe(true);
+    // 新しい版の登録で入った値に重ねると、日付が消える
+    const merged = JSON.parse(JSON.stringify({ sourceDate: "2026-11-01", sourceDateFrom: "embedded", ...patch }));
+    expect(merged.sourceDate).toBeUndefined();
+    expect(merged.sourceDateFrom).toBeUndefined();
+  });
+
+  it("元の版で資料の日付を一度も読んでいなければ、新しい版の読み取りに任せる", () => {
+    expect("sourceDate" in revisionPatch(entryOf())).toBe(false);
+  });
+
   it("フォルダ・出どころが無ければ付けない", () => {
     expect(revisionPatch(entryOf())).toEqual({ revisionOf: "m1", derivedFromAssets: ["m1"] });
   });

@@ -428,6 +428,26 @@ export type MediaIndexEntry = {
    */
   sourceInfoScanned?: boolean;
   /**
+   * 資料の日付（その資料がいつのものか）。保存形は "YYYY" / "YYYY-MM" / "YYYY-MM-DD"（lib/source-date.ts）。
+   * ノートの資料の日付（GraphiumDocument.sourceDate）と同じ意味・同じ形。uploadedAt（取り込んだ日時）とは別に持つ。
+   *
+   * Word・PowerPoint・Excel・PDF は、文書の中に記録された作成日を取り込み時に自動で入れる
+   * （lib/embedded-created-date.ts）。最終保存日とファイルの更新日は、開いて保存し直すだけで
+   * 新しくなるので使わない。既存素材は起動後の後追い付与（`backfillDocumentInfo`）が読んで付ける。
+   * 人が直せる（素材の詳細）。後から埋められる類の情報なので、スキーマ版は上げない。
+   */
+  sourceDate?: string;
+  /**
+   * 資料の日付を文書の中の作成日から自動で入れたときだけ "embedded"。人が直す・付ける・外すと消える。
+   * 詳細に「ファイルの中の作成日から」と添えて、確かめていない日付だと分かるようにする
+   */
+  sourceDateFrom?: "embedded";
+  /**
+   * 文書の中の作成日を読み終えたか（読んで何も無かったもの・人が外したものも含む）。
+   * 起動のたびに読み直さない・人が外した日付を後追いで戻さないための印
+   */
+  sourceDateScanned?: boolean;
+  /**
    * AI との会話の来歴（type === "conversation" のとき）。
    *
    * 本文（本人の発言の原文と AI の返答の抜粋）は `saveMediaText(fileId)` に置き、ここには
@@ -929,6 +949,46 @@ export async function persistOcrTextPatch(
   } catch (err) {
     console.warn("OCR テキストの書き戻しに失敗:", err);
   }
+}
+
+/**
+ * 人が直した資料の日付を media-index に書き戻す（undefined は外す）。
+ * 自動で入れた印（sourceDateFrom）は消し、読み終えた印（sourceDateScanned）を付ける。
+ * 外した日付を後追い付与が戻さないように。同値なら書かない。
+ */
+export async function persistMaterialSourceDate(
+  fileId: string,
+  sourceDate: string | undefined,
+): Promise<void> {
+  const index = await readMediaIndex();
+  if (!index) return;
+  let changed = false;
+  const media = index.media.map((m) => {
+    if (m.fileId !== fileId) return m;
+    if (m.sourceDate === sourceDate && !m.sourceDateFrom && m.sourceDateScanned) return m;
+    changed = true;
+    const { sourceDate: _old, sourceDateFrom: _from, ...rest } = m;
+    return { ...rest, ...(sourceDate ? { sourceDate } : {}), sourceDateScanned: true };
+  });
+  if (!changed) return;
+  try {
+    await saveMediaIndex({ ...index, updatedAt: new Date().toISOString(), media });
+  } catch (err) {
+    console.warn("資料の日付の書き戻しに失敗:", err);
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "source-date-patch", fileId } }),
+    );
+  }
+}
+
+/** 素材の一覧の並べ替えに使う資料の日付（無ければ一覧の日付 = 取り込んだ日・会話の日時） */
+export function materialSourceDateSortKey(
+  entry: Pick<MediaIndexEntry, "sourceDate" | "uploadedAt" | "conversation">,
+): string {
+  return entry.sourceDate ?? materialListDate(entry);
 }
 
 /** 出どころ情報が実質空か（origin だけでは意味が無いので項目として数えない） */

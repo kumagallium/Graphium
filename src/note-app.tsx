@@ -437,7 +437,7 @@ import { FolderMenu } from "./features/note-context/FolderMenu";
 import { computeFolderDrop } from "./features/note-context/folder-drop";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
-import { SourceDateChip } from "./features/source-date/SourceDateChip";
+import { SourceDateLine } from "./features/source-date/SourceDateLine";
 import { normalizeStoredSourceDate } from "./lib/source-date";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
@@ -8153,10 +8153,11 @@ function NoteEditorInner({
                     }}
                   />
                 )}
-                {/* 資料の日付（作成日時とは別。年だけ・年月だけでも付けられる） */}
-                {(sourceDate || (!archived && !trashed)) && (
-                  <SourceDateChip
+                {/* 日付の静かな 1 行（資料の日付 · 作成日）。資料の日付は年だけ・年月だけでも付けられる */}
+                <SourceDateLine
                     value={sourceDate}
+                    createdAt={initialDoc?.createdAt}
+                    editable={!archived && !trashed}
                     onChange={(next) => {
                       if (archived || trashed) return;
                       sourceDateRef.current = next;
@@ -8165,7 +8166,6 @@ function NoteEditorInner({
                       markDirty();
                     }}
                   />
-                )}
               </div>
             )}
             {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
@@ -17364,6 +17364,8 @@ export function NoteApp() {
                       tokenUsage: result.tokenUsage,
                     });
                     provDoc.noteContexts = generatedNoteFolders("procedure", entry);
+                    // 素材の資料の日付（その資料がいつのものか）を、そこから作った手順ノートへ引き継ぐ
+                    if (entry.sourceDate) provDoc.sourceDate = normalizeStoredSourceDate(entry.sourceDate);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
@@ -17398,6 +17400,8 @@ export function NoteApp() {
                       tokenUsage: result.tokenUsage,
                     });
                     provDoc.noteContexts = generatedNoteFolders("procedure", entry);
+                    // 素材の資料の日付（その資料がいつのものか）を、そこから作った手順ノートへ引き継ぐ
+                    if (entry.sourceDate) provDoc.sourceDate = normalizeStoredSourceDate(entry.sourceDate);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
@@ -17434,6 +17438,8 @@ export function NoteApp() {
                       tokenUsage: result.tokenUsage,
                     });
                     provDoc.noteContexts = generatedNoteFolders("procedure", entry);
+                    // 素材の資料の日付（その資料がいつのものか）を、そこから作った手順ノートへ引き継ぐ
+                    if (entry.sourceDate) provDoc.sourceDate = normalizeStoredSourceDate(entry.sourceDate);
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {

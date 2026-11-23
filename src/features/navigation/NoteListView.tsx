@@ -29,7 +29,7 @@ import {
   buildNoteListColumnPlan,
   type NoteListHideableColumn,
 } from "./note-list-columns";
-import { formatDateTime } from "../../lib/format-datetime";
+import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import { sourceDateSortKey } from "../../lib/source-date";
 import { cn } from "../../lib/utils";
 import { ContextBadge } from "../note-context/ContextBadge";
@@ -476,6 +476,7 @@ export function NoteListView({
   // パンくずに出ているので隠してよい。並べ替えも同じで、ツールバーに無い基準（作者・ラベル・
   // フォルダ・本アイコン）は列ヘッダからしか選べないので、その列で並べているうちは隠さない。
   // 作成日はツールバーの並べ替えに出るので、既定の並びでも隠してよい。
+  // 作成日・資料の日付は、列が隠れても並べ替えに使っている方だけ題の右に小さく残す（inlineDateFor）。
   const pinnedColumns = useMemo(() => {
     const pinned = new Set<NoteListHideableColumn>();
     if (authorFilter.length > 0) pinned.add("author");
@@ -485,7 +486,6 @@ export function NoteListView({
     if (sortKey === "labels") pinned.add("labels");
     if (sortKey === "noteContexts") pinned.add("folder");
     if (sortKey === "knowledgeCount") pinned.add("knowledge");
-    if (sortKey === "sourceDate") pinned.add("sourceDate");
     return pinned;
   }, [authorFilter, labelFilter, contextFilter, selectedFolder, sortKey]);
   const hasLabelColumn = labelFilterOptions.length > 0;
@@ -506,6 +506,20 @@ export function NoteListView({
   });
   const cols = useResponsiveColumns(columnPlan);
   const hide = cols.hidden;
+  // 狭くて日付の列が隠れたとき、並べ替えに使っている日付だけを題の右に小さく出す。
+  // 列があれば列で見えるので出さない。資料の日付順は「資料の日付が無ければ作成日」で並ぶので、
+  // 資料の日付が無いノートは作成日を出す（並びの理由が見えるように）
+  const inlineDateFor = (entry: { sourceDate?: string; createdAt: string }): string | null => {
+    if (sortKey === "sourceDate" && (!hasSourceDateColumn || hide.has("sourceDate"))) {
+      return entry.sourceDate
+        ? `${t("sourceDate.short")} ${entry.sourceDate}`
+        : `${t("sourceDate.created")} ${formatDate(entry.createdAt)}`;
+    }
+    if (sortKey === "createdAt" && hide.has("createdAt")) {
+      return `${t("sourceDate.created")} ${formatDate(entry.createdAt)}`;
+    }
+    return null;
+  };
 
   // 文脈ラベルの更新（楽観的にローカル entries を先に書き換え、保存を後追いさせる）
   const applyLocalContexts = useCallback((noteId: string, contexts: string[]) => {
@@ -1071,6 +1085,17 @@ export function NoteListView({
                     >
                       {entry.title}
                     </span>
+                    {(() => {
+                      const d = inlineDateFor(entry);
+                      return d ? (
+                        <span
+                          className="ml-2 text-[11px] text-muted-foreground tabular-nums whitespace-nowrap"
+                          data-testid="note-list-inline-date"
+                        >
+                          {d}
+                        </span>
+                      ) : null;
+                    })()}
                     {ocrMatchedIds.has(entry.noteId) && (
                       <span
                         className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle"

@@ -8,7 +8,8 @@ import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndex, MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
 import type { SourceInfo } from "./media-index";
-import { persistOcrTextPatch, persistSourceInfoPatch } from "./media-index";
+import { persistMaterialSourceDate, persistOcrTextPatch, persistSourceInfoPatch } from "./media-index";
+import { SourceDateLine } from "../source-date/SourceDateLine";
 import {
   CrossrefNotFoundError,
   extractPdfSourceInfo,
@@ -469,6 +470,17 @@ export function MaterialMetadataSection({
             <span style={{ color: TYPE_HEX[entry.type] }} className="text-xs font-medium">
               {t(`asset.type.${entry.type}`)}
             </span>
+          </MetaRow>
+          {/* 資料の日付（その資料がいつのものか）。取り込んだ日とは別。Office・PDF は中の作成日から自動で入る */}
+          <MetaRow label={t("sourceDate.label")}>
+            <SourceDateLine
+              variant="field"
+              value={entry.sourceDate}
+              note={entry.sourceDate && entry.sourceDateFrom === "embedded" ? t("sourceDate.fromFile") : undefined}
+              onChange={(next) => {
+                void persistMaterialSourceDate(entry.fileId, next);
+              }}
+            />
           </MetaRow>
           <MetaRow label={t("asset.metaUploaded")}>
             <span className="text-xs text-muted-foreground tabular-nums">
