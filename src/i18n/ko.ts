@@ -4800,6 +4800,8 @@ export const ko: Record<string, string> = {
   "linkedFile.read.timeout": "읽는 데 시간이 너무 오래 걸려 중단했습니다.",
   "linkedFile.read.notReferenced": "이 표의 원본은 이 노트에서 쓰는 링크 자료가 아니므로 읽지 않았습니다.",
   "linkedFile.read.readFrom": "읽은 파일: {place} / {path}",
+  "linkedFile.read.confirmUnknown": "이 표의 원본 파일 「{place} / {path}」을(를) 읽습니다. 이 기기에서 가져온 표가 아닙니다. 계속할까요?",
+  "linkedFile.read.confirmRead": "읽기",
   "linkedFile.read.openNoteFirst": "표는 노트에 들어갑니다. 노트에서 /데이터 로 이 파일을 선택하세요.",
   "linkedFile.brokenRecord": "이 링크의 기록을 읽을 수 없습니다.",
   "linkedFile.origin.title": "원본 데이터",

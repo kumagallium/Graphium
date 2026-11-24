@@ -4861,6 +4861,8 @@ export const en: Record<string, string> = {
   "linkedFile.read.timeout": "Reading took too long and was stopped.",
   "linkedFile.read.notReferenced": "This table's source isn't a linked file used in this note, so it was not read.",
   "linkedFile.read.readFrom": "File read: {place} / {path}",
+  "linkedFile.read.confirmUnknown": "Graphium will read this table’s source file “{place} / {path}”. This table was not imported on this device. Continue?",
+  "linkedFile.read.confirmRead": "Read",
   "linkedFile.read.openNoteFirst": "The table goes into a note. In a note, choose this file from /data.",
   "linkedFile.brokenRecord": "The record for this link can’t be read.",
   "linkedFile.origin.title": "Source data",

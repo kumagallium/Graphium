@@ -27,6 +27,7 @@ export {
   LINK_HISTORY_MAX,
   type LinkState,
 } from "./linked-entry";
+export { recordLinkedImport, needsReadConfirm } from "./linked-import-ledger";
 export { displayTypeOf, displayMimeOf, isInMediaList } from "./display-type";
 export { linkFilesNotice, linkFilesErrorNotice, type LinkFilesOutcome } from "./link-notice";
 export {

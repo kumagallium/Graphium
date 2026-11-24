@@ -245,6 +245,7 @@ function CaptionRow({
     <span style={styles.caption}>{caption}</span>
   );
   return (
+    <>
     <div style={styles.captionRow}>
       {name}
       {source && (
@@ -262,7 +263,6 @@ function CaptionRow({
           </span>
         </button>
       )}
-      {source && <LinkedSourceChangedNote source={source} />}
       {data && (
         <span style={styles.badge}>
           {t("dataTable.rowsCols", {
@@ -297,6 +297,9 @@ function CaptionRow({
         <span style={styles.exported}>{t("dataTable.exported", { name: exportedName })}</span>
       )}
     </div>
+    {/* 元データの変化は題の行に混ぜず、下に 1 行で出す（題が詰まらない） */}
+    {source && <LinkedSourceChangedNote source={source} layout="line" />}
+    </>
   );
 }
 
@@ -357,6 +360,9 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    // 題は縮めない（バッジ側が先に縮む）
+    flexShrink: 0,
+    maxWidth: "100%",
   },
   captionInput: {
     fontSize: 13,

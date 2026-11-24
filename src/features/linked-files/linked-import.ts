@@ -74,14 +74,22 @@ export async function findLinkOf(fileId: string, noteId?: string): Promise<Media
 
 /** 取り込み画面に出す「読んだファイル: 置き場の名前 / 場所」。置き場の名前が引けなければ id を出す */
 export async function readFromLabel(placeId: string, relPath: string): Promise<string> {
+  return t("linkedFile.read.readFrom", await placeAndPathOf(placeId, relPath));
+}
+
+/** 置き場の名前と場所（名前が引けなければ id）。確かめの文言と「読んだファイル」で共有する */
+export async function placeAndPathOf(placeId: string, relPath: string): Promise<{ place: string; path: string }> {
   let place = placeId;
   try {
     place = (await listPlaces()).find((p) => p.id === placeId)?.name ?? placeId;
   } catch {
     // 名前が引けなくても、場所は出す
   }
-  return t("linkedFile.read.readFrom", { place, path: relPath });
+  return { place, path: relPath };
 }
+
+/** 再取り込みの確かめで利用者が断ったときに投げる（読まない）。呼び出し側は何も出さずに止める */
+export const LINKED_READ_DECLINED = "LINKED_READ_DECLINED";
 
 /** 表の出所が覚えている、取り込んだ時点の元ファイルの大きさ・更新日時（リンクした素材から取り込んだときだけ） */
 export function linkedSnapshotOf(source: TableSource): { size: number; mtimeMs: number } | null {

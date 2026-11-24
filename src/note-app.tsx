@@ -298,12 +298,15 @@ import { hasCalcTargetWithin, remapCalcTargetsInEditor } from "./blocks/calc/rem
 import { isLinkedEntry, isPlaceUrl } from "./features/linked-files/link-url";
 import {
   LINKED_DATA_IMPORT_EVENT,
+  LINKED_READ_DECLINED,
   findLinkOf,
   isLinkedDataImportable,
   readFromLabel,
+  placeAndPathOf,
   readLinkedText,
   type LinkedImportRequest,
 } from "./features/linked-files/linked-import";
+import { needsReadConfirm, recordLinkedImport } from "./features/linked-files/linked-import-ledger";
 import { readErrorMessageKey } from "./features/linked-files/places";
 import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
@@ -2630,6 +2633,8 @@ function NoteEditorInner({
        * あるとき fileId はリンクした素材を指し、元のファイルは素材として登録しない（コピーを作らない）
        */
       linked?: { size: number; mtimeMs: number };
+      /** リンクした素材から読んだときの置き場と場所（確定時に端末の控えへ残す） */
+      linkedFrom?: { placeId: string; relPath: string };
       /** リンクした素材から読んだとき、「読んだファイル: 置き場 / 場所」（確定前に見せる） */
       readFromNote?: string;
     } | null
@@ -2654,7 +2659,14 @@ function NoteEditorInner({
         const readFromNote = await readFromLabel(req.placeId, req.relPath);
         pickerEditorRef.current = pickerEditorRef.current ?? editorRef.current;
         setPickerMediaType(null);
-        setDataImportFile({ fileName: req.name, text, fileId: req.fileId, linked: { size, mtimeMs }, readFromNote });
+        setDataImportFile({
+          fileName: req.name,
+          text,
+          fileId: req.fileId,
+          linked: { size, mtimeMs },
+          linkedFrom: { placeId: req.placeId, relPath: req.relPath },
+          readFromNote,
+        });
       } catch (e) {
         const { key, params } = readErrorMessageKey(e);
         alert(tStatic(key, params));
@@ -3173,10 +3185,15 @@ function NoteEditorInner({
         keepDerivation?: TableDerivation;
         initialOptions?: DelimitedImportOptions;
         linked?: { size: number; mtimeMs: number };
+        linkedFrom?: { placeId: string; relPath: string };
       },
       result: DataImportResult
     ) => {
       setDataImportFile(null);
+      // リンクした素材から取り込んだ（初回も再取り込みも）: この端末で確定したものとして控える
+      if (file.linked && file.fileId && file.linkedFrom) {
+        recordLinkedImport({ fileId: file.fileId, ...file.linkedFrom });
+      }
       if (result.target === "dataTable") {
         void insertDataTable(file, result);
         return;
@@ -3232,24 +3249,38 @@ function NoteEditorInner({
           // このノートが使っているリンク素材だけを読み直す（違えば例外。読まない）
           const link = await findLinkOf(fileId, openFileIdRef.current ?? undefined);
           if (link) {
+            // この端末で取り込んだ表でなければ（共有・改ざんで出所が差し替わりうる）、読む前に確かめる
+            if (needsReadConfirm({ fileId, placeId: link.placeId, relPath: link.relPath })) {
+              const ok = await confirmAction(
+                t("linkedFile.read.confirmUnknown", await placeAndPathOf(link.placeId, link.relPath)),
+                { confirmLabel: t("linkedFile.read.confirmRead") },
+              );
+              if (!ok) throw new Error(LINKED_READ_DECLINED);
+            }
             const { text, size, mtimeMs } = await readLinkedText(link.placeId, link.relPath);
-            return { text, linked: { size, mtimeMs }, readFromNote: await readFromLabel(link.placeId, link.relPath) };
+            return {
+              text,
+              linked: { size, mtimeMs },
+              linkedFrom: { placeId: link.placeId, relPath: link.relPath },
+              readFromNote: await readFromLabel(link.placeId, link.relPath),
+            };
           }
           const provider = getActiveProvider();
           const blobUrl = await provider.getMediaBlobUrl(fileId);
           const blob = await (await fetch(blobUrl)).blob();
-          return { text: await readDataFileText(blob), linked: undefined, readFromNote: undefined };
+          return { text: await readDataFileText(blob), linked: undefined, linkedFrom: undefined, readFromNote: undefined };
         };
         // 絞り込みの表は、元の素材を条件つきで開く（条件を直せるように）。
         // 元が読めない（消された）ときは、写しをふつうに開く
         const back = reimportTargetOf(source);
         if (back) {
           try {
-            const { text, linked, readFromNote } = await readAsset(back.fileId);
+            const { text, linked, linkedFrom, readFromNote } = await readAsset(back.fileId);
             setDataImportFile({
               fileName: back.fileName,
               text,
               linked,
+              linkedFrom,
               readFromNote,
               fileId: back.fileId,
               replaceBlockId: blockId,
@@ -3260,16 +3291,19 @@ function NoteEditorInner({
               initialTarget: target,
             });
             return;
-          } catch {
+          } catch (e) {
+            // 利用者が確かめで断ったときは、写しも開かずここで止める
+            if (e instanceof Error && e.message === LINKED_READ_DECLINED) return;
             // 元の素材が読めない → 下で写しを開く
           }
         }
         try {
-          const { text, linked, readFromNote } = await readAsset(source.fileId!);
+          const { text, linked, linkedFrom, readFromNote } = await readAsset(source.fileId!);
           setDataImportFile({
             fileName: source.fileName,
             text,
             linked,
+            linkedFrom,
             readFromNote,
             fileId: source.fileId,
             replaceBlockId: blockId,
@@ -3283,6 +3317,7 @@ function NoteEditorInner({
             keepDerivation: source.derivation,
           });
         } catch (e) {
+          if (e instanceof Error && e.message === LINKED_READ_DECLINED) return;
           // リンクした素材の読み直しが断られた・読めなかったときは、その理由を出す
           if ((e instanceof Error ? e.message : String(e)).startsWith("PLACE_READ_")) {
             const { key, params } = readErrorMessageKey(e);

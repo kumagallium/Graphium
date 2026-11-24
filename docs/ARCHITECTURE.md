@@ -4291,6 +4291,14 @@ The same `src/` tree is built four different ways.
       only: Rust keeps no cache and writes nothing to disk, and the UI shows
       them through a `blob:` URL it revokes on close, or hands the decoded
       text to the import dialog. The original is not registered as an asset.
+    - Re-importing checks twice before it reads. The table's source
+      `fileId` must be a linked material the open note uses (`usedIn`), and
+      the (`fileId`, place, path) triple must be in a ledger of imports the
+      user confirmed on this device (`linked-import-ledger.ts`,
+      `localStorage`, at most 500, oldest dropped; never in the note, the
+      index or a share). A table that is not in the ledger (shared with
+      you, or its source edited) asks in an in-app dialog, naming the
+      place and path, before anything is read; declining reads nothing.
     - What the guards above do not change: a linked file's contents are
       never given to AI, search, ingest or sharing. A table imported from it
       is an ordinary table in the note.
