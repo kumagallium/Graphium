@@ -386,6 +386,7 @@ import {
   ensureSharedEntryRoots,
   findCrossFolderCitations,
   confirmCrossFolderCitations,
+  decideHiddenSources,
   needsSharedFolderChoice,
   ProposeChangesDialog,
   UpdateSharedNoteDialog,
@@ -4650,6 +4651,30 @@ function NoteEditorInner({
         : undefined,
     [isWikiDoc, fileId, rawNoteIndex, noteIndex, mediaIndex],
   );
+  // 共有先に無い資料を数えて、外すか聞く（unshared-sources.ts）。null は共有をやめた
+  const askHiddenSources = useCallback(
+    async (doc: GraphiumDocument, targetRoot: string): Promise<Set<string> | null> => {
+      await ensureSharedEntryRoots();
+      const provider = getActiveProvider();
+      const loadDoc = async (id: string): Promise<GraphiumDocument | null> => {
+        try {
+          return await provider.loadFile(id);
+        } catch {
+          return (await provider.loadWikiFile?.(id).catch(() => null)) ?? null;
+        }
+      };
+      const selfIds = fileId ? [fileId, fileId.replace(/^(wiki|skill):/, "")] : [];
+      return decideHiddenSources(doc, targetRoot, {
+        selfIds,
+        isKnowledge: !!isWikiDoc,
+        t,
+        loadDoc,
+        entryRoots: getSharedLibrarySnapshot().entryRoots,
+        roots: getSharedFolders().map((f) => f.root),
+      });
+    },
+    [fileId, isWikiDoc, t],
+  );
   const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
     if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
@@ -4677,6 +4702,9 @@ function NoteEditorInner({
       if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, shareTarget.root), shareTarget.root, t))) {
         return;
       }
+      // 共有先に無い資料（共有していないノートの一節や題）が入っていたら、外すか聞く
+      const hideSourceIds = await askHiddenSources(docWithRef, shareTarget.root);
+      if (!hideSourceIds) return;
       // Wiki（Knowledge ページ）は type: "knowledge" として共有する
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: shareTarget.root,
@@ -4685,6 +4713,7 @@ function NoteEditorInner({
         // 単発共有はダイアログを出さないので、設定のスイッチがそのまま効く（§24）
         includePrivateHistory: getShareIncludesPrivateHistory(),
         readable: readableCopyContext,
+        ...(hideSourceIds.size > 0 ? { hideSourceIds } : {}),
       });
       if (!result.ok) {
         if ("conflict" in result && result.conflict) {
@@ -4733,7 +4762,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext, onForkSharedNote]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext, onForkSharedNote, askHiddenSources]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4771,12 +4800,16 @@ function NoteEditorInner({
       const baseDoc = await buildDocument();
       const docWithRef: GraphiumDocument = { ...baseDoc, sharedRef: sharedRefState };
       if (!(await confirmCrossFolderCitations(findCrossFolderCitations(docWithRef, toRoot), toRoot, t))) return;
+      // 移した先に無い資料も、共有のときと同じく外すか聞く
+      const hideSourceIds = await askHiddenSources(docWithRef, toRoot);
+      if (!hideSourceIds) return;
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: toRoot,
         author: sharedAuthor,
         blobRoot: getBlobRoot(toRoot) ?? undefined,
         includePrivateHistory: getShareIncludesPrivateHistory(),
         readable: readableCopyContext,
+        ...(hideSourceIds.size > 0 ? { hideSourceIds } : {}),
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4802,7 +4835,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting, askHiddenSources]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。

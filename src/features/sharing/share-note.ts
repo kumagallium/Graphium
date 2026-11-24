@@ -42,7 +42,7 @@ import {
   type FetchMediaBytes,
 } from "./auto-blob";
 import { appendHistory } from "./share-history";
-import { stripMemoTraces } from "./strip-memo-traces";
+import { stripMemoTraces, stripUnsharedSources } from "./strip-memo-traces";
 import { collectAdoptedProposals } from "./proposal-apply";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
@@ -89,6 +89,12 @@ export type ShareNoteOptions = {
    * 渡さない（Wiki ページなど）と、写しは置かず、その id の古い写しだけ消す。
    */
   readable?: ReadableCopyContext;
+  /**
+   * 共有コピーと読める写しから外す資料の id（共有先に無いノート・ナレッジ・素材）。
+   * 共有の前に利用者が「外して共有」を選んだときだけ渡す（unshared-sources.ts）。
+   * 手元に保存し直す doc は変えない
+   */
+  hideSourceIds?: ReadonlySet<string>;
   /**
    * テスト用フック（本番では未指定）。
    * - extractFileId: 既定で active StorageProvider のものを使う
@@ -196,6 +202,11 @@ export async function prepareEntryDoc(
   // ── メモをたどれる値は常に落とす（includePrivateHistory が真でも載せない） ──
   // これも hash 計算の前。読める写しの Markdown もこの entryDoc から組む
   entryDoc = stripMemoTraces(entryDoc);
+
+  // ── 共有先に無い資料（利用者が外すと選んだときだけ）。これも hash 計算の前 ──
+  if (options.hideSourceIds?.size) {
+    entryDoc = stripUnsharedSources(entryDoc, options.hideSourceIds);
+  }
 
   return { ok: true, entryDoc, blobs };
 }
@@ -321,7 +332,9 @@ export async function shareGraphiumDocument(
     // 写しの失敗で共有は失敗にしない（結果として返す）
     let readableCopy: ReadableCopyStatus | undefined;
     if (entryType === "note") {
-      const provDoc = stripMemoTraces(stripPrivateHistory(doc));
+      const memoFree = stripMemoTraces(stripPrivateHistory(doc));
+      // 来歴はつながりの相手の題を索引から引くので、外すと選んだ相手は noteLinks ごと落とす
+      const provDoc = options.hideSourceIds?.size ? stripUnsharedSources(memoFree, options.hideSourceIds) : memoFree;
       readableCopy = (
         await syncReadableCopy({
           root: options.root,
