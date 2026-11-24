@@ -1684,6 +1684,7 @@ export const ko: Record<string, string> = {
   "nav.noteCount": "노트 {filtered} / {total}개",
   "nav.loadingNotes": "노트를 불러오는 중…",
   "nav.noMatchingNotes": "일치하는 노트가 없습니다",
+  "nav.onlySubfoldersHint": "이 폴더 바로 아래에는 노트가 없습니다. 안의 폴더는 왼쪽 탐색에서 열 수 있습니다",
   "nav.noteColumn": "노트",
   "nav.outgoing": "나가는 링크",
   "nav.incoming": "들어오는 링크",

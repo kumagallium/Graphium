@@ -350,8 +350,8 @@ export const NarrowScrolls: Story = {
 };
 
 // ── フォルダを開いたとき ──
-// エクスプローラーと同じく、開いたフォルダ自身のノートだけを並べ、子フォルダは先頭に行で出す。
-// 子フォルダの行・パンくずの親を押すと、そのフォルダを開き直す（本物では note-app が同じことをする）
+// エクスプローラーと同じく、開いたフォルダ自身のノートだけを並べる。子フォルダは左のナビに並ぶので
+// 一覧には行で出さない。パンくずの親を押すと、そのフォルダを開き直す（本物では note-app が同じことをする）
 
 const FOLDER_INDEX: GraphiumIndex = {
   ...MOCK_INDEX,
@@ -361,12 +361,21 @@ const FOLDER_INDEX: GraphiumIndex = {
   })),
 };
 
-function FolderOpenStory({ initial }: { initial: string }) {
+// 親フォルダの直下にノートが無く、子フォルダだけがあるとき
+const ONLY_CHILDREN_INDEX: GraphiumIndex = {
+  ...MOCK_INDEX,
+  notes: MOCK_INDEX.notes.map((n, i) => ({
+    ...n,
+    noteContexts: [["焼結/第1回", "焼結/第2回"][i % 2]],
+  })),
+};
+
+function FolderOpenStory({ initial, index = FOLDER_INDEX }: { initial: string; index?: GraphiumIndex }) {
   const [folder, setFolder] = useState<string | null>(initial);
-  const tree = buildFolderTree(collectFolderSource(FOLDER_INDEX.notes).folders);
+  const tree = buildFolderTree(collectFolderSource(index.notes).folders);
   return (
     <NoteListView
-      noteIndex={FOLDER_INDEX}
+      noteIndex={index}
       onOpenNote={(id) => console.log("open:", id)}
       onBack={() => console.log("back")}
       contextFilter={folder ? [folder] : []}
@@ -381,8 +390,13 @@ function FolderOpenStory({ initial }: { initial: string }) {
 }
 
 export const FolderWithChildren: Story = {
-  name: "フォルダを開く（子フォルダは先頭の行、ノートは直下のものだけ）",
+  name: "フォルダを開く（ノートは直下のものだけ。子フォルダは左のナビ）",
   render: () => <FolderOpenStory initial="焼結" />,
+};
+
+export const FolderOnlyChildren: Story = {
+  name: "直下にノートが無く子フォルダだけのフォルダ（左のナビへ案内）",
+  render: () => <FolderOpenStory initial="焼結" index={ONLY_CHILDREN_INDEX} />,
 };
 
 export const ChildFolder: Story = {

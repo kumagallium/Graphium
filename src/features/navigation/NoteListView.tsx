@@ -181,12 +181,12 @@ export function NoteListView({
    */
   selectedFolder?: string | null;
   /**
-   * 開いているフォルダの直下の子フォルダ。一覧の先頭にフォルダの行として並べ、押すと
-   * onSelectFolder でその子を開く（エクスプローラーと同じく、親の一覧に子の中身は混ぜない）。
-   * count は子フォルダの中のノート数（サイドバーの件数と同じ集計）。
+   * 開いているフォルダの直下の子フォルダ。親の一覧に子の中身は混ぜない（エクスプローラーと同じ）。
+   * 子フォルダは左のナビに並ぶので、一覧には行として出さない（同じものが 2 か所に出て場所も取るため）。
+   * 直下にノートが無く子フォルダだけのとき、「一致するノートがありません」の代わりに左のナビへ案内する。
    */
   childFolders?: readonly { name: string; path: string; totalCount: number }[];
-  /** パンくずの親フォルダ・子フォルダの行をクリックしたとき（そのフォルダを開く） */
+  /** パンくずの親フォルダをクリックしたとき（そのフォルダを開く） */
   onSelectFolder?: (path: string) => void;
   /** パンくずの「すべてのノート」をクリックしたとき（フォルダ絞り込みを解除） */
   onClearFolder?: () => void;
@@ -441,8 +441,8 @@ export function NoteListView({
       .sort((a, b) => a.label.localeCompare(b.label, collation));
   }, [entries, collation]);
 
-  const showChildFolderRows =
-    !loading && !!onSelectFolder && (childFolders?.length ?? 0) > 0 && !searchQuery.trim();
+  // 直下にノートが無く子フォルダだけのフォルダか（検索中は対象外 — 検索の結果はノートの集合）
+  const onlyChildFolders = (childFolders?.length ?? 0) > 0 && !searchQuery.trim();
 
   // パンくずのフォルダ部分。"親/子" は 2 段に割り、親はクリックで開き直せる。
   // 未分類は階層を持たないので 1 段だけ。
@@ -773,32 +773,15 @@ export function NoteListView({
         onKeyDown={peekKeys.onKeyDown}
         className="flex-1 overflow-auto px-6 outline-none"
       >
-        {/* 子フォルダの行（エクスプローラーと同じく、ノートより先にフォルダを並べる）。
-            検索中は出さない — 検索の結果はノートの集合なので、フォルダの行が混ざると読み違える */}
-        {showChildFolderRows && (
-          <ul className="pt-2" aria-label={t("nav.folders")}>
-            {childFolders!.map((child) => (
-              <li key={child.path}>
-                <button
-                  type="button"
-                  onClick={() => onSelectFolder?.(child.path)}
-                  className="w-full flex items-center gap-2 py-2 px-3 text-sm text-left border-b border-border/50 hover:bg-muted/50 transition-colors"
-                >
-                  <Folder size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="truncate">{child.name}</span>
-                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">{child.totalCount}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">{t("nav.loadingNotes")}</p>
           </div>
-        ) : filtered.length === 0 && showChildFolderRows ? (
-          // 直下にノートが無く子フォルダだけのフォルダ。「一致するノートがありません」は出さない
-          null
+        ) : filtered.length === 0 && entries.length > 0 && onlyChildFolders ? (
+          // 直下にノートが無く子フォルダだけのフォルダ。「一致するノートがありません」ではなく左のナビへ案内する
+          <div className="flex items-center justify-center py-16">
+            <p className="text-sm text-muted-foreground">{t("nav.onlySubfoldersHint")}</p>
+          </div>
         ) : filtered.length === 0 ? (
           !loading && entries.length === 0 && onIntakeFiles ? (
             <div className="py-10 max-w-[560px] mx-auto">
