@@ -505,6 +505,9 @@ import {
   linkClaimsToTopicsForSource, judgeClaimTopicLinks, type ClaimTopicLinkEntry, type ClaimTopicLinkResult,
   planClaimTopicLinkBackfill, runClaimTopicLinkBackfill, parseClaimTopicLinkCheckpoint,
   CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE,
+  planSourceTopicBackfill, runSourceTopicBackfill, settleSourceTopicBackfill, parseSourceTopicBackfillCheckpoint,
+  countClaimsBySource, SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE,
+  type SourceTopicBackfillEntry,
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -12926,10 +12929,16 @@ export function NoteApp() {
         onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
         /** キューの順番が来て、この呼び出しのトピック段が動き始めたときに呼ばれる */
         onStart?: () => void;
+        /**
+         * 順番が来てから資料を読む（sources の代わり）。待ち行列が長いときに、全部の本文を
+         * 抱えたまま待たないため。空配列を返したら何もしない
+         */
+        loadSources?: () => Promise<SourceTopicStageInput[]>;
       },
     ) => {
       const run = topicStageQueueRef.current.then(async () => {
         options?.onStart?.();
+        const stageSources = options?.loadSources ? await options.loadSources() : sources;
         // sourceIds（新形式トピックの derivedFromNotes）はキャッシュ済みドキュメントから
         // 拾えるものだけ入れる（oneLiner と同じ理由 — 未ロードの話題を強制ロードしない）。
         // runSourceTopicStage が「今回の資料を既に引用済みのトピック」を機械的に見つけ、
@@ -12967,9 +12976,9 @@ export function NoteApp() {
           loadDoc: fm.loadDoc,
           saveWikiFile: fm.handleSaveWikiFile,
         });
-        const sourceTitleById = new Map(sources.map((s) => [s.id, s.title]));
+        const sourceTitleById = new Map(stageSources.map((s) => [s.id, s.title]));
         const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-        const result = await runSourceTopicStage(sources, {
+        const result = await runSourceTopicStage(stageSources, {
           loadDoc: fm.loadDoc,
           getCachedDoc: fm.getCachedDoc,
           handleSaveWikiFile: fm.handleSaveWikiFile,
@@ -13012,7 +13021,7 @@ export function NoteApp() {
         for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
         // トピックの段のあとに、その資料の知見をトピックへ結ぶ（同じ列の中で 1 件ずつ）。
         // 失敗しても取り込みは失敗にしない（linkClaimsToTopicsForSource は例外を投げない）
-        for (const source of sources) {
+        for (const source of stageSources) {
           if (options?.signal?.aborted) break;
           const linkResult = await linkClaimsToTopicsForSource(source.id, {
             listEntries: listClaimTopicLinkEntries,
@@ -14156,6 +14165,37 @@ export function NoteApp() {
     }
   }, [fm, enqueueIngest, pushSkippedUnchangedNotice]);
 
+  // ── 知見はあるのにトピックがまだ無い資料（トピックの段の取りこぼし）──
+  // トピックの段は 1 本ずつしか進まず、待ち行列はアプリの中にしか無い。まとめて取り込んだあとに
+  // アプリを閉じると、知見だけができて、トピックの段は何も残さずに消える（source-topic-backfill.ts）。
+  // 対象は毎回データから選び直す。控えには「回したが何も作らなかった」資料だけを残す
+  const listSourceTopicBackfillEntries = useCallback((): SourceTopicBackfillEntry[] => {
+    const cur = fmRef.current;
+    const hidden = new Set(
+      (cur.rawNoteIndex?.notes ?? []).filter((n) => n.deletedAt || n.archivedAt).map((n) => n.noteId),
+    );
+    const entries: SourceTopicBackfillEntry[] = [];
+    for (const [id, meta] of cur.wikiMetas) {
+      if (hidden.has(id) || (meta.kind !== "claim" && meta.kind !== "topic")) continue;
+      entries.push({ id, kind: meta.kind, derivedFromNotes: meta.derivedFromNotes, derivedFromClaims: meta.derivedFromClaims });
+    }
+    return entries;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const sourceTopicCheckpointIo = useMemo(() => ({
+    readCheckpoint: async () => parseSourceTopicBackfillCheckpoint(
+      await readAppDataFile<unknown>(SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE),
+    ),
+    saveCheckpoint: (next: unknown) => writeAppDataFile(SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE, next),
+    log: (...args: unknown[]) => console.warn(...args),
+  }), []);
+  /** トピックの段を回したが何も作らなかった資料を控えに残す（次から一括の対象に出さない） */
+  const settleSourceWithoutTopics = useCallback(async (sourceId: string) => {
+    const claims = countClaimsBySource(listSourceTopicBackfillEntries()).get(sourceId) ?? 0;
+    if (claims === 0) return;
+    await settleSourceTopicBackfill(sourceId, { claims, reason: "no-topic" }, sourceTopicCheckpointIo);
+  }, [listSourceTopicBackfillEntries, sourceTopicCheckpointIo]);
+
   // 素材 1 件を Knowledge 化する（URL / PDF / Word。対応外の種類は何もしない）。
   // 素材ギャラリーの 1 件ずつの「ナレッジ化」と、まとめてのナレッジ化（ingestMediaEntries）から呼ぶ。
   // 知見の抽出と保存は mediaIngestQueueRef で 1 件ずつ順に、トピック段は
@@ -14351,6 +14391,8 @@ export function NoteApp() {
             return;
           }
           topicsTouched = topicResult.created + topicResult.updated;
+          // 回したが何も作らなかった資料は控えに残す（「資料からトピックを作る」に出し続けない）
+          if (topicsTouched === 0 && topicResult.failed === 0) void settleSourceWithoutTopics(sourceNoteId);
           const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
           topicDetail = ` · ${detail}`;
           pushSourceCheckPrompt(unchecked);
@@ -14378,7 +14420,117 @@ export function NoteApp() {
         ingestAbortRef.current.delete(abortController);
       }
     })();
-  }, [fm, currentExistingWikiRefs, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushRationalePrompt, pushTopicStageFailure]);
+  }, [fm, currentExistingWikiRefs, runSourceTopicStageForNoteApp, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushRationalePrompt, pushTopicStageFailure, settleSourceWithoutTopics]);
+
+  // 設定の点検・整理「資料からトピックを作る」。知見は作り直さず、トピックの段だけを 1 本ずつ回す
+  const sourceTopicBackfill = useMemo(() => ({
+    plan: async () => {
+      const plan = planSourceTopicBackfill(listSourceTopicBackfillEntries(), await sourceTopicCheckpointIo.readCheckpoint());
+      return { sources: plan.sourceIds.length, alreadySettled: plan.alreadySettled };
+    },
+    run: async (
+      onProgress: (progress: { done: number; total: number; topicsTouched: number }) => void,
+      signal: AbortSignal,
+    ) => {
+      if (!ensureAgentConfigured()) return null;
+      const entries = listSourceTopicBackfillEntries();
+      const plan = planSourceTopicBackfill(entries, await sourceTopicCheckpointIo.readCheckpoint());
+      const claimsBySource = countClaimsBySource(entries);
+      const { resolveSource } = buildTopicSourceResolvers();
+      const result = await runSourceTopicBackfill(plan, {
+        resolveSource,
+        runTopicStage: (source, stageSignal) => runSourceTopicStageForNoteApp([source], { signal: stageSignal }),
+        ...sourceTopicCheckpointIo,
+        claimsOf: (sourceId) => claimsBySource.get(sourceId) ?? 0,
+        onProgress,
+        signal,
+      });
+      if (result.done > 0) {
+        wikiLog.append("cross-update", [], `Built topics for ${result.done} source(s) that had claims but no topics`, {
+          created: result.created,
+          topicsTouched: result.topicsTouched,
+          noTopic: result.noTopic,
+          unreadable: result.unreadable,
+          failedSources: result.failedSources,
+          aborted: result.aborted,
+        }).catch(() => {});
+      }
+      return {
+        done: result.done,
+        total: result.total,
+        topicsTouched: result.topicsTouched,
+        created: result.created,
+        noTopic: result.noTopic,
+        unreadable: result.unreadable,
+        failedSources: result.failedSources,
+        aborted: result.aborted,
+        stoppedByFailures: result.stoppedByFailures,
+        ...(result.failureError !== undefined ? { failureReason: localizeAiError(result.failureError) } : {}),
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [listSourceTopicBackfillEntries, sourceTopicCheckpointIo, buildTopicSourceResolvers, runSourceTopicStageForNoteApp]);
+
+  // 1 本の素材にトピックの段だけを回す（まとめてナレッジ化で、知見は取り込み済み・トピックが無い素材）
+  const ingestMediaTopicsOnly = useCallback((entry: MediaIndexEntry, sourceId: string) => {
+    const abortController = new AbortController();
+    ingestAbortRef.current.add(abortController);
+    const signal = abortController.signal;
+    const toastId = `media-topics:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+    setIngestToast((prev) => ({
+      items: [...(prev?.items ?? []), { id: toastId, status: "queued", noteTitle: entry.name || (entry.type === "url" ? entry.url : entry.fileId) }],
+    }));
+    const updateItem = (patch: Partial<IngestToastItem>) => {
+      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, ...patch } : i) }));
+    };
+    const showStep = (detail: string) => updateItem({ status: "generating", detail });
+    (async () => {
+      try {
+        showStep(tStatic("ingest.stepWaitingTopics"));
+        let readable = true;
+        const topicResult = await runSourceTopicStageForNoteApp([], {
+          signal,
+          onStart: () => showStep(tStatic("ingest.stepTopics")),
+          // 本文は順番が来てから読む（長い待ち行列の間に、全部の本文を抱えない）
+          loadSources: async () => {
+            const source = await buildTopicSourceResolvers().resolveSource(sourceId);
+            if (!source || isBlankText(source.text)) {
+              readable = false;
+              return [];
+            }
+            return [{ id: sourceId, title: source.title, text: source.text }];
+          },
+          onWindowProgress: ({ windowIndex, windowTotal }) => showStep(tStatic("ingest.stepTopicsWindow", {
+            windowIndex: String(windowIndex + 1),
+            windowTotal: String(windowTotal),
+          })),
+        });
+        if (signal.aborted) {
+          updateItem({ status: "aborted", detail: undefined, result: tStatic("ingest.aborted") });
+          return;
+        }
+        if (!readable) {
+          updateItem({ status: "error", detail: undefined, result: tStatic("ingest.insufficientContent") });
+          return;
+        }
+        const touched = topicResult.created + topicResult.updated;
+        if (touched === 0 && topicResult.failed === 0) await settleSourceWithoutTopics(sourceId);
+        const { detail, unchecked } = await formatSourceTopicStageDetail(topicResult);
+        pushSourceCheckPrompt(unchecked);
+        updateItem(touched === 0 && topicResult.failed > 0
+          ? { status: "error", detail: undefined, result: `${tStatic("ingest.topicsOnly")} · ${detail}` }
+          : { status: "success", detail: undefined, result: `${tStatic("ingest.topicsOnly")} · ${detail}` });
+        pushTopicStageFailure(topicResult);
+      } catch (err) {
+        const aborted = isAbortError(err) || signal.aborted;
+        updateItem(aborted
+          ? { status: "aborted", detail: undefined, result: tStatic("ingest.aborted") }
+          : { status: "error", detail: undefined, result: localizeAiError(err) });
+      } finally {
+        ingestAbortRef.current.delete(abortController);
+      }
+    })();
+  }, [runSourceTopicStageForNoteApp, buildTopicSourceResolvers, settleSourceWithoutTopics, formatSourceTopicStageDetail, pushSourceCheckPrompt, pushTopicStageFailure]);
 
   // 素材をまとめて Knowledge 化する（素材ギャラリーの一括 Knowledge 化・投入口の「まとめてナレッジ化」）。
   // 取り込み済みで、その後変わっていない素材は外す（ノート一覧の一括と同じ判定）。
@@ -14390,7 +14542,7 @@ export function NoteApp() {
     const knowledgeMap = buildKnowledgeMap(fm.noteIndex ?? null);
     const loadKnowledgeDoc = createKnowledgeDocLoader(fm.getCachedDoc, fm.loadDoc);
     const toIngest: MediaIndexEntry[] = [];
-    let skippedUnchanged = 0;
+    const unchanged: { entry: MediaIndexEntry; sourceId: string }[] = [];
     for (const entry of entries) {
       const sourceId = mediaKnowledgeSourceId(entry);
       if (!sourceId) continue; // 対応外の種類は何もしない（従来どおり）
@@ -14398,14 +14550,27 @@ export function NoteApp() {
       // URL は登録後にページが変わっても分からないので、取り込み直しは 1 件ずつの「ナレッジ化」で行う
       // AI との会話は伸びるので、登録時刻でなく最後に本文を差し替えた時刻と比べる
       if (await isUnchangedSinceLastIngest(sourceId, entry.conversation?.importedAt ?? entry.uploadedAt, knowledgeMap.get(sourceId), loadKnowledgeDoc)) {
-        skippedUnchanged++;
+        unchanged.push({ entry, sourceId });
         continue;
       }
       toIngest.push(entry);
     }
-    pushSkippedUnchangedNotice(skippedUnchanged);
+    // 知見は取り込み済みでも、トピックの段が終わっていない素材（アプリを閉じて待ち行列が消えた等）は、
+    // 知見を作り直さずにトピックの段だけを回す
+    const unchangedIds = new Set(unchanged.map((u) => u.sourceId));
+    const needTopics = unchanged.length === 0
+      ? new Set<string>()
+      : new Set(planSourceTopicBackfill(
+        listSourceTopicBackfillEntries(),
+        await sourceTopicCheckpointIo.readCheckpoint(),
+        (sourceId) => unchangedIds.has(sourceId),
+      ).sourceIds);
+    pushSkippedUnchangedNotice(unchanged.length - needTopics.size);
     for (const entry of toIngest) ingestMediaEntry(entry);
-  }, [fm, ingestMediaEntry, pushSkippedUnchangedNotice]);
+    for (const { entry, sourceId } of unchanged) {
+      if (needTopics.has(sourceId)) ingestMediaTopicsOnly(entry, sourceId);
+    }
+  }, [fm, ingestMediaEntry, ingestMediaTopicsOnly, listSourceTopicBackfillEntries, sourceTopicCheckpointIo, pushSkippedUnchangedNotice]);
 
   // 素材 fileId 配列から Knowledge 化する（投入口の「まとめてナレッジ化」用）。
   // 索引（fm.mediaIndex）から MediaIndexEntry を引けたものだけを対象にする
@@ -19047,6 +19212,7 @@ export function NoteApp() {
           return { assigned, total: targets.length, calls, ...(failureError !== undefined ? { failureReason: localizeAiError(failureError) } : {}) };
         }}
         claimTopicLinkBackfill={standardUiEnabled ? claimTopicLinkBackfill : undefined}
+        sourceTopicBackfill={standardUiEnabled ? sourceTopicBackfill : undefined}
         onOrganizeTopics={async () => {
           // 知見（claim）はもうトピックの材料にしない — 「話題を整理」は既存トピック
           // どうしの名寄せ（Topic Consolidator）→ 統合（applyTopicMerges）だけを行う

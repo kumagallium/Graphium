@@ -95,5 +95,12 @@ export type {
   ClaimTopicLinkDeps, ClaimTopicLinkEntry, ClaimTopicLinkResult,
   ClaimTopicLinkBackfillPlan, ClaimTopicLinkBackfillProgress, ClaimTopicLinkBackfillResult,
 } from "./claim-topic-link";
+export {
+  planSourceTopicBackfill, runSourceTopicBackfill, settleSourceTopicBackfill, parseSourceTopicBackfillCheckpoint,
+  countClaimsBySource, SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE,
+} from "./source-topic-backfill";
+export type {
+  SourceTopicBackfillEntry, SourceTopicBackfillPlan, SourceTopicBackfillProgress, SourceTopicBackfillResult,
+} from "./source-topic-backfill";
 export { mergeAtomsExplicit } from "./atom-merge";
 export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

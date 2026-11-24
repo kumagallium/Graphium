@@ -2424,6 +2424,24 @@ fitting Topic otherwise looks untouched and would be sent again on every run. A 
 source returns to the plan only when its Topics change or it gains a Claim that has not
 been judged. The file is disposable: losing it only costs repeating some judgments.
 
+**Sources with Claims but no Topics.** The Claim stage and the Topic stage run in two
+separate in-memory queues, and the Topic stage is much slower (one source at a time,
+several AI calls each). When many sources are ingested at once, the Claim stage finishes
+first and the Topic stage is left with a long queue; closing the app drops that queue
+without a trace. Such a source has active Claims but no active Topic that lists it — in
+`derivedFromNotes`, or, for a legacy Topic, through a Claim in `derivedFromClaims`.
+These sources are picked again from the data every time (`planSourceTopicBackfill`,
+`src/features/wiki/source-topic-backfill.ts`), not from a record, so nothing is lost
+when the app closes. The Topic stage is run on them without making Claims again, in two
+places: **Build Topics from Sources** (Settings → Knowledge, human-started, stoppable,
+one source at a time) and the bulk "Knowledge-ize" action, which runs the Topic stage
+alone for a source it would otherwise skip as unchanged. A source whose Topic stage ran
+and made nothing (the router found nothing Topic-worthy), or whose text can no longer be
+read, is recorded in the app-data file `source-topic-backfill-progress`
+(`{ version: 1, settled: { <sourceId>: { claims, reason: "no-topic" | "unreadable" } } }`)
+and returns to the plan only when it gains Claims. The file is disposable: losing it only
+costs running the Topic stage again on those sources.
+
 Re-ingesting a source also re-checks topics that already cite it, not
 just the ones the router names: `runSourceTopicStage` unions the
 router's `update` list with every new-format topic whose
