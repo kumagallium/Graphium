@@ -233,7 +233,7 @@ If you narrow the table with conditions, the small filtered CSV that is made is 
 
 Both buttons are available while the status is **No change** or **The original has changed**. If the file is too large, of another kind, or can't be reached, a message says why.
 
-The table remembers the size and modified time of the file when you imported it. If the original is edited later, the table's source badge shows **The original data has changed**. Pressing the badge reads the file again so you can re-import it.
+The table remembers the size and modified time of the file when you imported it. If the original is edited later, the table's source badge shows **The original data has changed**. Pressing the badge reads the file again so you can re-import it. If the table was not imported on this device (for example, it came in a shared note), Graphium first tells you which file it will read and asks whether to continue.
 
 ### Name a linked file as the source data <Badge type="tip" text="Added in v0.148.0 (2026-11-19)" /> {#source-data}
 

@@ -4863,6 +4863,8 @@ export const ja: Record<string, string> = {
   "linkedFile.read.timeout": "読み込みに時間がかかりすぎたため、止めました。",
   "linkedFile.read.notReferenced": "この表の元は、このノートで使っているリンクした素材ではないため、読みませんでした。",
   "linkedFile.read.readFrom": "読んだファイル: {place} / {path}",
+  "linkedFile.read.confirmUnknown": "この表の元ファイル「{place} / {path}」を読みます。この端末で取り込んだ表ではありません。続けますか？",
+  "linkedFile.read.confirmRead": "読む",
   "linkedFile.read.openNoteFirst": "表はノートに入ります。ノートで /データ から、このファイルを選んでください。",
   "linkedFile.brokenRecord": "このリンクの控えを読めません。",
   "linkedFile.origin.title": "元データ",
