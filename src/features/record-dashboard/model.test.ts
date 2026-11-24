@@ -53,14 +53,14 @@ describe("日付と時刻は端末の時刻で読む", () => {
 });
 
 describe("groupByDay", () => {
-  it("日は新しい順、日の中は早い順に並べる", () => {
+  it("日も日の中も新しい順に並べる", () => {
     const groups = groupByDay([
       rec({ id: "a", at: utc(2026, 11, 16, 20, 0) }),
-      rec({ id: "b", at: utc(2026, 11, 17, 21, 0) }),
       rec({ id: "c", at: utc(2026, 11, 17, 0, 5) }),
+      rec({ id: "b", at: utc(2026, 11, 17, 21, 0) }),
     ]);
     expect(groups.map((g) => g.key)).toEqual(["2026-11-17", "2026-11-16"]);
-    expect(groups[0].items.map((i) => i.id)).toEqual(["c", "b"]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["b", "c"]);
   });
 });
 

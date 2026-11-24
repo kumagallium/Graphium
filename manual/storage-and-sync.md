@@ -358,7 +358,7 @@ The only things added to the shared note are which plan and which row it belongs
 
 Switch the who switch on [Home](/notes-and-editor#the-notes-list) to **Shared authors**, and the notes and AI pages that other people put in the shared folders are listed by day, in the order they were shared. You can see who shared what today in one place, without opening a plan.
 
-![Home with the who switch on Shared authors. Notes that other people shared are listed by time, each with its author's name. Records for a plan row also show the plan's title › the row's name (Sandwich loaf plan › Bulk ferment) and a checklist count such as 3/5](/screenshots/home-shared-authors.png)
+![Home with the who switch on Shared authors. Notes that other people shared are listed newest first, each with its author's name. Records for a plan row also show the plan's title › the row's name (Sandwich loaf plan › Bulk ferment) and a checklist count such as 3/5](/screenshots/home-shared-authors.png)
 
 - The time is when the record was last shared. After **Update shared copy**, the record moves to the day it was updated
 - A [record for a plan row](#records-by-plan-row) shows **the plan's title › the row's name**. If it contains a checklist, the count at the time it was shared (**3/5**) is shown too. When the plan is not in a shared folder, **Plan** is shown in place of its title
