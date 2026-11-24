@@ -354,7 +354,7 @@ The only things added to the shared note are which plan and which row it belongs
 - **Names are self-declared.** The name on a record is the one its author typed in
 :::
 
-### See what other people shared, on Home {#shared-records-on-home}
+### See what other people shared, on Home <Badge type="tip" text="Added in v0.164.0 (2026-11-24)" /> {#shared-records-on-home}
 
 Switch the who switch on [Home](/notes-and-editor#the-notes-list) to **Shared authors**, and the notes and AI pages that other people put in the shared folders are listed by day, in the order they were shared. You can see who shared what today in one place, without opening a plan.
 
