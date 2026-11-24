@@ -121,7 +121,8 @@ if (!caps?.serverStorage) {
 }
 
 // ── 1. ファイル取り込み（サイドバー → 隠し input に Markdown を渡す） ──
-const intakeLabel = LOCALE === "ja" ? "ファイル取り込み" : "Bring in files";
+// サイドバーのボタン名は版で変わった（「ファイル取り込み」→「取り込み」）。どちらでも押せるようにする
+const intakeLabel = LOCALE === "ja" ? /^(ファイル)?取り込み/ : /^Bring in/;
 await page.getByRole("button", { name: intakeLabel }).first().click();
 await page.waitForTimeout(800);
 const fileInput = page.locator('input[type="file"][multiple][accept]');
@@ -157,11 +158,21 @@ await page.waitForTimeout(1500);
 const selectAll = page.getByRole("checkbox", { name: LOCALE === "ja" ? "すべて選択" : "Select all" });
 await selectAll.first().click();
 await page.waitForTimeout(500);
-const ingestBtn = page.getByRole("button", { name: LOCALE === "ja" ? /件をナレッジ化/ : /to Knowledge/ });
-const ingestLabel = await ingestBtn.first().textContent();
-console.log(`[gen] clicking: ${ingestLabel}`);
+// 一括の操作の帯（src/ui/bulk-action-bar）。ボタン名は版で変わった（「12 件をナレッジ化」→「ナレッジ化」）。
+// 帯に出るのは 3 つまでで、残りは「その他」の中に入る
+const ingestName = LOCALE === "ja" ? /件をナレッジ化|^ナレッジ化$/ : /to Knowledge/;
 await shot("03-selected");
-await ingestBtn.first().click();
+const ingestBtn = page.getByRole("button", { name: ingestName });
+if ((await ingestBtn.count()) > 0) {
+  console.log(`[gen] clicking: ${await ingestBtn.first().textContent()}`);
+  await ingestBtn.first().click();
+} else {
+  await page.getByRole("button", { name: LOCALE === "ja" ? "その他" : "More" }).first().click();
+  await page.waitForTimeout(300);
+  const item = page.getByRole("menuitem", { name: ingestName });
+  console.log(`[gen] clicking (More): ${await item.first().textContent()}`);
+  await item.first().click();
+}
 
 // ── 3. 終わるまで待つ ──
 // ナレッジ化のキューはブラウザの中にあり、ページを動かすと消える。終わったかどうかは

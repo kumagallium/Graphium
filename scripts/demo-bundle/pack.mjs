@@ -59,7 +59,8 @@ const appdataDir = resolve(DATA_DIR, "appdata");
 if (existsSync(appdataDir)) {
   for (const f of readdirSync(appdataDir)) {
     if (!f.endsWith(".json")) continue;
-    const key = basename(f, ".json");
+    // サーバー保存はキーの ":" を URL エンコードしたファイル名で置く（standalone-chat%3A<id>.json）
+    const key = decodeURIComponent(basename(f, ".json"));
     if (!key.startsWith("standalone-chat")) continue;
     appdata[key] = JSON.parse(readFileSync(resolve(appdataDir, f), "utf8"));
   }

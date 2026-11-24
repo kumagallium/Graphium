@@ -41,7 +41,7 @@ if (!KEY) {
 mkdirSync(SHOTS, { recursive: true });
 
 const L = LOCALE === "ja"
-  ? { selectAll: "すべて選択", ingest: /件をナレッジ化/, settings: "設定", tab: "ナレッジ管理", discover: "洞察を発見", newChat: "新しいチャット", ask: "気になることを聞いてみましょう", stop: "停止" }
+  ? { selectAll: "すべて選択", ingest: /件をナレッジ化|^ナレッジ化$/, settings: "設定", tab: "ナレッジ管理", discover: "洞察を発見", newChat: "新しいチャット", ask: "気になることを聞いてみましょう", stop: "停止" }
   : { selectAll: "Select all", ingest: /to Knowledge/, settings: "Settings", tab: "Knowledge", discover: "Discover Insights", newChat: "New chat", ask: "Ask something", stop: "Stop" };
 
 const readUsage = () => {
@@ -152,6 +152,10 @@ if (!has("skip-insights")) {
   const discover = modal.getByRole("button", { name: L.discover });
   await discover.first().scrollIntoViewIfNeeded();
   await discover.first().click();
+  // 実行前に「LLM を N 回呼び出します。実行しますか？」の確認が出る（アプリ内のダイアログ）
+  await page.waitForTimeout(800);
+  const ok = page.getByRole("button", { name: /^OK$/ });
+  if ((await ok.count()) > 0) await ok.last().click();
   await page.waitForTimeout(5000);
   await waitQuiet(page, "insights", { quietMs: 120_000, minWaitMs: 20_000 });
   await shot("13-insights-done");
