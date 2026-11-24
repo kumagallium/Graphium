@@ -230,3 +230,69 @@ describe("清書の出力上限とやり直し", () => {
     expect(call.maxOutputTokens).toBeUndefined();
   });
 });
+
+describe("POST /summarize-merge", () => {
+  const req = (body: unknown) =>
+    meeting.request("/summarize-merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const summary = {
+    decisions: [
+      { text: "田中が A に決めた", sources: ["uuid-1"] },
+      { text: "A で進める", sources: ["uuid-9"] },
+    ],
+    todos: [],
+    issues: [{ text: "費用", sources: ["uuid-5"] }],
+  };
+
+  it("まとめた項目に元の根拠を足し合わせ、引かれなかった項目も返す。mask なら機械でも伏せる", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockClear();
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({
+      message: JSON.stringify({ decisions: [{ text: "田中が A で進めると決めた", from: ["d1", "d2"] }], todos: [], issues: [] }),
+      model: "m1",
+    } as never);
+    const res = await req({ language: "ja", summary, mask: true, maskTerms: "田中" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.decisions).toEqual([{ text: "［伏せ字］が A で進めると決めた", sources: ["uuid-1", "uuid-9"] }]);
+    expect(json.issues).toEqual([{ text: "費用", sources: ["uuid-5"] }]);
+    expect(json.masked).toBe(true);
+    // AI には根拠の発言 id を渡さない
+    const content = vi.mocked(runAgentLoop).mock.calls[0][0].messages[0].content as string;
+    expect(content).not.toContain("uuid-");
+  });
+
+  it("形の合わない入力は 400、上限超は 413", async () => {
+    expect((await req({ language: "ja", summary: { decisions: [{ text: "a", sources: [] }], todos: [], issues: [] } })).status).toBe(400);
+    expect((await req({ language: "ja", summary: { decisions: [] } })).status).toBe(400);
+    expect((await req({ language: "fr", summary })).status).toBe(400);
+    const big = { decisions: Array.from({ length: 601 }, () => ({ text: "a", sources: ["s"] })), todos: [], issues: [] };
+    const res = await req({ language: "ja", summary: big });
+    expect(res.status).toBe(413);
+  });
+
+  it("読めない出力は 502", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: "nope", model: "m1" } as never);
+    expect((await req({ language: "ja", summary })).status).toBe(502);
+  });
+});
+
+describe("POST /summarize-merge（伏せる）", () => {
+  it("mask のときは AI に送る前にも伏せる", async () => {
+    const { runAgentLoop } = await import("../services/agent-loop.js");
+    vi.mocked(runAgentLoop).mockClear();
+    vi.mocked(runAgentLoop).mockResolvedValueOnce({ message: JSON.stringify({ decisions: [], todos: [], issues: [] }), model: "m1" } as never);
+    await meeting.request("/summarize-merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        language: "ja",
+        mask: true,
+        maskTerms: "田中",
+        summary: { decisions: [{ text: "田中が決めた", sources: ["x"] }], todos: [{ text: "連絡", owner: "田中", sources: ["y"] }], issues: [] },
+      }),
+    });
+    const content = vi.mocked(runAgentLoop).mock.calls[0][0].messages[0].content as string;
+    expect(content).not.toContain("田中");
+  });
+});

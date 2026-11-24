@@ -1,6 +1,7 @@
 // 会議 API ルート
 // POST /api/meeting/summarize — 文字起こし（発言の列）から決定事項 / TODO / 論点を要約し、
 //                               各項目に根拠の発言 id を付けて返す。
+// POST /api/meeting/summarize-merge — 長い会議を分けて要約した結果の重なりを 1 つにまとめる。
 // POST /api/meeting/cleanup   — 文字起こしを読みやすい段落に清書し、各段落に元の発言 id を付けて返す。
 // POST /api/meeting/context   — 清書・要約に使うモデルがこのパソコンの LM Studio なら、読み込み中の
 //                               コンテキスト長を返す（送る前に足りるかを画面で確かめる）。
@@ -14,7 +15,13 @@ import {
   buildMeetingSummaryUserMessage,
   parseMeetingSummaryOutput,
   isMeetingInputTooLarge,
+  buildMeetingMergeSystemPrompt,
+  buildMeetingMergeUserMessage,
+  parseMeetingMergeOutput,
+  isMeetingMergeInputTooLarge,
   type MeetingUtterance,
+  type MeetingSummary,
+  type MeetingSummaryTodo,
 } from "../services/meeting-summary.js";
 import {
   buildMeetingCleanupSystemPrompt,
@@ -122,6 +129,119 @@ app.post("/summarize", async (c) => {
     return c.json({ ...summary, masked: mask, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     console.error("meeting summarize error:", err);
+    return c.json(errorBody(err), 500);
+  }
+});
+
+/** まとめの入力の 1 項目（根拠の発言 id は 1 つ以上） */
+function isSummaryItem(u: unknown): u is MeetingSummaryTodo {
+  if (!u || typeof u !== "object") return false;
+  const r = u as Record<string, unknown>;
+  return (
+    typeof r.text === "string" &&
+    Array.isArray(r.sources) &&
+    r.sources.length > 0 &&
+    r.sources.every((s) => typeof s === "string" && s.length > 0) &&
+    (r.owner === undefined || typeof r.owner === "string") &&
+    (r.due === undefined || typeof r.due === "string")
+  );
+}
+
+/** まとめの入力（分けて要約した結果をつなげたもの）を確かめて、要る形だけを取り出す */
+function parseSummaryInput(u: unknown): MeetingSummary | null {
+  if (!u || typeof u !== "object") return null;
+  const r = u as Record<string, unknown>;
+  const pick = (v: unknown): MeetingSummaryTodo[] | null =>
+    Array.isArray(v) && v.every(isSummaryItem)
+      ? v.map((x) => ({
+          text: x.text,
+          sources: [...x.sources],
+          ...(x.owner ? { owner: x.owner } : {}),
+          ...(x.due ? { due: x.due } : {}),
+        }))
+      : null;
+  const decisions = pick(r.decisions);
+  const todos = pick(r.todos);
+  const issues = pick(r.issues);
+  if (!decisions || !todos || !issues) return null;
+  return {
+    decisions: decisions.map(({ text, sources }) => ({ text, sources })),
+    todos,
+    issues: issues.map(({ text, sources }) => ({ text, sources })),
+  };
+}
+
+app.post("/summarize-merge", async (c) => {
+  const body = await c.req
+    .json<{ model?: string; language?: string; summary?: unknown; mask?: unknown; maskTerms?: unknown }>()
+    .catch(() => null);
+  if (!body) return c.json({ error: "Invalid JSON body." }, 400);
+  if (!isGenerationLanguage(body.language)) {
+    return c.json({ error: `language must be one of: ${GENERATION_LANGUAGES.join(", ")}.` }, 400);
+  }
+  const language = body.language;
+  const mask = body.mask === true;
+  const maskTerms = mask ? parseMaskTerms(body.maskTerms) : [];
+  const parsedInput = parseSummaryInput(body.summary);
+  if (!parsedInput) return c.json({ error: "summary is invalid." }, 400);
+  // 伏せるときは、AI に送る前にも機械で伏せる（画面は伏せ済みの要約を渡すが、それに頼らない）
+  const mi = (s: string) => maskText(s, maskTerms, language);
+  const input: MeetingSummary = mask
+    ? {
+        decisions: parsedInput.decisions.map((x) => ({ ...x, text: mi(x.text) })),
+        todos: parsedInput.todos.map((x) => ({
+          ...x,
+          text: mi(x.text),
+          ...(x.owner ? { owner: mi(x.owner) } : {}),
+          ...(x.due ? { due: mi(x.due) } : {}),
+        })),
+        issues: parsedInput.issues.map((x) => ({ ...x, text: mi(x.text) })),
+      }
+    : parsedInput;
+  if (isMeetingMergeInputTooLarge(input)) {
+    return c.json({ error: "The summary is too large to combine at once.", code: "INPUT_TOO_LARGE" }, 413);
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(noModelRegisteredBody(), 400);
+  }
+
+  try {
+    const model = await createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildMeetingMergeSystemPrompt(language, mask),
+      messages: [{ role: "user" as const, content: buildMeetingMergeUserMessage(input) }],
+      maxSteps: 1,
+      feature: "meeting.summarize",
+      modelConfig,
+      abortSignal: c.req.raw.signal,
+      temperature: 0,
+    });
+    if (result.finishReason === "length") return c.json(outputTruncatedBody(), 502);
+    const parsed = parseMeetingMergeOutput(result.message ?? "", input);
+    if (!parsed) {
+      return c.json({ error: "The AI's reply could not be read." }, 502);
+    }
+    // 伏せるときは、AI の見逃しに備えて返ってきた文を機械でも伏せる（要約と同じ）
+    const m = (s: string) => maskText(s, maskTerms, language);
+    const summary = mask
+      ? {
+          decisions: parsed.decisions.map((x) => ({ ...x, text: m(x.text) })),
+          todos: parsed.todos.map((x) => ({
+            ...x,
+            text: m(x.text),
+            ...(x.owner ? { owner: m(x.owner) } : {}),
+            ...(x.due ? { due: m(x.due) } : {}),
+          })),
+          issues: parsed.issues.map((x) => ({ ...x, text: m(x.text) })),
+        }
+      : parsed;
+    return c.json({ ...summary, masked: mask, model: result.model, tokenUsage: result.tokenUsage });
+  } catch (err) {
+    console.error("meeting summarize-merge error:", err);
     return c.json(errorBody(err), 500);
   }
 });
