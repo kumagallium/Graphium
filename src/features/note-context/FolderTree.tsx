@@ -13,11 +13,11 @@
 //   このコンポーネントはツリーの見た目とナビゲーションだけを担い、
 //   フォルダ削除＝タグ剥がし等のデータ操作は呼び出し側の責務にする
 
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Pencil, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Pencil, Plus, Share2 } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
-import { buildFolderTree, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
+import { buildFolderTree, sharedCountsByFolder, splitFolderPath, validateFolderPath, UNFILED_PATH, type FolderNode } from "./folder-tree-model";
 import { FOLDER_DRAG_MIME, readDraggedNoteIds } from "./folder-drop";
 
 export { UNFILED_PATH };
@@ -44,6 +44,11 @@ function writeShowAll(value: boolean): void {
 export type FolderTreeProps = {
   /** 使用中フォルダと件数（aggregateNoteContexts の出力をそのまま渡す） */
   folders: readonly { value: string; count: number }[];
+  /**
+   * 共有フォルダに共有しているノートだけの集計（collectFolderSource の sharedFolders）。
+   * 渡すと、共有しているノートがあるフォルダの件数の左に「共有 n」を出す
+   */
+  sharedFolders?: readonly { value: string; count: number }[];
   /** ノート 0 件の空フォルダ（appdata 由来の定義） */
   emptyFolders?: readonly string[];
   /** 未分類（文脈なし）ノートの件数。undefined なら未分類行を出さない */
@@ -101,6 +106,7 @@ const rowShellClass = (active: boolean) =>
 
 export function FolderTree({
   folders,
+  sharedFolders,
   emptyFolders,
   unfiledCount,
   selected,
@@ -118,6 +124,7 @@ export function FolderTree({
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   // サイドバーは中身の多い順（上位 8 件で畳むので、よく使うフォルダを上に出す）
   const tree = useMemo(() => buildFolderTree(folders, emptyFolders ?? [], "count"), [folders, emptyFolders]);
+  const sharedCounts = useMemo(() => sharedCountsByFolder(sharedFolders ?? []), [sharedFolders]);
 
   // ドラッグ中に枠を出しているフォルダ（小文字 path キー）
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -440,7 +447,7 @@ export function FolderTree({
               // ＋・鉛筆が出ている間は件数をその左に逃がす（重ねて隠さない）。
               // 位置が動くのはアクションが出ている行だけなので、他セクションとの縦揃えは保たれる。
               <span
-                className={`text-xs text-muted-foreground tabular-nums transition-[margin] ${
+                className={`inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums transition-[margin] ${
                   actionCount === 0
                     ? ""
                     : actionCount === 1
@@ -452,6 +459,20 @@ export function FolderTree({
                         : "group-hover:mr-12"
                 }`}
               >
+                {(sharedCounts.get(node.path.toLowerCase()) ?? 0) > 0 && (
+                  // このフォルダ（子フォルダを含む）で共有しているノートの数。0 件なら出さない
+                  <span
+                    className="inline-flex items-center gap-0.5 text-primary"
+                    data-tooltip={t("nav.folderSharedCount", {
+                      shared: String(sharedCounts.get(node.path.toLowerCase())),
+                      total: String(node.totalCount),
+                    })}
+                    data-testid="folder-shared-count"
+                  >
+                    <Share2 size={10} aria-hidden />
+                    {sharedCounts.get(node.path.toLowerCase())}
+                  </span>
+                )}
                 {node.totalCount}
               </span>
             )}

@@ -202,3 +202,27 @@ export const EmptyStates: Story = {
     </div>
   ),
 };
+
+// ── 共有しているノートの数 ─────────────────────────────────
+export const SharedCounts: Story = {
+  name: "共有しているノートの数",
+  render: () => (
+    <div className="p-4 bg-background max-w-[240px]">
+      <FolderTree
+        folders={DEMO_FOLDERS}
+        sharedFolders={[
+          { value: "プロジェクトA", count: 2 },
+          { value: "プロジェクトA/実験シリーズ1", count: 3 },
+          { value: "哲学", count: 2 },
+        ]}
+        unfiledCount={24}
+        selected="プロジェクトA/実験シリーズ1"
+        onSelectFolder={() => {}}
+      />
+      <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
+        共有フォルダに共有しているノートがあるフォルダは、件数の左に共有の印と数を出す。
+        親は子の分を足す（プロジェクトA = 2 + 3 = 5）。0 件のフォルダ（材料X）には出さない。
+      </p>
+    </div>
+  ),
+};

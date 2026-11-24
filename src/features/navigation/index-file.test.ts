@@ -137,6 +137,14 @@ describe("buildIndexEntry", () => {
     expect(entry.createdAt).toBe("2026-11-22T00:00:00Z");
   });
 
+  it("共有エントリの id（sharedEntryId）を写す。提案として共有しているノートは写さない（v39）", () => {
+    const ref = (type: "note" | "knowledge" | "proposal") => ({ id: "s-1", type, sharedAt: "2026-11-24T00:00:00Z", hash: "h" });
+    expect(buildIndexEntry("n", mockDoc({ sharedRef: ref("note") })).sharedEntryId).toBe("s-1");
+    expect(buildIndexEntry("n", mockDoc({ sharedRef: ref("knowledge") })).sharedEntryId).toBe("s-1");
+    expect(buildIndexEntry("n", mockDoc({ sharedRef: ref("proposal") })).sharedEntryId).toBeUndefined();
+    expect(buildIndexEntry("n", mockDoc()).sharedEntryId).toBeUndefined();
+  });
+
   it("templateFrom を種類 + id にして写す（v34）", () => {
     const from = (extra: object) =>
       buildIndexEntry("n", mockDoc({ templateFrom: { title: "T", usedAt: "2026-11-01T00:00:00Z", ...extra } })).templateFrom;
@@ -756,7 +764,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(38);
+    expect(INDEX_SCHEMA_VERSION).toBe(39);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");

@@ -1785,6 +1785,7 @@ export const en: Record<string, string> = {
   "folderPicker.new": "+ New folder…",
   "nav.newFolder": "New folder",
   "nav.foldersShowMore": "Show {count} more",
+  "nav.folderSharedCount": "{shared} of {total} shared",
   "nav.foldersShowLess": "Show less",
   "nav.newNoteInFolder": "New in folder",
   "nav.renameFolder": "Rename",

@@ -203,7 +203,14 @@ import { normalizeSourceDateKind, normalizeStoredSourceDate } from "../../lib/so
 //      保存されたノートは書き換えない。v37 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
 //      bump を必ず実地確認する: Graphium 起動時に v37 インデックスが v38 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 38;
+// v39: 共有の状態（sharedEntryId）を NoteIndexEntry に写す。doc.sharedRef の id（共有エントリの id）で、
+//      ノート・ナレッジを共有フォルダに共有しているときだけ持つ。提案として共有しているノート
+//      （sharedRef.type === "proposal"）は持たない（そのノート自身が共有されているわけではない）。
+//      一覧の行と左ナビのフォルダに「共有済み」を出すのに使う。保存されたノートは書き換えない。
+//      v38 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v38 インデックスが v39 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 39;
 
 export type GraphiumIndex = {
   version: number;
@@ -392,6 +399,12 @@ export type NoteIndexEntry = {
   sourceDate?: string;
   /** 資料の日付の種類（v38）。doc.sourceDateKind を写す。sourceDate が無ければ持たない */
   sourceDateKind?: "published" | "presented" | "recorded" | "other";
+  /**
+   * 共有エントリの id（v39）。doc.sharedRef.id を写す。ノート・ナレッジを共有フォルダに
+   * 共有しているときだけ持つ。提案として共有しているノートは持たない。
+   * 共有フォルダにまだあるかは、ここからは分からない（共有を解除すれば doc.sharedRef ごと消える）。
+   */
+  sharedEntryId?: string;
   /**
    * Claim / Atom の認識論的ステータス（Phase η, v15）。
    * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
@@ -777,6 +790,9 @@ export function buildIndexEntry(
     // 資料の日付（v38）。保存形でない値は写さない
     sourceDate: normalizeStoredSourceDate(doc.sourceDate),
     sourceDateKind: normalizeStoredSourceDate(doc.sourceDate) ? normalizeSourceDateKind(doc.sourceDateKind) : undefined,
+    // 共有の状態（v39）。提案として共有しているノートは「共有済み」に数えない
+    sharedEntryId:
+      doc.sharedRef?.id && doc.sharedRef.type !== "proposal" ? doc.sharedRef.id : undefined,
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
     rebuttalConditions:
       doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0

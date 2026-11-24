@@ -108,3 +108,18 @@ describe("FolderTree の並び", () => {
     expect(folderButtons().map((b) => b.textContent?.match(/f\d\d/)?.[0])).toEqual(["f02", "f01", "f03"]);
   });
 });
+
+describe("共有しているノートの数", () => {
+  it("共有しているノートがあるフォルダにだけ「共有 n」を出す", () => {
+    renderTree({ sharedFolders: [{ value: "f02", count: 1 }] });
+    const marks = screen.getAllByTestId("folder-shared-count");
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent).toBe("1");
+    expect(marks[0].closest("button")?.textContent).toContain("f02");
+  });
+
+  it("渡さなければ出さない", () => {
+    renderTree();
+    expect(screen.queryByTestId("folder-shared-count")).toBeNull();
+  });
+});

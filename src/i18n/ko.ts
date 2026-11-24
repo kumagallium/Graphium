@@ -1747,6 +1747,7 @@ export const ko: Record<string, string> = {
   "folderPicker.new": "+ 새 폴더…",
   "nav.newFolder": "새 폴더",
   "nav.foldersShowMore": "{count}개 더 보기",
+  "nav.folderSharedCount": "{total}개 중 {shared}개 공유 중",
   "nav.foldersShowLess": "간단히 보기",
   "nav.newNoteInFolder": "이 폴더에 새 노트",
   "nav.renameFolder": "이름 바꾸기",

@@ -3,6 +3,7 @@ import {
   buildFolderTree,
   collectFolderSource,
   childFoldersOf,
+  sharedCountsByFolder,
   splitFolderPath,
   validateFolderPath,
 } from "./folder-tree-model";
@@ -181,5 +182,33 @@ describe("childFoldersOf", () => {
     expect(childFoldersOf(tree, "プロジェクトA/実験1")).toEqual([]);
     expect(childFoldersOf(tree, "材料X")).toEqual([]);
     expect(childFoldersOf(tree, "未知")).toEqual([]);
+  });
+});
+
+describe("共有しているノートの数（左ナビの「共有 n」）", () => {
+  const notes = [
+    { noteContexts: ["卒論"], sharedEntryId: "s1" },
+    { noteContexts: ["卒論/実験"], sharedEntryId: "s2" },
+    { noteContexts: ["卒論/実験"] },
+    { noteContexts: ["試作"] },
+    // ゴミ箱・アーカイブ・ナレッジは、件数と同じく数えない
+    { noteContexts: ["卒論"], sharedEntryId: "s3", deletedAt: "2026-11-01" },
+    { noteContexts: ["卒論"], sharedEntryId: "s4", archivedAt: "2026-11-01" },
+    { noteContexts: ["卒論"], sharedEntryId: "s5", wikiKind: "topic" },
+  ];
+
+  it("collectFolderSource は共有しているノートだけの集計も返す", () => {
+    const { sharedFolders } = collectFolderSource(notes);
+    expect([...sharedFolders].sort((a, b) => a.value.localeCompare(b.value))).toEqual([
+      { value: "卒論", count: 1 },
+      { value: "卒論/実験", count: 1 },
+    ]);
+  });
+
+  it("sharedCountsByFolder は親に子の分を足し、0 件のフォルダは持たない", () => {
+    const counts = sharedCountsByFolder(collectFolderSource(notes).sharedFolders);
+    expect(counts.get("卒論")).toBe(2);
+    expect(counts.get("卒論/実験")).toBe(1);
+    expect(counts.has("試作")).toBe(false);
   });
 });

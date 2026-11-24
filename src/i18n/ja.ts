@@ -1786,6 +1786,7 @@ export const ja: Record<string, string> = {
   "folderPicker.new": "＋ 新しいフォルダ…",
   "nav.newFolder": "新しいフォルダ",
   "nav.foldersShowMore": "残り {count} 件を表示",
+  "nav.folderSharedCount": "{total} 件のうち {shared} 件を共有しています",
   "nav.foldersShowLess": "少なく表示",
   "nav.newNoteInFolder": "このフォルダに新規",
   "nav.renameFolder": "名前を変更",
