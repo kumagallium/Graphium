@@ -4686,6 +4686,7 @@ Tools:
 | `list_media` | machine-facing (for another app using Graphium as its source of files, e.g. Asterism): materials from `media-index.json` that have a data file (no URL / memo, no archived), newest `uploadedAt` first, narrowed by `exts` (dotted, case-insensitive), `folder` (`noteContexts`) or `type`; `size` is `stat`ed from `media/`. Returns the JSON text `{ items: [{ id, name, type, mimeType, size?, uploadedAt, folder?, contentHash? }] }`; errors are `isError` + `{ error }` (all three media tools) |
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
+| `offer_material` | ask for a local file to become a material, by absolute `path` (+ `name`, + `note_id`). The MCP does **not** add it: it copies the file into `appdata/` as a pending offer (`material-offer-<id>.json` description, `material-offer-bytes-<id>.json` base64 body; `src/features/material-offer/offer-file.ts`) and the desktop app shows it until the person brings it in (normal material upload with the duplicate check, optionally a block at the end of `note_id`) or declines it. Refuses relative paths, symlinks, non-regular files, empty files, more than 32 MiB, hidden path segments, key stores and other apps' private folders (`~/Library/Keychains`, `Cookies`, `Mail`, …, `%USERPROFILE%\AppData`), OS locations (`/etc`, `/System`, …), the vault itself and the blocked extensions; at most 50 pending offers, each kept 14 days. Returns `{ status: offered | already_offered | already_material, id?, materialId?, message }` |
 | `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `_meta["graphium/preview"]` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
 | `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps), in the process graph's colours. Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
@@ -5751,6 +5752,18 @@ fetches registered web pages only from public addresses (redirects are
 re-checked one hop at a time; loopback, private, link-local and metadata
 addresses are refused) and `add_material` refuses executable, script and
 shortcut extensions.
+
+`offer_material` is the one MCP tool that reads a path the caller names. The
+premise of its safety is **a person approves every file**: an assistant steered
+by injected text can name a file the person never attached, so the MCP only
+copies it into the vault's `appdata/` (nothing leaves the PC, nothing is listed
+as a material, shared or sent to an AI), and the app shows the name, size, a
+thumbnail for raster images (never SVG) and the full source path before the
+person brings it in. There is no setting to skip the approval. Locations that
+hold keys or other apps' data are refused before any copy is made (see the tool
+table), the path is checked after `realpath` and symlinks are refused, so a link
+cannot route around the list. If the vault sits in a synced folder, the pending
+copy is synced too — another reason the deny list runs before the copy.
 
 Clients are kept in a per-`id` connection pool and reused across
 requests; editing a server's config re-signs the entry and transparently
