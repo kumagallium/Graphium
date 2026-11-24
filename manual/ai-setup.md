@@ -124,6 +124,30 @@ The figures and how to compare the services are in [AI usage and free tiers](/ai
 - For Cloudflare Workers AI, an **Account ID** field also appears. Enter the 32-character ID shown on the right of your Cloudflare dashboard, and the address is filled in
 - The figures are as of the date they were checked. Six months after that date, the list says it may be out of date. Check each service's own page for the current terms before you rely on it
 
+### Share a connection as a file {#share-a-connection}
+
+When one person in a lab has connected Graphium to something (such as the lab's own server), they can hand that connection to others. Whoever receives it opens the file and is connected, without typing an address or picking models.
+
+**Sharing**
+
+1. On the **AI** tab, press **Share connection** next to **Registered models**.
+2. Pick the connection and the models to include. **Your name** is shown on the receiver's check screen.
+3. Choose whether to include the key. If the destination needs no key, you can leave it out. To include it, paste the key again (saved keys can't be read back).
+4. With a key, **Encrypt with a passphrase** is on by default. Pass the passphrase on another way than the file (for example, in person).
+5. Press **Save file** to get a `.graphium-ai.json` file.
+
+**Receiving**
+
+1. On the **AI** tab, open **Add model** (or the chooser already showing if nothing is registered) and pick **Load a file you were given**.
+2. Choose the file. You see the **destination** (where the note content you give the AI is sent), who sent it, and the models to add. Check that the destination matches what the sender told you.
+3. If the key is encrypted, enter the passphrase.
+4. Press **Load** to register the models.
+
+- Existing connections are never replaced. The same model at the same destination is skipped as already added. If only the name clashes, it is added under another name such as "Name (2)".
+- You can share connections made with an API key or an address. GitHub Copilot and ChatGPT plans need each person to sign in.
+- Anyone who has the file can use the connection. If a file with a key leaks, make a new key at the destination and share again. A key included without encryption can stay in the history of shared folders or email even after you delete it.
+- A loaded key is stored in the same place as one you register yourself (next section).
+
 ### Where your API keys live
 
 Keys never leave your machine except to reach the provider you registered. On the macOS desktop app they are stored in the macOS Keychain; on Windows they live in a local file inside your Graphium data folder. Prefer a scoped, spending-capped key — details in [SECURITY.md](https://github.com/kumagallium/Graphium/blob/main/SECURITY.md).
