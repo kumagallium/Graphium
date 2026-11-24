@@ -1311,6 +1311,8 @@ export const ja: Record<string, string> = {
   "settings.simpleAiEntry.copilot.webOnly": "GitHub Copilot でつなぐのは、デスクトップ版でできます。",
   "settings.simpleAiEntry.lab.body": "研究室や機関から渡された URL（キーがあればキーも）を入れます。",
   "settings.simpleAiEntry.lab.button": "URL を入れる",
+  "settings.simpleAiEntry.lab.bodyWithFile": "接続のファイル（.graphium-ai.json）を受け取っていれば、開くだけでつながります。URL だけ渡されたときは、URL を入れます。",
+  "settings.simpleAiEntry.backToSimple": "1 問の画面に戻る",
   "settings.simpleAiEntry.none.body": "クラウドのサービスで API キーを取るか、このパソコンで動かすモデルを使います。一覧で並べて比べられます。",
   "settings.simpleAiEntry.none.button": "つなぎ方を比べる",
   "settings.simpleAiEntry.download": "デスクトップ版を入手",

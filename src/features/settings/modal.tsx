@@ -1480,6 +1480,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       setAddError("");
     },
     onOpenCopilotSettings: () => void openExternalUrl(COPILOT_SETTINGS_URL),
+    onOpenDesktopDownload: () => void openExternalUrl(MANUAL_DOWNLOAD_URL),
   };
 
   // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
@@ -3017,6 +3018,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                       ) : (
                         <AiConnectFlow
                           {...aiConnectProps}
+                          simpleFirst
                           onConnectChatGpt={() => setChatgptFlowOpen(true)}
                           onConnectCopilot={() => setCopilotFlowOpen(true)}
                         />
@@ -3027,7 +3029,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     </>
                   ) : (
                     <>
-                      <AiConnectFlow {...aiConnectProps} />
+                      <AiConnectFlow {...aiConnectProps} simpleFirst />
                     </>
                   )}
                 </div>

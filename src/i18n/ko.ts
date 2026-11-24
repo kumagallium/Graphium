@@ -1282,6 +1282,8 @@ export const ko: Record<string, string> = {
   "settings.simpleAiEntry.copilot.webOnly": "GitHub Copilot으로 연결하는 것은 데스크톱 앱에서 할 수 있습니다.",
   "settings.simpleAiEntry.lab.body": "연구실이나 기관에서 받은 URL(키가 있으면 키도)을 입력합니다.",
   "settings.simpleAiEntry.lab.button": "URL 입력",
+  "settings.simpleAiEntry.lab.bodyWithFile": "연결 파일(.graphium-ai.json)을 받았다면 열기만 하면 연결됩니다. URL만 받았다면 URL을 입력합니다.",
+  "settings.simpleAiEntry.backToSimple": "질문 하나 화면으로 돌아가기",
   "settings.simpleAiEntry.none.body": "클라우드 서비스에서 API 키를 받거나, 이 컴퓨터에서 모델을 실행할 수 있습니다. 목록에서 나란히 비교할 수 있습니다.",
   "settings.simpleAiEntry.none.button": "연결 방법 비교하기",
   "settings.simpleAiEntry.download": "데스크톱 앱 받기",

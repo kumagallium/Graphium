@@ -1,4 +1,4 @@
-// AI のつなぎ方の簡易表示（案）。Storybook だけで見せる部品で、アプリにはまだ組み込まない。
+// AI のつなぎ方の簡易表示。まだ何もつないでいないときの最初の 1 枚（AiConnectFlow の simpleFirst）。
 //
 // 今の「どこにつなぎますか？」（ConnectChooserView）は、つなぎ方の行 3〜5 と、API キーの 7 社 × 3 項目の
 // 比較から始まる。AI を少し使っている人は、たいてい何かをすでに持っている（ChatGPT の有料プラン・
@@ -28,6 +28,8 @@ export type SimpleAiEntryViewProps = {
   onConnectCopilot?: () => void;
   /** URL を自分で入れる今のフォーム（研究室・機関の接続先） */
   onPickCustom: () => void;
+  /** 配られた接続のファイルを読み込む。あれば研究室・機関の答えで先に出す */
+  onImportFile?: () => void;
   /** 今の「どこにつなぎますか？」の画面全体へ */
   onShowAll: () => void;
   /** デスクトップ版の入手先を開く（Web 版で ChatGPT・Copilot を選んだとき） */
@@ -46,6 +48,7 @@ export function SimpleAiEntryView({
   onConnectChatGpt,
   onConnectCopilot,
   onPickCustom,
+  onImportFile,
   onShowAll,
   onOpenDesktopDownload,
   onOpenCopilotSettings,
@@ -55,7 +58,8 @@ export function SimpleAiEntryView({
   const [answer, setAnswer] = useState<SimpleAiAnswer | null>(initialAnswer);
 
   // 選んだ答えの次に出す 1 行の説明とボタン 1 つ
-  const next = (() => {
+  type Next = { body: string; label: string; onClick: () => void; secondary?: { label: string; onClick: () => void } };
+  const next = ((): Next | null => {
     switch (answer) {
       case "chatgpt":
         return onConnectChatGpt
@@ -66,7 +70,15 @@ export function SimpleAiEntryView({
           ? { body: t("settings.simpleAiEntry.copilot.body"), label: t("settings.freeProviders.connect"), onClick: onConnectCopilot }
           : { body: t("settings.simpleAiEntry.copilot.webOnly"), label: t("settings.simpleAiEntry.download"), onClick: onOpenDesktopDownload };
       case "lab":
-        return { body: t("settings.simpleAiEntry.lab.body"), label: t("settings.simpleAiEntry.lab.button"), onClick: onPickCustom };
+        // ファイルを受け取っていれば、URL もキーも打たずに済む。URL だけ渡された人のために入力も残す
+        return onImportFile
+          ? {
+              body: t("settings.simpleAiEntry.lab.bodyWithFile"),
+              label: t("settings.aiConnect.fromFile.title"),
+              onClick: onImportFile,
+              secondary: { label: t("settings.simpleAiEntry.lab.button"), onClick: onPickCustom },
+            }
+          : { body: t("settings.simpleAiEntry.lab.body"), label: t("settings.simpleAiEntry.lab.button"), onClick: onPickCustom };
       case "none":
         return { body: t("settings.simpleAiEntry.none.body"), label: t("settings.simpleAiEntry.none.button"), onClick: onShowAll };
       default:
@@ -123,6 +135,11 @@ export function SimpleAiEntryView({
                   </button>
                 )}
               </p>
+            )}
+            {next.secondary && (
+              <button type="button" onClick={next.secondary.onClick} className={`mt-1 ${linkButton}`}>
+                {next.secondary.label}
+              </button>
             )}
           </div>
           <button type="button" onClick={next.onClick} className={`shrink-0 ${primaryButton}`}>

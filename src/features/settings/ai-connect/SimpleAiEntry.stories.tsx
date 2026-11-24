@@ -1,5 +1,5 @@
-// AI のつなぎ方の簡易表示（案）のストーリー。アプリにはまだ組み込まない。
-// 合意を取るための見本で、今の画面（ConnectChooserView）と並べて比べられるようにする。
+// AI のつなぎ方の簡易表示のストーリー。まだ何もつないでいないときの最初の 1 枚。
+// 今の画面（ConnectChooserView・「すべてのつなぎ方を見る」の先）と並べて比べられるようにする。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { CLOUD_PROVIDERS } from "../free-providers/catalog";
@@ -13,7 +13,7 @@ const frame = (Story: () => React.ReactElement) => (
 );
 
 const meta: Meta = {
-  title: "Proposals/SimpleAiEntry",
+  title: "Molecules/SimpleAiEntry",
   decorators: [frame],
 };
 export default meta;
@@ -25,6 +25,7 @@ const desktop: SimpleAiEntryViewProps = {
   onConnectChatGpt: noop,
   onConnectCopilot: noop,
   onPickCustom: noop,
+  onImportFile: noop,
   onShowAll: noop,
   onOpenDesktopDownload: noop,
   onOpenCopilotSettings: noop,
@@ -46,7 +47,7 @@ export const ChatGptDesktop: StoryObj = { render: () => <SimpleAiEntryView {...d
 /** GitHub Copilot を選んだところ（デスクトップ版）: 送り先と学習への利用は押す前に伝える */
 export const CopilotDesktop: StoryObj = { render: () => <SimpleAiEntryView {...desktop} initialAnswer="copilot" /> };
 
-/** 研究室・機関の接続先を選んだところ: URL を入れる今のフォームへ */
+/** 研究室・機関の接続先を選んだところ: 配られたファイルを先に。URL だけ渡された人は今のフォームへ */
 export const LabConnection: StoryObj = { render: () => <SimpleAiEntryView {...desktop} initialAnswer="lab" /> };
 
 /** どれも無い・分からない: 特定の接続先はおすすめせず、今の比較へ渡す */

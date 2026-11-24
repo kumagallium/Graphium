@@ -1311,6 +1311,8 @@ export const en: Record<string, string> = {
   "settings.simpleAiEntry.copilot.webOnly": "Connecting with GitHub Copilot works in the desktop app.",
   "settings.simpleAiEntry.lab.body": "Enter the URL (and the key, if you were given one) from your lab or institution.",
   "settings.simpleAiEntry.lab.button": "Enter the URL",
+  "settings.simpleAiEntry.lab.bodyWithFile": "If you were given a connection file (.graphium-ai.json), just open it to connect. If you were only given a URL, enter the URL.",
+  "settings.simpleAiEntry.backToSimple": "Back to the single question",
   "settings.simpleAiEntry.none.body": "You can get an API key from a cloud service, or run a model on this computer. The list compares them side by side.",
   "settings.simpleAiEntry.none.button": "Compare the ways to connect",
   "settings.simpleAiEntry.download": "Get the desktop app",
