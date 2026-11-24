@@ -173,7 +173,7 @@ Use the note chat panel while you are writing and want the AI to see (or write i
 
 `⌘K` is another way in: press it from anywhere, including with a note open, and choose **Ask AI: "..."** (or `⌘Enter`) to start one of these note-independent conversations without leaving where you are. See [The Composer](#the-composer-k) below.
 
-## Asking how to use Graphium {#asking-how-to-use-graphium}
+## Asking how to use Graphium <Badge type="tip" text="Added in v0.158.0 (2026-11-24)" /> {#asking-how-to-use-graphium}
 
 You can ask in chat whether Graphium can do something, or where a feature is. The answer comes from this manual, which ships inside the app.
 

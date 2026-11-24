@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 30 more in November
+::: details 31 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -390,6 +390,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.154.0** | 2026-11-22 | [A note is a plan by its own setting, not by its folder](/notes-and-editor#folders) — choose **Treat as a plan** in a note's **⋯** menu, or start from the Plan Template. A plan stays a plan wherever you file it, and the **Plan** folder is now an ordinary folder you can rename or delete. **Make an experiment plan** in AI chat moves to a small icon beside the answer, so **Make Knowledge** stands out <!--chip: Plans by their own setting--> |
 | **v0.155.0** | 2026-11-22 | [A source date apart from the creation date](/notes-and-editor#source-date) — a note made today from a 2012 paper can say "2012" without pretending it was made then. Write only what you know (a year, a month or a day). The notes list gets a **Source date** column and sort that puts your own notes and the sources you brought in on one timeline, and an assistant connected through MCP can date notes it saves or ones you already have <!--chip: Source date on notes--> |
 | **v0.156.0** | 2026-11-23 | [Speak instead of typing](/ai-chat-and-ask#speaking-instead-of-typing) in the ⌘K box and both chat inputs (desktop app). The speech is turned into text on your computer and only put into the box — nothing is sent until you send it. The formulas and acronyms in your note titles are handed to the model so they come out spelled the way you write them <!--chip: Voice input--> |
+| **v0.158.0** | 2026-11-24 | [Ask how to use Graphium](/ai-chat-and-ask#asking-how-to-use-graphium) in chat — "Ask how to" in the left nav opens a chat that answers whether Graphium can do something and walks you through the steps, from the manual bundled in the app. It does not read your notes, and says so when the manual does not describe something <!--chip: Ask how to--> |
 
 :::
 
