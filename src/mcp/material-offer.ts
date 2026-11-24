@@ -19,7 +19,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { lstat, open, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, sep } from "node:path";
@@ -91,11 +91,26 @@ export function deniedLocationReason(real: string, root: string, home: string = 
   return null;
 }
 
-/** 待っている申し出（期限切れは消しながら読む） */
+/** メタの無い中身を片付けるまでの猶予（書いている最中の中身を消さないように） */
+const ORPHAN_BYTES_GRACE_MS = 60 * 60 * 1000;
+
+/** 待っている申し出（期限切れ・メタの無い古い中身は消しながら読む） */
 async function readPendingOffers(dir: string, now: number): Promise<OfferMeta[]> {
   if (!existsSync(dir)) return [];
   const out: OfferMeta[] = [];
-  for (const file of readdirSync(dir)) {
+  const files = readdirSync(dir);
+  const metaFiles = new Set(files.filter((f) => f.startsWith(OFFER_META_PREFIX) && !f.startsWith(OFFER_BYTES_PREFIX)));
+  for (const file of files) {
+    if (!file.startsWith(OFFER_BYTES_PREFIX) || !file.endsWith(".json")) continue;
+    const id = file.slice(OFFER_BYTES_PREFIX.length, -".json".length);
+    if (metaFiles.has(`${offerMetaKey(id)}.json`)) continue;
+    try {
+      if (now - statSync(join(dir, file)).mtimeMs > ORPHAN_BYTES_GRACE_MS) await rm(join(dir, file), { force: true });
+    } catch {
+      /* 消えていれば何もしない */
+    }
+  }
+  for (const file of files) {
     if (!file.startsWith(OFFER_META_PREFIX) || file.startsWith(OFFER_BYTES_PREFIX) || !file.endsWith(".json")) continue;
     const id = file.slice(OFFER_META_PREFIX.length, -".json".length);
     let meta: OfferMeta | null = null;
