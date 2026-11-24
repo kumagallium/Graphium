@@ -4785,6 +4785,7 @@ export const en: Record<string, string> = {
   "records.origin.quote": "Quote from a material",
   "records.origin.memo": "Memo",
   "records.origin.shared": "Shared library",
+  "records.planRowFallback": "Plan",
   "records.who.self": "Me",
   "records.who.ai": "AI",
   "records.who.selfWithAi": "Me and AI",

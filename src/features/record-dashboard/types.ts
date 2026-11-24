@@ -83,6 +83,16 @@ export type RecordItem = {
   trace?: RecordTrace;
   /** 入っているフォルダ — ノート・素材・メモの noteContexts（1 つの記録が複数のフォルダに入ることがある） */
   folders?: readonly string[];
+  /**
+   * どの計画のどの行の記録か — 共有ライブラリの記録の SharedEntry.extra.planRow。
+   * planTitle は計画の封筒の extra.title（計画が共有フォルダに無い・読めていないときは省く）
+   */
+  planRow?: { planTitle?: string; rowName: string };
+  /**
+   * 共有した時点のチェックの件数 — 共有ライブラリの記録の SharedEntry.extra.checklist。
+   * 数えた結果をそのまま出すだけで、割合や並べ替えには使わない
+   */
+  checks?: { checked: number; total: number };
 };
 
 /** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */

@@ -4722,6 +4722,7 @@ export const ko: Record<string, string> = {
   "records.origin.quote": "자료에서 인용",
   "records.origin.memo": "메모",
   "records.origin.shared": "공유 라이브러리",
+  "records.planRowFallback": "계획",
   "records.who.self": "나",
   "records.who.ai": "AI", // 영어 유지
   "records.who.selfWithAi": "나와 AI",

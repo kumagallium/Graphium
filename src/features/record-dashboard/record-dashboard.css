@@ -354,6 +354,44 @@
   color: var(--forest);
 }
 
+/* 計画の行の記録: 「計画の題 › 行の名前」と、共有した時点のチェックの件数 */
+.rd-planrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+/* 文として折り返す（題と行の名前を別々の箱にすると、狭い幅で 1 語ずつ割れる） */
+.rd-planrow-name {
+  min-width: 0;
+}
+
+.rd-planrow-name svg {
+  display: inline;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.rd-planrow-sep {
+  margin: 0 4px;
+}
+
+.rd-planrow-plan {
+  color: var(--ink-2);
+}
+
+.rd-checks {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 件数は数えた結果で、良し悪しの印ではない。アイコンにも色を付けない */
+.rd-checks svg {
+  color: var(--ink-3);
+}
+
 .rd-root mark {
   padding: 0 2px;
   border-radius: 3px;
