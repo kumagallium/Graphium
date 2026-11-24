@@ -1555,6 +1555,37 @@ pub fn meeting_transcribe_cancel(state: tauri::State<'_, TranscribeState>, job_i
     Ok(())
 }
 
+/// アプリの終了時に呼ぶ。走っている文字起こしジョブ（録音中の逐次処理を含む）をすべて取り消し、
+/// 各ジョブが whisper の文脈（`Engine`）を手放して抜けるまで最大 `timeout` 待つ。
+/// 全部抜けたら true。
+///
+/// 文脈を持ったまま `exit` に進むと、ggml の Metal デバイスの後始末（C++ の静的デストラクタ）が
+/// 使用中の資源を見つけて `ggml_abort` し、終了が「予期せず終了」のクラッシュになる（v0.155.0 で発生）。
+pub fn cancel_all_and_wait(app: &tauri::AppHandle, timeout: Duration) -> bool {
+    cancel_jobs_and_wait(&app.state::<TranscribeState>().jobs, timeout)
+}
+
+/// `cancel_all_and_wait` の本体（AppHandle なしで試せるように分けた）
+fn cancel_jobs_and_wait(jobs: &Mutex<HashMap<String, Arc<AtomicBool>>>, timeout: Duration) -> bool {
+    if let Ok(map) = jobs.lock() {
+        for flag in map.values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        // ジョブは run_guarded が work（Engine を持つ）を抜けたあとで jobs から消す
+        let empty = jobs.lock().map(|m| m.is_empty()).unwrap_or(true);
+        if empty {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 // ---- 画面側で直した音声の受け取り（スマホの m4a / weba など） ----
 // WebView が 16 kHz・mono・16 bit に直した PCM を、分けて送ってもらって一時置き場の wav にする。
 // media/<fileId>.wav は作らない（素材の一覧に二重に出ないように）。
@@ -1882,6 +1913,45 @@ pub fn meeting_transcribe_input_discard(state: tauri::State<'_, TranscribeState>
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    /// 終了時: 全ジョブに取り消しを立て、ジョブが抜けたら true を返す
+    #[test]
+    fn cancel_jobs_and_wait_cancels_and_waits_for_exit() {
+        let jobs: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> = Arc::default();
+        let flag = Arc::new(AtomicBool::new(false));
+        jobs.lock().unwrap().insert("j1".into(), flag.clone());
+        // ジョブ役: 取り消しを見たら抜けて jobs から消える
+        let worker = {
+            let jobs = jobs.clone();
+            let flag = flag.clone();
+            std::thread::spawn(move || {
+                while !flag.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                jobs.lock().unwrap().remove("j1");
+            })
+        };
+        assert!(super::cancel_jobs_and_wait(&jobs, Duration::from_secs(5)));
+        assert!(flag.load(Ordering::Relaxed));
+        worker.join().unwrap();
+    }
+
+    /// 抜けないジョブが残ったら、待ちすぎずに false を返す
+    #[test]
+    fn cancel_jobs_and_wait_gives_up_after_timeout() {
+        let jobs: Mutex<HashMap<String, Arc<AtomicBool>>> = Mutex::default();
+        jobs.lock().unwrap().insert("stuck".into(), Arc::new(AtomicBool::new(false)));
+        let started = std::time::Instant::now();
+        assert!(!super::cancel_jobs_and_wait(&jobs, Duration::from_millis(100)));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // ジョブが無ければすぐ true
+        assert!(super::cancel_jobs_and_wait(&Mutex::default(), Duration::from_millis(0)));
+    }
+
     #[test]
     fn media_file_size_reads_metadata_only() {
         let tmp = tempfile::tempdir().unwrap();

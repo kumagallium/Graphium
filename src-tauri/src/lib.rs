@@ -6566,6 +6566,18 @@ pub fn run() {
                 // 録音中なら止めて WAV を finalize・meta を書く（最大 3 秒）
                 meeting_audio::stop_if_running(app);
                 heartbeat::stop_and_remove();
+                // 文字起こしのジョブが whisper（macOS は Metal）の文脈を持ったまま exit に進むと、
+                // ggml の静的デストラクタが使用中の資源を見つけて abort し、終了がクラッシュになる。
+                // 取り消して抜けるのを待ち、間に合わなければ C++ の後始末を飛ばして終える
+                // （書き出しとハートビートの掃除は上で済んでいる）
+                let released = meeting_transcribe::cancel_all_and_wait(app, std::time::Duration::from_secs(3));
+                #[cfg(unix)]
+                if !released {
+                    // SAFETY: 終了処理の最後。以降に走らせたい後始末は無い
+                    unsafe { libc::_exit(0) };
+                }
+                #[cfg(not(unix))]
+                let _ = released;
             }
         });
 }
