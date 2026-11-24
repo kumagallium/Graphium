@@ -158,6 +158,8 @@ export const ko: Record<string, string> = {
   "sidebar.materialsHint": "가져온 논문, 웹 페이지, 사진, 데이터 등의 자료입니다. 노트에서 인용할 수 있습니다.",
   "sidebar.skillHint": "AI에게 반복해서 줄 지시(문체 가이드, 용어집 등)",
   "sidebar.globalGraphHint": "모든 노트, 자료, 지식 베이스가 어떻게 이어지는지 한눈에 봅니다",
+  "sidebar.askHowTo": "사용법 묻기",
+  "sidebar.askHowToHint": "Graphium으로 할 수 있는지 물어봅니다. 매뉴얼을 바탕으로 답합니다",
   "sidebar.knowledgeHint": "AI가 노트에서 뽑아 만든 지식 베이스(토픽, 지견, 인사이트, 문답(Q&A))",
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "로그",
@@ -1474,6 +1476,10 @@ export const ko: Record<string, string> = {
   "standaloneChat.newChatTitle": "새 채팅",
   "standaloneChat.placeholder": "궁금한 것을 물어보세요…",
   "standaloneChat.startHint": "질문을 입력해 시작하세요",
+  "standaloneChat.helpStartHint": "Graphium 사용법을 물어보세요",
+  "standaloneChat.helpExample1": "PDF 일부를 인용해 노트에 붙일 수 있나요?",
+  "standaloneChat.helpExample2": "회의를 녹음해 회의록으로 만들 수 있나요?",
+  "standaloneChat.helpExample3": "노트를 Word로 내보낼 수 있나요?",
   "standaloneChat.sendHint": "{shortcut} 키로 보내기",
   "standaloneChat.stop": "중지",
   "standaloneChat.removeAttachment": "{title} 빼기",
@@ -3194,6 +3200,8 @@ export const ko: Record<string, string> = {
   "composer.scope.externalHint": "웹을 검색해 외부 자료로 답을 뒷받침합니다. 새로운 것을 조사할 때",
   "composer.scope.internalHint": "인용한 모든 것과 쌓아 온 지식을 교차 검색해 연결합니다. 아이디어를 낼 때",
   "composer.scope.notesHint": "이 노트가 인용한 자료만 쓰고 교차 검색은 하지 않습니다. 정확한 글쓰기와 인용을 위해",
+  "composer.scope.help": "사용법",
+  "composer.scope.helpHint": "기록은 읽지 않고, Graphium 매뉴얼을 바탕으로 할 수 있는 일과 방법을 답합니다",
   // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
   "composer.scope.webSearchMissing": "웹 검색이 설정되지 않아 외부 참조는 실시간 웹 결과 없이 답합니다. 검색 MCP 서버(예: Tavily)를 추가해 주세요.",
   "composer.scope.webSearchMissingCta": "설정 열기",

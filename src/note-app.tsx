@@ -8,6 +8,7 @@ import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, us
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, ClipboardList, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
+import { manualHomeUrl } from "./features/app-help/manual-url";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
 import { installViewerMainBridge } from "./features/viewer-window/main-bridge";
 import type { ViewerMemoCreateRequest } from "./lib/viewer-window";
@@ -312,7 +313,7 @@ import { needsReadConfirm, recordLinkedImport } from "./features/linked-files/li
 import { readErrorMessageKey } from "./features/linked-files/places";
 import { displayTypeOf, resolvePickerDisplayMode } from "./features/linked-files/display-type";
 import { assembleCitedAssetContext, gatherDerivedKnowledge, resolveAttachedNoteContents, type GroundingScope } from "./features/ai-assistant/cited-document-context";
-import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
+import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch, isHelpScope } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisModelName, getStandardModelName, getPreciseModelName, loadSettings, isAtomLayerEnabled, isClaimsEnabled, isStandardTierEnabled, isPreciseTierEnabled, isSourceSummariesEnabled, isAutoFullCheckEnabled, isAgenticSearchEnabled, isNewNotesOnA4, isSynthesisEnabled, getAtomizeIngestBudget, type ExperimentalSettings, type FeatureFlags } from "./features/settings";
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { setServerStorageToken } from "./lib/storage/providers/server-fs";
@@ -10154,7 +10155,10 @@ export function NoteApp() {
         // 添付ノート（⌘K の Ask で添えた引用）の本文をこのターンの質問に同梱する。
         // ノート用チャットと同じ組み立て（resolveAttachedNoteContents）を使う。
         // 画面表示（chatAfterUser.messages）には積まない — 添付はチップで別に見せる。
-        const attachedNoteIds = chat.attachedNoteIds ?? [];
+        // 使い方（help）: 利用者の記録は読まない。添付ノート・横断検索・じっくり調べるを飛ばし、
+        // 同梱マニュアルから引いた節だけを渡す（サーバーが使い方の指示を足す）
+        const helpMode = isHelpScope(effectiveScope);
+        const attachedNoteIds = helpMode ? [] : (chat.attachedNoteIds ?? []);
         let userMessageForModel = text;
         if (attachedNoteIds.length > 0) {
           const attachedNotes = attachedNoteIds.map((id) => {
@@ -10182,15 +10186,32 @@ export function NoteApp() {
         }
         // 横断検索（この機能の核）。失敗しても文脈なしで続行する。
         let wikiContext: string | undefined;
+        // 使い方（help）で渡すマニュアルの節
+        let helpContext: string | undefined;
         // agentic search（じっくり調べてから答える）の道具にも同じ除外を渡すため、try の外に置く
         const crossExcludeIds = new Set<string>(attachedNoteIds);
         // フォルダを選んでいれば、そのフォルダのノートと派生ナレッジだけを探す
         const onlyIds = collectFolderScopeIds(fm.noteIndex?.notes ?? [], effectiveFolder) ?? undefined;
-        try {
-          const { retrieveWikiContext } = await import("./features/wiki/retriever");
-          wikiContext = (await retrieveWikiContext(text, crossExcludeIds, { onlyIds })) ?? undefined;
-        } catch {
-          // Retriever 失敗は無視（embedding が無い場合など）
+        if (helpMode) {
+          try {
+            // 続けて聞かれた「それはどこ？」でも前の問いの話題で引けるよう、直前の質問も足して探す
+            const prevQuestion = [...baseMessages].reverse().find((m) => m.role === "user")?.content ?? "";
+            const { retrieveManualContext } = await import("./features/app-help");
+            const { context } = await retrieveManualContext(
+              [text, prevQuestion].filter(Boolean).join("\n"),
+              getLocale() === "ja" ? "ja" : "en",
+            );
+            helpContext = context || undefined;
+          } catch {
+            // マニュアルが読めなくても続ける（答えは「マニュアルに無い」になる）
+          }
+        } else {
+          try {
+            const { retrieveWikiContext } = await import("./features/wiki/retriever");
+            wikiContext = (await retrieveWikiContext(text, crossExcludeIds, { onlyIds })) ?? undefined;
+          } catch {
+            // Retriever 失敗は無視（embedding が無い場合など）
+          }
         }
         // AI が読むページ（渡す文脈と、道具が返した結果に出てくるページ）を、チャットの横のグラフへ知らせる
         const readRefsOf = (ctx: string) => refsFromCitedTitles(contextTitles(ctx), getSourceTitleToRefMap());
@@ -10205,7 +10226,7 @@ export function NoteApp() {
         publishReading();
         const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
-        const skillPrompts = getChatSkillPrompts();
+        const skillPrompts = helpMode ? undefined : getChatSkillPrompts();
         // 停止ボタンは画像の組み立て（読めないモデルでは端末内 OCR）の間から効かせる
         const controller = new AbortController();
         ownController = controller;
@@ -10221,6 +10242,8 @@ export function NoteApp() {
           messages: modelMessages,
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          // 使い方ではマニュアルの節を同じ口（wiki_context）で渡す。[#N] の出典処理には載せない
+          ...(helpContext ? { wiki_context: helpContext } : {}),
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
           // internal（既定）では forcesWebSearch が false のままなので、従来の送信
           // （grounding_scope: "notes" を渡していたとき）と挙動は変わらない。
@@ -10231,7 +10254,7 @@ export function NoteApp() {
         };
         // agentic search（じっくり調べてから答える・既定 OFF）: ノートなしチャットは常に横断検索するので、
         // 設定が ON なら AI が自分で検索し直す道具を渡す
-        const agentic = isAgenticSearchEnabled()
+        const agentic = !helpMode && isAgenticSearchEnabled()
           ? (await import("./features/ai-assistant/agentic-search")).createAgenticSearchSession({
               initialContext: wikiContext,
               excludeIds: crossExcludeIds,
@@ -10252,6 +10275,11 @@ export function NoteApp() {
           agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
         );
         let assistantMessage = response.message;
+        // 使い方: AI に渡した節の番号（[M1] など）が答えに漏れていたら消す（出典は節へのリンクで示す）
+        if (helpMode) {
+          const { stripManualMarkers } = await import("./features/app-help");
+          assistantMessage = stripManualMarkers(assistantMessage);
+        }
         // 引用の正規化は、最初に貼った文脈と道具が返した結果の両方の番号を見る
         const citationContext = [wikiContext, agentic?.collectedContext()].filter(Boolean).join("\n\n");
         if (citationContext) {
@@ -10698,6 +10726,21 @@ export function NoteApp() {
     clearActiveStandaloneChat();
     router.navigate({ view: "chats" });
   }, [showStandaloneChatView, clearActiveStandaloneChat]);
+
+  // 左ナビの「使い方を聞く」: 渡す範囲が「使い方」の新しいチャットを開く。AI が未設定なら答えられないので、
+  // 公開マニュアルをブラウザで開く（聞けなくても、調べる先には届く）
+  const [standaloneDraftScopeRequest, setStandaloneDraftScopeRequest] = useState<{ scope: GroundingScope; nonce: number }>();
+  const handleAskHowTo = useCallback(() => {
+    if (!isAgentConfigured()) {
+      void openExternalUrl(manualHomeUrl(getLocale()));
+      return;
+    }
+    handleNewStandaloneChatFromNav();
+    setStandaloneDraftScopeRequest({ scope: "help", nonce: Date.now() });
+  }, [handleNewStandaloneChatFromNav]);
+  // デスクトップ版の Help メニュー（使い方を聞く・マニュアルを開く）
+  useEffect(() => onMenuAction("ask-how-to", handleAskHowTo), [handleAskHowTo]);
+  useEffect(() => onMenuAction("open-manual", () => void openExternalUrl(manualHomeUrl(getLocale()))), []);
 
   // チャット画面の入力欄からの送信。会話を開いていればそこへ、「新しいチャット」
   // （選択なし）なら会話を作ってから送る。渡す範囲は画面側のチップの値。
@@ -17192,6 +17235,7 @@ export function NoteApp() {
     },
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
+    onAskHowTo: () => { handleAskHowTo(); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
     onShowNoteList: showNoteList,
@@ -18495,6 +18539,7 @@ export function NoteApp() {
             error={standaloneChatError?.id === activeStandaloneChatId ? standaloneChatError.message : undefined}
             onSelectChat={handleOpenStandaloneChatFromNav}
             onNewChat={handleNewStandaloneChatFromNav}
+            draftScopeRequest={standaloneDraftScopeRequest}
             onDeleteChat={handleDeleteStandaloneChat}
             onSend={handleWorkspaceSend}
             onStop={handleStandaloneChatStop}

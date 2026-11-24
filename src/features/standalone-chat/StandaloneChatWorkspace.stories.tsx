@@ -214,3 +214,28 @@ export const ManualEnglishConversation: Story = {
     />
   ),
 };
+
+// 左ナビの「Ask how to」で開いた直後の新しいチャット（渡す範囲が「How to」で、例の問いが並ぶ）
+const HELP_DRAFT_SCOPE = { scope: "help" as const, nonce: 1 };
+
+export const ManualEnglishHowToChat: Story = {
+  name: "Manual (English, bread world): how-to chat",
+  decorators: [englishDecorator],
+  parameters: { frameWidth: 1100, frameHeight: 640 },
+  render: () => (
+    <StandaloneChatWorkspace
+      chats={breadSummaries}
+      activeChatId={null}
+      activeChat={null}
+      loading={false}
+      onSelectChat={() => {}}
+      onNewChat={() => {}}
+      onDeleteChat={() => {}}
+      onSend={() => {}}
+      onScopeChange={() => {}}
+      onHome={() => {}}
+      now={NOW}
+      draftScopeRequest={HELP_DRAFT_SCOPE}
+    />
+  ),
+};

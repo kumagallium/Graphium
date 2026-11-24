@@ -2303,11 +2303,23 @@ Notes:
   the same mechanism as an `@` attachment. The grounding scope chosen on
   the Composer's chip (External / Internal / This note) is carried into
   that first message, so an External question searches the web. The
-  standalone chat view then shows its own two-segment chip (External /
-  Internal — "This note" is folded into Internal, since this chat always
+  standalone chat view then shows its own chip (External / Internal /
+  How to — "This note" is folded into Internal, since this chat always
   cross-searches) next to the input, and remembers the last scope per
   conversation (`StandaloneChat.scope`, DATA_MODEL §2.5) so later turns
-  and reopened chats keep it. A second chip beside it picks a **folder to
+  and reopened chats keep it. **How to** (`"help"`, opened from the left
+  nav's *Ask how to* or the desktop Help menu) does not read the user's
+  records at all: no attachments, no cross-search, no agentic tools. The
+  client instead searches the user manual bundled into the app
+  (`src/features/app-help/`: `manual/*.md` and `manual/ja/*.md` loaded
+  lazily through `import.meta.glob`, split at `##`–`####` headings, and
+  ranked with MiniSearch over the lexical tokenizer after dropping
+  question boilerplate such as "Can I" / 「できる？」) and sends the top
+  sections as `<graphium-manual>` in `wiki_context`. The server
+  (`HELP_GROUNDING_INSTRUCTION` in `src/server/routes/agent.ts`) then
+  answers from those sections only, in the app's display language, linking the section URLs (the client strips any leaked `[M1]` excerpt labels), and leaves
+  out custom instructions, the Knowledge Schema, context labels, skills
+  and every MCP tool for that turn. A second chip beside it picks a **folder to
   search** (`StandaloneChat.folder`), a separate axis from the grounding
   scope: `collectFolderScopeIds` (`src/features/note-context/folder-scope.ts`)
   turns the folder into the set of live notes in it or its child folders

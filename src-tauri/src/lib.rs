@@ -6496,6 +6496,9 @@ pub fn run() {
                 .build()?;
 
             let help_menu = SubmenuBuilder::new(app, "Help")
+                .text("ask-how-to", "Ask How to Use Graphium")
+                .text("open-manual", "User Manual")
+                .separator()
                 .text("about", "About Graphium")
                 .text("release-notes", "Release Notes")
                 .build()?;
@@ -6516,7 +6519,8 @@ pub fn run() {
                 let id = event.id().0.as_str();
                 match id {
                     "new-note" | "new-memo" | "export-pdf" | "export-prov" | "toggle-graph"
-                    | "toggle-chat" | "about" | "release-notes" | "restart-backend" => {
+                    | "toggle-chat" | "about" | "release-notes" | "restart-backend" | "ask-how-to"
+                    | "open-manual" => {
                         // フロントエンドにイベントを送信
                         let _ = window.emit("menu-action", id);
                     }

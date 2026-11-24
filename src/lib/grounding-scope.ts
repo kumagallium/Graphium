@@ -15,18 +15,28 @@
 // 包含関係は notes ⊂ internal ⊂ external の単調拡大。
 // 「引用したもの」は種類を問わない（原文/ノート/ナレッジ/メモ、@で明示引用したもの全て）。
 //
+// - "help"（Graphium の使い方）: 上の 3 つとは別の軸。利用者の記録は読まず、アプリに同梱した
+//   ユーザーマニュアルの節だけを根拠に「Graphium でできるか・どうやるか」に答える。
+//   ノートに紐づかないチャットだけで選べる（features/standalone-chat/scope.ts）。
+//
 // 詳細: docs/internal/citation-grounding-scope-design-2026-06.md
 //
 // Composer（UI）と ai-assistant（grounding 組み立て）の双方が参照するため、
 // feature をまたぐ単一定義としてここ（lib）に置く。
-export type GroundingScope = "external" | "internal" | "notes";
+export type GroundingScope = "external" | "internal" | "notes" | "help";
 
 /** UI・配線のデフォルト。ノート内参照（@引用したものだけ）で始める。 */
 export const DEFAULT_GROUNDING_SCOPE: GroundingScope = "notes";
 
-/** 横断検索（wikiContext・派生知識）を行うか。notes（ノート内参照）だけが引用のみに絞る。 */
+/** 横断検索（wikiContext・派生知識）を行うか。notes（ノート内参照）は引用のみに絞り、
+ *  help（使い方）は利用者の記録をそもそも読まない。 */
 export function includesCrossSearch(scope: GroundingScope): boolean {
-  return scope !== "notes";
+  return scope === "internal" || scope === "external";
+}
+
+/** 使い方（同梱マニュアルだけを根拠に答える）か。 */
+export function isHelpScope(scope: GroundingScope | undefined): boolean {
+  return scope === "help";
 }
 
 /** Web 検索を強制するか（外部参照のみ）。 */
