@@ -67,6 +67,7 @@ import {
 } from "../../lib/graphium-root";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { confirmAction } from "../../ui/confirm-dialog";
+import { SourceTopicBackfillCard, type SourceTopicBackfillHandlers } from "./SourceTopicBackfillCard";
 import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
@@ -355,11 +356,13 @@ type SettingsModalProps = {
   onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
   /** トピックに結ばれていない既存の知見を、資料ごとにトピックへ結ぶ一括処理 */
   claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
+  /** 知見はあるのにトピックが無い資料に、トピックの段だけを回す一括処理 */
+  sourceTopicBackfill?: SourceTopicBackfillHandlers;
   /** 「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」。未指定なら 2 つのボタンは出さない */
   bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, claimTopicLinkBackfill, bulkBodyWidth }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, claimTopicLinkBackfill, sourceTopicBackfill, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
@@ -4631,6 +4634,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               onOrganizeTopics={onOrganizeTopics}
               onAssignTopicTypes={onAssignTopicTypes}
               claimTopicLinkBackfill={claimTopicLinkBackfill}
+              sourceTopicBackfill={sourceTopicBackfill}
             />
           </div>
         )}
@@ -4707,6 +4711,8 @@ type MaintenanceTabProps = {
   onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
   onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
   claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
+  /** 知見はあるのにトピックが無い資料に、トピックの段だけを回す一括処理 */
+  sourceTopicBackfill?: SourceTopicBackfillHandlers;
 };
 
 function MaintenanceTab({
@@ -4739,6 +4745,7 @@ function MaintenanceTab({
   onOrganizeTopics,
   onAssignTopicTypes,
   claimTopicLinkBackfill,
+  sourceTopicBackfill,
 }: MaintenanceTabProps) {
   // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
   // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
@@ -5061,6 +5068,10 @@ function MaintenanceTab({
           </Button>
         </div>
       )}
+
+      {/* 知見はあるのにトピックが無い資料に、トピックの段だけを回す（SourceTopicBackfillCard）。
+          先にトピックを作り、そのあとで「知見をトピックに結ぶ」の順に並べる */}
+      {sourceTopicBackfill && <SourceTopicBackfillCard handlers={sourceTopicBackfill} />}
 
       {/* トピックに結ばれていない既存の知見を、資料ごとに結ぶ（人が起動・回数を先に見せる・止められる・続きから再開できる）。
           新しい取り込みは自動で結ぶので、ここは過去の分の手当て。対象が無くなったらカードごと消える。 */}
