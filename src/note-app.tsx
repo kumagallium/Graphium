@@ -463,6 +463,14 @@ import { normalizeStoredSourceDate } from "./lib/source-date";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext, replaceNoteContext } from "./features/note-context/context-tags";
 import { OpenedCopyNotice } from "./features/asset-browser/OpenedCopyNotice";
 import {
+  useMaterialOffers,
+  MaterialOfferNoticeView,
+  MaterialOfferSection,
+  materialBlockFor,
+  appendBlockToDoc,
+  OFFER_EXPIRE_DAYS,
+} from "./features/material-offer";
+import {
   planAutoTidy, leftoverReport, topicConsolidationIssues,
   type AutoTidyDone,
 } from "./features/wiki/auto-tidy";
@@ -15232,6 +15240,38 @@ export function NoteApp() {
       console.error("[web-clip] 振り分けに失敗:", clip.url, error);
     },
   });
+  // ── 外の AI から届いた素材の受け取り待ち（MCP の offer_material → appdata → 利用者の承認 → 素材） ──
+  // 設計: docs/internal/design_chatgpt_attachment_offer.md。素材とノートの索引が読み込まれてから見張る
+  const materialOffers = useMaterialOffers({
+    enabled: !!fm.mediaIndex && !!fm.rawNoteIndex,
+    deps: {
+      uploadAsset: (file) => fm.handleUploadAsset(file),
+      noteInfo: (noteId) => {
+        const n = fm.rawNoteIndex?.notes.find((x) => x.noteId === noteId && !x.deletedAt);
+        return n ? { title: n.title || tStatic("nav.untitled"), createdAt: n.createdAt } : undefined;
+      },
+      pasteToNote: async (noteId, entry) => {
+        const block = materialBlockFor(entry);
+        const editor = noteEditorRef.current;
+        // 開いているノートはエディタに入れる（ファイルに書くと、開いている版で上書きされる）
+        if (editor && fm.activeFileId === noteId) {
+          const blocks = editor.document as Array<{ type: string; content?: unknown[]; children?: unknown[] }>;
+          const last = blocks[blocks.length - 1];
+          const lastIsEmpty =
+            !!last && last.type === "paragraph" && (!last.content || last.content.length === 0) && (!last.children || last.children.length === 0);
+          if (last && lastIsEmpty && blocks.length > 1) editor.insertBlocks([block], last, "before");
+          else if (last) editor.insertBlocks([block], last, "after");
+          else editor.insertBlocks([block], editor.document[0], "before");
+          return;
+        }
+        const doc = await fm.loadDoc(noteId);
+        if (!doc) throw new Error(`note not found: ${noteId}`);
+        const updated = appendBlockToDoc(doc, block);
+        if (!updated) throw new Error(`note has no page: ${noteId}`);
+        await fm.handleSaveImportedDoc(noteId, updated);
+      },
+    },
+  });
   // 開いているノートへの挿入依頼が、別のノートに切り替わって宛先を失ったら、閉じたノートとして書き込む
   // （依頼を残すと、次に開いたノートに入ってしまう）
   useEffect(() => {
@@ -17408,6 +17448,7 @@ export function NoteApp() {
     // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）— web では
     // onShowMobile を渡さない＝サイドバーの「モバイル」見出し自体が出ない。
     mobileCount: inboxPendingCount,
+    intakePendingCount: materialOffers.offers.length,
     onShowMobile: isTauri()
       ? () => { closeAllViews(); setShowMobile(true); setSidebarOpen(false); router.navigate({ view: "mobile" }); }
       : undefined,
@@ -19274,6 +19315,17 @@ export function NoteApp() {
           patchMediaEntry={fm.patchMediaEntry}
           countExtraRefs={countOpenedCopyExtraRefs}
         />
+        <MaterialOfferNoticeView
+          offers={intake.open ? [] : materialOffers.noticeOffers}
+          pasteToNote={materialOffers.pasteToNote}
+          onPasteToNoteChange={materialOffers.setPasteToNote}
+          busy={materialOffers.busy}
+          result={materialOffers.result}
+          onAccept={materialOffers.accept}
+          onDecline={materialOffers.decline}
+          onLater={materialOffers.later}
+          onOpenIntake={intake.openIntake}
+        />
         <IngestToast
           state={ingestToast}
           onDismiss={() => setIngestToast(null)}
@@ -19596,6 +19648,20 @@ export function NoteApp() {
         dragActive={intakeDragActive}
         onClose={handleIntakeClose}
         onFilesSelected={(files, _source, extra) => void intake.run(files, extra)}
+        offers={
+          materialOffers.offers.length > 0 ? (
+            <MaterialOfferSection
+              offers={materialOffers.offers}
+              pasteToNote={materialOffers.pasteToNote}
+              onPasteToNoteChange={materialOffers.setPasteToNote}
+              busy={materialOffers.busy}
+              onAccept={materialOffers.accept}
+              onDecline={materialOffers.decline}
+              onAcceptAll={materialOffers.acceptAll}
+              expireDays={OFFER_EXPIRE_DAYS}
+            />
+          ) : undefined
+        }
         conversation={{
           state: conversationIntake.state,
           section: conversationIntake.section,

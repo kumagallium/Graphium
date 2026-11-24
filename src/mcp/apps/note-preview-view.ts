@@ -328,7 +328,38 @@ const app = new App({ name: "Graphium note preview", version: "1.0.0" });
 let current: NotePreview | null = null;
 
 // 結果の通知は connect の直後に来ることがあるので、connect より先に受け口を付ける
+/** 結果の文（content の text）。失敗したときに、そのまま見せる */
+function resultText(result: { content?: unknown }): string {
+  const content = Array.isArray(result.content) ? (result.content as { type?: string; text?: string }[]) : [];
+  return content.filter((c) => c?.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n");
+}
+
+/** 参照（noteId）から、画面専用の道具 note_preview でプレビューを取りに行って描く */
+async function loadFromRef(noteId: string): Promise<void> {
+  try {
+    const res = await app.callServerTool({ name: "note_preview", arguments: { noteId } });
+    const sc = res.structuredContent as { preview?: unknown; images?: unknown } | undefined;
+    if (!res.isError && isPreview(sc?.preview)) {
+      current = sc!.preview as NotePreview;
+      images = imagesOf({ "graphium/previewImages": sc?.images });
+      render(current);
+      return;
+    }
+    renderMessage(resultText(res) || TEXT[lang].failed);
+  } catch (e) {
+    renderMessage(`${TEXT[lang].failed}（${e instanceof Error ? e.message : String(e)}）`);
+  }
+}
+
 app.ontoolresult = (result) => {
+  // v0.152.2 から: 結果には参照だけが載り、中身は note_preview で取りに行く。
+  // Claude Desktop では結果の _meta が画面に届かないため（全体グラフと同じ。#1785）
+  const ref = (result.structuredContent as { graphiumNote?: { noteId?: unknown } } | undefined)?.graphiumNote;
+  if (ref && typeof ref.noteId === "string") {
+    void loadFromRef(ref.noteId);
+    return;
+  }
+  // それより前の版のサーバー: _meta か structuredContent にプレビューそのものが載っている
   const preview =
     (result._meta as Record<string, unknown> | undefined)?.["graphium/preview"] ??
     (result.structuredContent as { preview?: unknown } | undefined)?.preview;
@@ -337,7 +368,8 @@ app.ontoolresult = (result) => {
     images = imagesOf(result._meta);
     render(preview);
   } else {
-    renderMessage(TEXT[lang].failed);
+    // 参照もプレビューも無い結果（ノートが見つからない など）は、道具の返事の文を見せる
+    renderMessage(resultText(result) || TEXT[lang].failed);
   }
 };
 app.onhostcontextchanged = (ctx) => {

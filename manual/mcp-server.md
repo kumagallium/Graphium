@@ -203,6 +203,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `list_media` <Badge type="tip" text="Added in v0.95.0" /> | Not something you ask for — another app (such as Asterism) calls it to list the files among your materials, filtered by extension (see [below](#using-your-materials-from-another-app)) |
 | `get_media_file` <Badge type="tip" text="Added in v0.95.0" /> | Another app fetches one material's file (name, MIME type, size and, on request, the bytes) |
 | `add_material` <Badge type="tip" text="Added in v0.95.0" /> | Another app puts a file into your materials. The same content is never added twice; it gets the existing material's id back |
+| `offer_material` | "Add the photo I just attached to my materials" — the file waits in Graphium until you bring it in (see [below](#files-you-attach-in-a-chat)) |
 
 Search covers titles, body text, step names and labels, and works in Japanese without spaces between words — the same segmentation the app itself uses, so a query that finds something in Graphium finds it here too.
 
@@ -219,6 +220,18 @@ A few things to know:
 - Files over 32 MiB are not fetched or added through these tools.
 - A material added this way shows up in Graphium, and in `list_media`, after Graphium next rebuilds its media index (restarting Graphium is the sure way). Until then, dropping the same file in the app may create a second copy.
 - Folders cannot be set yet; added files land in the top level of your materials.
+
+### Files you attach in a chat {#files-you-attach-in-a-chat}
+
+In the ChatGPT desktop app (and Codex, or any assistant that can see the file on your PC), you can ask the assistant to add a file you attached to your Graphium materials — a photo of a result, a PDF, a spreadsheet. The assistant passes Graphium the file's location with `offer_material`; nothing becomes a material yet.
+
+Graphium then shows the file in the lower-right corner: its name, size, which assistant sent it and where it came from on your PC, with a thumbnail for photos. Choose **Bring in** to add it to your materials, or **Decline**. If the assistant names a note, **Add to the end of “…”** appears, and the file is placed at the end of that note when you bring it in. It starts ticked only for a note written in the last hour (typically the one the assistant just made in the same conversation); for an older note, tick it yourself. Closing the card with × keeps it waiting; you will find it at the top of **Bring in** in the sidebar, where the number of waiting files is shown.
+
+- You always decide. There is no setting to let files in without asking, because text hidden in a page or a note could steer an assistant into offering a file you never attached. Check **From:** before you bring a file in.
+- An assistant can only offer files from two kinds of places: the temporary folder where chat attachments land, and your Desktop, Documents, Downloads and Pictures folders. Anything elsewhere (app data, key and password stores, system folders), in a hidden folder such as `.ssh`, or in your Graphium folder itself is refused, as are executables, scripts, links and files over 32 MiB.
+- Graphium copies the file when it is offered, so a temporary file (such as a screenshot) can still be brought in after the original is gone. The copy is kept in your Graphium folder (`appdata`) until you choose, and removed after 14 days if you don't. If your Graphium folder is in a synced folder (iCloud Drive, OneDrive, a NAS), the waiting copy is synced too.
+- **Bring in all** appears only in **Bring in**, where every waiting file is listed; the corner shows at most two files and sends you there for the rest.
+- This works in the desktop version of Graphium. A file with the same content as an existing material is not added again.
 
 ### `create_note`: formulas, superscript and subscript
 

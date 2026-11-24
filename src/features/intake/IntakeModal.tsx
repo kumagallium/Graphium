@@ -9,6 +9,7 @@
 // 完結させ、実際の取り込み処理（Markdown パース・素材登録等）は onFilesSelected
 // を受けた呼び出し側の責務にする。
 
+import type { ReactNode } from "react";
 import { useT } from "@/i18n";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@/ui/modal";
 import { Button } from "@/ui/button";
@@ -129,6 +130,8 @@ type IntakeModalProps = {
   onOpen?: (target: IntakeOpenTarget) => void;
   /** 「AI との会話」の区画 */
   conversation?: IntakeConversationProps;
+  /** 外の AI から届いた素材の区画（届いたものがあるときだけ渡す。タブの上に出す） */
+  offers?: ReactNode;
 };
 
 
@@ -145,6 +148,7 @@ export function IntakeModal({
   onIngestAll,
   onOpen,
   conversation,
+  offers,
 }: IntakeModalProps) {
   const t = useT();
   const convKind = conversation?.state.kind;
@@ -163,6 +167,7 @@ export function IntakeModal({
 
         {showFiles && (
           <ModalBody>
+            {offers && <div className="mb-5 border-b border-border pb-5">{offers}</div>}
             {showTabs && conversation && (
               <div className="mb-4">
                 <IntakeSectionTabs value={conversation.section} onChange={conversation.onSectionChange} />
@@ -176,6 +181,7 @@ export function IntakeModal({
         {showConversation && conversation && (
           <>
             <ModalBody>
+              {offers && <div className="mb-5 border-b border-border pb-5">{offers}</div>}
               <div className="mb-4">
                 <IntakeSectionTabs value={conversation.section} onChange={conversation.onSectionChange} />
               </div>

@@ -20,6 +20,7 @@ import { countByType } from "../features/asset-browser";
 import { displayTypeOf } from "../features/linked-files/display-type";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import { NavBackButton } from "./NavBackButton";
+import { PendingOfferCount } from "../features/material-offer/PendingOfferCount";
 import { useScrollMoreBelow } from "./use-scroll-more-below";
 import { formatShortcut, sidebarToggleShortcutParams } from "../lib/shortcut-label";
 
@@ -120,6 +121,8 @@ export type FileSidebarProps = {
   onShowRecords?: () => void;
   /** 記録の画面がアクティブか */
   recordsActive?: boolean;
+  /** 外の AI から届き、承認を待っている素材の数（取り込みの行に添える） */
+  intakePendingCount?: number;
   /** モバイル受信箱の未処理件数（<root>/Inbox/ にある未取り込みファイルの数） */
   mobileCount?: number;
   /** モバイル受信箱クリック時。未指定なら見出しごと非表示（web モード） */
@@ -353,6 +356,7 @@ export function FileSidebar({
   onShowRecords,
   recordsActive = false,
   mobileCount = 0,
+  intakePendingCount = 0,
   onShowMobile,
   mobileActive = false,
   wikiCounts,
@@ -598,6 +602,11 @@ export function FileSidebar({
       >
         <FolderInput size={14} />
         <span>{t("sidebar.intake")}</span>
+        {intakePendingCount > 0 && (
+          <span className="ml-auto">
+            <PendingOfferCount count={intakePendingCount} />
+          </span>
+        )}
       </button>
     ) : (
       // 旧配置（比較用）: 3 本目として同じ見た目のボタン
@@ -1313,6 +1322,7 @@ export function FileSidebar({
                 >
                   <FolderInput size={14} className="shrink-0" />
                   <span>{t("sidebar.intakeShort")}</span>
+                  <PendingOfferCount count={intakePendingCount} />
                 </button>
               )}
             </div>

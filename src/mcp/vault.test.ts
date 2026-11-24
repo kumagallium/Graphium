@@ -2,7 +2,7 @@
 // ユーザーの実 vault には触らず、mkdtempSync で作った一時ディレクトリに fixture を組んで検証する。
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -198,5 +198,23 @@ describe("vault", () => {
 
       expect(vaultFileCounts(dir)).toEqual({ notes: 1, wiki: 0 });
     });
+  });
+});
+
+describe("scanUnlistedDocuments: フォルダの一覧が拒否されたとき", () => {
+  it("一覧（scandir）が拒否されても例外にせず、索引だけで答える", () => {
+    // root で走るとフォルダの権限を無視して読めてしまうので、その場合は確かめられない
+    if (process.getuid?.() === 0) return;
+    const dir = mkdtempSync(join(tmpdir(), "eperm-"));
+    const notes = join(dir, "notes");
+    mkdirSync(notes);
+    writeFileSync(join(notes, "a.json"), JSON.stringify({ title: "A", pages: [] }));
+    chmodSync(notes, 0o000);
+    try {
+      expect(scanUnlistedDocuments(new Set(), dir)).toEqual([]);
+    } finally {
+      chmodSync(notes, 0o755);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
