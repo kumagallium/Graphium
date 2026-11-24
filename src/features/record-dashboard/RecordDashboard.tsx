@@ -28,6 +28,7 @@ import {
   type BodyHit,
   type BodyHits,
   matchesWho,
+  planRowText,
   monthKeyOf,
   type RecordDayGroup,
   summarizeFolders,
@@ -365,6 +366,12 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     setPickedMonth(null);
     setAnchorDay(null);
   };
+  // 共有フォルダの記録は、自分のフォルダに入っていない。「共有の作者」に切り替えたら、フォルダの絞り込みを外す
+  // （外さないと 0 件になり、フォルダのボタンにも選んだフォルダが出てこない）
+  const changeWho = (next: WhoFilter) => {
+    setWho(next);
+    if (next === "other" && folder !== undefined) changeFolder(undefined);
+  };
   // 本文で当たった記録（全文の索引）。索引ができあがると findInBody が替わり、引き直される
   const bodyHits = useMemo(() => (query.trim() && findInBody ? findInBody(query) : NO_BODY_HITS), [findInBody, query]);
   const hits = useMemo(() => faceted.filter((it) => isHit(it, query, bodyHits)), [faceted, query, bodyHits]);
@@ -381,7 +388,8 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     // カレンダーの件数は、いま一覧に出しうる記録で数える（探しているあいだは、当たった記録だけ）
     const dayCounts = countByDay(hasQuery ? hits : faceted);
     const maxDayCount = Math.max(0, ...dayCounts.values());
-    const oldest = items.reduce((min, it) => { const k = dayKeyOf(it.at); return k && k < min ? k : min; }, dayKeyOf(now));
+    // カレンダーで戻れるいちばん古い月は、誰で絞ったあとの記録で決める（「すべて」に共有の記録の月を混ぜない）
+    const oldest = items.reduce((min, it) => { const k = matchesWho(it, who) ? dayKeyOf(it.at) : ""; return k && k < min ? k : min; }, dayKeyOf(now));
     const selectDay = (dayKey: string) => {
       setAnchorDay((prev) => (prev === dayKey ? null : dayKey));
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -397,7 +405,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
               <span className="rd-total">{copy.count(faceted.length)}</span>
             </header>
             <div className="rd-controls">
-              <WhoSwitch value={who} onChange={setWho} copy={copy} />
+              <WhoSwitch value={who} onChange={changeWho} copy={copy} />
               {hasFolders && <RecordFolderFilter folders={folders} value={folder} onChange={changeFolder} now={now} locale={locale} copy={copy} />}
             </div>
             {anchorDay && (
@@ -489,6 +497,12 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
                             <Marked text={it.detail} query={query} />
                           </p>
                         )}
+                        {/* 共有フォルダの記録が、計画の題や行の名前で当たったときは、その行を出す */}
+                        {planRowText(it).toLowerCase().includes(query.trim().toLowerCase()) && (
+                          <p className="rd-hit-detail">
+                            <Marked text={planRowText(it)} query={query} />
+                          </p>
+                        )}
                         {/* 題にも見出しにも言葉が無く、本文で当たった記録は、当たった箇所を出す */}
                         {!matchesQuery(it, query) && bodyHits.get(it.id) && (
                           <p className="rd-hit-detail" data-body="true">
@@ -503,7 +517,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
                             {formatDate(dayKeyOf(it.at), locale)} {formatTime(it.at)}
                           </span>
                           <span>{copy.origin[it.origin]}</span>
-                          <WhoLabel who={it.who} copy={copy} />
+                          <WhoLabel who={it.who} copy={copy} query={query} />
                         </p>
                       </li>
                     );

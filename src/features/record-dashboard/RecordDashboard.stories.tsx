@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { buildRecords } from "./from-indexes";
 import { RecordDashboard, type RecordDashboardLayout } from "./RecordDashboard";
 import { SAMPLE_SOURCES } from "./sample-indexes";
-import { busyDayRecords, folderRecords, longHistoryRecords, manyFolderRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { busyDayRecords, folderRecords, longHistoryRecords, manyFolderRecords, SAMPLE_NOW, SAMPLE_QUERY, SAMPLE_RECORDS, SAMPLE_SHARED_RECORDS } from "./sample-records";
 import { StoryFrame } from "./story-frame";
 import type { SampleLocale, WhoFilter } from "./types";
 
@@ -26,18 +26,23 @@ type Args = {
   long?: boolean;
   /** フォルダに入れた仮データを出す（"many" はフォルダの多い仮データ） */
   folders?: boolean | "many";
+  /** true のとき、共有フォルダにほかの人が出した記録（計画の行の記録を含む）を足す */
+  shared?: boolean;
+  /** 初めから入れておく探す言葉（searching より優先） */
+  query?: string;
 };
 
-function Screen({ layout, locale, width, searching, who, fromIndexes, busy, long, folders }: Args) {
+function Screen({ layout, locale, width, searching, who, fromIndexes, busy, long, folders, shared, query }: Args) {
+  const base = folders === "many" ? manyFolderRecords(locale) : folders ? folderRecords(locale) : fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : long ? longHistoryRecords(locale) : SAMPLE_RECORDS[locale];
   return (
     <StoryFrame width={width} locale={locale}>
       <RecordDashboard
         // 言語や初めの条件を切り替えたら、中の状態ごと作り直す
-        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}-${long}-${folders}`}
-        items={folders === "many" ? manyFolderRecords(locale) : folders ? folderRecords(locale) : fromIndexes ? buildRecords(SAMPLE_SOURCES) : busy ? busyDayRecords(locale) : long ? longHistoryRecords(locale) : SAMPLE_RECORDS[locale]}
+        key={`${layout}-${locale}-${searching}-${who}-${fromIndexes}-${busy}-${long}-${folders}-${shared}-${query}`}
+        items={shared ? [...base, ...SAMPLE_SHARED_RECORDS[locale]] : base}
         now={SAMPLE_NOW}
         layout={layout}
-        initialQuery={searching ? SAMPLE_QUERY[fromIndexes ? "ja" : locale] : ""}
+        initialQuery={query ?? (searching ? SAMPLE_QUERY[fromIndexes ? "ja" : locale] : "")}
         initialWho={who}
       />
     </StoryFrame>
@@ -80,6 +85,15 @@ export const BFindFolders: Story = { args: { layout: "find", folders: true } };
 export const BFindFoldersEnglish: Story = { args: { layout: "find", folders: true, locale: "en" } };
 export const BFindManyFolders: Story = { args: { layout: "find", folders: "many" } };
 export const BFindFoldersNarrow: Story = { args: { layout: "find", folders: true, width: 375 } };
+// 共有フォルダの記録: 「共有の作者」に切り替えたときだけ並ぶ（「すべて」には混ぜない）。
+// 計画の行の記録には「計画の題 › 行の名前」と、共有した時点のチェックの件数が付く
+export const BFindSharedAuthors: Story = { args: { layout: "find", shared: true, who: "other" } };
+export const BFindSharedAuthorsEnglish: Story = { args: { layout: "find", shared: true, who: "other", locale: "en" } };
+export const BFindSharedAuthorsNarrow: Story = { args: { layout: "find", shared: true, who: "other", width: 375 } };
+// 作者の名前で探す（人で絞る）。計画の題・行の名前でも当たる
+export const BFindSharedAuthorsByName: Story = { args: { layout: "find", shared: true, who: "other", query: "佐藤" } };
+// 「すべて」には、共有フォルダの記録は出ない
+export const BFindSharedNotInAll: Story = { args: { layout: "find", shared: true, who: "all" } };
 
 // A（比較用）: 1 本の流れ。上で絞って、下を読む
 export const AStream: Story = { args: { layout: "stream" } };

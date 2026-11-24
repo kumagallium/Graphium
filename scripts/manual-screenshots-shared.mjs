@@ -134,6 +134,13 @@ const SHOTS = [
     viewport: { width: 720, height: 600 },
   },
   {
+    // ホームで「誰が」を Shared authors に切り替えたところ（ほかの人が共有したノートが日ごとに並ぶ）
+    id: "record-dashboard-3-dashboard--b-find-shared-authors-english",
+    name: "home-shared-authors",
+    clip: "view",
+    viewport: { width: 1180, height: 640 },
+  },
+  {
     id: "sharing-sharedcitationcard--manual-english-statuses",
     name: "shared-citation-cards",
     clip: "root",

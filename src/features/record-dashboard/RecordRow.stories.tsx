@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRecordCopy } from "./copy";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
-import { SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { SAMPLE_QUERY, SAMPLE_RECORDS, SAMPLE_SHARED_RECORDS } from "./sample-records";
 import { StoryCaption, StoryFrame, StorySheet } from "./story-frame";
 import type { RecordItem, SampleLocale, RecordOrigin, RecordWho } from "./types";
 
@@ -153,118 +153,16 @@ export const SearchHit: Story = {
   ),
 };
 
-// 共有ライブラリの記録（案）。ほかの人が共有したノートが、残した順の流れに 1 行として並ぶ。
-// 計画の行の記録なら「計画の題 › 行の名前」を、チェックリストがあれば共有した時点の件数を添える。
-// どれも共有の封筒にある値で、本文は読まない。件数は数えた結果で、割合・並べ替え・色の印にはしない
-const SHARED_ROWS: Record<SampleLocale, RecordItem[]> = {
-  ja: [
-    {
-      id: "shared:1",
-      kind: "note",
-      at: "2026-11-24T14:20:00",
-      origin: "shared",
-      who: { type: "other", name: "佐藤 花" },
-      title: "一次発酵",
-      planRow: { planTitle: "食パンの計画", rowName: "一次発酵" },
-      checks: { checked: 3, total: 5 },
-    },
-    {
-      id: "shared:2",
-      kind: "note",
-      at: "2026-11-24T11:05:00",
-      origin: "shared",
-      who: { type: "other", name: "田中 蓮" },
-      title: "計量とこね（全粒粉 30%）",
-      planRow: { planTitle: "食パンの計画", rowName: "計量とこね" },
-    },
-    {
-      id: "shared:3",
-      kind: "note",
-      at: "2026-11-24T09:30:00",
-      origin: "shared",
-      who: { type: "other", name: "佐藤 花" },
-      title: "焼き色の比較",
-      planRow: { rowName: "焼成" },
-      checks: { checked: 4, total: 4 },
-    },
-    {
-      id: "shared:4",
-      kind: "note",
-      at: "2026-11-23T16:00:00",
-      origin: "shared",
-      who: { type: "other", name: "みなと" },
-      title: "スパイスカレーの基本の配合",
-      checks: { checked: 0, total: 6 },
-    },
-    {
-      id: "shared:5",
-      kind: "note",
-      at: "2026-11-23T10:10:00",
-      origin: "shared",
-      who: { type: "other", name: "みなと" },
-      title: "オーブンの予熱の目安",
-    },
-  ],
-  en: [
-    {
-      id: "shared:1",
-      kind: "note",
-      at: "2026-11-24T14:20:00",
-      origin: "shared",
-      who: { type: "other", name: "Maya Sato" },
-      title: "Bulk ferment",
-      planRow: { planTitle: "Sandwich loaf plan", rowName: "Bulk ferment" },
-      checks: { checked: 3, total: 5 },
-    },
-    {
-      id: "shared:2",
-      kind: "note",
-      at: "2026-11-24T11:05:00",
-      origin: "shared",
-      who: { type: "other", name: "Leo Tanaka" },
-      title: "Mix and knead (30% whole wheat)",
-      planRow: { planTitle: "Sandwich loaf plan", rowName: "Mix and knead" },
-    },
-    {
-      id: "shared:3",
-      kind: "note",
-      at: "2026-11-24T09:30:00",
-      origin: "shared",
-      who: { type: "other", name: "Maya Sato" },
-      title: "Crust colour comparison",
-      planRow: { rowName: "Bake" },
-      checks: { checked: 4, total: 4 },
-    },
-    {
-      id: "shared:4",
-      kind: "note",
-      at: "2026-11-23T16:00:00",
-      origin: "shared",
-      who: { type: "other", name: "Minato" },
-      title: "A basic spice curry ratio",
-      checks: { checked: 0, total: 6 },
-    },
-    {
-      id: "shared:5",
-      kind: "note",
-      at: "2026-11-23T10:10:00",
-      origin: "shared",
-      who: { type: "other", name: "Minato" },
-      title: "Oven preheating notes",
-    },
-  ],
-};
-
 export const SharedRowRecords: Story = {
   render: (args) => (
     <StoryFrame width={args.width} locale={args.locale}>
       <StoryCaption>
         {args.locale === "ja"
-          ? "共有ライブラリの記録（案）。上から: 計画の行の記録で件数あり / 件数なし / 計画の題が分からない / 計画に結び付かない共有ノートで件数あり / どちらも無い。"
-          : "Records from the shared library (proposal). From the top: a plan row record with a count / without one / plan title unknown / a shared note with a count but no plan / neither."}
+          ? "共有フォルダの記録。上から: 計画の行の記録で件数あり / 件数なし / 計画の題が分からない / 計画に結び付かない共有ノート（2 件。件数は添えない）。"
+          : "Records from the shared folder. From the top: a plan row record with a count / without one / plan title unknown / shared notes not tied to a plan (two; no count)."}
       </StoryCaption>
       <StorySheet maxWidth={args.variant === "ledger" ? 960 : 720}>
-        <Rows items={SHARED_ROWS[args.locale]} {...args} />
+        <Rows items={SAMPLE_SHARED_RECORDS[args.locale]} {...args} />
       </StorySheet>
     </StoryFrame>
   ),

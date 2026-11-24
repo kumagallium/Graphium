@@ -17,6 +17,7 @@ import {
   matchesQuery,
   summarizeFolders,
   matchesWho,
+  planRowText,
   tidyBodyHit,
   monthGrid,
   monthKeyOf,
@@ -81,6 +82,31 @@ describe("絞り込み", () => {
     expect(matchesWho(rec({ who: { type: "other", name: "みなと" } }), "other")).toBe(true);
   });
 
+  it("「すべて」には、共有フォルダにほかの人が出した記録を混ぜない", () => {
+    const shared = rec({ origin: "shared", who: { type: "other", name: "みなと" } });
+    expect(matchesWho(shared, "all")).toBe(false);
+    expect(matchesWho(shared, "self")).toBe(false);
+    expect(matchesWho(shared, "ai")).toBe(false);
+    expect(matchesWho(rec(), "all")).toBe(true);
+    expect(matchesWho(rec({ who: { type: "ai" } }), "all")).toBe(true);
+  });
+
+  it("共有フォルダの記録は、作者の名前と、計画の題・行の名前でも当たる", () => {
+    const shared = rec({
+      origin: "shared",
+      who: { type: "other", name: "佐藤 花" },
+      title: "一次発酵の記録",
+      planRow: { planTitle: "食パンの計画", rowName: "一次発酵" },
+    });
+    expect(matchesQuery(shared, "佐藤")).toBe(true);
+    expect(matchesQuery(shared, "食パン")).toBe(true);
+    expect(matchesQuery(shared, "発酵")).toBe(true);
+    expect(matchesQuery(shared, "カレー")).toBe(false);
+    expect(planRowText(shared)).toBe("食パンの計画 › 一次発酵");
+    expect(planRowText(rec({ planRow: { rowName: "焼成" } }))).toBe("焼成");
+    expect(planRowText(rec())).toBe("");
+  });
+
   it("出どころを選んでいなければ、すべて通す", () => {
     expect(matchesOrigin(rec(), new Set())).toBe(true);
     expect(matchesOrigin(rec(), new Set(["phone"]))).toBe(false);
@@ -137,6 +163,24 @@ describe("bundleRuns", () => {
     const items = run(13, { kind: "media", origin: "file" });
     const out = bundleRuns(items, 6, (r) => r.id === items[6].id);
     expect(out.map((e) => (isBundle(e) ? e.items.length : e.id))).toEqual([6, items[6].id, 6]);
+  });
+
+  it("共有フォルダの記録は作者ごとにまとめる（別の作者が続いても 1 行にしない）", () => {
+    const by = (name: string, n: number) =>
+      Array.from({ length: n }, (_, i) => rec({ id: `${name}-${i}`, origin: "shared", who: { type: "other", name } }));
+    expect(bundleRuns([...by("佐藤", 3), ...by("田中", 3)]).some(isBundle)).toBe(false);
+    const out = bundleRuns(by("佐藤", 7));
+    expect(out).toHaveLength(1);
+    expect(isBundle(out[0]) && out[0].items).toHaveLength(7);
+  });
+
+  it("計画の行の記録はまとめず、その前後で列を切る", () => {
+    const items = Array.from({ length: 13 }, (_, i) =>
+      rec({ id: `s-${i}`, origin: "shared", who: { type: "other", name: "佐藤" }, ...(i === 6 ? { planRow: { rowName: "焼成" } } : {}) }),
+    );
+    expect(bundleRuns(items).map((e) => (isBundle(e) ? e.items.length : e.id))).toEqual([6, "s-6", 6]);
+    const rows = items.map((r) => ({ ...r, planRow: { rowName: "こね" } }));
+    expect(bundleRuns(rows).some(isBundle)).toBe(false);
   });
 
   it("渡した配列を書き換えない", () => {

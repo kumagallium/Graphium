@@ -18330,6 +18330,10 @@ export function NoteApp() {
               if (entry) handleComposerMediaSelect(entry);
             }}
             onOpenMemo={handleOpenMemoSource}
+            // 共有フォルダの記録は全画面で開く（横のピークは手元のノート用）。
+            // 共有フォルダを設定していない端末では開けないので、渡さない（共有の記録も並ばない）
+            onOpenShared={getSharedRoot() ? openSharedEntryFull : undefined}
+            selfEmail={loadAuthorIdentity()?.email ?? null}
           />
         ) : showMobile ? (
           // モバイル受信箱: 同期フォルダ <root>/Inbox/ の **まだ取り込んでいない** ファイル一覧。

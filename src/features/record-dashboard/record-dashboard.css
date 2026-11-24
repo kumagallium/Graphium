@@ -364,6 +364,7 @@
 /* 文として折り返す（題と行の名前を別々の箱にすると、狭い幅で 1 語ずつ割れる） */
 .rd-planrow-name {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .rd-planrow-name svg {
