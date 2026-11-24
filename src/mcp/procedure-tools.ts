@@ -45,7 +45,7 @@ import {
   PROV_REPLICATED_CHAIN_RETRY_NUDGE,
 } from "../server/services/prov-ingester";
 import { GENERATION_LANGUAGES, type GenerationLanguage } from "../lib/language";
-import { NOTE_PREVIEW_TOOL_META, PREVIEW_META_KEY } from "./app-tools";
+import { NOTE_PREVIEW_TOOL_META, notePreviewResult } from "./app-tools";
 import { INJECTION_GUARD } from "./claim-tools";
 import { sha256 } from "./claim-source";
 import {
@@ -57,7 +57,6 @@ import {
   updateTask,
   type KnowledgeTask,
 } from "./knowledge-tasks";
-import { buildNotePreview } from "./note-preview";
 import { addCreatedNoteToIndex } from "./search";
 import { readMediaIndex } from "./sources";
 import { normalizeStoredSourceDate } from "../lib/source-date";
@@ -487,8 +486,8 @@ export function registerProcedureTools(server: McpServer, ctx: ToolContext = {})
         const r = await submitProcedure(input, ctx, root());
         if (!r.noteId || !r.doc) return text(r.message);
         ctx.activity?.push("wrote", r.noteId);
-        const preview = buildNotePreview({ noteId: r.noteId, doc: r.doc as never, modifiedAt: r.doc.modifiedAt });
-        return { ...text(r.message), _meta: { [PREVIEW_META_KEY]: preview } };
+        // プレビューの中身は画面が note_preview で取りに行く（結果には参照だけ）
+        return notePreviewResult(r.message, r.noteId);
       } catch (e) {
         return text(`提出の処理に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
       }

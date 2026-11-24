@@ -4631,7 +4631,10 @@ editing the notes themselves.
 - Storage: **the vault files directly**, not a `StorageProvider`. It resolves
   the root from `GRAPHIUM_ROOT`, then the desktop app's `config.json`, then
   `~/Documents/Graphium` — the same order as the Claude Code skill in
-  `scripts/claude-code-skill/save-to-graphium/`
+  `scripts/claude-code-skill/save-to-graphium/`. When listing a vault folder is
+  refused (macOS privacy protection on `~/Documents` for a process the client
+  spawned — `EPERM` on `scandir`), the scan for notes missing from the index is
+  skipped and the tools answer from the index alone instead of failing
 - Reading, searching and adding notes (`create_note` / `save_answer`) need no
   running Graphium: the app can be closed, or not installed at all. The tools
   that rewrite knowledge pages — and `set_source_date`, the one tool that edits
@@ -4687,7 +4690,8 @@ Tools:
 | `get_media_file` | one material by id, resolved in `media/` directly (not through the index, so an id returned by `add_material` or an archived material works): `{ id, name, mimeType, size, bytes_base64? }`, the bytes only with `inline: true` and at most 32 MiB. The id is validated first (no `/` `\\` `..` NUL or leading dot) |
 | `add_material` | put a file into `media/` from `bytes_base64` + `name` (+ `mimeType`); no `path` (never reads the caller's disk), no `folder` yet, 32 MiB cap. Duplicate check by SHA-256 (`computeBlobHash`, the app's key) against the index's `contentHash` (not archived, data file present) and the MCP's own ledger `appdata/mcp-added-media.json` (a ledger hit merges only while the file still exists and is not archived in the index). New files are written as `<uuid>.<ext>.tmp` then renamed (the app's listing skips `.tmp`), the `.meta.json` sidecar atomically after, under `mcp-write-lock.json`. The media index is not written (v1): the app's `ensureMediaIndex` picks the file up on its next rebuild, so the result is `{ id, duplicate: false, indexed: false }`, or `{ id, duplicate: true }` |
 | `offer_material` | ask for a local file to become a material, by absolute `path` (+ `name`, + `note_id`). The MCP does **not** add it: it copies the file into `appdata/` as a pending offer (`material-offer-<id>.json` description, `material-offer-bytes-<id>.json` base64 body, mode 0600; `src/features/material-offer/offer-file.ts`) and the desktop app shows it until the person brings it in (normal material upload with the duplicate check, optionally a block at the end of `note_id`) or declines it. **Allowlist, not denylist:** only the OS temp folder (`os.tmpdir()`, `/tmp`) and `~/{Desktop,Documents,Downloads,Pictures}` are accepted, minus hidden path segments and the vault itself; the check runs on the literal path before any fs call (so a UNC path never triggers an SMB connection) and again after `realpath`. The file is opened once with `O_NOFOLLOW | O_NONBLOCK` and `fstat`ed: it must be a regular file, the same `dev`/`ino` as the checked path, and `nlink === 1` (a hard link cannot dress a file from elsewhere as an allowed one). Also refused: symlinks, empty files, more than 32 MiB, blocked extensions (`src/lib/blocked-material-exts.ts`), names starting with a dot; control and format characters are stripped from the name. At most 50 pending offers, each kept 14 days. Returns `{ status: offered | already_offered | already_material, id?, materialId?, message }` |
-| `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `_meta["graphium/preview"]` carries the data the preview draws. Opening it is recorded as an AI use, like `get_note` |
+| `show_note` | draw one note inside the conversation as a read-only preview (MCP Apps, see below). The text result is only a one-line summary; `structuredContent.graphiumNote` carries the note id the preview fetches with `note_preview`. Opening it is recorded as an AI use, like `get_note` |
+| `note_preview` | app-only: the note preview passes it the `noteId` from a `show_note` / `create_note` / `submit_procedure` result and gets the `NotePreview` and its images back, read from the vault |
 | `show_steps` | draw one note's step flow (inputs and tools → steps → outputs) inside the conversation (MCP Apps), in the process graph's colours. Same projection as `get_note_steps` with `format: "mermaid"` (`generateProvDocument` → `provDocToFlowGraph`), at most 80 steps |
 | `show_lineage` | draw `traceLineage`'s result (upstream on the left, downstream on the right, `@` connections beside the start) |
 | `show_knowledge_graph` | draw the global graph with the app's own component: a third UI resource, `ui://graphium/knowledge-graph.html` (`src/mcp/apps/graph-app/main.tsx`, built with the app's Vite + React + Tailwind and inlined), renders `GlobalGraphView` in the compact mode the chat-beside graph uses, so the islands, island names, hover labels, marks and pulse are the app's. `graph_payload` returns `buildGlobalGraph` as is (`KnowledgeAppPayload`: all nodes, `scopeIds` from `collectFolderScopeIds` for `folder`, `insightsEnabled` from the feature-flags copy). Content islands need the app's embeddings (in the WebView's IndexedDB), so islands here are grouped by connection |
@@ -4732,9 +4736,12 @@ offers buttons for them (`requestDisplayMode`), so the graph can float beside th
 **Previews inside the conversation (MCP Apps).** `src/mcp/app-tools.ts` registers
 one UI resource, `ui://graphium/note-preview.html` (MIME `text/html;profile=mcp-app`,
 via `@modelcontextprotocol/ext-apps` 1.x, which sits on the same
-`@modelcontextprotocol/sdk` 1.x as the rest of the server). `show_note` and
-`create_note` point to it through `_meta.ui.resourceUri`, and return
-`_meta["graphium/preview"]` — a `NotePreview` built by
+`@modelcontextprotocol/sdk` 1.x as the rest of the server). `show_note`,
+`create_note` and `submit_procedure` point to it through `_meta.ui.resourceUri`
+and return only a reference, `structuredContent: { summary, graphiumNote: { noteId } }`,
+like the graph views and for the same reason (the view's calls may reach another MCP
+process, and the result's `_meta` did not reach the view in Claude Desktop). The view
+fetches the app-only `note_preview`, which returns `{ preview, images }` — a `NotePreview` built by
 `src/mcp/note-preview.ts` from the note JSON (headings, steps as cards that
 hold their children, lists, tables, media, block-level PROV labels and the
 inline-range labels stored as `inlineMaterial` / `inlineTool` /
@@ -4744,17 +4751,19 @@ to MathML (`src/mcp/math-mathml.ts`, `trust: false`), which the browser
 typesets without KaTeX's CSS or fonts. Images that live in the vault
 (`media-server://` and the other local schemes of
 `asset-browser/local-media-ref.ts`, plus the Drive-era `lh3.googleusercontent.com/d/<id>`
-form when that id exists in `media/`) are sent as data URLs in the result's
-`_meta["graphium/previewImages"]` (blockId → data URL; PNG / JPEG / GIF / WebP /
-AVIF, 2 MiB each, 8 MiB and 20 images per note, no SVG). The preview is kept
-out of `structuredContent` on purpose: a client that does not draw MCP Apps
+form when that id exists in `media/`) are sent as data URLs in `images`
+(blockId → data URL; PNG / JPEG / GIF / WebP /
+AVIF, 2 MiB each, 8 MiB and 20 images per note, no SVG). The model-facing result
+stays a reference on purpose: a client that does not draw MCP Apps
 (Claude Code) hands `structuredContent` to the model in place of the text
-result, which would put the whole note into the context. `_meta` goes to the
-view only. (v0.129.0 sent `structuredContent: { preview }`; the view still
-reads it as a fallback.) Remote images are
+result, and a reference keeps the whole note out of the context; `note_preview`
+is app-only, so the model never sees it. Results from older servers
+(`_meta["graphium/preview"]`, and `structuredContent: { preview }`
+from v0.129.0) are still drawn. If the fetch fails the view shows the tool's own
+text instead of a generic error. Remote images are
 never fetched: the preview keeps only their host name, never the URL. A host
 that supports MCP Apps (Claude Desktop) renders the resource in a sandboxed
-iframe and hands it the tool result; other clients ignore `_meta` and see the
+iframe and hands it the tool result; other clients see the
 unchanged text result. The view (`src/mcp/apps/note-preview-view.ts`) builds
 the DOM with `textContent`; the only markup it parses is the MathML, which is
 re-created from an allow-list of MathML elements and attributes. It follows
