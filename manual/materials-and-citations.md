@@ -52,7 +52,7 @@ A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from 
 
 The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
-### The date of a material {#material-source-date}
+### The date of a material <Badge type="tip" text="Added in v0.156.0 (2026-11-23)" /> {#material-source-date}
 
 Like a note, a material can carry a **source date**: when the document itself is from, kept apart from the day you brought it in. It is written the same way as a note's ([Source date](/notes-and-editor#source-date)): a year, a year and month, or a full date.
 
