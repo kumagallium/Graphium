@@ -15,13 +15,11 @@
  *   --version <v>   About に出す版（既定は package.json の version）
  *
  *   --only <name>  出力名（拡張子なし）を指定して 1 枚だけ撮る
- *                  mobile-upload-settings / settings-about-updates / settings-usage-tab / settings-knowledge-tab
+ *                  mobile-upload-settings / settings-about-updates / settings-usage-tab
  *
  * - settings-usage-tab: Usage タブ（ストーリーの API スタブのダミー記録）で Month を選んだ状態
- * - settings-knowledge-tab: Knowledge タブ。カードが全部入るよう、撮る間だけモーダルの高さを広げる（1280x1230）。
- *   ジョブは実行しない（ストーリーのハンドラは何も呼ばない）
  *
- * 出力先: manual/public/screenshots/mobile-upload-settings.png / settings-about-updates.png / settings-usage-tab.png（1280x800 @2x の全体）/ settings-knowledge-tab.png
+ * 出力先: manual/public/screenshots/mobile-upload-settings.png / settings-about-updates.png / settings-usage-tab.png（1280x800 @2x の全体）
  */
 import { chromium } from "playwright";
 import { mkdirSync, readFileSync } from "fs";
@@ -157,19 +155,4 @@ if (want("settings-usage-tab")) {
   await ctx.close();
 }
 
-// 4) Knowledge（英語・パン作りの Manual ストーリー。全カードが入る高さに広げる）
-if (want("settings-knowledge-tab")) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1230 }, deviceScaleFactor: 2, locale: "en-US" });
-  await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
-  const page = await ctx.newPage();
-  await page.goto(`http://localhost:${port}/iframe.html?id=organisms-settingsmodal--manual-english-knowledge&viewMode=story`);
-  await page.getByText("Connection Status").waitFor({ state: "visible", timeout: 30000 });
-  // モーダルは 48rem で頭打ちなので、撮る間だけ画面いっぱいまで広げる
-  await page.addStyleTag({ content: "[data-modal-portal] .relative.rounded-xl{height:calc(100dvh - 2rem)!important;max-height:none!important}" });
-  await page.waitForTimeout(1500);
-  const out = resolve(OUTPUT_DIR, "settings-knowledge-tab.png");
-  await page.screenshot({ path: out });
-  console.log(`saved ${out}`);
-  await ctx.close();
-}
 await browser.close();
