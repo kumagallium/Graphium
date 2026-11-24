@@ -21,6 +21,10 @@ import { installRepeatColorBrowserGuard } from "./base/repeat-color";
 import { setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { getCommonSlashMenuItems, getMainEditorOnlySlashMenuItems, getSlashMenuGroupOrder } from "./blocks/slash-items";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
+import {
+  hasStructuredHtml,
+  pasteMultilineIntoEmptyListItem,
+} from "./features/block-lifecycle/multiline-list-paste";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   RemoteContentBar,
@@ -3999,8 +4003,12 @@ function NoteEditorInner({
           // ProseMirror / BlockNote の paste handler も同じ DOM に付いており、
           // preventDefault だけだと続けて走ってブロックを改行追加 + paragraph 置換してしまう。
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
+          // 複数行で HTML にリストなどの構造があれば BlockNote の貼り付けに任せる
+          if (hasStructuredHtml(plain, htmlForPayload)) return;
           e.preventDefault();
           e.stopImmediatePropagation();
+          // 複数行（別のページの箇条書きなど）は Markdown として読み、ブロックに分けて入れる
+          if (pasteMultilineIntoEmptyListItem(editor, cursorBlock, plain)) return;
           // URL 単体はネイティブ paste（GFM autolink）と同じくリンクとして挿入する
           // （プレーンテキストだと usedIn スキャンの検出対象にならずグラフに出ない）
           editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
