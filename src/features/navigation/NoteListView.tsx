@@ -36,6 +36,7 @@ import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
 import { UNFILED_PATH, splitFolderPath } from "../note-context/folder-tree-model";
 import { FOLDER_DRAG_MIME } from "../note-context/folder-drop";
+import { PlanNoteMark } from "../../components/plan-note-mark";
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import {
   aggregateNoteContexts,
@@ -1068,6 +1069,8 @@ export function NoteListView({
                     >
                       {entry.title}
                     </span>
+                    {/* 計画のノート。開いたノートのヘッダーの札と同じアイコンと色 */}
+                    {entry.plan && <PlanNoteMark />}
                     {entry.shared && (
                       // 共有フォルダに共有しているノート。開いたノートの「共有済み」と同じ印と色
                       <span

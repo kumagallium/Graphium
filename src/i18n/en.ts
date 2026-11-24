@@ -179,6 +179,8 @@ export const en: Record<string, string> = {
   "editor.paperA4": "Write on A4 width",
   "editor.treatAsPlan": "Treat as a plan",
   "editor.treatAsPlanHint": "Each row of its table with a note per row becomes an operation, and the note anchors the operations graph and the plan provenance export. Folders have nothing to do with it",
+  "plan.mark": "Plan",
+  "plan.markTooltip": "A plan note. Each row of its table with a note per row is an operation. Turn it off with Treat as a plan in the menu at the top right",
   "editor.deleteNote": "Move to trash",
   "editor.archiveNote": "Archive",
   "editor.archiveNoteHint": "Hidden from the list, but links and citations keep resolving. Restore anytime from Trash & Archive.",

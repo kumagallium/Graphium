@@ -184,6 +184,8 @@ export const ko: Record<string, string> = {
   "editor.paperA4": "A4 너비로 쓰기",
   "editor.treatAsPlan": "계획으로 다루기",
   "editor.treatAsPlanHint": "노트마다 행이 있는 표의 각 행이 공정이 되고, 공정 그래프와 계획 내력 내보내기의 시작점이 됩니다. 폴더와는 관계없습니다",
+  "plan.mark": "계획",
+  "plan.markTooltip": "계획 노트입니다. 노트마다 행이 있는 표의 각 행이 공정이 됩니다. 오른쪽 위 메뉴의 \"계획으로 다루기\"로 해제할 수 있습니다",
   "editor.deleteNote": "휴지통으로 이동",
   "editor.archiveNote": "아카이브",
   "editor.archiveNoteHint": "목록에서는 숨겨지지만 링크와 인용은 계속 유지됩니다. '휴지통·아카이브'에서 언제든 복원할 수 있습니다.",

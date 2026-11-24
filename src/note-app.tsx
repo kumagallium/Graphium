@@ -647,6 +647,7 @@ import { generateProvDocument } from "./features/prov-generator/generator";
 import { pageToGeneratorInput } from "./features/prov-generator/page-input";
 import { collectOperationRows, PLAN_FLOW_MAX_DEPTH } from "./features/network-graph/plan-flow";
 import { isPlanNote, resolveNoteKind, type NoteKind } from "./features/note-context/reserved-folders";
+import { PlanNoteChip } from "./components/plan-note-mark";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -7895,6 +7896,8 @@ function NoteEditorInner({
       )}
       {/* ヘッダー */}
       <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
+        {/* 計画のノートは題の左に札を出す（フォルダの名前では分からなくなったため） */}
+        {hasNoteKind && noteKind === "plan" && <PlanNoteChip />}
         <div
           className="flex-1 min-w-0 text-sm font-medium text-muted-foreground truncate"
           title={title}

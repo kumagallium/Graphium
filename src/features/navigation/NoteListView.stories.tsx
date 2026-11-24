@@ -100,6 +100,8 @@ const MOCK_INDEX: GraphiumIndex = {
     },
     {
       noteId: "note-7",
+      // 計画のノート（題の横に計画の印が出る）
+      kind: "plan",
       title: "第2回焼結実験の計画",
       modifiedAt: hoursAgo(1),
       createdAt: daysAgo(2),
