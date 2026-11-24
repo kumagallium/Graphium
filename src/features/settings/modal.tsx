@@ -3370,10 +3370,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                   </div>
                   {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
                   {embeddingEffectiveLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingEffectiveLocalName} />}
-                  {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
-                      ユーザーの API キーに乗るため）。作り直しは案内の横のボタンから。
+                  {/* 埋め込みの作り直し。案内は索引を作ったモデルと違うときだけ横に出す（自動では作り直さない —
+                      費用がユーザーの API キーに乗るため）。ボタンは常に出す: API が使えず text-only に落ちたページは
+                      起動時の後追い（embedding-backfill）の対象外で、直す手段はこのボタンだけ。
                       選んだモデルを保存する前は、作り直しても古いモデルで作られるので押せなくする */}
-                  {onReembedAllWikis && knowledgePageCount > 0 && (embeddingIndexStale || reembedRunning || reembedProgress || reembedError) && (
+                  {onReembedAllWikis && knowledgePageCount > 0 && (
                     <div className="mt-2 space-y-1.5">
                       <div className="flex items-start gap-2 flex-wrap">
                         {embeddingIndexStale && !reembedRunning && (

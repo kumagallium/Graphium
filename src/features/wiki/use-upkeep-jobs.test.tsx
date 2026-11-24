@@ -156,6 +156,42 @@ describe("useUpkeepJobs", () => {
     expect(result.current.fillGaps[0].status).toMatchObject({ kind: "result", tone: "warn" });
   });
 
+  it("描画のたびに新しい handler が来ても、数え直しは回り続けない", async () => {
+    const toast = makeToast();
+    const plan = vi.fn(async () => ({ sources: 3, alreadySettled: 0 }));
+    // note-app と同じく、描画のたびに handler のオブジェクトを作り直す
+    const { result } = renderHook(
+      () => useUpkeepJobs({
+        active: true,
+        toast: toast.sink,
+        sourceTopics: { plan, run: vi.fn(async () => null) },
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.fillGaps).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(plan).toHaveBeenCalledTimes(1);
+  });
+
+  it("種類付けもトーストの停止で止まる", async () => {
+    let seen: AbortSignal | undefined;
+    const run = vi.fn((_onProgress: (d: number, t: number) => void, signal: AbortSignal) => {
+      seen = signal;
+      return new Promise<never>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    });
+    const { result, toast } = setup({ topicTypes: { untypedCount: 3, run } });
+    __setConfirmResponderForTest(() => true);
+    act(() => result.current.fillGaps[0].onRun?.());
+    await waitFor(() => expect(toast.controllers.size).toBe(1));
+    expect(result.current.fillGaps[0].onStop).toBeDefined();
+    await act(async () => toast.controllers.forEach((c) => c.abort()));
+    await waitFor(() => expect(toast.last("topicTypes")?.status).toBe("aborted"));
+    expect(seen?.aborted).toBe(true);
+    expect(toast.controllers.size).toBe(0);
+  });
+
   it("一括再生成は選んだ種類だけを回し、中断の合図を渡す", async () => {
     const run = vi.fn(async () => ({ ok: true }));
     const { result, toast } = setup({

@@ -17326,7 +17326,7 @@ export function NoteApp() {
 
   // 未分類のトピックに種類を付ける（手入れ → 足りないところを補う）。タイトルと定義の 1 文だけを
   // 50 件ずつ渡し、返った種類を wikiMeta.topicType に書いて保存する。本文は触らない。
-  const assignTopicTypesForUpkeep = useCallback(async (onProgress: (done: number, total: number) => void) => {
+  const assignTopicTypesForUpkeep = useCallback(async (onProgress: (done: number, total: number) => void, signal: AbortSignal) => {
     const targets = fm.wikiFiles
       .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic" && !fm.wikiMetas.get(wf.id)?.topicType)
       .map((wf) => {
@@ -17335,7 +17335,7 @@ export function NoteApp() {
         return { id: wf.id, title: fm.wikiMetas.get(wf.id)?.title ?? wf.id, ...(oneLiner ? { oneLiner } : {}) };
       });
     if (targets.length === 0) return { assigned: 0, total: 0, calls: 0 };
-    const { types, failureError, calls } = await assignTopicTypes(targets, getStandardModelName() || undefined, undefined, onProgress);
+    const { types, failureError, calls } = await assignTopicTypes(targets, getStandardModelName() || undefined, signal, onProgress);
     let assigned = 0;
     for (const [id, type] of Object.entries(types)) {
       const doc = fm.getCachedDoc(`wiki:${id}`) ?? await fm.loadDoc(`wiki:${id}`);
@@ -17422,6 +17422,7 @@ export function NoteApp() {
           estimateCalls: estimateRegenerateCalls,
           models: upkeepModels.options,
           defaultModel: upkeepModels.defaultModel,
+          resolveDefaultModel: () => getSelectedModel() || upkeepModels.defaultModel,
         }
       : undefined,
   });

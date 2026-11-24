@@ -42,7 +42,7 @@ export type UseUpkeepJobsOptions = {
   linkClaims?: ClaimTopicLinkBackfillHandlers;
   topicTypes?: {
     untypedCount: number;
-    run: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
+    run: (onProgress: (done: number, total: number) => void, signal: AbortSignal) => Promise<AssignTopicTypesResult>;
   };
   insights?: { claimCount: number; plan: PlanDiscoveryHandler; run: DiscoveryHandler };
   regenerate?: {
@@ -51,8 +51,10 @@ export type UseUpkeepJobsOptions = {
     /** 対象 id 列から AI 呼び出し回数を見積もる（トピックは資料の数ぶん呼ぶ）。無ければ件数と同じ */
     estimateCalls?: (ids: string[]) => number;
     models: BulkRegenerateModelOption[];
-    /** モデルを選んでいないときに使うモデル名 */
+    /** モデルを選んでいないときに使うモデル名（選択欄の「現在の設定」の印） */
     defaultModel: string;
+    /** 実行の時点の既定モデル名。画面を開いたあとに設定でモデルを変えても、新しい方で動かすため */
+    resolveDefaultModel?: () => string;
   };
 };
 
@@ -90,6 +92,18 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
   // 実行中に別の props が来ても、最新のトースト口を使う
   const toastRef = useRef(toast);
   toastRef.current = toast;
+  // 呼び出し元（note-app）の handler は描画のたびに作り直されることがある。数え直しの effect を
+  // handler の参照に結ぶと、数え直し → state 更新 → 再描画 → 新しい handler → 数え直し… と回り続ける
+  // ので、最新の handler は ref から読み、effect は「開いた」「使えるようになった」ときだけ走らせる
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+  // 確認ダイアログを待つ間の連打で二重に始めないための印（running の state は確認のあとで立つ）
+  const busyRef = useRef(new Set<string>());
+  const guarded = useCallback((jobId: string, fn: () => Promise<void>) => () => {
+    if (busyRef.current.has(jobId)) return;
+    busyRef.current.add(jobId);
+    void fn().finally(() => busyRef.current.delete(jobId));
+  }, []);
 
   /** トーストの「停止」で止まるよう中断ハンドルを登録する。返り値は後始末 */
   const startToastJob = useCallback(
@@ -127,6 +141,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
   const [ttProgress, setTtProgress] = useState<{ done: number; total: number } | null>(null);
   const [ttResult, setTtResult] = useState<AssignTopicTypesResult | null>(null);
   const [ttError, setTtError] = useState<string | null>(null);
+  const ttAbortRef = useRef<AbortController | null>(null);
 
   // ── 知見をまたぐ洞察を発見 ──
   type InsightState =
@@ -154,26 +169,35 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
 
   // 対象の数え直し（手入れ画面を開いたとき・各処理が終わったとき）
   const refreshSourceTopicsPlan = useCallback(async () => {
-    if (!sourceTopics) return;
+    const handlers = optsRef.current.sourceTopics;
+    if (!handlers) return;
     try {
-      setStPlan(await sourceTopics.plan());
+      const next = await handlers.plan();
+      // 変わっていなければ state を替えない（再描画を増やさない）
+      setStPlan((prev) => (prev && prev.sources === next.sources && prev.alreadySettled === next.alreadySettled ? prev : next));
     } catch (err) {
       setStError(errorText(err));
     }
-  }, [sourceTopics]);
+  }, []);
   const refreshLinkClaimsPlan = useCallback(async () => {
-    if (!linkClaims) return;
+    const handlers = optsRef.current.linkClaims;
+    if (!handlers) return;
     try {
-      setLcPlan(await linkClaims.plan());
+      const next = await handlers.plan();
+      setLcPlan((prev) => (
+        prev && prev.calls === next.calls && prev.claims === next.claims && prev.alreadyJudged === next.alreadyJudged ? prev : next
+      ));
     } catch (err) {
       setLcError(errorText(err));
     }
-  }, [linkClaims]);
+  }, []);
+  const hasSourceTopics = Boolean(sourceTopics);
+  const hasLinkClaims = Boolean(linkClaims);
   useEffect(() => {
     if (!active) return;
-    void refreshSourceTopicsPlan();
-    void refreshLinkClaimsPlan();
-  }, [active, refreshSourceTopicsPlan, refreshLinkClaimsPlan]);
+    if (hasSourceTopics) void refreshSourceTopicsPlan();
+    if (hasLinkClaims) void refreshLinkClaimsPlan();
+  }, [active, hasSourceTopics, hasLinkClaims, refreshSourceTopicsPlan, refreshLinkClaimsPlan]);
 
   // ── 実行 ──
   const runSourceTopics = useCallback(async () => {
@@ -276,6 +300,9 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     if (!(await confirmAction(t("settings.maintenance.assignTopicTypes.confirm", { count: String(count), calls: String(calls) })))) return;
     const runningText = (done: number, total: number) =>
       t("settings.maintenance.assignTopicTypes.running", { done: String(done), total: String(total) });
+    const controller = new AbortController();
+    ttAbortRef.current = controller;
+    const unregister = startToastJob(controller);
     setTtRunning(true);
     setTtResult(null);
     setTtError(null);
@@ -286,16 +313,22 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       const result = await topicTypes.run((done, total) => {
         setTtProgress({ done, total });
         pushToast("topicTypes", title, { kind: "running", text: runningText(done, total) });
-      });
+      }, controller.signal);
       setTtResult(result);
-      pushToast("topicTypes", title, topicTypesResultStatus(t, result));
+      pushToast("topicTypes", title, topicTypesResultStatus(t, result), controller.signal.aborted);
     } catch (err) {
-      setTtError(errorText(err));
-      pushToast("topicTypes", title, { kind: "result", tone: "error", text: errorText(err) });
+      if (controller.signal.aborted) {
+        pushToast("topicTypes", title, { kind: "result", tone: "warn", text: t("ingest.aborted") }, true);
+      } else {
+        setTtError(errorText(err));
+        pushToast("topicTypes", title, { kind: "result", tone: "error", text: errorText(err) });
+      }
     } finally {
+      unregister();
+      ttAbortRef.current = null;
       setTtRunning(false);
     }
-  }, [topicTypes, ttRunning, t, beginToastRun, pushToast]);
+  }, [topicTypes, ttRunning, t, startToastJob, beginToastRun, pushToast]);
 
   const runInsights = useCallback(async () => {
     if (!insights || inState?.kind === "running" || insights.claimCount < 2) return;
@@ -372,6 +405,10 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       : t("settings.maintenance.confirm", { count: String(items.length) });
     if (!(await confirmAction(confirmMsg, { destructive: true }))) return;
 
+    // 選択欄で選んでいなければ、実行の時点の既定モデルを使う
+    const runDefault = regenerate.resolveDefaultModel?.() || regenerate.defaultModel;
+    const ingestModelForRun = ingestModel || runDefault;
+    const synthesisModelForRun = synthesisModel || runDefault;
     const controller = new AbortController();
     regenAbortRef.current = controller;
     const unregister = startToastJob(controller);
@@ -389,7 +426,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       for (const w of items) {
         if (controller.signal.aborted) break;
         const kind = kindById.get(w.id);
-        const modelForKind = kind === "synthesis" ? effectiveSynthesisModel : effectiveIngestModel;
+        const modelForKind = kind === "synthesis" ? synthesisModelForRun : ingestModelForRun;
         setRegenProgress({ done, total: items.length, failed, current: w.title, currentModel: modelForKind, failedItems: [...failedItems] });
         pushToast("regenerate", title, { kind: "running", text: runningText(done, items.length, w.title) });
         const result = await regenerate.run(w.id, {
@@ -405,18 +442,20 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
         done += 1;
         setRegenProgress({ done, total: items.length, failed, failedItems: [...failedItems] });
       }
-    } finally {
       const aborted = controller.signal.aborted;
-      const text = failed > 0
-        ? `${done} / ${items.length} · ${t("settings.maintenance.failed")}: ${failed}`
-        : `${done} / ${items.length} · ${t("settings.maintenance.done")}`;
-      pushToast("regenerate", title, { kind: "result", tone: failed > 0 ? "warn" : "ok", text }, aborted);
+      const tail = aborted ? t("ingest.aborted") : t("settings.maintenance.done");
+      const text = `${done} / ${items.length} · ${tail}`
+        + (failed > 0 ? ` · ${t("settings.maintenance.failed")}: ${failed}` : "");
+      pushToast("regenerate", title, { kind: "result", tone: failed > 0 || aborted ? "warn" : "ok", text }, aborted);
+    } catch (err) {
+      pushToast("regenerate", title, { kind: "result", tone: "error", text: `${done} / ${items.length} · ${errorText(err)}` });
+    } finally {
       unregister();
       regenAbortRef.current = null;
       setRegenRunning(false);
       setRegenCancelling(false);
     }
-  }, [regenerate, regenRunning, t, effectiveIngestModel, effectiveSynthesisModel, startToastJob, beginToastRun, pushToast]);
+  }, [regenerate, regenRunning, t, ingestModel, synthesisModel, startToastJob, beginToastRun, pushToast]);
 
   // ── 行に組み立てる ──
   const fillGaps: UpkeepJob[] = [];
@@ -447,7 +486,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
             ? sourceTopicsResultStatus(t, stOutcome)
             : { kind: "idle" },
       runLabel: t("settings.maintenance.sourceTopics.run"),
-      onRun: (plan?.sources ?? 0) > 0 ? () => void runSourceTopics() : undefined,
+      onRun: (plan?.sources ?? 0) > 0 ? guarded("sourceTopics", runSourceTopics) : undefined,
       onStop: () => stAbortRef.current?.abort(),
       stopLabel: t("settings.maintenance.sourceTopics.stop"),
     });
@@ -479,7 +518,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
             ? linkClaimsResultStatus(t, lcOutcome)
             : { kind: "idle" },
       runLabel: t(plan?.alreadyJudged ? "settings.maintenance.linkClaimsToTopics.resume" : "settings.maintenance.linkClaimsToTopics.run"),
-      onRun: (plan?.calls ?? 0) > 0 ? () => void runLinkClaims() : undefined,
+      onRun: (plan?.calls ?? 0) > 0 ? guarded("linkClaims", runLinkClaims) : undefined,
       onStop: () => lcAbortRef.current?.abort(),
       stopLabel: t("settings.maintenance.linkClaimsToTopics.stop"),
     });
@@ -508,7 +547,9 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
             ? topicTypesResultStatus(t, ttResult)
             : { kind: "idle" },
       runLabel: t("settings.maintenance.assignTopicTypes.run"),
-      onRun: topicTypes.untypedCount > 0 ? () => void runTopicTypes() : undefined,
+      onRun: topicTypes.untypedCount > 0 ? guarded("topicTypes", runTopicTypes) : undefined,
+      onStop: () => ttAbortRef.current?.abort(),
+      stopLabel: t("settings.maintenance.sourceTopics.stop"),
     });
   }
 
@@ -532,7 +573,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
             ? insightsResultStatus(t, inState)
             : { kind: "idle" },
       runLabel: t("settings.maintenance.atomize.run"),
-      onRun: insights.claimCount >= 2 ? () => void runInsights() : undefined,
+      onRun: insights.claimCount >= 2 ? guarded("insights", runInsights) : undefined,
       onStop: () => inAbortRef.current?.abort(),
       stopLabel: t("common.cancel"),
     });
@@ -571,7 +612,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
         progress: regenProgress,
         running: regenRunning,
         cancelling: regenCancelling,
-        onRun: () => void runRegenerate(regenTargets.map((w) => ({ id: w.id, title: w.title }))),
+        onRun: guarded("regenerate", () => runRegenerate(regenTargets.map((w) => ({ id: w.id, title: w.title })))),
         onCancel: () => {
           setRegenCancelling(true);
           // 進行中の 1 件の fetch を切る → サーバー側の LLM 呼び出しも止まる
@@ -579,7 +620,8 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
         },
         onRetryFailed: () => {
           if (!regenProgress) return;
-          void runRegenerate(regenProgress.failedItems.map((f) => ({ id: f.id, title: f.title })));
+          const failedItems = regenProgress.failedItems.map((f) => ({ id: f.id, title: f.title }));
+          guarded("regenerate", () => runRegenerate(failedItems))();
         },
       }
     : null;
