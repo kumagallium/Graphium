@@ -62,6 +62,8 @@ import { type HashStatus } from "./hash-badge";
 import { SharedEntryBody, useSharedEntryBodyText } from "./SharedEntryBody";
 import {
   ProposalMeta,
+  PlanRowMeta,
+  PlanRecordsSection,
   ReverseLinksSection,
   SharedEntryActions,
   SharedEntryHistory,
@@ -729,6 +731,7 @@ export function SharedLibraryView({
               ? entryById.get(readProposalExtra(selected)?.target ?? "") ?? null
               : null
           }
+          noteEntries={entriesByType.note}
           entryTitleById={(id) => {
             const hit = entryById.get(id);
             return hit ? entryTitle(hit, uiT) : null;
@@ -777,6 +780,8 @@ type DetailProps = {
   proposalIds?: string[];
   /** このエントリが提案のときの元エントリ（読めていなければ null） */
   proposalTarget?: SharedEntry | null;
+  /** 共有ノートの一覧（このエントリが計画のとき、行の記録を封筒から拾う） */
+  noteEntries?: readonly SharedEntry[];
   /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
   entryTitleById?: (id: string) => string | null;
   /** 逆引きの行のクリックでそのエントリを開く */
@@ -803,6 +808,7 @@ function SharedEntryDetail({
   readEntryBody,
   reverseLinks,
   proposalIds,
+  noteEntries,
   proposalTarget,
   entryTitleById,
   onOpenEntry,
@@ -895,6 +901,7 @@ function SharedEntryDetail({
               onOpenTarget={onOpenEntry}
             />
           )}
+          <PlanRowMeta entry={entry} entryTitleById={entryTitleById} onOpenEntry={onOpenEntry} />
         </div>
 
         {/* type 別 read-only コンテンツ + 往復（履歴・逆引き・コメント） */}
@@ -914,6 +921,10 @@ function SharedEntryDetail({
           </div>
 
           <SharedEntryHistory entry={entry} />
+
+          {entry.type === "note" && noteEntries && (
+            <PlanRecordsSection planId={entry.id} entries={noteEntries} onOpenEntry={onOpenEntry} />
+          )}
 
           <ReverseLinksSection
             links={reverseLinks}

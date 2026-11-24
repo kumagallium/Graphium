@@ -20,6 +20,7 @@ import { useT } from "../../i18n";
 import { HashBadge, type HashStatus } from "./hash-badge";
 import type { SharedReverseLinks } from "./shared-projection";
 import { proposalStatus, readProposalExtra } from "./share-proposal";
+import { entryUpdatedAt, findPlanRecords, readPlanRowRef } from "./plan-row-ref";
 
 /** 題名（extra.title）。無ければ「無題」 */
 export function sharedEntryTitle(
@@ -162,6 +163,98 @@ export function ProposalMeta({
         />
       )}
     </>
+  );
+}
+
+/**
+ * 計画の行の記録だけが持つメタ（どの計画のどの行か）。封筒の extra.planRow から読む。
+ * 計画が一覧に無い（共有解除・未読込・別の共有フォルダ）ときは、行の名前だけを出す。
+ */
+export function PlanRowMeta({
+  entry,
+  entryTitleById,
+  onOpenEntry,
+}: {
+  entry: SharedEntry;
+  entryTitleById?: (id: string) => string | null;
+  onOpenEntry?: (id: string) => void;
+}) {
+  const uiT = useT();
+  const ref = readPlanRowRef(entry);
+  if (!ref) return null;
+  // 複製の元 → 自分で共有した計画の順に、一覧にあるものを 1 つ選ぶ
+  const planId = ref.planIds.find((id) => entryTitleById?.(id)) ?? null;
+  const planTitle = planId ? entryTitleById?.(planId) ?? null : null;
+  return (
+    <DetailRow
+      label={uiT("library.detail.planRow")}
+      value={
+        planId && planTitle ? (
+          <button
+            type="button"
+            onClick={() => onOpenEntry?.(planId)}
+            disabled={!onOpenEntry}
+            data-testid="shared-entry-plan-row"
+            className="text-left text-primary hover:underline disabled:text-foreground disabled:no-underline truncate max-w-full"
+            title={planId}
+          >
+            {planTitle} › {ref.rowName}
+          </button>
+        ) : (
+          <span className="truncate" data-testid="shared-entry-plan-row">
+            {ref.rowName}
+          </span>
+        )
+      }
+    />
+  );
+}
+
+/**
+ * 計画の共有エントリに出す「この計画の行の記録」。行の名前ごとに、誰がいつ共有したかを並べる。
+ * 封筒だけで分かるので、本文を読めていなくても件数は正しい。0 件なら何も出さない。
+ * 行の並びは名前順（計画の表の順は本文を読まないと分からないため）。
+ */
+export function PlanRecordsSection({
+  planId,
+  entries,
+  onOpenEntry,
+}: {
+  planId: string;
+  entries: readonly SharedEntry[];
+  onOpenEntry?: (id: string) => void;
+}) {
+  const uiT = useT();
+  const records = findPlanRecords([planId], entries);
+  if (records.length === 0) return null;
+  const sorted = [...records].sort(
+    (a, b) => a.ref.rowName.localeCompare(b.ref.rowName) || entryUpdatedAt(b.entry).localeCompare(entryUpdatedAt(a.entry)),
+  );
+  return (
+    <section data-testid="shared-entry-plan-records">
+      <h3 className="text-xs font-semibold text-foreground mb-1.5">
+        {uiT("library.detail.planRecords", { count: String(records.length) })}
+      </h3>
+      <ul className="space-y-0.5">
+        {sorted.map(({ entry, ref }) => (
+          <li key={entry.id}>
+            <button
+              type="button"
+              onClick={() => onOpenEntry?.(entry.id)}
+              disabled={!onOpenEntry}
+              className="w-full text-[11px] text-left flex items-baseline gap-2 text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+              title={entry.id}
+            >
+              <span className="truncate min-w-0">{ref.rowName}</span>
+              <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+                {typeof entry.author?.name === "string" && entry.author.name ? entry.author.name : uiT("library.unknownAuthor")} ·{" "}
+                {formatDate(entryUpdatedAt(entry))}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

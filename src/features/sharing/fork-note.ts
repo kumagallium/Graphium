@@ -14,10 +14,17 @@ import {
   LocalFolderSharedProvider,
   type SharedEntry,
 } from "../../lib/storage/shared";
+import { detachForeignRowLinks } from "./detach-foreign-row-links";
 
 export type ForkSharedNoteOptions = {
   /** Settings の shared root */
   root: string;
+  /**
+   * その id のノートがこの端末にあるか。渡すと、表の行のつながりのうち、この端末に無い
+   * ノート（共有した人の手元のノート）を指すものを外す（detach-foreign-row-links.ts）。
+   * 外さないと、写した計画の行から自分のノートを作れない。渡さなければ何も外さない
+   */
+  isLocalNote?: (noteId: string) => boolean;
 };
 
 export type ForkSharedNoteResult =
@@ -101,7 +108,8 @@ export async function forkSharedNote(
       documentProvenance: undefined,
     };
 
-    return { ok: true, doc: forked, original: entry, body: bodyJson };
+    const doc = options.isLocalNote ? detachForeignRowLinks(forked, options.isLocalNote) : forked;
+    return { ok: true, doc, original: entry, body: bodyJson };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

@@ -1,5 +1,15 @@
 export { shareNote, type ShareNoteResult, type ShareNoteOptions } from "./share-note";
 export {
+  planSharedIdsOf,
+  resolvePlanRowForNote,
+  readPlanRowRef,
+  findPlanRecords,
+  groupPlanRecordsByRow,
+  planRowKey,
+  type PlanRowRef,
+  type PlanRowRecords,
+} from "./plan-row-ref";
+export {
   shareMedia,
   type ShareMediaResult,
   type ShareMediaOptions,

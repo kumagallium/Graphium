@@ -127,6 +127,13 @@ const SHOTS = [
     clip: "root",
   },
   {
+    // 計画ノートの右パネル「Row records」（行ごとに、誰がいつ記録を共有したか）
+    id: "sharing-noteplanrecordspanel--manual-english",
+    name: "plan-row-records",
+    clip: "root",
+    viewport: { width: 720, height: 600 },
+  },
+  {
     id: "sharing-sharedcitationcard--manual-english-statuses",
     name: "shared-citation-cards",
     clip: "root",

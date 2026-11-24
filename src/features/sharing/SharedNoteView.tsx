@@ -40,6 +40,8 @@ import {
 } from "./SharedEntryBody";
 import {
   ProposalMeta,
+  PlanRowMeta,
+  PlanRecordsSection,
   ReverseLinksSection,
   SharedEntryActions,
   SharedEntryHistory,
@@ -48,6 +50,7 @@ import {
   sharedEntryTypeLabel,
 } from "./shared-entry-parts";
 import { proposalEntriesFor, readProposalExtra } from "./share-proposal";
+import { findPlanRecords } from "./plan-row-ref";
 import {
   previewHasBlocks,
   resolveClickedBlockId,
@@ -335,11 +338,17 @@ function SharedNoteViewInner({
     () => proposalEntriesFor(entry.id, allEntries).map((e) => e.id),
     [entry.id, allEntries],
   );
+  // この計画の行の記録（封筒の extra.planRow から数える。plan-row-ref.ts）
+  const planRecordCount = useMemo(
+    () => (entry.type === "note" ? findPlanRecords([entry.id], allEntries).length : 0),
+    [entry.id, entry.type, allEntries],
+  );
   const hasReverseLinks =
     (reverseLinks?.cites.length ?? 0) +
       (reverseLinks?.forks.length ?? 0) +
       (reverseLinks?.templates.length ?? 0) +
-      proposalIds.length >
+      proposalIds.length +
+      planRecordCount >
     0;
   // 逆引きの行と隣接グラフのノードで同じ題名を出す（一覧に無い相手は null）
   const entryTitleById = useCallback(
@@ -718,6 +727,7 @@ function SharedNoteViewInner({
                     onOpenTarget={onOpenEntry}
                   />
                 )}
+                <PlanRowMeta entry={entry} entryTitleById={entryTitleById} onOpenEntry={onOpenEntry} />
               </div>
               <SharedEntryHistory entry={entry} />
             </div>
@@ -742,12 +752,17 @@ function SharedNoteViewInner({
           {railTab === "links" && (
             <div className="flex-1 overflow-auto px-4 py-3">
               {hasReverseLinks ? (
-                <ReverseLinksSection
-                  links={reverseLinks}
-                  proposalIds={proposalIds}
-                  entryTitleById={entryTitleById}
-                  onOpenEntry={onOpenEntry}
-                />
+                <div className="space-y-2">
+                  {planRecordCount > 0 && (
+                    <PlanRecordsSection planId={entry.id} entries={allEntries} onOpenEntry={onOpenEntry} />
+                  )}
+                  <ReverseLinksSection
+                    links={reverseLinks}
+                    proposalIds={proposalIds}
+                    entryTitleById={entryTitleById}
+                    onOpenEntry={onOpenEntry}
+                  />
+                </div>
               ) : (
                 // 「0 件」と断言しない: 元になるのは本文を読めた共有ノートの投影だけ
                 <p className="text-xs text-muted-foreground leading-relaxed">

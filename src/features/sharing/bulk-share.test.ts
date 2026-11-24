@@ -9,7 +9,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
-import { bulkShare, type BulkShareDeps } from "./bulk-share";
+import { bulkShare, orderPlansFirst, type BulkShareDeps, type BulkShareTarget } from "./bulk-share";
+import type { GraphiumIndex } from "../navigation/index-file";
 import { __setSharedLibraryLoaderForTest, refreshSharedLibrary } from "./shared-library-store";
 import { t } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -472,5 +473,103 @@ describe("bulkShare — リンクした素材", () => {
     expect(summary.skippedLinked).toBe(1);
     expect(fs.entries.size).toBe(0);
     expect(savedRefs.size).toBe(0);
+  });
+});
+
+describe("bulkShare — 計画の行との対応", () => {
+  const cell = (text: string, rowId?: string) => ({
+    type: "tableCell",
+    content: [{ type: "text", text, styles: rowId ? { tableRowIdentity: rowId } : {} }],
+  });
+  const makePlan = (): GraphiumDocument =>
+    ({
+      ...makeNote("Bread plan"),
+      kind: "plan",
+      pages: [
+        {
+          id: "p1",
+          title: "Bread plan",
+          blocks: [
+            {
+              id: "tbl-1",
+              type: "table",
+              content: {
+                type: "tableContent",
+                rows: [{ cells: [cell("Step")] }, { cells: [cell("@Knead", "row_a")] }],
+              },
+              children: [],
+            },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+          tableMeta: { "tbl-1": { columns: { Step: ["note-link"] }, noteLinks: { "@Knead": "row1" } } },
+        },
+      ],
+    }) as unknown as GraphiumDocument;
+  const index = {
+    version: 1,
+    notes: [
+      { noteId: "plan", title: "Bread plan", kind: "plan", modifiedAt: "2026-05-04T00:00:00Z", outgoingLinks: [{ targetNoteId: "row1" }] },
+      { noteId: "row1", title: "Knead", kind: "note", modifiedAt: "2026-05-04T00:00:00Z", outgoingLinks: [] },
+    ],
+  } as unknown as GraphiumIndex;
+
+  it("計画ノートを前に寄せる（それ以外の順は変えない）", () => {
+    const targets: BulkShareTarget[] = [
+      { id: "row1", kind: "note" },
+      { id: "w1", kind: "knowledge" },
+      { id: "plan", kind: "note" },
+    ];
+    expect(orderPlansFirst(targets, index).map((t) => t.id)).toEqual(["plan", "row1", "w1"]);
+    expect(orderPlansFirst(targets, null)).toBe(targets);
+  });
+
+  it("計画と行のノートをまとめて共有すると、行のノートに計画の共有の id と行が添えられる", async () => {
+    const notes = new Map<string, GraphiumDocument>([
+      ["plan", makePlan()],
+      ["row1", { ...makeNote("Knead"), derivedFromNoteId: "plan", derivedFromBlockId: "tbl-1" } as GraphiumDocument],
+    ]);
+    const { deps } = makeDeps({
+      noteIndex: index,
+      // 書き戻した sharedRef を次の読み出しで返す（行のノートが計画の共有の id を拾えるように）
+      loadNote: async (id) => notes.get(id) ?? null,
+      saveNote: async (id, doc) => {
+        notes.set(id, doc);
+      },
+    });
+    // 行のノートを先に渡しても、計画が先に共有される
+    const summary = await bulkShare(
+      [
+        { id: "row1", kind: "note" },
+        { id: "plan", kind: "note" },
+      ],
+      deps,
+    );
+    expect(summary.failed).toBe(0);
+    const planSharedId = notes.get("plan")!.sharedRef!.id;
+    const rowSharedId = notes.get("row1")!.sharedRef!.id;
+    const entryOf = (id: string) =>
+      [...fs.entries.values()].map((raw) => JSON.parse(raw).entry).find((e) => e.id === id);
+    const rowEntry = entryOf(rowSharedId);
+    expect(rowEntry.extra.planRow).toEqual({
+      planIds: [planSharedId],
+      tableBlockId: "tbl-1",
+      rowId: "row_a",
+      rowName: "Knead",
+    });
+    // 計画そのものには付かない
+    expect("planRow" in entryOf(planSharedId).extra).toBe(false);
+  });
+
+  it("共有に出ていない計画の行のノートには何も添えない", async () => {
+    const notes = new Map<string, GraphiumDocument>([
+      ["plan", makePlan()],
+      ["row1", { ...makeNote("Knead"), derivedFromNoteId: "plan" } as GraphiumDocument],
+    ]);
+    const { deps } = makeDeps({ noteIndex: index, loadNote: async (id) => notes.get(id) ?? null });
+    await bulkShare([{ id: "row1", kind: "note" }], deps);
+    const stored = JSON.parse([...fs.entries.values()][0]).entry;
+    expect("planRow" in stored.extra).toBe(false);
   });
 });
