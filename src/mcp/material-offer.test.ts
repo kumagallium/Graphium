@@ -40,7 +40,7 @@ describe("offer_material", () => {
 
   it("写しと元の場所を受け取り待ちに置き、素材にはしない", async () => {
     const p = put("1-crumb.jpg", Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]));
-    const r = await offerMaterial({ path: p, name: "crumb.jpg" }, { root, clientName: "codex-mcp-client", home, tmp: outside });
+    const r = await offerMaterial({ path: p, name: "crumb.jpg" }, { root, clientName: "codex-mcp-client", home, tmpRoots: [outside] });
     expect(r.status).toBe("offered");
     if (r.status !== "offered") return;
     const meta = parseOfferMeta(JSON.parse(readFileSync(join(appdata(), `${offerMetaKey(r.id)}.json`), "utf8")));
@@ -54,8 +54,8 @@ describe("offer_material", () => {
   it("同じ中身の申し出が待っていれば、新しく作らずその id を返す", async () => {
     const a = put("a.csv", "x,y\n1,2\n");
     const b = put("b.csv", "x,y\n1,2\n");
-    const r1 = await offerMaterial({ path: a }, { root, home, tmp: outside });
-    const r2 = await offerMaterial({ path: b }, { root, home, tmp: outside });
+    const r1 = await offerMaterial({ path: a }, { root, home, tmpRoots: [outside] });
+    const r2 = await offerMaterial({ path: b }, { root, home, tmpRoots: [outside] });
     expect(r2.status).toBe("already_offered");
     if (r1.status === "offered" && r2.status === "already_offered") expect(r2.id).toBe(r1.id);
     expect(offerFiles()).toHaveLength(2);
@@ -74,44 +74,44 @@ describe("offer_material", () => {
       }),
     );
     resetMediaIndexCache();
-    const r = await offerMaterial({ path: put("x.md", content) }, { root, home, tmp: outside });
+    const r = await offerMaterial({ path: put("x.md", content) }, { root, home, tmpRoots: [outside] });
     expect(r).toEqual({ status: "already_material", materialId: "m1" });
     expect(offerFiles()).toEqual([]);
   });
 
   it("実在するノートだけ結び付ける", async () => {
     writeFileSync(join(root, "notes", "n1.json"), JSON.stringify({ title: "Rye", pages: [] }));
-    const r1 = await offerMaterial({ path: put("a.png", "a"), note_id: "n1" }, { root, home, tmp: outside });
-    const r2 = await offerMaterial({ path: put("b.png", "b"), note_id: "missing" }, { root, home, tmp: outside });
+    const r1 = await offerMaterial({ path: put("a.png", "a"), note_id: "n1" }, { root, home, tmpRoots: [outside] });
+    const r2 = await offerMaterial({ path: put("b.png", "b"), note_id: "missing" }, { root, home, tmpRoots: [outside] });
     expect(r1).toMatchObject({ status: "offered", noteLinked: true });
     expect(r2).toMatchObject({ status: "offered", noteLinked: false });
   });
 
   it("相対パス・フォルダ・シンボリックリンク・空・実行ファイルは断る", async () => {
-    await expect(offerMaterial({ path: "a.png" }, { root, home, tmp: outside })).rejects.toThrow(/絶対パス/);
-    await expect(offerMaterial({ path: outside }, { root, home, tmp: outside })).rejects.toThrow(/ふつうのファイル/);
+    await expect(offerMaterial({ path: "a.png" }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/絶対パス/);
+    await expect(offerMaterial({ path: outside }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/ふつうのファイル/);
     const target = put("t.png", "t");
     const link = join(outside, "link.png");
     symlinkSync(target, link);
-    await expect(offerMaterial({ path: link }, { root, home, tmp: outside })).rejects.toThrow(/シンボリックリンク/);
-    await expect(offerMaterial({ path: put("e.png", "") }, { root, home, tmp: outside })).rejects.toThrow(/空/);
-    await expect(offerMaterial({ path: put("run.sh", "echo") }, { root, home, tmp: outside })).rejects.toThrow(/\.sh/);
+    await expect(offerMaterial({ path: link }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/シンボリックリンク/);
+    await expect(offerMaterial({ path: put("e.png", "") }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/空/);
+    await expect(offerMaterial({ path: put("run.sh", "echo") }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/\.sh/);
     // 名前だけ無害にしても、元のファイルの拡張子で断る
-    await expect(offerMaterial({ path: put("x.command", "echo"), name: "x.txt" }, { root, home, tmp: outside })).rejects.toThrow(/\.command/);
-    await expect(offerMaterial({ path: join(outside, "nope.png") }, { root, home, tmp: outside })).rejects.toThrow(/見つかりません/);
+    await expect(offerMaterial({ path: put("x.command", "echo"), name: "x.txt" }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/\.command/);
+    await expect(offerMaterial({ path: join(outside, "nope.png") }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/見つかりません/);
     expect(offerFiles()).toEqual([]);
   });
 
   it("隠しフォルダ・許す場所の外・vault の中は断り、ホームのダウンロードは通す", async () => {
     mkdirSync(join(outside, ".ssh"));
-    await expect(offerMaterial({ path: put("id_ed25519.txt", "k", join(outside, ".ssh")) }, { root, home, tmp: outside })).rejects.toThrow(/この場所/);
+    await expect(offerMaterial({ path: put("id_ed25519.txt", "k", join(outside, ".ssh")) }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/この場所/);
     for (const d of [join(home, "Library", "Application Support", "Firefox"), join(home, "Library", "Keychains")]) {
       mkdirSync(d, { recursive: true });
-      await expect(offerMaterial({ path: put("key4.db", "k", d) }, { root, home, tmp: outside })).rejects.toThrow(/この場所/);
+      await expect(offerMaterial({ path: put("key4.db", "k", d) }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/この場所/);
     }
-    await expect(offerMaterial({ path: put("n.txt", "n", join(root, "notes")) }, { root, home, tmp: outside })).rejects.toThrow(/この場所/);
+    await expect(offerMaterial({ path: put("n.txt", "n", join(root, "notes")) }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/この場所/);
     mkdirSync(join(home, "Downloads"));
-    const ok = await offerMaterial({ path: put("plan.pdf", "%PDF-1", join(home, "Downloads")) }, { root, home, tmp: outside });
+    const ok = await offerMaterial({ path: put("plan.pdf", "%PDF-1", join(home, "Downloads")) }, { root, home, tmpRoots: [outside] });
     expect(ok.status).toBe("offered");
     expect(offerFiles()).toHaveLength(2);
   });
@@ -122,7 +122,7 @@ describe("offer_material", () => {
     const link = join(outside, "photo.png");
     linkSync(secret, link);
     expect(statSync(link).nlink).toBe(2);
-    await expect(offerMaterial({ path: link }, { root, home, tmp: outside })).rejects.toThrow(/ハードリンク/);
+    await expect(offerMaterial({ path: link }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/ハードリンク/);
     expect(offerFiles()).toEqual([]);
   });
 
@@ -135,25 +135,25 @@ describe("offer_material", () => {
     expect(deniedLocationReason("/private/var/folders/84/abc/T/TemporaryItems/NSIRD_x/a.png", "/v", roots)).toBeNull();
     expect(deniedLocationReason("/Users/u/Library/Cookies/c.binarycookies", "/v", roots)).not.toBeNull();
     expect(deniedLocationReason("/Users/u/Downloads/.hidden/a.png", "/v", roots)).not.toBeNull();
-    expect(allowedRoots("/Users/u", "/private/tmp")).toContain("/Users/u/Downloads");
+    expect(allowedRoots("/Users/u", ["/private/tmp"])).toContain("/Users/u/Downloads");
   });
 
   it("名前の書式文字・区切り・末尾のドットを落とし、ドットで始まる名前は断る", async () => {
     expect(cleanOfferName("a\u202Egpj.exe")).toBe("agpj.exe");
     expect(cleanOfferName("../x/y.png")).toBe("y.png");
     expect(cleanOfferName("evil.cmd. ")).toBe("evil.cmd");
-    await expect(offerMaterial({ path: put("z.txt", "z"), name: ".bat" }, { root, home, tmp: outside })).rejects.toThrow(/ドット/);
+    await expect(offerMaterial({ path: put("z.txt", "z"), name: ".bat" }, { root, home, tmpRoots: [outside] })).rejects.toThrow(/ドット/);
   });
 
   it("待っている数が上限なら断り、期限切れは片付けてから数える", async () => {
     const now = Date.parse("2026-11-24T00:00:00Z");
     for (let i = 0; i < OFFER_MAX_PENDING; i++) {
-      await offerMaterial({ path: put(`f${i}.txt`, `c${i}`) }, { root, home, tmp: outside, now });
+      await offerMaterial({ path: put(`f${i}.txt`, `c${i}`) }, { root, home, tmpRoots: [outside], now });
     }
-    await expect(offerMaterial({ path: put("over.txt", "over") }, { root, home, tmp: outside, now })).rejects.toThrow(/承認を待っている/);
+    await expect(offerMaterial({ path: put("over.txt", "over") }, { root, home, tmpRoots: [outside], now })).rejects.toThrow(/承認を待っている/);
     // 15 日後には全部期限切れなので、片付けて受け付ける
     const later = now + 15 * 24 * 60 * 60 * 1000;
-    const r = await offerMaterial({ path: put("over2.txt", "over2") }, { root, home, tmp: outside, now: later });
+    const r = await offerMaterial({ path: put("over2.txt", "over2") }, { root, home, tmpRoots: [outside], now: later });
     expect(r.status).toBe("offered");
     expect(offerFiles()).toHaveLength(2);
   });

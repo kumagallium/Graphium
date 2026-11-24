@@ -89,15 +89,18 @@ function tryRealpath(p: string): string | null {
  * 写しを作ってよい場所の根。字面の形と realpath の形の両方を入れる
  * （macOS の /tmp → /private/tmp、/var/folders → /private/var/folders、ホームのリンクなど）
  */
-export function allowedRoots(home: string = homedir(), tmp: string = tmpdir()): string[] {
+export function defaultTmpRoots(): string[] {
+  return process.platform === "win32" ? [tmpdir()] : [tmpdir(), "/tmp"];
+}
+
+export function allowedRoots(home: string = homedir(), tmpRoots: string[] = defaultTmpRoots()): string[] {
   const roots = new Set<string>();
   const add = (p: string) => {
     roots.add(resolve(p));
     const r = tryRealpath(p);
     if (r) roots.add(r);
   };
-  add(tmp);
-  if (process.platform !== "win32") add("/tmp");
+  for (const t of tmpRoots) add(t);
   for (const d of ALLOWED_HOME_DIRS) {
     add(join(home, d));
     const realHome = tryRealpath(home);
@@ -188,7 +191,8 @@ export function cleanOfferName(raw: string): string {
 // 同一プロセス内の呼び出しを直列にする（件数の上限と被り判定を、同時の呼び出しで抜けさせない）
 let queue: Promise<unknown> = Promise.resolve();
 
-export type OfferOptions = { root?: string; clientName?: string; home?: string; tmp?: string; now?: number };
+/** tmpRoots はテスト用（既定は OS の一時フォルダと /tmp） */
+export type OfferOptions = { root?: string; clientName?: string; home?: string; tmpRoots?: string[]; now?: number };
 
 export function offerMaterial(input: OfferMaterialInput, opts: OfferOptions = {}): Promise<OfferMaterialResult> {
   const run = queue.then(() => offerMaterialLocked(input, opts));
@@ -204,7 +208,7 @@ async function offerMaterialLocked(input: OfferMaterialInput, opts: OfferOptions
   const raw = typeof input.path === "string" ? input.path.trim() : "";
   if (!raw || raw.includes("\0")) throw new MediaToolError("path が空です");
   if (!isAbsolute(raw)) throw new MediaToolError("path は絶対パスで渡してください");
-  const roots = allowedRoots(opts.home ?? homedir(), opts.tmp ?? tmpdir());
+  const roots = allowedRoots(opts.home ?? homedir(), opts.tmpRoots ?? defaultTmpRoots());
   // 1 回目: fs に触る前に、字面で場所を確かめる（UNC で外へ接続させない・禁止の場所の有無を探らせない）
   const lexical = deniedLocationReason(raw, root, roots);
   if (lexical) throw new MediaToolError(lexical);
