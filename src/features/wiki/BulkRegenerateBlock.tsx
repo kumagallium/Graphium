@@ -130,6 +130,7 @@ export function BulkRegenerateBlock(props: BulkRegenerateBlockProps) {
           disabled={running}
         />
       </div>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">{t("settings.maintenance.modelOverrideHelp")}</p>
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[11px] text-foreground">

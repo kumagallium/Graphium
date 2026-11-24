@@ -543,6 +543,7 @@ import {
   type AnswerRewriteConversationMessage,
 } from "./features/wiki";
 import { planThingGroups, composeThingBody, type ThingGroup } from "./features/wiki/thing-groups";
+import { useUpkeepJobs } from "./features/wiki/use-upkeep-jobs";
 import type { ThingGroupProgressHooks, ThingGroupResult } from "./features/wiki/ThingGroupsSection";
 import { buildSourceCheckStatements } from "./features/source-check/build-statements";
 import { planSourceCheck } from "./features/source-check/plan";
@@ -17323,6 +17324,108 @@ export function NoteApp() {
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
+  // 未分類のトピックに種類を付ける（手入れ → 足りないところを補う）。タイトルと定義の 1 文だけを
+  // 50 件ずつ渡し、返った種類を wikiMeta.topicType に書いて保存する。本文は触らない。
+  const assignTopicTypesForUpkeep = useCallback(async (onProgress: (done: number, total: number) => void) => {
+    const targets = fm.wikiFiles
+      .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic" && !fm.wikiMetas.get(wf.id)?.topicType)
+      .map((wf) => {
+        const doc = fm.getCachedDoc(`wiki:${wf.id}`);
+        const oneLiner = doc ? extractTopicOneLiner(doc) : "";
+        return { id: wf.id, title: fm.wikiMetas.get(wf.id)?.title ?? wf.id, ...(oneLiner ? { oneLiner } : {}) };
+      });
+    if (targets.length === 0) return { assigned: 0, total: 0, calls: 0 };
+    const { types, failureError, calls } = await assignTopicTypes(targets, getStandardModelName() || undefined, undefined, onProgress);
+    let assigned = 0;
+    for (const [id, type] of Object.entries(types)) {
+      const doc = fm.getCachedDoc(`wiki:${id}`) ?? await fm.loadDoc(`wiki:${id}`);
+      if (!doc?.wikiMeta || doc.wikiMeta.kind !== "topic" || doc.wikiMeta.topicType) continue;
+      await fm.handleSaveWikiFile(id, { ...doc, wikiMeta: { ...doc.wikiMeta, topicType: type } }, { activityType: "wiki_cross_update" });
+      assigned++;
+    }
+    wikiLog.append("cross-update", Object.keys(types), `Assigned topic types to ${assigned} topic(s)`).catch(() => {});
+    return { assigned, total: targets.length, calls, ...(failureError !== undefined ? { failureReason: localizeAiError(failureError) } : {}) };
+  }, [fm]);
+
+  // 一括再生成のモデルの選択肢（手入れ画面を開いたときに読む。設定の AI タブと同じ出どころ）
+  const [upkeepModels, setUpkeepModels] = useState<{ options: { value: string; label: string }[]; defaultModel: string }>({ options: [], defaultModel: "" });
+  useEffect(() => {
+    if (activeWikiView !== "lint" || !standardUiEnabled) return;
+    let cancelled = false;
+    void (async () => {
+      let names: string[] = [];
+      let serverDefault = "";
+      if (isTauri()) {
+        try {
+          const { fetchModels } = await import("./features/ai-assistant/api");
+          const res = await fetchModels();
+          names = res.models.map((m) => m.name);
+          serverDefault = res.default;
+        } catch { /* 読めなければ選択肢なし（既定のモデルで動く） */ }
+      } else {
+        names = getLLMModels().map((m) => m.name);
+        serverDefault = names[0] ?? "";
+      }
+      if (cancelled) return;
+      setUpkeepModels({
+        options: names.map((n) => ({ value: n, label: n })),
+        defaultModel: getSelectedModel() || serverDefault,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [activeWikiView, standardUiEnabled]);
+
+  // 手入れの一括処理（もとは設定の「ナレッジ管理」）。手入れ画面を離れても止めずに続け、
+  // 進み具合と結果を取り込みのトーストに 1 行で出す。トーストの「停止」でも止まる
+  const upkeepToastSink = useMemo(() => ({
+    upsert: (item: IngestToastItem) => {
+      setIngestToast((prev) => {
+        const items = prev?.items ?? [];
+        return items.some((i) => i.id === item.id)
+          ? { items: items.map((i) => (i.id === item.id ? { ...i, ...item } : i)) }
+          : { items: [...items, item] };
+      });
+    },
+    registerAbort: (controller: AbortController) => {
+      ingestAbortRef.current.add(controller);
+      return () => { ingestAbortRef.current.delete(controller); };
+    },
+  }), [setIngestToast]);
+  const untypedTopicCount = useMemo(
+    () => wikiSummariesForSettings.filter((w) => w.kind === "topic" && !w.topicType).length,
+    [wikiSummariesForSettings],
+  );
+  const claimPageCount = useMemo(
+    () => wikiSummariesForSettings.filter((w) => w.kind === "claim").length,
+    [wikiSummariesForSettings],
+  );
+  const regenerateForUpkeep = useCallback(
+    (wikiId: string, options?: { model?: string; signal?: AbortSignal }) =>
+      regenerateWikiById(wikiId, { model: options?.model, signal: options?.signal, openAfter: false }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [regenerateWikiById],
+  );
+  const upkeepJobs = useUpkeepJobs({
+    active: activeWikiView === "lint",
+    toast: upkeepToastSink,
+    sourceTopics: standardUiEnabled ? sourceTopicBackfill : undefined,
+    linkClaims: standardUiEnabled ? claimTopicLinkBackfill : undefined,
+    topicTypes: standardUiEnabled ? { untypedCount: untypedTopicCount, run: assignTopicTypesForUpkeep } : undefined,
+    // 知見(claims) が OFF のときは洞察も作れないため出さない（知見前提の操作は洞察 OFF 時の扱いを流用）
+    insights: standardUiEnabled && preciseUiEnabled && featureFlags.claims !== false
+      ? { claimCount: claimPageCount, plan: planAtomizeDiscovery, run: runAtomizeDiscovery }
+      : undefined,
+    regenerate: standardUiEnabled
+      ? {
+          summaries: wikiSummariesForSettings,
+          run: regenerateForUpkeep,
+          estimateCalls: estimateRegenerateCalls,
+          models: upkeepModels.options,
+          defaultModel: upkeepModels.defaultModel,
+        }
+      : undefined,
+  });
+
   // 認証読み込み中
   if (authLoading) {
     return (
@@ -18471,6 +18574,7 @@ export function NoteApp() {
             legacyTopics={legacyTopicList}
             thingGroups={thingGroups}
             onMergeThingGroups={mergeThingGroups}
+            upkeepJobs={upkeepJobs}
             autoTidy={standardUiEnabled ? {
               progress: autoUpkeepProgress,
               result: autoUpkeepResult,
@@ -19498,11 +19602,7 @@ export function NoteApp() {
           setFeatureFlags(loadSettings().features ?? { insights: true, worldGrounding: true });
           setTierFlags({ standard: isStandardTierEnabled(), precise: isPreciseTierEnabled() });
         }}
-        wikiSummaries={wikiSummariesForSettings}
-        onRegenerateWiki={standardUiEnabled ? (wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false }) : undefined}
-        estimateRegenerateCalls={estimateRegenerateCalls}
-        onRunAtomizeDiscovery={standardUiEnabled && preciseUiEnabled ? runAtomizeDiscovery : undefined}
-        onPlanAtomizeDiscovery={standardUiEnabled && preciseUiEnabled ? planAtomizeDiscovery : undefined}
+        knowledgePageCount={fm.wikiFiles.length}
         bulkBodyWidth={{ countTargets: fm.countBulkBodyWidthTargets, run: fm.bulkChangeBodyWidth }}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。
@@ -19532,112 +19632,6 @@ export function NoteApp() {
             onProgress(i + 1, total);
           }
           console.log(`Re-embed complete: ${successCount} success / ${failCount} failed / ${total} total`);
-        }}
-        onAssignTopicTypes={!standardUiEnabled ? undefined : async (onProgress) => {
-          // 未分類のトピックに種類を付ける（設定 → ナレッジ管理）。タイトルと定義の 1 文だけを
-          // 50 件ずつ渡し、返った種類を wikiMeta.topicType に書いて保存する。本文は触らない。
-          const targets = fm.wikiFiles
-            .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic" && !fm.wikiMetas.get(wf.id)?.topicType)
-            .map((wf) => {
-              const doc = fm.getCachedDoc(`wiki:${wf.id}`);
-              const oneLiner = doc ? extractTopicOneLiner(doc) : "";
-              return { id: wf.id, title: fm.wikiMetas.get(wf.id)?.title ?? wf.id, ...(oneLiner ? { oneLiner } : {}) };
-            });
-          if (targets.length === 0) return { assigned: 0, total: 0, calls: 0 };
-          const { types, failureError, calls } = await assignTopicTypes(targets, getStandardModelName() || undefined, undefined, onProgress);
-          let assigned = 0;
-          for (const [id, type] of Object.entries(types)) {
-            const doc = fm.getCachedDoc(`wiki:${id}`) ?? await fm.loadDoc(`wiki:${id}`);
-            if (!doc?.wikiMeta || doc.wikiMeta.kind !== "topic" || doc.wikiMeta.topicType) continue;
-            await fm.handleSaveWikiFile(id, { ...doc, wikiMeta: { ...doc.wikiMeta, topicType: type } }, { activityType: "wiki_cross_update" });
-            assigned++;
-          }
-          wikiLog.append("cross-update", Object.keys(types), `Assigned topic types to ${assigned} topic(s)`).catch(() => {});
-          return { assigned, total: targets.length, calls, ...(failureError !== undefined ? { failureReason: localizeAiError(failureError) } : {}) };
-        }}
-        claimTopicLinkBackfill={standardUiEnabled ? claimTopicLinkBackfill : undefined}
-        sourceTopicBackfill={standardUiEnabled ? sourceTopicBackfill : undefined}
-        onOrganizeTopics={async () => {
-          // 知見（claim）はもうトピックの材料にしない — 「話題を整理」は既存トピック
-          // どうしの名寄せ（Topic Consolidator）→ 統合（applyTopicMerges）だけを行う
-          // （表記ゆれ・粒度違いで増えてしまった話題を後から寄せる。wiki-linter の
-          // redundant 検出と同じ考え方を、まとめて一括で実行するのがこのボタン）。
-          const existingTopics: ExistingTopicForMerge[] = fm.wikiFiles
-            .filter((wf) => fm.wikiMetas.get(wf.id)?.kind === "topic")
-            .map((wf) => ({
-              id: wf.id,
-              title: fm.wikiMetas.get(wf.id)?.title ?? wf.id,
-              memberClaimIds: fm.wikiMetas.get(wf.id)?.derivedFromClaims ?? [],
-            }));
-          const { resolveSource, resolveSourceTitle } = buildTopicSourceResolvers();
-          const knowledgeSchema = await fm.getKnowledgeSchemaPrompt();
-          // 保守の操作の記録: 1 実行に、統合の組ごとの操作が入る（groupScope が組ごとに作る）。
-          // 複数の操作になるのでトーストの「取り消す」は出さない（手入れ画面の「操作の記録」から 1 件ずつ）
-          const run = await beginMaintenanceRun("organize_topics");
-          try {
-            const touchedIds = new Set<string>();
-            const recordedScope = topicMergeScope(run);
-            const mergeResult = await consolidateExistingTopics(existingTopics, {
-              loadDoc: fm.loadDoc,
-              getCachedDoc: fm.getCachedDoc,
-              handleSaveWikiFile: fm.handleSaveWikiFile,
-              resolveSource,
-              resolveSourceTitle,
-              handleDeleteWikiFile: fm.handleDeleteWikiFile,
-              claimIdsLinkedToTopic,
-              noteIndex: buildNoteIndex(fm.noteIndex),
-              locale: getGenerationLanguage(),
-              // テーマどうしの統合可否は軽い処理（デフォルトモデル）で判断する（2026-11-07 の測定で 10B 級でも 4/4）
-              model: getSelectedModel() || undefined,
-              knowledgeSchema,
-              log: (...args: unknown[]) => console.warn(...args),
-              groupScope: async (targetId, sourceIds) => {
-                // wikiLog に残す対象は、実際に動いたページだけ（ゴミ箱送りが成功した吸収側と、その組の残す側）
-                const scope = await recordedScope(targetId, sourceIds);
-                return {
-                  ...scope,
-                  handleDeleteWikiFile: async (wikiId: string) => {
-                    await scope.handleDeleteWikiFile(wikiId);
-                    touchedIds.add(targetId);
-                    touchedIds.add(wikiId);
-                  },
-                };
-              },
-            });
-            const recorded = recordedOperationsOf(run);
-            if (mergeResult.merged > 0) {
-              wikiLog.append(
-                "merge",
-                [...touchedIds],
-                `Consolidated ${mergeResult.merged} topic(s) (rebuilt ${mergeResult.rebuilt}, failed ${mergeResult.failed})`,
-                recorded.length > 0
-                  ? { runId: recorded[0].runId, operationIds: recorded.map((r) => r.operationId) }
-                  : undefined,
-              ).catch(() => {});
-            }
-
-            // どれとどれが同じ話題かの判断（consolidate-topics）が断られて何もできなかったとき
-            // （呼び出し自体が失敗）や、統合を試みた全件が失敗したときは、
-            // 「完了。統合 0 件」ではなくエラーとして理由を見せる（設定画面が赤字で表示する）。
-            // failed>0 なのに理由が記録されない分岐（applyTopicMerges 内で件数だけ数える箇所）
-            // もあるので、failureError の有無だけでは判定しない
-            if (
-              mergeResult.merged === 0 && mergeResult.rebuilt === 0
-              && (mergeResult.failed > 0 || mergeResult.failureError !== undefined)
-            ) {
-              throw new Error(describeMaintenanceError(mergeResult.failureError));
-            }
-            return {
-              merged: mergeResult.merged,
-              rebuilt: mergeResult.rebuilt,
-              failed: mergeResult.failed,
-              ...(mergeResult.failed > 0 && mergeResult.failureError !== undefined
-                ? { failureReason: describeMaintenanceError(mergeResult.failureError) }
-                : {}),
-            };
-          } finally {
-            await endMaintenanceSafely(undefined, run);
-          }
         }}
       />
       {/* 投入口: 既存資料の一括持ち込み。4 面（サイドバー・空ノートのチップ・一覧と素材の空状態・どこでもドロップ）がすべてここを開く */}

@@ -67,7 +67,6 @@ import {
 } from "../../lib/graphium-root";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { confirmAction } from "../../ui/confirm-dialog";
-import { SourceTopicBackfillCard, type SourceTopicBackfillHandlers } from "./SourceTopicBackfillCard";
 import { toGenerationLanguage } from "../../lib/language";
 import { findReachableAsterism, hasAsterismMcpServer } from "./asterism-mcp-preset";
 import { McpConnectFlow } from "./mcp-connect/McpConnectFlow";
@@ -208,111 +207,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "sharing" | "ai" | "grounding" | "maintenance" | "usage" | "about";
-
-// Settings → Maintenance タブで使う Wiki サマリー
-export type WikiSummaryForSettings = {
-  id: string;
-  title: string;
-  kind: WikiKind;
-  model?: string;
-  /** topic のみ。無ければ未分類（「トピックに種類を付ける」の対象） */
-  topicType?: TopicType;
-};
-
-/** 「トピックに種類を付ける」の実行結果 */
-/** 知見をトピックに結ぶ一括処理の計画（AI を呼ぶ前に回数を見せる） */
-export type ClaimTopicLinkBackfillSummary = { calls: number; claims: number; alreadyJudged: number };
-export type ClaimTopicLinkBackfillOutcome = {
-  done: number;
-  total: number;
-  linkedClaims: number;
-  calls: number;
-  failedSources: number;
-  aborted: boolean;
-  stoppedByFailures: boolean;
-  /** 失敗の理由（画面に出せる文） */
-  failureReason?: string;
-};
-export type ClaimTopicLinkBackfillHandlers = {
-  plan: () => Promise<ClaimTopicLinkBackfillSummary>;
-  /** AI が未設定などで始められないときは null */
-  run: (
-    onProgress: (progress: { done: number; total: number; linkedClaims: number }) => void,
-    signal: AbortSignal,
-  ) => Promise<ClaimTopicLinkBackfillOutcome | null>;
-};
-
-export type AssignTopicTypesResult = {
-  /** 種類を付けて保存した件数 */
-  assigned: number;
-  /** 対象（未分類）だった件数 */
-  total: number;
-  /** AI 呼び出し回数 */
-  calls: number;
-  /** 失敗の理由（表示用に訳した文。無ければ無し） */
-  failureReason?: string;
-};
-
-/**
- * 「話題を整理」の実行結果（件数のみ。詳細は wikiLog に記録される）。
- * 知見（claim）はもうトピックの材料にしない — 既存トピックどうしの統合結果のみを持つ。
- */
-export type OrganizeTopicsResult = {
-  /** 既存話題どうしの統合で、別名側をゴミ箱へ送った件数 */
-  merged: number;
-  /** 統合先の本文を書き直せた件数 */
-  rebuilt: number;
-  failed: number;
-  /** 失敗の理由（表示用に訳した文。設定のモデル名が見つからない等。失敗が無ければ無し） */
-  failureReason?: string;
-};
-
-export type RegenerateWikiHandler = (
-  wikiId: string,
-  /** signal: 進行中の LLM 呼び出しごと中断する（一括再生成のキャンセル用） */
-  options?: { model?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; error?: string; aborted?: boolean }>;
-
-export type DiscoveryProgressInfo = {
-  iteration: number;
-  createdSoFar: number;
-  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
-  clusterLabel?: string;
-  clusterTotal?: number;
-  clusterSize?: number;
-  /** クラスタに含まれるアイテム名のプレビュー（先頭 N 件）。中身が見えない問題への対策。 */
-  clusterMemberTitles?: string[];
-  /** 実測カバレッジ: この iter までに視野へ入った母集団件数（和集合） */
-  coveredSoFar?: number;
-  /** 母集団の総数 */
-  populationTotal?: number;
-};
-export type DiscoveryHandler = (
-  onProgress?: (info: DiscoveryProgressInfo) => void,
-  /**
-   * 任意オプション。テーマ駆動 Synthesizer など、handler によっては未使用。
-   * signal: 進行中の LLM 呼び出しごと中断する（発見のキャンセル用）。
-   */
-  options?: { theme?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; created: number; iterations: number; reinforced?: number; contradictions?: number; covered?: number; total?: number; error?: string; aborted?: boolean }>;
-
-/**
- * 実行前プラン: 「全 {total} 件を視野に入れるには LLM を {runs} 回呼ぶ」の実測値。
- * LLM は呼ばず計算だけで決まるため、確認ダイアログの表示に使える。
- * null = プラン不能（対象が 2 件未満など）。
- */
-export type PlanDiscoveryHandler = () => Promise<{ total: number; runs: number } | null>;
-
-type BulkFailedItem = { id: string; title: string; error?: string };
-type BulkProgress = {
-  done: number;
-  total: number;
-  failed: number;
-  current?: string;
-  currentModel?: string;
-  failedItems: BulkFailedItem[];
-};
+type Tab = "display" | "storage" | "sharing" | "ai" | "grounding" | "usage" | "about";
 
 // ラベルタブで使う内部キーと i18n デフォルト名のマッピング
 const LABEL_I18N_KEYS: Record<CoreLabel, string> = {
@@ -332,42 +227,21 @@ type SettingsModalProps = {
   initialTab?: string;
   /** 開いた後にスクロールする節の id（`settings-section-<id>`）。例: "asterism" */
   initialSection?: string;
-  /** Maintenance タブの一括 Regenerate 用 Wiki 一覧 */
-  wikiSummaries?: WikiSummaryForSettings[];
-  /** Maintenance タブから 1 件ずつ呼ばれる再生成ハンドラ */
-  onRegenerateWiki?: RegenerateWikiHandler;
-  /**
-   * 一括再生成の対象 id 列から、実際に発生する AI 呼び出し回数を見積もる（作業 C フォロー）。
-   * トピック以外は 1 件 1 回（既存の再生成の実態どおり）、トピックは資料から作り直すため
-   * 資料件数ぶん呼ぶ（rebuildTopicFromSources は資料 1 本につき改訂 1 回）。
-   * modal は doc を持たないため note-app 側から注入する。未指定なら件数と同じとみなす。
-   */
-  estimateRegenerateCalls?: (ids: string[]) => number;
-  /** Maintenance タブの「Atom を発見」ハンドラ（atomLayer 有効時のみ表示）。
-   *  全 Concept を見渡し、複数 Concept にまたがる共通抽象を auto-loop で発見する。 */
-  onRunAtomizeDiscovery?: DiscoveryHandler;
-  /** 「Atom を発見」の実行前プラン（全件視野に必要な LLM 呼び出し回数の実測値）。
-   *  確認ダイアログに表示する。 */
-  onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
+  /** 埋め込みの作り直し（AI タブの「索引が古い」案内の横）で数えるナレッジのページ数 */
+  knowledgePageCount?: number;
   /** 全 Wiki の embedding を再生成する。AI チャットでの引用検索（Retriever）の精度を回復させたい時に使う。 */
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
-  /** 同じ概念を指す既存トピックどうしを統合する（知見には触れない。知見を結ぶのは claimTopicLinkBackfill）。 */
-  onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
-  onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
-  /** トピックに結ばれていない既存の知見を、資料ごとにトピックへ結ぶ一括処理 */
-  claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
-  /** 知見はあるのにトピックが無い資料に、トピックの段だけを回す一括処理 */
-  sourceTopicBackfill?: SourceTopicBackfillHandlers;
   /** 「これまでのノートも A4 にする / A4 のノートをすべて標準に戻す」。未指定なら 2 つのボタンは出さない */
   bulkBodyWidth?: BulkBodyWidthSectionProps;
 };
 
-export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wikiSummaries, onRegenerateWiki, estimateRegenerateCalls, onRunAtomizeDiscovery, onPlanAtomizeDiscovery, onReembedAllWikis, onOrganizeTopics, onAssignTopicTypes, claimTopicLinkBackfill, sourceTopicBackfill, bulkBodyWidth }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, initialSection, knowledgePageCount = 0, onReembedAllWikis, bulkBodyWidth }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
   // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
   useEffect(() => {
-    if (isOpen && initialTab) setTab(initialTab as Tab);
+    // 消えたタブ（2026-11-25 に手入れ画面へ移した "maintenance"）を指定されたら表示タブで開く
+    if (isOpen && initialTab) setTab(initialTab === "maintenance" ? "display" : (initialTab as Tab));
   }, [isOpen, initialTab]);
   // 本文はモーダル内でスクロールする。タブを替えたら先頭から読めるよう位置を戻す
   // （前のタブのスクロール位置が残ると、短いタブで中身が見えない位置から始まる）
@@ -479,10 +353,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
   // ときだけ — 読めていない一覧を理由に「見つからない」と扱うと、保存で設定を消してしまう
   const [modelsLoaded, setModelsLoaded] = useState(false);
   // 埋め込みモデル欄で選んでいるモデルと、索引を作ったモデルが違うか。
-  // 版ずれの案内は「ナレッジ管理」にもあるが、モデルを変えるのはこの AI タブなので、
-  // 変えたその場で気づけるよう同じ判定をここでも出す（変えずに開いたときも、既に
-  // ずれていれば出る）。判定は MaintenanceTab と同じ物差し（models の model_id =
-  // /wiki/embed が保存に使う modelVersion）で、索引の件数を見るだけの軽い処理。
+  // モデルを変えるのはこの AI タブなので、変えたその場で気づけるようここで判定し、作り直しも
+  // ここから押せるようにする（変えずに開いたときも、既にずれていれば出る）。物差しは
+  // models の model_id（/wiki/embed が保存に使う modelVersion）で、索引の件数を見るだけの軽い処理。
   const [embeddingIndexStale, setEmbeddingIndexStale] = useState(false);
 
   // ヘルスチェック
@@ -548,33 +421,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
 
   // ツール
 
-  // Maintenance タブ — Wiki 一括 Regenerate（summary は対象外。PR3 で新規生成パイプライン撤退）
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["topic", "claim", "atom"]));
-  const [bulkModelOverride, setBulkModelOverride] = useState("");
-  const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
-  const cancelBulkRef = useRef(false);
-
-  // Maintenance タブ — 既存 Concept をまたぐ Atom 候補を発見（atomLayer 有効時のみ）
-  type DiscoveryUiState = {
-    status: "running" | "done" | "error";
-    inputCount: number;
-    iteration?: number;
-    created?: number;
-    iterations?: number;
-    error?: string;
-    clusterLabel?: string;
-    clusterTotal?: number;
-    clusterSize?: number;
-    clusterMemberTitles?: string[];
-    coveredCount?: number;
-    populationCount?: number;
-    reinforced?: number;
-    contradictions?: number;
-  };
-  const [atomizeRunning, setAtomizeRunning] = useState(false);
-  const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
+  // 埋め込みの作り直し（AI タブの「索引が古い」案内の横。もとは「ナレッジ管理」タブ）。
+  // モーダルは閉じても載ったままなので、閉じても作り直しは続く
+  const [reembedRunning, setReembedRunning] = useState(false);
+  const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
+  const [reembedError, setReembedError] = useState<string | null>(null);
+  // 作り直したあとに索引の版ずれを判定し直すための合図
+  const [staleCheckTick, setStaleCheckTick] = useState(0);
 
   // モデル追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
@@ -885,7 +738,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       if (!cancelled) setEmbeddingIndexStale(stale);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, embeddingModel, embeddingEffectiveLocalName, model, defaultModel, models]);
+  }, [isOpen, embeddingModel, embeddingEffectiveLocalName, model, defaultModel, models, staleCheckTick]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2067,7 +1920,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex shrink-0 border-b border-border px-6 overflow-x-auto">
-        {(["display", "storage", "sharing", "ai", "grounding", "maintenance", "usage", "about"] as Tab[])
+        {(["display", "storage", "sharing", "ai", "grounding", "usage", "about"] as Tab[])
           // 照合データタブは世界照合のマスタースイッチが OFF のとき隠す
           .filter((tabId) => tabId !== "grounding" || features.worldGrounding)
           .map((tabId) => {
@@ -2077,7 +1930,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
             : tabId === "sharing" ? "settings.section.sharing"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "grounding" ? "settings.tab.grounding"
-            : tabId === "maintenance" ? "settings.tab.maintenance"
             : tabId === "usage" ? "settings.tab.usage"
             : "settings.tab.about";
           return (
@@ -3519,19 +3371,59 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   {(embeddingModelMissing || embeddingModelUnsupported) && renderMissingModelHint(t("settings.embeddingModel.noneFallback"))}
                   {embeddingEffectiveLocalName && isTauri() && <LocalEmbeddingModelSection name={embeddingEffectiveLocalName} />}
                   {/* 索引を作ったモデルと違うときだけ出す（自動では作り直さない — 費用が
-                      ユーザーの API キーに乗るため。作り直しはナレッジ管理の既存の操作） */}
-                  {embeddingIndexStale && (
-                    <div className="mt-2 flex items-start gap-2 flex-wrap">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
-                        {t("settings.embeddingModel.staleHint")}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setTab("maintenance")}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors"
-                      >
-                        {t("settings.embeddingModel.openMaintenance")}
-                      </button>
+                      ユーザーの API キーに乗るため）。作り直しは案内の横のボタンから。
+                      選んだモデルを保存する前は、作り直しても古いモデルで作られるので押せなくする */}
+                  {onReembedAllWikis && knowledgePageCount > 0 && (embeddingIndexStale || reembedRunning || reembedProgress || reembedError) && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex items-start gap-2 flex-wrap">
+                        {embeddingIndexStale && !reembedRunning && (
+                          <p className="text-xs text-amber-700 dark:text-amber-400 flex-1 min-w-0">
+                            {t("settings.embeddingModel.staleHint")}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          disabled={reembedRunning || embeddingModel !== getEmbeddingModel()}
+                          onClick={async () => {
+                            const total = knowledgePageCount;
+                            if (!(await confirmAction(t("settings.maintenance.reembedConfirm", { count: String(total) })))) return;
+                            setReembedRunning(true);
+                            setReembedError(null);
+                            setReembedProgress({ done: 0, total });
+                            try {
+                              await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
+                            } catch (e) {
+                              setReembedError(e instanceof Error ? e.message : String(e));
+                            } finally {
+                              setReembedRunning(false);
+                              // embed API が全滅しても例外にならない（text-only に落ちる）ので、
+                              // 「呼べたら消す」ではなく索引の実体を判定し直して案内の表示を決める
+                              setStaleCheckTick((n) => n + 1);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {reembedRunning ? (
+                            <><Loader2 size={12} className="animate-spin" />{t("settings.maintenance.reembedRunning")}</>
+                          ) : (
+                            t("settings.maintenance.reembedRun", { count: String(knowledgePageCount) })
+                          )}
+                        </button>
+                      </div>
+                      {embeddingModel !== getEmbeddingModel() && !reembedRunning && (
+                        <p className="text-xs text-muted-foreground">{t("settings.embeddingModel.saveBeforeReembed")}</p>
+                      )}
+                      {reembedProgress && reembedRunning && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("settings.maintenance.reembedProgress", { done: String(reembedProgress.done), total: String(reembedProgress.total) })}
+                        </p>
+                      )}
+                      {reembedProgress && !reembedRunning && !reembedError && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          {t("settings.maintenance.reembedDone", { done: String(reembedProgress.done), total: String(reembedProgress.total) })}
+                        </p>
+                      )}
+                      {reembedError && <p className="text-xs text-red-600 dark:text-red-400">{reembedError}</p>}
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -4534,8 +4426,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         {/* ── Grounding KB タブ（world-model-grounding Phase 2 / PR 2A） ── */}
         {tab === "grounding" && features.worldGrounding && <GroundingKbTab />}
 
-        {/* ── Maintenance タブ ── */}
-        {tab === "maintenance" && (
+        {/* ── About タブ ── */}
+        {tab === "usage" && <UsageTab />}
+
+        {/* 接続状態と、つながらないときの再起動（2026-11-25 に「ナレッジ管理」タブから移した） */}
+        {tab === "about" && (
           <div className="space-y-6">
             {/* 接続状態パネル */}
             <div className={`${SETTINGS_CARD_CLASS} p-3`}>
@@ -4602,47 +4497,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </div>
             )}
 
-            <MaintenanceTab
-              t={t}
-              wikiSummaries={wikiSummaries ?? []}
-              onRegenerateWiki={onRegenerateWiki}
-              estimateRegenerateCalls={estimateRegenerateCalls}
-              onRunAtomizeDiscovery={onRunAtomizeDiscovery}
-              onPlanAtomizeDiscovery={onPlanAtomizeDiscovery}
-              /* 知見(claims) が OFF のときは洞察も作れないため、手入れ画面の「知見をまたぐ洞察を発見」も隠す
-                  （2026-09-17 決定: 知見前提の操作は既存の洞察 OFF 時の扱いを流用） */
-              atomLayerEnabled={!!features.claims}
-              availableModels={models}
-              defaultModel={model || defaultModel}
-              chatSynthesisModel=""
-              bulkKinds={bulkKinds}
-              setBulkKinds={setBulkKinds}
-              bulkModelOverride={bulkModelOverride}
-              setBulkModelOverride={setBulkModelOverride}
-              bulkSynthesisModelOverride={bulkSynthesisModelOverride}
-              setBulkSynthesisModelOverride={setBulkSynthesisModelOverride}
-              bulkRunning={bulkRunning}
-              setBulkRunning={setBulkRunning}
-              bulkProgress={bulkProgress}
-              setBulkProgress={setBulkProgress}
-              cancelBulkRef={cancelBulkRef}
-              atomizeRunning={atomizeRunning}
-              setAtomizeRunning={setAtomizeRunning}
-              atomizeProgress={atomizeProgress}
-              setAtomizeProgress={setAtomizeProgress}
-              onReembedAllWikis={onReembedAllWikis}
-              onOrganizeTopics={onOrganizeTopics}
-              onAssignTopicTypes={onAssignTopicTypes}
-              claimTopicLinkBackfill={claimTopicLinkBackfill}
-              sourceTopicBackfill={sourceTopicBackfill}
-            />
+            <AboutTab />
           </div>
         )}
-
-        {/* ── About タブ ── */}
-        {tab === "usage" && <UsageTab />}
-
-        {tab === "about" && <AboutTab />}
       </ModalBody>
 
       <ModalFooter className="shrink-0">
@@ -4654,1011 +4511,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
         </Button>
       </ModalFooter>
     </Modal>
-  );
-}
-
-// ── Maintenance タブ ──
-// Knowledge レイヤのメンテナンス操作。今は Wiki 一括 Regenerate のみ
-type DiscoveryRunState = {
-  status: "running" | "done" | "error";
-  /** 入力アイテム数（Concept 数 / Atom 数） */
-  inputCount: number;
-  iteration?: number;
-  created?: number;
-  iterations?: number;
-  error?: string;
-  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
-  clusterLabel?: string;
-  clusterTotal?: number;
-  clusterSize?: number;
-  clusterMemberTitles?: string[];
-  /** 実測カバレッジ: 視野に入った母集団件数（和集合）/ 総数 */
-  coveredCount?: number;
-  populationCount?: number;
-  /** 既存への支持追加（reinforcement）件数 */
-  reinforced?: number;
-  /** 矛盾（contradiction）と判定された件数 */
-  contradictions?: number;
-};
-
-type MaintenanceTabProps = {
-  t: (key: string, params?: Record<string, string>) => string;
-  wikiSummaries: WikiSummaryForSettings[];
-  onRegenerateWiki?: RegenerateWikiHandler;
-  estimateRegenerateCalls?: (ids: string[]) => number;
-  onRunAtomizeDiscovery?: DiscoveryHandler;
-  onPlanAtomizeDiscovery?: PlanDiscoveryHandler;
-  atomLayerEnabled: boolean;
-  availableModels: ModelInfo[];
-  defaultModel: string;
-  chatSynthesisModel: string;
-  bulkKinds: Set<WikiKind>;
-  setBulkKinds: (s: Set<WikiKind>) => void;
-  bulkModelOverride: string;
-  setBulkModelOverride: (s: string) => void;
-  bulkSynthesisModelOverride: string;
-  setBulkSynthesisModelOverride: (s: string) => void;
-  bulkRunning: boolean;
-  setBulkRunning: (b: boolean) => void;
-  bulkProgress: BulkProgress | null;
-  setBulkProgress: (p: BulkProgress | null) => void;
-  cancelBulkRef: { current: boolean };
-  atomizeRunning: boolean;
-  setAtomizeRunning: (b: boolean) => void;
-  atomizeProgress: DiscoveryRunState | null;
-  setAtomizeProgress: (p: DiscoveryRunState | null) => void;
-  onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
-  onOrganizeTopics?: () => Promise<OrganizeTopicsResult>;
-  onAssignTopicTypes?: (onProgress: (done: number, total: number) => void) => Promise<AssignTopicTypesResult>;
-  claimTopicLinkBackfill?: ClaimTopicLinkBackfillHandlers;
-  /** 知見はあるのにトピックが無い資料に、トピックの段だけを回す一括処理 */
-  sourceTopicBackfill?: SourceTopicBackfillHandlers;
-};
-
-function MaintenanceTab({
-  t,
-  wikiSummaries,
-  onRegenerateWiki,
-  estimateRegenerateCalls,
-  onRunAtomizeDiscovery,
-  onPlanAtomizeDiscovery,
-  atomLayerEnabled,
-  availableModels,
-  defaultModel,
-  chatSynthesisModel,
-  bulkKinds,
-  setBulkKinds,
-  bulkModelOverride,
-  setBulkModelOverride,
-  bulkSynthesisModelOverride,
-  setBulkSynthesisModelOverride,
-  bulkRunning,
-  setBulkRunning,
-  bulkProgress,
-  setBulkProgress,
-  cancelBulkRef,
-  atomizeRunning,
-  setAtomizeRunning,
-  atomizeProgress,
-  setAtomizeProgress,
-  onReembedAllWikis,
-  onOrganizeTopics,
-  onAssignTopicTypes,
-  claimTopicLinkBackfill,
-  sourceTopicBackfill,
-}: MaintenanceTabProps) {
-  // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
-  // summary（要約）は新規生成パイプラインが撤退済み（PR3、話題(topic)が役割を引き継ぐ）。
-  // どちらも既存ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
-  const KINDS: WikiKind[] = ["topic", "claim", "atom"];
-  const [cancelling, setCancelling] = useState(false);
-  // 一括再生成 / 洞察発見の進行中 fetch を切るためのハンドル。キャンセルで abort() する。
-  const bulkAbortRef = useRef<AbortController | null>(null);
-  const atomizeAbortRef = useRef<AbortController | null>(null);
-  const [reembedRunning, setReembedRunning] = useState(false);
-  const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
-  const [reembedError, setReembedError] = useState<string | null>(null);
-  // 埋め込みの版ずれ検知（軽量: modelVersion index の件数だけ見る。全件走査はしない）。
-  // タブを開いたときに 1 回だけ判定する。作り直し完了後は false に落として案内を消す。
-  const [embeddingStale, setEmbeddingStale] = useState(false);
-  // レコードに保存されるのは表示名（name）ではなく、書き込み/検索と同じ経路
-  // （/wiki/embed のレスポンス modelVersion = サーバー側 config.modelId）で解決した
-  // modelId。getEmbeddingLLMModel() は localStorage（LLM_MODELS_KEY）しか見ないため、
-  // モデル定義がサーバー側にある Tauri デスクトップ版では常に undefined になり、
-  // 検知が一度も発火しない。availableModels（GET /api/models = model_id、
-  // fetchModels() 経由でデスクトップでも正しく取れる）はサーバー側と同じ
-  // listModels() 由来の modelId を返すため、これと getEmbeddingModel()（選択中の
-  // 埋め込みモデル名。空なら defaultModel にフォールバック。プラットフォーム
-  // 非依存）で名前引きすれば、/wiki/embed が実際に使う modelVersion と一致する。
-  const resolveCurrentEmbeddingModelId = useCallback((): string | undefined => {
-    const currentModelName = getEmbeddingModel() || defaultModel;
-    return availableModels.find((m) => m.name === currentModelName)?.model_id;
-  }, [availableModels, defaultModel]);
-  useEffect(() => {
-    let cancelled = false;
-    const current = resolveCurrentEmbeddingModelId();
-    if (!current) return;
-    embeddingStore.isEmbeddingIndexStale(current).then((stale) => {
-      if (!cancelled) setEmbeddingStale(stale);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [resolveCurrentEmbeddingModelId]);
-  // 知見をトピックに結ぶ一括処理。設定を閉じたら止める（控えがあるので続きから再開できる）
-  const [linkClaimsPlan, setLinkClaimsPlan] = useState<ClaimTopicLinkBackfillSummary | null>(null);
-  const [linkClaimsRunning, setLinkClaimsRunning] = useState(false);
-  const [linkClaimsProgress, setLinkClaimsProgress] = useState<{ done: number; total: number; linkedClaims: number } | null>(null);
-  const [linkClaimsOutcome, setLinkClaimsOutcome] = useState<ClaimTopicLinkBackfillOutcome | null>(null);
-  const [linkClaimsError, setLinkClaimsError] = useState<string | null>(null);
-  const linkClaimsAbortRef = useRef<AbortController | null>(null);
-  const refreshLinkClaimsPlan = useCallback(async () => {
-    if (!claimTopicLinkBackfill) return;
-    try {
-      setLinkClaimsPlan(await claimTopicLinkBackfill.plan());
-    } catch (err) {
-      setLinkClaimsError(err instanceof Error ? err.message : String(err));
-    }
-  }, [claimTopicLinkBackfill]);
-  useEffect(() => { void refreshLinkClaimsPlan(); }, [refreshLinkClaimsPlan]);
-  useEffect(() => () => linkClaimsAbortRef.current?.abort(), []);
-  const [assignTypesRunning, setAssignTypesRunning] = useState(false);
-  const [assignTypesProgress, setAssignTypesProgress] = useState<{ done: number; total: number } | null>(null);
-  const [assignTypesResult, setAssignTypesResult] = useState<AssignTopicTypesResult | null>(null);
-  const [assignTypesError, setAssignTypesError] = useState<string | null>(null);
-  // 種類の無いトピックの数（「トピックに種類を付ける」の対象）
-  const untypedTopicsCount = useMemo(
-    () => wikiSummaries.filter((w) => w.kind === "topic" && !w.topicType).length,
-    [wikiSummaries],
-  );
-  const [organizeTopicsRunning, setOrganizeTopicsRunning] = useState(false);
-  const [organizeTopicsResult, setOrganizeTopicsResult] = useState<OrganizeTopicsResult | null>(null);
-  const [organizeTopicsError, setOrganizeTopicsError] = useState<string | null>(null);
-  // 既存話題どうしの統合対象になり得るか（2 件以上あれば意味がある）
-  const topicsCount = useMemo(
-    () => wikiSummaries.filter((w) => w.kind === "topic").length,
-    [wikiSummaries],
-  );
-
-  // 表示値: 明示的に指定されていなければ設定の現在値をライブで反映する
-  const effectiveDefaultModel = bulkModelOverride || defaultModel;
-  const effectiveSynthesisModel =
-    bulkSynthesisModelOverride || chatSynthesisModel || defaultModel;
-
-  const targets = useMemo(
-    () => wikiSummaries.filter((w) => bulkKinds.has(w.kind)),
-    [wikiSummaries, bulkKinds],
-  );
-  // 対象に含まれる AI 呼び出し回数の見積もり（トピックは資料から作り直すため資料数ぶん呼ぶ）。
-  // 未指定なら件数と同じとみなす（既存の「1 件 1 回」実態のフォールバック）。
-  const estimatedCalls = useMemo(
-    () => estimateRegenerateCalls ? estimateRegenerateCalls(targets.map((w) => w.id)) : targets.length,
-    [targets, estimateRegenerateCalls],
-  );
-
-  const toggleKind = (k: WikiKind) => {
-    const next = new Set(bulkKinds);
-    if (next.has(k)) next.delete(k);
-    else next.add(k);
-    setBulkKinds(next);
-  };
-
-  const runRegenerate = async (items: { id: string; title: string }[]) => {
-    if (!onRegenerateWiki || bulkRunning || items.length === 0) return;
-    // 対象にトピックが 1 件以上含まれるときだけ、AI 呼び出し回数を見せる確認に切り替える
-    // （トピックは資料から作り直すため 1 件で資料数ぶん呼ぶ — 実行前に必ず見せる方針）。
-    const itemKindById = new Map(wikiSummaries.map((w) => [w.id, w.kind]));
-    const hasTopic = items.some((i) => itemKindById.get(i.id) === "topic");
-    const confirmMsg = hasTopic
-      ? t("settings.maintenance.confirmWithCalls", {
-          count: String(items.length),
-          calls: String(estimateRegenerateCalls ? estimateRegenerateCalls(items.map((i) => i.id)) : items.length),
-        })
-      : t("settings.maintenance.confirm").replace("{count}", String(items.length));
-    if (!(await confirmAction(confirmMsg, { destructive: true }))) return;
-
-    setBulkRunning(true);
-    setCancelling(false);
-    cancelBulkRef.current = false;
-    // キャンセルで進行中の LLM 呼び出しも切る（以前は「次の 1 件に進む前」にしか止まれなかった）
-    const controller = new AbortController();
-    bulkAbortRef.current = controller;
-    setBulkProgress({ done: 0, total: items.length, failed: 0, failedItems: [] });
-
-    let done = 0;
-    let failed = 0;
-    const failedItems: BulkFailedItem[] = [];
-    for (const w of items) {
-      if (cancelBulkRef.current || controller.signal.aborted) break;
-      const kind = wikiSummaries.find((s) => s.id === w.id)?.kind;
-      const modelForKind = kind === "synthesis" ? effectiveSynthesisModel : effectiveDefaultModel;
-      setBulkProgress({ done, total: items.length, failed, current: w.title, currentModel: modelForKind, failedItems });
-      const result = await onRegenerateWiki(w.id, {
-        ...(modelForKind ? { model: modelForKind } : {}),
-        signal: controller.signal,
-      });
-      // ユーザーの中断は失敗に数えない（done にも数えず、そのまま抜ける）
-      if (result.aborted || controller.signal.aborted) break;
-      if (!result.ok) {
-        failed += 1;
-        failedItems.push({ id: w.id, title: w.title, error: result.error });
-      }
-      done += 1;
-      setBulkProgress({ done, total: items.length, failed, failedItems });
-    }
-
-    bulkAbortRef.current = null;
-    setBulkRunning(false);
-    setCancelling(false);
-  };
-
-  const handleRun = () => runRegenerate(targets.map((w) => ({ id: w.id, title: w.title })));
-  const handleRetryFailed = () => {
-    if (!bulkProgress) return;
-    runRegenerate(bulkProgress.failedItems.map((f) => ({ id: f.id, title: f.title })));
-  };
-
-  const handleCancel = () => {
-    cancelBulkRef.current = true;
-    setCancelling(true);
-    // 進行中の 1 件の fetch を切る → サーバー側の LLM 呼び出しも止まる
-    bulkAbortRef.current?.abort();
-    atomizeAbortRef.current?.abort();
-  };
-
-  const kindLabel = (k: WikiKind) =>
-    k === "claim" ? t("settings.maintenance.kind.claim")
-    : k === "summary" ? t("settings.maintenance.kind.summary")
-    : k === "atom" ? t("settings.maintenance.kind.atom")
-    : k === "topic" ? t("settings.maintenance.kind.topic")
-    : t("settings.maintenance.kind.synthesis");
-
-  // ── Atom 候補の発見（カバレッジ 100% まで自動継続。途中キャンセル可）──
-  const conceptCount = wikiSummaries.filter((w) => w.kind === "claim").length;
-  const handleRunAtomizeDiscovery = async () => {
-    if (!onRunAtomizeDiscovery || atomizeRunning) return;
-    if (conceptCount < 2) return;
-    // 実行前プラン: 「全 {claims} 件を視野に入れるには {runs} 回」の実測値を確認ダイアログに出す。
-    // LLM は呼ばないので、ここで一度計算してから確認する。
-    const plan = onPlanAtomizeDiscovery ? await onPlanAtomizeDiscovery() : null;
-    if (!plan) return;
-    const confirmed = await confirmAction(
-      t("settings.maintenance.atomize.confirm", {
-        claims: String(plan.total),
-        runs: String(plan.runs),
-      }),
-    );
-    if (!confirmed) return;
-
-    setAtomizeRunning(true);
-    setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0, populationCount: plan.total });
-    const atomizeController = new AbortController();
-    atomizeAbortRef.current = atomizeController;
-
-    const result = await onRunAtomizeDiscovery((info) => {
-      setAtomizeProgress({
-        status: "running",
-        inputCount: conceptCount,
-        iteration: info.iteration,
-        created: info.createdSoFar,
-        clusterLabel: info.clusterLabel,
-        clusterTotal: info.clusterTotal,
-        clusterSize: info.clusterSize,
-        clusterMemberTitles: info.clusterMemberTitles,
-        coveredCount: info.coveredSoFar,
-        populationCount: info.populationTotal,
-      });
-    }, { signal: atomizeController.signal });
-    atomizeAbortRef.current = null;
-    if (result.ok || result.aborted) {
-      // 中断でも作成済み分と実測カバレッジは見せる（失敗表示にはしない）
-      setAtomizeProgress({
-        status: "done",
-        inputCount: conceptCount,
-        created: result.created,
-        iterations: result.iterations,
-        reinforced: result.reinforced,
-        contradictions: result.contradictions,
-        coveredCount: result.covered,
-        populationCount: result.total,
-      });
-    } else {
-      setAtomizeProgress({ status: "error", inputCount: conceptCount, error: result.error });
-    }
-    setAtomizeRunning(false);
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Atom 候補の発見（atomLayer 有効時のみ表示）。
-          全 Concept をまたぐ共通抽象を auto-loop で discover する。 */}
-      {atomLayerEnabled && onRunAtomizeDiscovery && (
-        <DiscoveryCard
-          t={t}
-          titleKey="settings.maintenance.atomize.title"
-          helpKey="settings.maintenance.atomize.help"
-          inputCount={conceptCount}
-          minInput={2}
-          progress={atomizeProgress}
-          running={atomizeRunning}
-          onRun={handleRunAtomizeDiscovery}
-          onCancel={() => atomizeAbortRef.current?.abort()}
-          discoveringKey="settings.maintenance.atomize.discovering"
-          doneKey="settings.maintenance.atomize.doneCount"
-          runKey="settings.maintenance.atomize.run"
-          runningKey="settings.maintenance.atomize.running"
-          coverageKey="settings.maintenance.atomize.coverage"
-          reinforcedKey="settings.maintenance.atomize.reinforcedLine"
-          contradictionsKey="settings.maintenance.atomize.contradictionsLine"
-        />
-      )}
-
-      {/* 全 Wiki の embedding を再生成。
-          AI チャットの Retriever が引用元を検索するための embedding を IndexedDB に作り直す。
-          既存ユーザーの wiki が embedding 機能導入前に作られていた場合や、Embedding model を切り替えた直後に使う。 */}
-      {onReembedAllWikis && wikiSummaries.length > 0 && (
-        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
-          <div>
-            <h3 className="text-xs font-semibold text-foreground mb-1">
-              {t("settings.maintenance.reembedTitle")}
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("settings.maintenance.reembedHelp")}
-            </p>
-            {embeddingStale && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                {t("settings.maintenance.reembedStale")}
-              </p>
-            )}
-          </div>
-          {reembedProgress && reembedRunning && (
-            <div className="text-xs text-muted-foreground">
-              {t("settings.maintenance.reembedProgress", {
-                done: String(reembedProgress.done),
-                total: String(reembedProgress.total),
-              })}
-            </div>
-          )}
-          {reembedProgress && !reembedRunning && !reembedError && (
-            <div className="text-xs text-emerald-600 dark:text-emerald-400">
-              {t("settings.maintenance.reembedDone", {
-                done: String(reembedProgress.done),
-                total: String(reembedProgress.total),
-              })}
-            </div>
-          )}
-          {reembedError && (
-            <div className="text-xs text-red-600 dark:text-red-400">
-              {reembedError}
-            </div>
-          )}
-          <Button
-            size="sm"
-            disabled={reembedRunning}
-            onClick={async () => {
-              const total = wikiSummaries.length;
-              const confirmed = await confirmAction(
-                t("settings.maintenance.reembedConfirm", { count: String(total) }),
-              );
-              if (!confirmed) return;
-              setReembedRunning(true);
-              setReembedError(null);
-              setReembedProgress({ done: 0, total });
-              try {
-                // 第 2 引数を t と名付けると i18n の t を隠してしまうため total で受ける
-                await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
-                // onReembedAllWikis は embed API が全滅して text-only フォールバックに
-                // 落ちても例外を投げない（正常終了扱い）。「呼べたら消す」ではなく、
-                // 索引の実体を isEmbeddingIndexStale で再判定してから案内の表示を決める。
-                const current = resolveCurrentEmbeddingModelId();
-                if (current) {
-                  const stale = await embeddingStore.isEmbeddingIndexStale(current);
-                  setEmbeddingStale(stale);
-                }
-              } catch (e) {
-                setReembedError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setReembedRunning(false);
-              }
-            }}
-          >
-            {reembedRunning ? (
-              <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.reembedRunning")}</>
-            ) : (
-              t("settings.maintenance.reembedRun", { count: String(wikiSummaries.length) })
-            )}
-          </Button>
-        </div>
-      )}
-
-      {/* 知見はあるのにトピックが無い資料に、トピックの段だけを回す（SourceTopicBackfillCard）。
-          先にトピックを作り、そのあとで「知見をトピックに結ぶ」の順に並べる */}
-      {sourceTopicBackfill && <SourceTopicBackfillCard handlers={sourceTopicBackfill} />}
-
-      {/* トピックに結ばれていない既存の知見を、資料ごとに結ぶ（人が起動・回数を先に見せる・止められる・続きから再開できる）。
-          新しい取り込みは自動で結ぶので、ここは過去の分の手当て。対象が無くなったらカードごと消える。 */}
-      {claimTopicLinkBackfill && (linkClaimsRunning || linkClaimsOutcome || (linkClaimsPlan?.calls ?? 0) > 0) && (
-        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
-          <div>
-            <h3 className="text-xs font-semibold text-foreground mb-1">
-              {t("settings.maintenance.linkClaimsToTopics.title")}
-            </h3>
-            {linkClaimsPlan && linkClaimsPlan.calls > 0 && (
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {t("settings.maintenance.linkClaimsToTopics.help", { claims: String(linkClaimsPlan.claims) })}
-                {linkClaimsPlan.alreadyJudged > 0
-                  ? ` ${t("settings.maintenance.linkClaimsToTopics.resumeHelp", { judged: String(linkClaimsPlan.alreadyJudged) })}`
-                  : ""}
-              </p>
-            )}
-          </div>
-          {linkClaimsRunning && (
-            <div className="text-xs text-muted-foreground space-y-1">
-              <div>
-                {t("settings.maintenance.linkClaimsToTopics.running", {
-                  done: String(linkClaimsProgress?.done ?? 0),
-                  total: String(linkClaimsProgress?.total ?? linkClaimsPlan?.calls ?? 0),
-                  linked: String(linkClaimsProgress?.linkedClaims ?? 0),
-                })}
-              </div>
-              <div>{t("settings.maintenance.linkClaimsToTopics.closeNote")}</div>
-            </div>
-          )}
-          {linkClaimsOutcome && !linkClaimsRunning && (
-            <div
-              className={
-                linkClaimsOutcome.failedSources > 0 || linkClaimsOutcome.aborted
-                  ? "text-xs text-amber-600 dark:text-amber-400"
-                  : "text-xs text-emerald-600 dark:text-emerald-400"
-              }
-            >
-              {linkClaimsOutcome.aborted
-                ? t("settings.maintenance.linkClaimsToTopics.stopped", {
-                    linked: String(linkClaimsOutcome.linkedClaims),
-                    done: String(linkClaimsOutcome.done),
-                    total: String(linkClaimsOutcome.total),
-                  })
-                : t("settings.maintenance.linkClaimsToTopics.done", {
-                    linked: String(linkClaimsOutcome.linkedClaims),
-                    calls: String(linkClaimsOutcome.calls),
-                  })}
-              {linkClaimsOutcome.failedSources > 0
-                ? ` · ${t("settings.maintenance.linkClaimsToTopics.failed", { count: String(linkClaimsOutcome.failedSources) })}`
-                : ""}
-              {linkClaimsOutcome.stoppedByFailures
-                ? ` · ${t("settings.maintenance.linkClaimsToTopics.stoppedByFailures")}`
-                : ""}
-              {linkClaimsOutcome.failureReason ? ` · ${linkClaimsOutcome.failureReason}` : ""}
-            </div>
-          )}
-          {linkClaimsError && (
-            <div className="text-xs text-red-600 dark:text-red-400">{linkClaimsError}</div>
-          )}
-          {linkClaimsRunning ? (
-            <Button size="sm" variant="outline" onClick={() => linkClaimsAbortRef.current?.abort()}>
-              {t("settings.maintenance.linkClaimsToTopics.stop")}
-            </Button>
-          ) : (linkClaimsPlan?.calls ?? 0) > 0 && (
-            <Button
-              size="sm"
-              onClick={async () => {
-                const plan = await claimTopicLinkBackfill.plan();
-                setLinkClaimsPlan(plan);
-                if (plan.calls === 0) return;
-                if (!(await confirmAction(t("settings.maintenance.linkClaimsToTopics.confirm", { claims: String(plan.claims), calls: String(plan.calls) })))) return;
-                const controller = new AbortController();
-                linkClaimsAbortRef.current = controller;
-                setLinkClaimsRunning(true);
-                setLinkClaimsOutcome(null);
-                setLinkClaimsError(null);
-                setLinkClaimsProgress({ done: 0, total: plan.calls, linkedClaims: 0 });
-                try {
-                  const outcome = await claimTopicLinkBackfill.run(setLinkClaimsProgress, controller.signal);
-                  if (outcome) setLinkClaimsOutcome(outcome);
-                } catch (err) {
-                  setLinkClaimsError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  linkClaimsAbortRef.current = null;
-                  setLinkClaimsRunning(false);
-                  void refreshLinkClaimsPlan();
-                }
-              }}
-            >
-              {t(linkClaimsPlan?.alreadyJudged
-                ? "settings.maintenance.linkClaimsToTopics.resume"
-                : "settings.maintenance.linkClaimsToTopics.run")}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* 未分類のトピックに種類（概念 / 物質・材料 / 手法・装置 / 人・組織 / 場所）を付ける。
-          取り込みの振り分け役が新規作成時に付ける種類を、それ以前のトピックにも付ける。
-          タイトルと定義の 1 文だけを 50 件ずつ 1 回の呼び出しで決める（人が起動・回数を先に見せる）。 */}
-      {onAssignTopicTypes && untypedTopicsCount > 0 && (
-        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
-          <div>
-            <h3 className="text-xs font-semibold text-foreground mb-1">
-              {t("settings.maintenance.assignTopicTypes.title")}
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("settings.maintenance.assignTopicTypes.help", { count: String(untypedTopicsCount) })}
-            </p>
-          </div>
-          {assignTypesRunning && (
-            <div className="text-xs text-muted-foreground">
-              {t("settings.maintenance.assignTopicTypes.running", {
-                done: String(assignTypesProgress?.done ?? 0),
-                total: String(assignTypesProgress?.total ?? untypedTopicsCount),
-              })}
-            </div>
-          )}
-          {assignTypesResult && !assignTypesRunning && !assignTypesError && (
-            <div className={assignTypesResult.failureReason ? "text-xs text-amber-600 dark:text-amber-400" : "text-xs text-emerald-600 dark:text-emerald-400"}>
-              {t("settings.maintenance.assignTopicTypes.done", {
-                assigned: String(assignTypesResult.assigned),
-                total: String(assignTypesResult.total),
-                calls: String(assignTypesResult.calls),
-              })}
-              {assignTypesResult.failureReason ? ` · ${assignTypesResult.failureReason}` : ""}
-            </div>
-          )}
-          {assignTypesError && (
-            <div className="text-xs text-red-600 dark:text-red-400">{assignTypesError}</div>
-          )}
-          <Button
-            size="sm"
-            disabled={assignTypesRunning}
-            onClick={async () => {
-              const calls = Math.ceil(untypedTopicsCount / 50);
-              if (!(await confirmAction(t("settings.maintenance.assignTopicTypes.confirm", { count: String(untypedTopicsCount), calls: String(calls) })))) return;
-              setAssignTypesRunning(true);
-              setAssignTypesResult(null);
-              setAssignTypesError(null);
-              setAssignTypesProgress({ done: 0, total: untypedTopicsCount });
-              try {
-                const result = await onAssignTopicTypes((done, total) => setAssignTypesProgress({ done, total }));
-                setAssignTypesResult(result);
-              } catch (err) {
-                setAssignTypesError(err instanceof Error ? err.message : String(err));
-              } finally {
-                setAssignTypesRunning(false);
-              }
-            }}
-          >
-            {t("settings.maintenance.assignTopicTypes.run")}
-          </Button>
-        </div>
-      )}
-
-      {/* 似た既存トピックどうしの名寄せ・統合（表記ゆれ・粒度違いで増えてしまった話題を寄せる）。
-          知見（claim）はもうトピックの材料にしないため、割り当て直しはここでは行わない。 */}
-      {onOrganizeTopics && topicsCount > 1 && (
-        <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
-          <div>
-            <h3 className="text-xs font-semibold text-foreground mb-1">
-              {t("settings.maintenance.organizeTopics.title")}
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("settings.maintenance.organizeTopics.help")}
-            </p>
-          </div>
-          {organizeTopicsRunning && (
-            <div className="text-xs text-muted-foreground">
-              {t("settings.maintenance.organizeTopics.running")}
-            </div>
-          )}
-          {organizeTopicsResult && !organizeTopicsRunning && !organizeTopicsError && (
-            <div
-              className={
-                organizeTopicsResult.failed > 0
-                  && organizeTopicsResult.merged + organizeTopicsResult.rebuilt > 0
-                  ? "text-xs text-amber-600 dark:text-amber-400"
-                  : "text-xs text-emerald-600 dark:text-emerald-400"
-              }
-            >
-              {t("settings.maintenance.organizeTopics.done", {
-                merged: String(organizeTopicsResult.merged),
-                rebuilt: String(organizeTopicsResult.rebuilt),
-              })}
-              {organizeTopicsResult.failed > 0
-                ? ` · ${t("ingest.topicsFailed", { count: String(organizeTopicsResult.failed) })}`
-                : ""}
-              {organizeTopicsResult.failureReason ? ` · ${organizeTopicsResult.failureReason}` : ""}
-            </div>
-          )}
-          {organizeTopicsError && (
-            <div className="text-xs text-red-600 dark:text-red-400">
-              {organizeTopicsError}
-            </div>
-          )}
-          <Button
-            size="sm"
-            disabled={organizeTopicsRunning}
-            onClick={async () => {
-              const confirmed = await confirmAction(t("settings.maintenance.organizeTopics.confirmConsolidateOnly"), { destructive: true });
-              if (!confirmed) return;
-              setOrganizeTopicsRunning(true);
-              setOrganizeTopicsError(null);
-              setOrganizeTopicsResult(null);
-              try {
-                const result = await onOrganizeTopics();
-                setOrganizeTopicsResult(result);
-              } catch (e) {
-                setOrganizeTopicsError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setOrganizeTopicsRunning(false);
-              }
-            }}
-          >
-            {organizeTopicsRunning ? (
-              <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.organizeTopics.running")}</>
-            ) : (
-              t("settings.maintenance.organizeTopics.runConsolidateOnly")
-            )}
-          </Button>
-        </div>
-      )}
-
-      {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
-      {/* 中に「対象の種類」「モデル」などの項目を持つまとまりなので、見出しを一段大きくし、
-          説明と項目を字下げする（設定画面のまとまりと同じ見せ方。SettingsGroup の SETTINGS_BLOCK_*） */}
-      <div className="space-y-4">
-        <div>
-          <SettingsBlockTitle className="mb-1">{t("settings.maintenance.regenAll.title")}</SettingsBlockTitle>
-          <p className={`text-xs text-muted-foreground leading-relaxed ${SETTINGS_BLOCK_BODY_CLASS}`}>
-            {t("settings.maintenance.regenAll.help")}
-          </p>
-        </div>
-      <div className={`space-y-4 ${SETTINGS_BLOCK_BODY_CLASS}`}>
-
-      {/* kind フィルタ */}
-      <div>
-        <h4 className="text-xs font-semibold text-foreground mb-2 block">
-          {t("settings.maintenance.kindFilter")}
-        </h4>
-        <div className={SETTINGS_ITEM_BODY_CLASS}>
-          <div className="flex gap-2 flex-wrap">
-            {KINDS.map((k) => {
-              const count = wikiSummaries.filter((w) => w.kind === k).length;
-              const checked = bulkKinds.has(k);
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  disabled={bulkRunning}
-                  onClick={() => toggleKind(k)}
-                  className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                    checked
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  } ${bulkRunning ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  {kindLabel(k)} <span className="opacity-70">({count})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* モデル指定（kind 別） */}
-      <div className="space-y-3">
-        {/* Concept / Topic（Ingest モデル。要約は生成停止済みなのでラベルから外した） */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground mb-2 block">
-            {t("settings.maintenance.conceptSummaryModel")}
-          </h4>
-          <div className={SETTINGS_ITEM_BODY_CLASS}>
-            <div className="relative">
-              <select
-                value={effectiveDefaultModel}
-                onChange={(e) => setBulkModelOverride(e.target.value)}
-                disabled={bulkRunning}
-                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-              >
-                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-                {availableModels.map((m) => (
-                  <option key={m.id || m.name} value={m.name}>
-                    {m.name}
-                    {m.provider ? ` — ${m.provider}` : ""}
-                    {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={14}
-                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Synthesis / Atom（どちらも Chat & Synthesis モデルを使用）*/}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground mb-2 block">
-            {t("settings.maintenance.synthesisAtomModel")}
-          </h4>
-          <div className={SETTINGS_ITEM_BODY_CLASS}>
-            <div className="relative">
-              <select
-                value={effectiveSynthesisModel}
-                onChange={(e) => setBulkSynthesisModelOverride(e.target.value)}
-                disabled={bulkRunning}
-                className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-              >
-                {availableModels.length === 0 && <option value="">{t("settings.modelNone")}</option>}
-                {availableModels.map((m) => (
-                  <option key={m.id || m.name} value={m.name}>
-                    {m.name}
-                    {m.provider ? ` — ${m.provider}` : ""}
-                    {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={14}
-                className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
-              />
-            </div>
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          {t("settings.maintenance.modelOverrideHelp")}
-        </p>
-      </div>
-
-      {/* 対象件数 + AI 呼び出し回数（トピックを含むと資料数ぶん増える） */}
-      <div className="rounded-md bg-muted/60 px-3 py-2">
-        <div className="text-xs">
-          <span className="font-semibold text-foreground">
-            {t("settings.maintenance.target")}: {targets.length}
-          </span>
-          <span className="text-muted-foreground ml-2">
-            / {t("settings.maintenance.total")}: {wikiSummaries.length}
-          </span>
-          <span className="text-muted-foreground ml-2">
-            / {t("settings.maintenance.aiCalls")}: {estimatedCalls}
-          </span>
-        </div>
-      </div>
-
-      {/* 進捗表示 */}
-      {bulkProgress && (
-        <div className={`${SETTINGS_INNER_CARD_CLASS} px-3 py-2 space-y-2`}>
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium">
-              {bulkProgress.done} / {bulkProgress.total}
-              {bulkProgress.failed > 0 && (
-                <span className="text-red-500 ml-2">
-                  ({t("settings.maintenance.failed")}: {bulkProgress.failed})
-                </span>
-              )}
-            </span>
-            {bulkRunning && (
-              <Button variant="ghost" size="sm" onClick={handleCancel} disabled={cancelling}>
-                {cancelling ? t("settings.maintenance.cancelling") : t("common.cancel")}
-              </Button>
-            )}
-          </div>
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${(bulkProgress.done / Math.max(1, bulkProgress.total)) * 100}%` }}
-            />
-          </div>
-          {bulkProgress.current && bulkRunning && (
-            <div className="text-xs text-muted-foreground truncate">
-              {t("settings.maintenance.current")}: {bulkProgress.current}
-              {bulkProgress.currentModel && (
-                <span className="ml-2 opacity-70">— {bulkProgress.currentModel}</span>
-              )}
-            </div>
-          )}
-          {cancelling && bulkRunning && (
-            <div className="text-xs text-amber-600">
-              {t("settings.maintenance.cancellingHint")}
-            </div>
-          )}
-          {!bulkRunning && bulkProgress.done > 0 && (
-            <div className="text-xs text-muted-foreground">
-              {t("settings.maintenance.done")}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 失敗 Wiki 一覧 + リトライ */}
-      {bulkProgress && !bulkRunning && bulkProgress.failedItems.length > 0 && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 space-y-2">
-          <div className="text-xs font-semibold text-red-700 dark:text-red-400">
-            {t("settings.maintenance.failedList")} ({bulkProgress.failedItems.length})
-          </div>
-          <ul className="space-y-1 max-h-40 overflow-y-auto">
-            {bulkProgress.failedItems.map((f) => (
-              <li key={f.id} className="text-xs">
-                <span className="text-foreground">{f.title}</span>
-                {f.error && (
-                  <span className="text-muted-foreground ml-2">— {f.error}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleRetryFailed}
-            disabled={!onRegenerateWiki}
-          >
-            {t("settings.maintenance.retryFailed")}
-          </Button>
-        </div>
-      )}
-
-      {/* 実行 */}
-      <div>
-        <Button
-          size="sm"
-          onClick={handleRun}
-          disabled={bulkRunning || targets.length === 0 || !onRegenerateWiki}
-        >
-          {bulkRunning
-            ? t("settings.maintenance.running")
-            : t("settings.maintenance.regenerate")}
-        </Button>
-        {!onRegenerateWiki && (
-          <p className="text-xs text-muted-foreground mt-2">
-            {t("settings.maintenance.unavailable")}
-          </p>
-        )}
-      </div>
-      </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 共通: Discovery カード（Atom / Synthesis で共有）──
-// auto-loop の進捗表示（イテレーション数 / 累積件数）を担う。
-// 入力アイテム数（Concept 数 or Atom 数）と最低必要数だけ差し替えれば再利用できる。
-type DiscoveryCardProps = {
-  t: (key: string) => string;
-  titleKey: string;
-  helpKey: string;
-  inputCount: number;
-  minInput: number;
-  progress: DiscoveryRunState | null;
-  running: boolean;
-  onRun: () => void;
-  /** 実行中に押せる中断。進行中の LLM 呼び出しごと止める */
-  onCancel?: () => void;
-  discoveringKey: string;
-  doneKey: string;
-  runKey: string;
-  runningKey: string;
-  /** 実測カバレッジ行の i18n キー（{covered} {total} プレースホルダ）。未指定なら非表示 */
-  coverageKey?: string;
-  /** 既存への支持追加行の i18n キー（{count} プレースホルダ）。未指定なら非表示 */
-  reinforcedKey?: string;
-  /** 矛盾（contradiction）判定行の i18n キー（{count} プレースホルダ）。未指定なら非表示 */
-  contradictionsKey?: string;
-};
-
-function DiscoveryCard({
-  t,
-  titleKey,
-  helpKey,
-  inputCount,
-  minInput,
-  progress,
-  running,
-  onRun,
-  onCancel,
-  discoveringKey,
-  doneKey,
-  runKey,
-  runningKey,
-  coverageKey,
-  reinforcedKey,
-  contradictionsKey,
-}: DiscoveryCardProps) {
-  // 実測カバレッジ行（running / done 共通）。「新規 0 件」が『見た上で無かった』のか
-  // 『まだ見ていない』のかを区別できるように、視野の和集合を常に見せる。
-  const coverageLine =
-    coverageKey && progress?.coveredCount !== undefined && progress?.populationCount !== undefined
-      ? t(coverageKey)
-          .replace("{covered}", String(progress.coveredCount))
-          .replace("{total}", String(progress.populationCount))
-      : null;
-  return (
-    <div className={`${SETTINGS_CARD_CLASS} p-3 space-y-3`}>
-      <div>
-        <h3 className="text-xs font-semibold text-foreground mb-1">
-          {t(titleKey)}
-        </h3>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {t(helpKey).replace("{count}", String(inputCount))}
-        </p>
-      </div>
-
-      {progress && (
-        <div className={`${SETTINGS_INNER_CARD_CLASS} px-3 py-2 text-xs space-y-1`}>
-          {progress.status === "running" && (
-            <div className="flex flex-col gap-1 text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
-                <span className="flex-1 min-w-0">
-                  {t(discoveringKey).replace("{count}", String(progress.inputCount))}
-                  {progress.iteration !== undefined && (
-                    <span className="ml-2 opacity-70">
-                      (iter {progress.iteration}{progress.clusterTotal ? `/${progress.clusterTotal}` : ""}{progress.created ? ` / created ${progress.created}` : ""})
-                    </span>
-                  )}
-                </span>
-                {onCancel && running && (
-                  <Button variant="ghost" size="sm" onClick={onCancel} className="shrink-0 h-6 px-2 text-xs">
-                    {t("common.cancel")}
-                  </Button>
-                )}
-              </div>
-              {progress.clusterLabel && (
-                <div className="ml-4 text-xs opacity-80 break-words">
-                  cluster: 「{progress.clusterLabel}」{progress.clusterSize ? ` (${progress.clusterSize})` : ""}
-                </div>
-              )}
-              {progress.clusterMemberTitles && progress.clusterMemberTitles.length > 0 && (
-                <details className="ml-4 text-xs opacity-70">
-                  <summary className="cursor-pointer select-none">
-                    members ({progress.clusterMemberTitles.length})
-                  </summary>
-                  <ul className="mt-1 ml-2 list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
-                    {progress.clusterMemberTitles.map((title, idx) => (
-                      <li key={`${idx}-${title}`} className="break-words">{title}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {coverageLine && (
-                <div className="ml-4 text-xs opacity-80">{coverageLine}</div>
-              )}
-            </div>
-          )}
-          {progress.status === "done" && (
-            <div className="text-foreground space-y-0.5">
-              <div>
-                {t(doneKey).replace("{count}", String(progress.created ?? 0))}
-                {progress.iterations !== undefined && (
-                  <span className="ml-2 text-muted-foreground opacity-70">
-                    ({progress.iterations} iter)
-                  </span>
-                )}
-              </div>
-              {reinforcedKey && (progress.reinforced ?? 0) > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  {t(reinforcedKey).replace("{count}", String(progress.reinforced))}
-                </div>
-              )}
-              {contradictionsKey && (progress.contradictions ?? 0) > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  {t(contradictionsKey).replace("{count}", String(progress.contradictions))}
-                </div>
-              )}
-              {coverageLine && (
-                <div className="text-xs text-muted-foreground">{coverageLine}</div>
-              )}
-            </div>
-          )}
-          {progress.status === "error" && (
-            <div className="text-red-500">
-              {t("settings.maintenance.failed")}: {progress.error ?? "unknown"}
-            </div>
-          )}
-        </div>
-      )}
-
-      <Button size="sm" onClick={onRun} disabled={running || inputCount < minInput}>
-        {running ? t(runningKey) : t(runKey)}
-      </Button>
-    </div>
   );
 }
 

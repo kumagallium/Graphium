@@ -37,6 +37,9 @@ import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
 import { countLeftoverIssues } from "./auto-tidy";
 import { ThingGroupsSection, type ThingGroupProgressHooks, type ThingGroupResult } from "./ThingGroupsSection";
 import type { ThingGroup } from "./thing-groups";
+import { UpkeepFillGapsSection, UpkeepOneByOneDivider, UpkeepRebuildSection, type UpkeepJob } from "./UpkeepJobSections";
+import { BulkRegenerateBlock } from "./BulkRegenerateBlock";
+import type { UpkeepJobsView } from "./use-upkeep-jobs";
 
 type Props = {
   report: LintReport | null;
@@ -131,6 +134,12 @@ type Props = {
     /** 出典照合の要確認。「未対応の項目」の中に、点検の残りと並べて出す */
     reviewList?: SourceCheckReviewListProps;
   };
+  /**
+   * 設定の「ナレッジ管理」から移した一括処理（2026-11-25）。「足りないところを補う」と
+   * 「全体をやり直す」の節に並べる。状態と実行は呼び出し元（useUpkeepJobs）が持ち、
+   * この画面を離れても止まらない
+   */
+  upkeepJobs?: UpkeepJobsView;
 };
 
 /** 一括アーカイブの対象になる issue type（AI 判断のみ。機械判定の orphan 空トピック等は自動アーカイブ側で処理済み） */
@@ -239,6 +248,7 @@ export function WikiLintView({
   thingGroups,
   onMergeThingGroups,
   autoTidy,
+  upkeepJobs,
 }: Props) {
   const t = useT();
   // おまかせがあるときの 3 つのたたみ（未対応の項目 / 手動で点検する / 手動で照合する）。おまかせが終わるたびに閉じる
@@ -406,6 +416,40 @@ export function WikiLintView({
   const showLeftover = leftoverCount > 0 || (leftoverMode && Boolean(report?.lintError));
   const questions = report?.questions ?? [];
   const gaps = leftoverMode && report ? report.issues.filter((i) => i.type === "gap") : [];
+
+  // 足りないところを補う（対象のある行だけ。空なら節ごと出ない）
+  const fillGapsSection = upkeepJobs ? <UpkeepFillGapsSection jobs={upkeepJobs.fillGaps} /> : null;
+  // 旧形式トピックの「資料から作り直す」（作業 C）。おまかせが無いときだけ「全体をやり直す」の行に出す
+  const legacyJobs: UpkeepJob[] = legacyTopics && legacyTopics.length > 0
+    ? [{
+        id: "legacyTopics",
+        title: t("wikiLint.legacyTopics.summary", { count: String(legacyTopics.length) }),
+        status: legacyRebuilding
+          ? { kind: "running", text: t("wikiLint.legacyTopics.running") }
+          : legacyResult
+            ? {
+                kind: "result",
+                tone: legacyResult.failed > 0 ? "warn" : "ok",
+                text: t("wikiLint.legacyTopics.done", {
+                  rebuilt: String(legacyResult.rebuilt),
+                  skipped: String(legacyResult.sourcesSkipped),
+                  failed: String(legacyResult.failed),
+                }),
+              }
+            : { kind: "idle" },
+        runLabel: t("wikiLint.legacyTopics.action"),
+        onRun: () => void handleRebuildLegacyTopics(),
+        disabled: !onRebuildTopicsFromSources,
+      }]
+    : [];
+  // 全体をやり直す（一番下にたたんで置く。AI を多く呼ぶ）
+  const renderRebuildSection = (jobs: UpkeepJob[]) => (
+    <UpkeepRebuildSection jobs={jobs}>
+      {upkeepJobs?.regenerate && (
+        <BulkRegenerateBlock {...upkeepJobs.regenerate} />
+      )}
+    </UpkeepRebuildSection>
+  );
 
   const foldHeader = (open: boolean, onToggle: () => void, label: string) => (
     <button
@@ -702,34 +746,6 @@ export function WikiLintView({
       )}
 
 
-      {/* 旧形式トピックの「資料から作り直す」（作業 C）。既存点検とは別に、1 件以上あるときだけ出す。 */}
-      {activeTab === "check" && !autoTidy && legacyTopics && legacyTopics.length > 0 && (
-        <div className="px-4 py-3 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs text-foreground">
-              {t("wikiLint.legacyTopics.summary", { count: String(legacyTopics.length) })}
-            </span>
-            <button
-              onClick={handleRebuildLegacyTopics}
-              disabled={legacyRebuilding || !onRebuildTopicsFromSources}
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-            >
-              {legacyRebuilding ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-              {legacyRebuilding ? t("wikiLint.legacyTopics.running") : t("wikiLint.legacyTopics.action")}
-            </button>
-          </div>
-          {legacyResult && (
-            <p className="text-[10px] text-muted-foreground mt-1.5">
-              {t("wikiLint.legacyTopics.done", {
-                rebuilt: String(legacyResult.rebuilt),
-                skipped: String(legacyResult.sourcesSkipped),
-                failed: String(legacyResult.failed),
-              })}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* 手入れタブ */}
       {activeTab === "check" && (
       <div className="flex-1 overflow-y-auto">
@@ -760,6 +776,9 @@ export function WikiLintView({
                 {showLeftover && leftoverOpen && autoTidy.reviewList && <SourceCheckReviewList {...autoTidy.reviewList} />}
                 {/* 次に調べること: 問いと穴（直すものではないので、未対応には数えない） */}
                 {leftoverMode && report && (questions.length > 0 || gaps.length > 0) && renderQuestions(questions, gaps)}
+                {/* ここから下は、おまかせが実行しない 1 つずつの手入れ（おまかせの範囲と読み違えないよう小見出しで分ける） */}
+                <UpkeepOneByOneDivider />
+                {fillGapsSection}
                 {/* 手動で点検する */}
                 <div className="px-4 pt-3 pb-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -805,6 +824,8 @@ export function WikiLintView({
                 {thingGroups && thingGroups.length > 0 && (
                   <ThingGroupsSection groups={thingGroups} onMerge={onMergeThingGroups} />
                 )}
+                {/* 旧形式トピックはおまかせが作り直すので、ここでは一括再生成だけ */}
+                {renderRebuildSection([])}
               </>
             )}
           </>
@@ -819,9 +840,11 @@ export function WikiLintView({
               </>
             )}
             {sourceCheckProps && <SourceCheckLintSection {...sourceCheckProps} />}
+            {fillGapsSection}
             {thingGroups && thingGroups.length > 0 && (
               <ThingGroupsSection groups={thingGroups} onMerge={onMergeThingGroups} />
             )}
+            {renderRebuildSection(legacyJobs)}
           </>
         )}
       </div>
