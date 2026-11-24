@@ -122,18 +122,17 @@ When a Topic's body mentions another Topic's title, the page links to that Topic
 
 ## Topic types <Badge type="tip" text="Added in v0.89.15 (2026-10-20)" />
 
-Every Topic carries a **type**: **Concept** (a phenomenon, principle, property), **Material** (a substance, compound, sample family), **Method / instrument** (a technique, apparatus, software), **Person / organization**, or **Place**. It is a tag, not a different kind of page — a Topic about "VASP" and a Topic about "lattice thermal conductivity" are written the same way; the type just says what the page is about, so you can filter. The AI assigns it when it routes a document into a new Topic, and fills it in for an untyped Topic it happens to update; Topics made before types existed show as **Untyped** until you run **Assign topic types** in [Settings](/settings) → Knowledge (title and one-line definition only, 50 topics per AI call, count shown first) or pick a type yourself from the small selector on the page banner. Where it shows up: the **Type** column and its filter in the Knowledge list (Topics tab, including an *Untyped* entry), and the **Topics: …** toggles in the global graph's **Display** menu. Nothing else reads it — not routing, not revision, not source check.
+Every Topic carries a **type**: **Concept** (a phenomenon, principle, property), **Material** (a substance, compound, sample family), **Method / instrument** (a technique, apparatus, software), **Person / organization**, or **Place**. It is a tag, not a different kind of page — a Topic about "VASP" and a Topic about "lattice thermal conductivity" are written the same way; the type just says what the page is about, so you can filter. The AI assigns it when it routes a document into a new Topic, and fills it in for an untyped Topic it happens to update; Topics made before types existed show as **Untyped** until you run **Assign topic types** in the Upkeep view under [Fill in what is missing](#fill-in-what-is-missing) (title and one-line definition only, 50 topics per AI call, count shown first) or pick a type yourself from the small selector on the page banner. Where it shows up: the **Type** column and its filter in the Knowledge list (Topics tab, including an *Untyped* entry), and the **Topics: …** toggles in the global graph's **Display** menu. Nothing else reads it — not routing, not revision, not source check.
 
 ## Merging topics <Badge type="tip" text="Added in v0.75.0 (2026-09-16)" />
 
-Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are four ways to merge them, none of which need you to open Settings unless you want the AI to judge the whole corpus at once:
+Topics can drift apart over wording, particles, or an overly narrow per-case title even when they're the same concept. There are three ways to merge them yourself. To have the AI judge the whole corpus at once, use **Tidy up for me** in the Upkeep tab: its first step reads the title of every existing Topic and merges the ones it judges to be the same concept.
 
 - **Topics list** — select 2 or more Topics and press **Merge**; pick which one to keep.
 - **A topic's own banner** — shows a **Similar topics** chip when a candidate is found nearby (same normalized title, or embedding similarity when an embedding model is set); press **Merge** to absorb it into the page you're viewing.
 - **Upkeep tab** — a **Redundant** issue for two Topics gets a one-click **Merge** button alongside the usual Regenerate/Archive/Open actions. <Badge type="tip" text="Added in v0.94.2 (2026-10-21)" /> To merge many at once, select the issues and press **Merge N as recommended**: each selected pair is merged one at a time exactly as its own **Merge** button would (the count only includes issues that carry a keep/absorb recommendation), a pair that involves a page already absorbed earlier in the same run is skipped, and each merge can still be undone on its own from the **Upkeep history** tab.
-- **Settings → Knowledge → Organize topics** — the only entry point that has the AI scan every existing Topic and decide which ones are the same concept, in one pass. It only consolidates topic pages — it doesn't assign or reassign Claims to topics.
 
-The first three don't call a model — you've already made the decision by picking the topics. Organize topics and the AI-analysis check in the Upkeep tab use your **Light work model** (Settings → AI) to judge whether topics are the same concept. What happens to the absorbed topic's text when it's kept: if both pages are already in the newer source-reading format, their bodies are combined in one AI call that keeps every existing citation as-is (if that call fails, nothing is merged or moved to the Trash: both topics stay as they were and a notice says the merge didn't go through); if one of them still predates that format, Graphium instead rebuilds the kept page from scratch from every source both pages ever cited (see **Rebuilding a topic from its sources** below); if that rebuild fails and the group mixes both formats, an absorbed topic already in the newer format is left untouched (its text hasn't reached the kept page either) while an older-format one is still absorbed as usual, since its knowledge was already carried over.
+None of these three calls a model — you've already made the decision by picking the topics. The first step of **Tidy up for me** and the AI-analysis check in the Upkeep tab use your **Light work model** (Settings → AI) to judge whether topics are the same concept. What happens to the absorbed topic's text when it's kept: if both pages are already in the newer source-reading format, their bodies are combined in one AI call that keeps every existing citation as-is (if that call fails, nothing is merged or moved to the Trash: both topics stay as they were and a notice says the merge didn't go through); if one of them still predates that format, Graphium instead rebuilds the kept page from scratch from every source both pages ever cited (see **Rebuilding a topic from its sources** below); if that rebuild fails and the group mixes both formats, an absorbed topic already in the newer format is left untouched (its text hasn't reached the kept page either) while an older-format one is still absorbed as usual, since its knowledge was already carried over.
 
 ## Rebuilding a topic from its sources <Badge type="tip" text="Added in v0.78.0 (2026-09-17)" />
 
@@ -184,12 +183,25 @@ The reason it joins text instead of using AI is in [Merging pages by thing: join
 
 Only pages made from sources (the newer topic format) are grouped. **Tidy up for me** does not touch these groups, and they do not count toward the number shown on **Upkeep** in the sidebar.
 
+### Run one at a time, and keep going after you leave {#fill-in-what-is-missing}
+
+When **Tidy up for me** is available, the **Upkeep** tab goes in this order: **Tidy up for me** → the items it left unresolved → the small heading **Run one at a time** → **Fill in what is missing ({count})** → **Check and choose yourself** → checking against sources by hand → **Group pages by thing** → **Rebuild everything** (folded, at the very bottom). The heading **Run one at a time** is a reminder that **Tidy up for me** does not run what is below it: it does not fill in what is missing and does not rebuild.
+
+**Fill in what is missing ({count})** appears only while there is something to do. Each row asks you to confirm the number of AI calls before it runs:
+
+- **Build Topics from Sources** — sources that have Claims but no Topics yet. The same Topic step as in ingestion runs for each source; Claims are not made again. Sources with nothing to make a Topic of are remembered and skipped.
+- **Link Claims to Topics** — Claims with no Topic whose source has Topics. For each source, the AI picks 0–3 Topics that a Claim is mainly about. Claims that already have Topics are left alone, and page bodies are not changed.
+- **Assign topic types** — Topics with no [type](#topic-types). The titles and one-line definitions go to the AI, 50 per call, and a type is written back without touching the page body.
+- **Discover Insights from Claims** — scans your Claims cluster by cluster (see [Discovering insights from claims](#discovering-insights-from-claims)).
+
+These bulk jobs keep going when you leave the Upkeep screen. While one runs, the import toast at the bottom right shows its progress on one line, and when it ends the line turns into the result. **Stop** on the toast stops it too. **Build Topics from Sources** and **Link Claims to Topics** remember how far they got, so the next run continues from what is not done yet.
+
 ## Upkeep operations can be undone <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#undo-maintenance}
 
 When you start an upkeep operation yourself, Graphium keeps a copy of each page it is about to rewrite, so the whole operation can be taken back in one step. This covers:
 
 - merging Topics (**Merge topics**) or Insights (**Merge insights**), one operation per page that is kept
-- **Organize topics**
+- **Organize topics** (past runs only; it no longer starts new ones — **Tidy up for me** does the same job)
 - **Tidy up for me** (each fix inside it is its own operation)
 - **Regenerate** and **Rebuild from sources**, one operation per page
 - **Archive** from Upkeep, one page or many at once
@@ -213,7 +225,7 @@ Before anything changes, you are asked to confirm. If you edited the affected pa
 - **Copies are kept for one year.** The one year is how long Graphium keeps the copies used for undoing. After that the copy is removed, the operation disappears from the list, and it can no longer be undone.
 - **A page that has been deleted for good can't be brought back.** The rest of the operation is still undone.
 
-Merges, regenerate, archive, version restores and undos are also written to the **Log** (read-only), so you can see later what happened. Organize topics appears in the Log as the merges it made.
+Merges, regenerate, archive, version restores and undos are also written to the **Log** (read-only), so you can see later what happened. A past Organize topics run appears in the Log as the merges it made.
 
 **What can't be undone this way:**
 
@@ -227,20 +239,20 @@ Nothing here runs by itself: every one of these operations starts at your instru
 
 ## Discovering insights from claims
 
-An insight takes the relationship inside a claim, classifies it into a fixed set of shapes (steadily increasing or decreasing, a sweet spot in the middle, a threshold, a trade-off, composition deciding the outcome, an enabling condition, a reinforcing or balancing loop), replaces field-specific terms with general ones, and states it as a principle that still holds in other fields. One claim is enough; claims that share a shape are folded into one insight. An example from another field is attached only when a separate check — the same model, asked again without seeing how the insight was written — confirms the shape really matches rather than just looking similar. Discovery happens incrementally during ingestion, and you can run it across your whole corpus from [Settings](/settings) → **Knowledge** → **Discover Insights from Claims** → **Discover Insights**. Existing insights are sent to the model as a shortlist first (embedding similarity), then the AI judges each shortlisted pair: a genuine duplicate reinforces the existing insight instead of creating a new one, but a pair that actually disagrees (opposite direction, conflicting condition) is kept as two separate insights and flagged as a Contradiction in the Upkeep tab — Graphium never silently merges conflicting findings into one page. Separately, when a claim from another source states the same rule as an existing insight, Graphium does not add a new insight; the claim is added to that insight's sources instead. The AI points out which insights a claim supports, and a separate check confirms it before anything is added. If the check cannot confirm it, nothing is added, and the insight's text is never rewritten. The measurements behind this are in [Do claims from other sources reach the insights that already exist?](/evaluations/insight-reinforcement).
+An insight takes the relationship inside a claim, classifies it into a fixed set of shapes (steadily increasing or decreasing, a sweet spot in the middle, a threshold, a trade-off, composition deciding the outcome, an enabling condition, a reinforcing or balancing loop), replaces field-specific terms with general ones, and states it as a principle that still holds in other fields. One claim is enough; claims that share a shape are folded into one insight. An example from another field is attached only when a separate check — the same model, asked again without seeing how the insight was written — confirms the shape really matches rather than just looking similar. Discovery happens incrementally during ingestion, and you can run it across your whole corpus from the **Upkeep** view → **Fill in what is missing ({count})** → **Discover Insights** (see [Fill in what is missing](#fill-in-what-is-missing)). Existing insights are sent to the model as a shortlist first (embedding similarity), then the AI judges each shortlisted pair: a genuine duplicate reinforces the existing insight instead of creating a new one, but a pair that actually disagrees (opposite direction, conflicting condition) is kept as two separate insights and flagged as a Contradiction in the Upkeep tab — Graphium never silently merges conflicting findings into one page. Separately, when a claim from another source states the same rule as an existing insight, Graphium does not add a new insight; the claim is added to that insight's sources instead. The AI points out which insights a claim supports, and a separate check confirms it before anything is added. If the check cannot confirm it, nothing is added, and the insight's text is never rewritten. The measurements behind this are in [Do claims from other sources reach the insights that already exist?](/evaluations/insight-reinforcement).
 
 **Every scan reports how much it looked at** <Badge type="tip" text="Added in v0.45.0 (2026-08-25)" />. Claims are scanned cluster by cluster, and the result reports the coverage it measured — **covered n/m** after an ingest, **Claims in view: n/m** in the corpus-wide run — meaning how many of your claims were in view at least once. So "no new insights" is never ambiguous: you can see whether the scan looked at everything and found nothing new, or simply hasn't reached the rest of your corpus yet. The corpus-wide run continues until every claim has been in view, and tells you up front how many LLM calls that takes; ingest-time scanning is capped by **Scans per ingest** in [Settings](/settings) → AI, so you decide what each ingest costs. If Insights are rare, the [FAQ](/faq) walks through how to tell whether it's your material or your model.
 
 ## Bulk regeneration and re-embedding
 
-The [Settings](/settings) → **Knowledge** tab holds corpus-wide maintenance:
+Two corpus-wide jobs sit outside the Upkeep checks:
 
-| Tool | When to use it |
-|---|---|
-| **Bulk regenerate Knowledge** | After changing models — rebuild pages by kind (**Target kinds**), with an optional **Model override (optional)**, progress display, cancel, and **Retry failed only** |
-| **Re-embed all Knowledge** | When AI-chat citation search stops finding your knowledge — rebuilds the embeddings for every page |
+| Tool | Where | When to use it |
+|---|---|---|
+| **Bulk regenerate Knowledge** | **Upkeep** view → the folded **Rebuild everything** at the bottom | After changing models — rebuild pages by kind (**Target kinds**), with an optional **Model override (optional)**, progress display, cancel, and **Retry failed only**. When **Tidy up for me** is not available, the row that rebuilds old-format Topics from their sources also appears inside it (otherwise **Tidy up for me** rebuilds them) |
+| **Re-embed {count} Knowledge page(s)** | [Settings](/settings) → **AI**, beside the **Embedding model** | When AI-chat citation search stops finding your knowledge, or the notice says the index was not built with the selected model — rebuilds the embeddings for every page. Save the model first; the button is disabled until then |
 
-Both show a confirmation with the count first; regeneration issues LLM calls and consumes tokens.
+Both show a confirmation with the count first; regeneration issues LLM calls and consumes tokens. **Bulk regenerate Knowledge** also keeps going when you leave the Upkeep screen, with its progress on the import toast.
 
 ## Saving chat findings as knowledge <Badge type="tip" text="Added in v0.16.8 (2026-07-02)" />
 

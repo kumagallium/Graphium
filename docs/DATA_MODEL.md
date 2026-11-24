@@ -1298,9 +1298,11 @@ and lets a list view read only the small run files.
   is more than a day ahead of the device clock. One purge deletes at most
   `MAINTENANCE_PURGE_MAX_PER_RUN` (200) keys, oldest first; the rest go
   on the next start.
-- **In scope:** topic and Insight merges, Organize topics, rebuild from
+- **In scope:** topic and Insight merges, rebuild from
   sources (Regenerate), archive from Upkeep,
-  version restore, and undo itself. **Out of scope** (not recorded):
+  version restore, and undo itself. The kind `organize_topics` (the
+  retired "Organize topics" action) is no longer created, but runs recorded
+  earlier stay as data. **Out of scope** (not recorded):
   revisions made by ingest, the automatic archive of mechanically empty
   pages, source-check / world-grounding result writes, Insight discovery
   (including reinforcement), and single-page trash from a list or banner
@@ -2281,7 +2283,10 @@ page) are caught later by two Karpathy-style *lint* mechanisms that
 look at the whole topic corpus at once, rather than one Claim at a
 time:
 
-- **"Organize topics"** (Settings → Maintenance): consolidates existing
+- **Topic consolidation** (the first step of "Tidy up for me" in the Upkeep
+  view; it was also the standalone "Organize topics" action in Settings,
+  which is retired — its past records keep the kind `organize_topics`):
+  consolidates existing
   topics that name the same concept (`POST /api/wiki/consolidate-topics`
   — an LLM call that returns a proposed-name → canonical-title mapping,
   no count caps), merging the canonical topic's body and moving the
@@ -2436,7 +2441,7 @@ without a trace. Such a source has active Claims but no active Topic that lists 
 These sources are picked again from the data every time (`planSourceTopicBackfill`,
 `src/features/wiki/source-topic-backfill.ts`), not from a record, so nothing is lost
 when the app closes. The Topic stage is run on them without making Claims again, in two
-places: **Build Topics from Sources** (Settings → Knowledge, human-started, stoppable,
+places: **Build Topics from Sources** (Upkeep view → Fill in what is missing, human-started, stoppable,
 one source at a time) and the bulk "Knowledge-ize" action, which runs the Topic stage
 alone for a source it would otherwise skip as unchanged. A source whose Topic stage ran
 and made nothing (the router found nothing Topic-worthy), or whose text can no longer be
@@ -4302,7 +4307,7 @@ Store: snapshots (keyPath: "scopeKey" = `${provider.id}:${userEmail}`)
 ```
 
 Deleting either database loses nothing: embeddings are regenerated from
-Settings → Knowledge, and the lexical index is rebuilt from `noteIndex`
+Settings → AI (the re-embed button beside the embedding model), and the lexical index is rebuilt from `noteIndex`
 and `mediaIndex` on the next start (or from Settings → Storage → Rebuild
 index). A `formatVersion` mismatch in the lexical snapshot (tokenizer or
 index options changed) is treated the same way — the stored snapshot is
