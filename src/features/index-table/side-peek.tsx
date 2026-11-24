@@ -2045,6 +2045,8 @@ function SidePeekInner({
       files: files ?? [],
       // メインと同じく wiki:/skill: を外した ID を派生元にする
       currentFileId: noteId.replace(/^(wiki|skill):/, ""),
+      // 行から作るノートが引き継ぐフォルダ。ピークでの付け外しは docRef に先に入る
+      getCurrentNoteFolders: () => docRef.current?.noteContexts,
       onRefreshFiles: () => onRefreshFiles?.(),
       // つながった行を開くのも、ピーク内のほかのクリックと同じく leavePeek を通す。
       // 行からノートを作った直後や打った直後に押すと、表の書き換え・紐付け・本文の編集が

@@ -6533,6 +6533,8 @@ function NoteEditorInner({
     const callbacks = {
       files,
       currentFileId: fileId,
+      // 行から作るノートが引き継ぐフォルダ。付け外しの直後（未保存）でも、いま見えているフォルダを渡す
+      getCurrentNoteFolders: () => noteContextsRef.current,
       onNavigateNote,
       onRefreshFiles,
       // 外部ソース ID（pdf:/document:/data:/url:）も受け付ける — グラフの

@@ -247,6 +247,7 @@ export function IndexTableIconLayer({
           store,
           callbacks.onAddNoteLink,
           callbacks.currentFileId,
+          callbacks.getCurrentNoteFolders?.(),
         );
         if (fileId) {
           // 先頭セルだけを @ノート名（青文字）に書き換える。セルの props（色・配置・結合）と
