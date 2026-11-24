@@ -13,7 +13,11 @@ import { useLinkStore, type LinkStore } from "../../features/block-link/store";
 import { isAgentConfigured, isPreciseTierEnabled } from "../../features/settings/store";
 import { useOptionalAiAvailable } from "../../features/ai-assistant/store";
 import { localizeAiError } from "../../lib/ai-error";
-import { summarizeMeeting, SummaryMessageError } from "../../features/meeting-recorder/summary-service";
+import {
+  summarizeMeeting,
+  SummaryMessageError,
+  chunkSummaryUtterances,
+} from "../../features/meeting-recorder/summary-service";
 import {
   chunkUtterances,
   cleanupMeeting,
@@ -382,11 +386,15 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     );
   };
 
-  // 要約する（ブロックの中）: 清書があれば清書から、無ければ文字起こしから。要約は 1 回で全部を送る
+  // 要約する（ブロックの中）: 清書があれば清書から、無ければ文字起こしから。長い会議は分けて送る
   const onSummarizeInBlock = () => {
     if (!editable || !tauri || !fileId || segments.length === 0) return;
     const input = cleanup ? cleanupToUtterances(cleanup) : segmentsToUtterances(segments);
-    void runWithContextCheck("summary", buildMeetingSummaryLines(input), runSummaryInBlock);
+    // 分けて送るときは、いちばん長い 1 回分で比べる
+    const longest = chunkSummaryUtterances(input)
+      .map((c) => buildMeetingSummaryLines(c))
+      .reduce((a, b) => (estimateTokens(b) > estimateTokens(a) ? b : a), "");
+    void runWithContextCheck("summary", longest, runSummaryInBlock);
   };
 
   const runSummaryInBlock = () => {
@@ -397,13 +405,14 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
     startRun<SummaryDoc>(
       target,
       "summary",
-      async () => {
+      async (onProgress) => {
         const notes = await collectMeetingHints(editor, block);
         const result = await summarizeMeeting({
           utterances,
           language: generationLanguage,
           notes,
           ...(maskSensitive ? { mask: { terms: getMeetingSettings().maskTerms } } : {}),
+          onProgress,
         });
         const doc = buildSummaryDoc(result, utterances, base);
         if (!doc) throw new RunMessage(t("meetingBlock.summaryNothingFound"));
@@ -711,6 +720,7 @@ export function MeetingTranscriptView({ block, editor }: { block: any; editor: a
       summaryEnabled={aiEnabled}
       summarized={parseIdList(block.props.summaryBlockIds).length > 0}
       summarizing={summarizing || sumRun.progress !== null}
+      summaryProgress={sumRun.progress}
       summaryError={sumRun.error ?? summaryError}
       onSummarize={onSummarizeClick}
       confirmReplace={confirmReplace}

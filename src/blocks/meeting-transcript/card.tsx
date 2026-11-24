@@ -55,6 +55,8 @@ export type MeetingTranscriptCardProps = {
   summaryEnabled?: boolean;
   summarized?: boolean;
   summarizing?: boolean;
+  /** 要約の実行中（長い会議を分けて送った回数の進み具合） */
+  summaryProgress?: { done: number; total: number; etaMs?: number } | null;
   summaryError?: string | null;
   onSummarize?: () => void;
   /** 編集済みの要約を置き換える確認を出すか */
@@ -502,6 +504,7 @@ export function MeetingTranscriptCard(p: MeetingTranscriptCardProps) {
                 aiEnabled={aiEnabled}
                 editable={p.editable}
                 running={!!p.summarizing}
+                progress={p.summaryProgress ?? null}
                 error={p.summaryError ?? null}
                 hasCleanup={!!p.cleanup}
                 onRun={p.onSummarize}

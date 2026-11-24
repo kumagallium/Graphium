@@ -138,7 +138,17 @@ talks to LLM and embedding backends.
   does not fit the topic counts as misheard, and the list is shown in the
   tab), and
   "Summarize" sends the clean copy (or the transcript when there is none)
-  to `POST /api/meeting/summarize`. Before either, the block asks
+  to `POST /api/meeting/summarize` — in one call when it fits, otherwise in
+  parts of at most 1,200 utterances / about 50,000 characters, after which
+  `POST /api/meeting/summarize-merge` combines overlapping items. The merge
+  sees only the item texts under short ids (`d1`, `t1`, `i1`); the server
+  rebuilds each merged item's sources from the items it cites, and keeps any
+  item the model did not cite, so merging can neither invent nor drop
+  grounds. An item can only be folded into one of the same kind, except
+  that an issue may fold into the decision that settles it. With masking
+  on, the server masks the items before sending them as well as after. If
+  the merge fails, the parts are shown joined in time order.
+  Before either, the block asks
   `POST /api/meeting/context` for the model's loaded context length — only
   answered for a loopback LM Studio model, from its `/api/v0/models` — and,
   if it looks shorter than the request needs (an estimate from characters),

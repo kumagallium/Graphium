@@ -324,6 +324,8 @@ export function SummaryPanel(p: {
   aiEnabled: boolean;
   editable: boolean;
   running: boolean;
+  /** 分けて送ったときの進み具合（1 回で送るときは出さない） */
+  progress?: RunState;
   error: string | null;
   hasCleanup: boolean;
   onRun?: () => void;
@@ -332,7 +334,14 @@ export function SummaryPanel(p: {
   if (p.running) {
     return (
       <div className="py-1 text-xs text-muted-foreground" role="status">
-        {t("meetingBlock.summarizing")}
+        {p.progress && p.progress.total > 1 ? (
+          <>
+            {t("meetingBlock.summarizingProgress", { done: String(p.progress.done), total: String(p.progress.total) })}
+            {etaText(p.progress.etaMs) && <> · {etaText(p.progress.etaMs)}</>}
+          </>
+        ) : (
+          t("meetingBlock.summarizing")
+        )}
       </div>
     );
   }
