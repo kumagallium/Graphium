@@ -580,6 +580,9 @@ export function TableCaptionLayer({
             onClick={() => startEditing(blockId)}
             data-tooltip={t("tableMeta.nameHint")}
             style={{
+              // 題は縮めない（変化の表示・バッジが先に縮む）
+              flexShrink: 0,
+              maxWidth: "100%",
               minWidth: 0,
               height: 22,
               display: "flex",
