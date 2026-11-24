@@ -20,6 +20,10 @@ export type RecordCopy = {
   hits: (n: number) => string;
   usedIn: (n: number) => string;
   sources: (n: number) => string;
+  /** 計画の題が分からないときに、行の名前の前に置く言葉 */
+  planRowFallback: string;
+  /** チェックの件数の読み上げ・ツールチップ */
+  checksHint: (checked: number, total: number) => string;
   pages: (n: number) => string;
   searchPlaceholder: string;
   searchLabel: string;
@@ -103,6 +107,8 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     hits: counted("records.hits"),
     usedIn: counted("records.usedIn"),
     sources: counted("records.sources"),
+    planRowFallback: t("records.planRowFallback"),
+    checksHint: (checked, total) => t("planRecords.checksHint", { checked: String(checked), total: String(total) }),
     pages: counted("records.pages"),
     searchPlaceholder: t("records.searchPlaceholder"),
     searchLabel: t("records.searchLabel"),

@@ -4807,6 +4807,7 @@ export const ja: Record<string, string> = {
   "records.origin.quote": "素材からの引用",
   "records.origin.memo": "メモ",
   "records.origin.shared": "共有ライブラリ",
+  "records.planRowFallback": "計画",
   "records.who.self": "自分",
   "records.who.ai": "AI",
   "records.who.selfWithAi": "自分と AI",

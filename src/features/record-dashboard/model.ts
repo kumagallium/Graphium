@@ -74,16 +74,32 @@ export function isHit(item: RecordItem, query: string, bodyHits?: BodyHits): boo
   return query.trim().length > 0 && !!bodyHits?.has(item.id);
 }
 
-/** 探す言葉に当たるか。題・本文・題の下の 1 行・ドメインを見る */
+/** 計画の行の記録の「計画の題 › 行の名前」。計画の行の記録でなければ空文字 */
+export function planRowText(item: RecordItem): string {
+  if (!item.planRow) return "";
+  return [item.planRow.planTitle, item.planRow.rowName].filter(Boolean).join(" › ");
+}
+
+/**
+ * 探す言葉に当たるか。題・本文・題の下の 1 行・ドメインを見る。
+ * 共有フォルダの記録は、作者の名前と、計画の題・行の名前でも当たる（人や行で探せるように）
+ */
 export function matchesQuery(item: RecordItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [item.title, item.text, item.detail, item.domain].some((s) => s?.toLowerCase().includes(q));
+  const author = item.who.type === "other" ? item.who.name : undefined;
+  return [item.title, item.text, item.detail, item.domain, author, item.planRow?.planTitle, item.planRow?.rowName].some((s) =>
+    s?.toLowerCase().includes(q),
+  );
 }
 
-/** 誰での絞り込み。「自分と AI」は自分にも AI にも当たる */
+/**
+ * 誰での絞り込み。「自分と AI」は自分にも AI にも当たる。
+ * 共有フォルダにほかの人が出した記録は「共有の作者」に切り替えたときだけ出す。
+ * 「すべて」は自分の保存先にある記録のすべてで、ほかの人の記録は混ぜない
+ */
 export function matchesWho(item: RecordItem, who: WhoFilter): boolean {
-  if (who === "all") return true;
+  if (who === "all") return item.who.type !== "other";
   if (who === "self") return item.who.type === "self" || item.who.type === "selfWithAi";
   if (who === "ai") return item.who.type === "ai" || item.who.type === "selfWithAi";
   return item.who.type === "other";
@@ -173,6 +189,7 @@ export const BUNDLE_MIN = 6;
  * 1 日の中で、同じ種類・出どころ・残した人の記録が min 件以上続いたところをまとめる。
  * 一括の取り込みやナレッジ化で 1 日に数百件が並ぶと、ほかの記録が埋もれるため。
  * 探す言葉に当たった記録はまとめない（keep が true を返した記録で列を切る）。
+ * 共有フォルダの記録は作者ごとにまとめ、計画の行の記録はまとめない（どの行の記録かが行ごとに違う）。
  */
 export function bundleRuns(
   items: readonly RecordItem[],
@@ -189,13 +206,13 @@ export function bundleRuns(
     run = [];
   };
   for (const item of items) {
-    if (keep(item)) {
+    if (keep(item) || item.planRow) {
       flush();
       runKey = "";
       out.push(item);
       continue;
     }
-    const key = `${item.kind}|${item.origin}|${item.who.type}`;
+    const key = `${item.kind}|${item.origin}|${item.who.type}|${item.who.type === "other" ? item.who.name : ""}`;
     if (key !== runKey) {
       flush();
       runKey = key;

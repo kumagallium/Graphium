@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRecordCopy } from "./copy";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
-import { SAMPLE_QUERY, SAMPLE_RECORDS } from "./sample-records";
+import { SAMPLE_QUERY, SAMPLE_RECORDS, SAMPLE_SHARED_RECORDS } from "./sample-records";
 import { StoryCaption, StoryFrame, StorySheet } from "./story-frame";
 import type { RecordItem, SampleLocale, RecordOrigin, RecordWho } from "./types";
 
@@ -152,3 +152,22 @@ export const SearchHit: Story = {
     </StoryFrame>
   ),
 };
+
+export const SharedRowRecords: Story = {
+  render: (args) => (
+    <StoryFrame width={args.width} locale={args.locale}>
+      <StoryCaption>
+        {args.locale === "ja"
+          ? "共有フォルダの記録。上から: 計画の行の記録で件数あり / 件数なし / 計画の題が分からない / 計画に結び付かない共有ノート（2 件。件数は添えない）。"
+          : "Records from the shared folder. From the top: a plan row record with a count / without one / plan title unknown / shared notes not tied to a plan (two; no count)."}
+      </StoryCaption>
+      <StorySheet maxWidth={args.variant === "ledger" ? 960 : 720}>
+        <Rows items={SAMPLE_SHARED_RECORDS[args.locale]} {...args} />
+      </StorySheet>
+    </StoryFrame>
+  ),
+};
+
+export const SharedRowRecordsEnglish: Story = { ...SharedRowRecords, args: { locale: "en" } };
+export const SharedRowRecordsNarrow: Story = { ...SharedRowRecords, args: { width: 375 } };
+export const SharedRowRecordsLedger: Story = { ...SharedRowRecords, args: { variant: "ledger" } };

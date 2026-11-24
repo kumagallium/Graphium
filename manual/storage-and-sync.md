@@ -354,6 +354,28 @@ The only things added to the shared note are which plan and which row it belongs
 - **Names are self-declared.** The name on a record is the one its author typed in
 :::
 
+### See what other people shared, on Home {#shared-records-on-home}
+
+Switch the who switch on [Home](/notes-and-editor#the-notes-list) to **Shared authors**, and the notes and AI pages that other people put in the shared folders are listed by day, in the order they were shared. You can see who shared what today in one place, without opening a plan.
+
+![Home with the who switch on Shared authors. Notes that other people shared are listed by time, each with its author's name. Records for a plan row also show the plan's title › the row's name (Sandwich loaf plan › Bulk ferment) and a checklist count such as 3/5](/screenshots/home-shared-authors.png)
+
+- The time is when the record was last shared. After **Update shared copy**, the record moves to the day it was updated
+- A [record for a plan row](#records-by-plan-row) shows **the plan's title › the row's name**. If it contains a checklist, the count at the time it was shared (**3/5**) is shown too. When the plan is not in a shared folder, **Plan** is shown in place of its title
+- Type a name in the search box to find that person's records. The plan's title and the row's name are searched too. Body text matches for the records this device has read into its search index
+- Press a row to open the record in full screen. The next time you open Home, it starts on **Shared authors** (except when you open it from **See "…" in Home** in `⌘K`)
+- These records are not listed under **All**. **All** means everything in your own storage
+- What you shared yourself is not listed here, because it is already on Home as your own note. Yours are told apart by the email address in your [author identity](#your-author-identity)
+- Switching to **Shared authors** clears the folder filter, because records in a shared folder are not in your own folders
+
+::: warning Limits
+- **Only notes and AI pages are listed.** References, data, templates, comments and proposals in a shared folder are not; see them on the shared folder screen
+- **Checklist counts are shown only for records of a plan row.** A shared note that is not tied to a plan shows none
+- **There is no summary per plan.** To compare records row by row, open **Row records** on the plan
+- **There is no filter that picks a person from a list.** To narrow to one person, type the name in the search box
+- This appears in the desktop app, once a shared folder is set up
+:::
+
 ## Exports
 
 Everything can leave Graphium in open formats, per note or in bulk.

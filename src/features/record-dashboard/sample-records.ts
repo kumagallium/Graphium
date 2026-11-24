@@ -278,6 +278,107 @@ const EN: RecordItem[] = [
 export const SAMPLE_RECORDS: Record<SampleLocale, RecordItem[]> = { ja: JA, en: EN };
 
 /**
+ * 共有フォルダにほかの人が出した記録（「共有の作者」に切り替えたときだけ並ぶ）。
+ * 上から: 計画の行の記録で件数あり / 件数なし / 計画の題が分からない / 計画に結び付かない共有ノート（2 件）
+ */
+export const SAMPLE_SHARED_RECORDS: Record<SampleLocale, RecordItem[]> = {
+  ja: [
+    {
+      id: "shared:1",
+      kind: "note",
+      at: "2026-11-17T14:20:00",
+      origin: "shared",
+      who: { type: "other", name: "佐藤 花" },
+      title: "一次発酵",
+      planRow: { planTitle: "食パンの計画", rowName: "一次発酵" },
+      checks: { checked: 3, total: 5 },
+    },
+    {
+      id: "shared:2",
+      kind: "note",
+      at: "2026-11-17T11:05:00",
+      origin: "shared",
+      who: { type: "other", name: "田中 蓮" },
+      title: "計量とこね（全粒粉 30%）",
+      planRow: { planTitle: "食パンの計画", rowName: "計量とこね" },
+    },
+    {
+      id: "shared:3",
+      kind: "note",
+      at: "2026-11-17T09:30:00",
+      origin: "shared",
+      who: { type: "other", name: "佐藤 花" },
+      title: "焼き色の比較",
+      planRow: { rowName: "焼成" },
+      checks: { checked: 4, total: 4 },
+    },
+    {
+      id: "shared:4",
+      kind: "note",
+      at: "2026-11-16T16:00:00",
+      origin: "shared",
+      who: { type: "other", name: "みなと" },
+      title: "スパイスカレーの基本の配合",
+    },
+    {
+      id: "shared:5",
+      kind: "note",
+      at: "2026-11-16T10:10:00",
+      origin: "shared",
+      who: { type: "other", name: "みなと" },
+      title: "オーブンの予熱の目安",
+    },
+  ],
+  en: [
+    {
+      id: "shared:1",
+      kind: "note",
+      at: "2026-11-17T14:20:00",
+      origin: "shared",
+      who: { type: "other", name: "Maya Sato" },
+      title: "Bulk ferment",
+      planRow: { planTitle: "Sandwich loaf plan", rowName: "Bulk ferment" },
+      checks: { checked: 3, total: 5 },
+    },
+    {
+      id: "shared:2",
+      kind: "note",
+      at: "2026-11-17T11:05:00",
+      origin: "shared",
+      who: { type: "other", name: "Leo Tanaka" },
+      title: "Mix and knead (30% whole wheat)",
+      planRow: { planTitle: "Sandwich loaf plan", rowName: "Mix and knead" },
+    },
+    {
+      id: "shared:3",
+      kind: "note",
+      at: "2026-11-17T09:30:00",
+      origin: "shared",
+      who: { type: "other", name: "Maya Sato" },
+      title: "Crust colour comparison",
+      planRow: { rowName: "Bake" },
+      checks: { checked: 4, total: 4 },
+    },
+    {
+      id: "shared:4",
+      kind: "note",
+      at: "2026-11-16T16:00:00",
+      origin: "shared",
+      who: { type: "other", name: "Minato" },
+      title: "A basic spice curry ratio",
+    },
+    {
+      id: "shared:5",
+      kind: "note",
+      at: "2026-11-16T10:10:00",
+      origin: "shared",
+      who: { type: "other", name: "Minato" },
+      title: "Oven preheating notes",
+    },
+  ],
+};
+
+/**
  * 記録の多い日の仮データ。ナレッジ化で AI のページが 40 件、取り込みでファイルが 12 件続く。
  * 実データでは 1 日に数百件が並ぶ日があるので、まとめ行の見え方を確かめるのに使う。
  */

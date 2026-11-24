@@ -2,6 +2,7 @@
 // 並びは「いつ ｜ どこで・誰が ｜ 何を」。LP の絵（MomentsPicture の Found）の 1 行を、
 // アプリの 4 種類の記録（ノート / AI のページ / 素材 / メモ）に合わせて作り直したもの。
 import {
+  ClipboardList,
   File,
   FileDown,
   FileText,
@@ -17,6 +18,7 @@ import {
   Quote,
   Smartphone,
   Sparkles,
+  SquareCheck,
   StickyNote,
   Table2,
   Users,
@@ -88,13 +90,13 @@ export function WhoMark({ type }: { type: RecordWho["type"] }) {
   return <span className="rd-who-mark" data-who={type} aria-hidden="true" />;
 }
 
-/** 残した人（誰が） */
-export function WhoLabel({ who, copy }: { who: RecordWho; copy: RecordCopy }) {
+/** 残した人（誰が）。query を渡すと、共有の作者の名前の当たった部分に印が付く */
+export function WhoLabel({ who, copy, query }: { who: RecordWho; copy: RecordCopy; query?: string }) {
   if (who.type === "self") return <span className="rd-who">{copy.who.self}</span>;
   if (who.type === "other") {
     return (
       <span className="rd-who">
-        {who.name}
+        <Marked text={who.name} query={query} />
         <span className="rd-who-note">{copy.who.shared}</span>
       </span>
     );
@@ -154,6 +156,44 @@ function Trace({ item, copy }: { item: RecordItem; copy: RecordCopy }) {
   );
 }
 
+/**
+ * 共有された記録が計画の行のものなら「計画の題 › 行の名前」を、チェックリストがあれば
+ * 共有した時点の件数（3/5）を添える。どちらも共有の封筒に入っている値で、本文は読まない。
+ * 件数は数えた結果をそのまま出す。色は付けず、割合や棒にもしない
+ */
+function PlanRowLine({ item, query, copy }: { item: RecordItem; query?: string; copy: RecordCopy }) {
+  if (!item.planRow) return null;
+  return (
+    <p className="rd-trace rd-planrow">
+      <span className="rd-planrow-name">
+        <ClipboardList size={12} aria-hidden="true" />
+        <span className="rd-planrow-plan">
+          <Marked text={item.planRow.planTitle || copy.planRowFallback} query={item.planRow.planTitle ? query : undefined} />
+        </span>
+        {item.planRow.rowName && (
+          <>
+            <span className="rd-planrow-sep" aria-hidden="true">›</span>
+            <span>
+              <Marked text={item.planRow.rowName} query={query} />
+            </span>
+          </>
+        )}
+      </span>
+      {item.checks && (
+        <span
+          className="rd-checks"
+          role="img"
+          aria-label={copy.checksHint(item.checks.checked, item.checks.total)}
+          data-tooltip={copy.checksHint(item.checks.checked, item.checks.total)}
+        >
+          <SquareCheck size={12} aria-hidden="true" />
+          {item.checks.checked}/{item.checks.total}
+        </span>
+      )}
+    </p>
+  );
+}
+
 export type RecordRowProps = {
   item: RecordItem;
   /** 探す言葉。当たった部分に印が付く */
@@ -204,10 +244,11 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
         </span>
         <span className="rd-lcell rd-lcell-who">
           <WhoMark type={item.who.type} />
-          <WhoLabel who={item.who} copy={copy} />
+          <WhoLabel who={item.who} copy={copy} query={query} />
         </span>
         <div className="rd-lcell rd-lcell-what">
           <What item={item} query={query} copy={copy} />
+          <PlanRowLine item={item} query={query} copy={copy} />
           <Trace item={item} copy={copy} />
         </div>
         <span className="rd-kind">{copy.kind[item.kind]}</span>
@@ -232,10 +273,11 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
       <div className="rd-body">
         <p className="rd-meta">
           <OriginBadge origin={item.origin} copy={copy} />
-          <WhoLabel who={item.who} copy={copy} />
+          <WhoLabel who={item.who} copy={copy} query={query} />
           <span className="rd-kind">{copy.kind[item.kind]}</span>
         </p>
         <What item={item} query={query} copy={copy} />
+        <PlanRowLine item={item} query={query} copy={copy} />
         <Trace item={item} copy={copy} />
       </div>
     </li>

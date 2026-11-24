@@ -65,7 +65,7 @@ export type RecordTrace =
 export type RecordItem = {
   id: string;
   kind: RecordKind;
-  /** いつ — ノートは createdAt、素材は uploadedAt、メモは createdAt（ISO 8601） */
+  /** いつ — ノートは createdAt、素材は uploadedAt、メモは createdAt、共有フォルダの記録は最後に共有した時点の updated_at（ISO 8601） */
   at: string;
   origin: RecordOrigin;
   who: RecordWho;
@@ -83,10 +83,24 @@ export type RecordItem = {
   trace?: RecordTrace;
   /** 入っているフォルダ — ノート・素材・メモの noteContexts（1 つの記録が複数のフォルダに入ることがある） */
   folders?: readonly string[];
+  /**
+   * どの計画のどの行の記録か — 共有ライブラリの記録の SharedEntry.extra.planRow。
+   * planTitle は計画の封筒の extra.title（計画が共有フォルダに無い・読めていないときは省く）
+   */
+  planRow?: { planTitle?: string; rowName: string };
+  /**
+   * 共有した時点のチェックの件数 — 共有ライブラリの記録の SharedEntry.extra.checklist。
+   * 計画の行の記録（planRow のある記録）にだけ付く。
+   * 数えた結果をそのまま出すだけで、割合や並べ替えには使わない
+   */
+  checks?: { checked: number; total: number };
 };
 
 /** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */
 export type SampleLocale = "ja" | "en";
 
-/** 誰での絞り込み。selfWithAi は「自分」「AI」のどちらにも当たる */
+/**
+ * 誰での絞り込み。selfWithAi は「自分」「AI」のどちらにも当たる。
+ * all は自分の保存先の記録のすべて。共有フォルダにほかの人が出した記録は other のときだけ出す
+ */
 export type WhoFilter = "all" | "self" | "ai" | "other";
