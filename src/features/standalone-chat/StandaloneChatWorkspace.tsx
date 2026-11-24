@@ -74,6 +74,7 @@ export function StandaloneChatWorkspace({
   renderGraph,
   onGraphVisibleChange,
   navInSidebar = false,
+  draftScopeRequest,
 }: {
   chats: StandaloneChatSummary[];
   /** 選択中の会話 id。null なら「新しいチャット」（まだ保存されていない） */
@@ -116,6 +117,8 @@ export function StandaloneChatWorkspace({
   /** 会話一覧を左のサイドバー（FileSidebar の chatNav）に出しているか。true のとき、
    *  広い画面ではこの画面の子ナビと開閉ボタンを出さない（会話とグラフの幅を空ける） */
   navInSidebar?: boolean;
+  /** 新しいチャットの渡す範囲を外から決める（左ナビの「使い方を聞く」）。nonce が変わるたびに効く */
+  draftScopeRequest?: { scope: GroundingScope; nonce: number };
 }) {
   const t = useT();
   const isDesktop = useIsDesktop();
@@ -127,6 +130,9 @@ export function StandaloneChatWorkspace({
   }, [activeChatId]);
   // まだ会話が無いときの渡す範囲。会話ができたら会話側（StandaloneChat.scope）が持つ
   const [draftScope, setDraftScope] = useState<GroundingScope>(DEFAULT_STANDALONE_CHAT_SCOPE);
+  useEffect(() => {
+    if (draftScopeRequest) setDraftScope(draftScopeRequest.scope);
+  }, [draftScopeRequest]);
   const scope = activeChat ? toStandaloneChatScope(activeChat.scope) : draftScope;
   const handleScopeChange = (next: GroundingScope) => {
     if (activeChat) onScopeChange(next);
@@ -202,6 +208,8 @@ export function StandaloneChatWorkspace({
                 setMobilePane("chat");
               }}
               onNew={() => {
+                // 「+ 新しいチャット」はいつもの範囲で始める（「使い方を聞く」で選んだ help を持ち越さない）
+                setDraftScope(DEFAULT_STANDALONE_CHAT_SCOPE);
                 onNewChat();
                 setMobilePane("chat");
               }}
@@ -233,7 +241,8 @@ export function StandaloneChatWorkspace({
               sourceLinks={sourceLinks}
               scope={scope}
               onScopeChange={handleScopeChange}
-              folderScope={folders ? { value: folder, onChange: handleFolderChange, folders } : undefined}
+              // 使い方はノートを読まないので、探すフォルダのチップは出さない
+              folderScope={folders && scope !== "help" ? { value: folder, onChange: handleFolderChange, folders } : undefined}
             />
           </div>
         )}

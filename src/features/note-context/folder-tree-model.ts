@@ -92,9 +92,15 @@ export function collectFolderSource(
     source?: string;
     deletedAt?: string;
     archivedAt?: string;
+    sharedEntryId?: string;
   }[],
-): { folders: { value: string; count: number }[]; unfiledCount: number } {
-  const live: { noteContexts?: string[] }[] = [];
+): {
+  folders: { value: string; count: number }[];
+  unfiledCount: number;
+  /** 共有フォルダに共有しているノートだけの集計（左ナビの「共有 n」に使う） */
+  sharedFolders: { value: string; count: number }[];
+} {
+  const live: { noteContexts?: string[]; sharedEntryId?: string }[] = [];
   let unfiledCount = 0;
   for (const note of notes) {
     if (note.wikiKind) continue;
@@ -104,7 +110,28 @@ export function collectFolderSource(
     live.push(note);
     if (!note.noteContexts || note.noteContexts.length === 0) unfiledCount++;
   }
-  return { folders: aggregateNoteContexts(live), unfiledCount };
+  return {
+    folders: aggregateNoteContexts(live),
+    unfiledCount,
+    sharedFolders: aggregateNoteContexts(live.filter((n) => !!n.sharedEntryId)),
+  };
+}
+
+/**
+ * フォルダごとの「共有しているノートの数」。キーは小文字の path、値は子フォルダまで含めた合計
+ * （サイドバーの件数 totalCount と同じ数え方）。共有が 0 件のフォルダはキーを持たない。
+ */
+export function sharedCountsByFolder(
+  sharedFolders: readonly { value: string; count: number }[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const node of buildFolderTree(sharedFolders)) {
+    if (node.totalCount > 0) out.set(node.path.toLowerCase(), node.totalCount);
+    for (const child of node.children) {
+      if (child.totalCount > 0) out.set(child.path.toLowerCase(), child.totalCount);
+    }
+  }
+  return out;
 }
 
 type MutableNode = {

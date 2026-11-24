@@ -1068,6 +1068,18 @@ export function NoteListView({
                     >
                       {entry.title}
                     </span>
+                    {entry.shared && (
+                      // 共有フォルダに共有しているノート。開いたノートの「共有済み」と同じ印と色
+                      <span
+                        className="ml-1.5 inline-flex align-middle text-primary"
+                        data-tooltip={t("share.badgeTooltip")}
+                        aria-label={t("share.badge")}
+                        role="img"
+                        data-testid="note-list-shared-mark"
+                      >
+                        <Share2 size={12} aria-hidden />
+                      </span>
+                    )}
                     {(() => {
                       const d = inlineDateFor(entry);
                       return d ? (

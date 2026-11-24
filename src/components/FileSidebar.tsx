@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House, MessagesSquare } from "lucide-react";
+import { Image, FileText, Table, Video, Volume2, Link, StickyNote, Bot, History, Scissors, Wrench, PanelLeftClose, RefreshCw, Sparkles, Trash2, Settings as SettingsIcon, CircleHelp, Library, FilePlus, ArrowRight, Waypoints, FolderInput, Plus, LayoutTemplate, Search, Smartphone, MessageSquare, ListOrdered, House, MessagesSquare } from "lucide-react";
 import { useMeetingRecorder } from "../features/meeting-recorder/use-meeting-recorder";
 import { NewNoteSplitButton } from "./NewNoteSplitButton";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
@@ -57,6 +57,8 @@ export type FileSidebarProps = {
   onRefresh: () => void | Promise<void>;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
+  /** 「使い方を聞く」。Graphium の使い方を聞くチャット（範囲が「使い方」の新しいチャット）を開く */
+  onAskHowTo?: () => void;
   agentConfigured: boolean;
   recentNotes: RecentNote[];
   onShowNoteList: () => void;
@@ -312,6 +314,7 @@ export function FileSidebar({
   onRefresh,
   onShowReleaseNotes,
   onShowSettings,
+  onAskHowTo,
   agentConfigured,
   recentNotes,
   onShowNoteList,
@@ -665,6 +668,7 @@ export function FileSidebar({
           >
             <FolderTree
               folders={folderData.folders}
+              sharedFolders={folderData.sharedFolders}
               emptyFolders={emptyFolders}
               unfiledCount={folderData.unfiledCount}
               selected={selectedFolder}
@@ -1523,6 +1527,16 @@ export function FileSidebar({
           >
             <Waypoints size={12} className="shrink-0" />
             <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
+          </button>
+        )}
+        {onAskHowTo && (
+          <button
+            onClick={onAskHowTo}
+            data-tooltip={t("sidebar.askHowToHint")}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
+          >
+            <CircleHelp size={12} className="shrink-0" />
+            <span className="flex-1 text-left">{t("sidebar.askHowTo")}</span>
           </button>
         )}
         <button

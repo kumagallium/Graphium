@@ -10,20 +10,23 @@ vi.mock("../services/llm.js", () => ({ createModel: async () => ({}) }));
 vi.mock("../services/header-model.js", () => ({
   resolveModelConfig: () => ({ provider: "openai", modelId: "m", apiKey: "k", name: "m" }),
 }));
-vi.mock("../services/mcp.js", () => ({
-  getMCPTools: async () => ({
-    tools: { "tavily-extract": {}, "tavily-search": {} },
-    toolInfo: { "tavily-extract": { serverName: "Tavily" }, "tavily-search": { serverName: "Tavily" } },
-    errors: [],
-  }),
-}));
+const getMCPTools = vi.fn(async (servers: unknown[]) =>
+  servers.length === 0
+    ? { tools: {}, toolInfo: {}, errors: [] }
+    : {
+        tools: { "tavily-extract": {}, "tavily-search": {} },
+        toolInfo: { "tavily-extract": { serverName: "Tavily" }, "tavily-search": { serverName: "Tavily" } },
+        errors: [],
+      },
+);
+vi.mock("../services/mcp.js", () => ({ getMCPTools: (...a: unknown[]) => (getMCPTools as (...x: unknown[]) => unknown)(...a) }));
 const toolsNeedingApproval = vi.fn(() => [] as string[]);
 vi.mock("../services/tool-approval.js", async (orig) => {
   const mod = await orig<typeof import("../services/tool-approval.js")>();
   return { ...mod, toolsNeedingApproval: (...a: unknown[]) => (toolsNeedingApproval as (...x: unknown[]) => string[])(...a) };
 });
 
-import app, { MATERIAL_AS_DATA_GUARD } from "./agent.js";
+import app, { HELP_GROUNDING_INSTRUCTION, MATERIAL_AS_DATA_GUARD } from "./agent.js";
 
 function post(headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
   return app.request("/run", {
@@ -38,6 +41,7 @@ describe("POST /run", () => {
     runAgentLoop.mockReset();
     runAgentLoop.mockResolvedValue({ message: "ok", toolCalls: [], tokenUsage: {}, model: "m" });
     toolsNeedingApproval.mockClear();
+    getMCPTools.mockClear();
   });
 
   it("system プロンプトに MATERIAL_AS_DATA_GUARD が入る", async () => {
@@ -55,5 +59,39 @@ describe("POST /run", () => {
     const call = toolsNeedingApproval.mock.calls[0] as unknown as unknown[];
     const freeTools = call[3] as Map<string, Set<string>> | Record<string, string[]> | undefined;
     expect(JSON.stringify(freeTools instanceof Map ? [...freeTools.entries()].map(([k, v]) => [k, [...(v as Set<string>)]]) : freeTools)).toContain("tavily-search");
+  });
+
+  describe("使い方（grounding_scope: help）", () => {
+    const servers = [{ id: "t", type: "remote", name: "Tavily", url: "https://mcp.tavily.com/mcp", transport: "streamable-http" }];
+
+    it("使い方の指示とマニュアルの節が入り、スキル・ナレッジの案内は入らない", async () => {
+      const res = await post(
+        { "X-MCP-Servers": JSON.stringify(servers) },
+        { grounding_scope: "help", wiki_context: "<graphium-manual>[M1] X</graphium-manual>", custom_instructions: "SKILL-VOICE", language: "ja" },
+      );
+      expect(res.status).toBe(200);
+      const prompt = runAgentLoop.mock.calls[0][0].systemPrompt as string;
+      expect(prompt).toContain(HELP_GROUNDING_INSTRUCTION);
+      // 指示が英語でも、画面の言語で返させる
+      expect(prompt).toContain("Reply in Japanese");
+      expect(prompt).toContain("<graphium-manual>[M1] X</graphium-manual>");
+      expect(prompt).not.toContain("SKILL-VOICE");
+      expect(prompt).not.toContain("schema");
+    });
+
+    it("MCP の道具に繋がず、道具なしで答えさせる", async () => {
+      await post({ "X-MCP-Servers": JSON.stringify(servers) }, { grounding_scope: "help" });
+      expect(getMCPTools).toHaveBeenCalledWith([]);
+      expect(runAgentLoop.mock.calls[0][0].tools).toEqual({});
+    });
+
+    it("ほかの範囲では使い方の指示を入れない", async () => {
+      await post({}, { grounding_scope: "internal", custom_instructions: "SKILL-VOICE" });
+      const prompt = runAgentLoop.mock.calls[0][0].systemPrompt as string;
+      expect(prompt).not.toContain(HELP_GROUNDING_INSTRUCTION);
+      expect(prompt).toContain("SKILL-VOICE");
+      // 上の「schema が入らない」が空振りでないことの裏づけ（通常はナレッジの案内に入る）
+      expect(prompt).toContain("schema");
+    });
   });
 });

@@ -1481,10 +1481,13 @@ type StandaloneChat = {
   // Notes/Knowledge pages attached as context when the chat was started
   // (e.g. arriving from Composer with an existing @-mention).
   attachedNoteIds?: string[];
-  // Grounding scope used by the most recent send: "external" or
+  // Grounding scope used by the most recent send: "external",
   // "internal" (this chat always cross-searches, so "notes" is folded
-  // into "internal"). It seeds the next send and the chip when the
-  // chat is reopened. Absent on chats saved before it existed → internal.
+  // into "internal"), or "help" (answer how to use Graphium from the
+  // bundled manual, without reading the user's records). It seeds the next
+  // send and the chip when the chat is reopened. Absent on chats saved
+  // before it existed → internal; an older app that does not know "help"
+  // also reads it as internal.
   scope?: GroundingScope;
   // Folder to search ("Parent" or "Parent/Child", a `noteContexts` value).
   // When set, the cross-search only sees notes in that folder (or its
@@ -3867,6 +3870,17 @@ type NoteIndexEntry = {
   // v38: its kind, mirrored from GraphiumDocument.sourceDateKind (only with
   //   a sourceDate).
   sourceDateKind?: "published" | "presented" | "recorded" | "other";
+  // v39: the id of the shared entry, mirrored from GraphiumDocument.sharedRef.id
+  //   while the note or knowledge page is shared to a shared folder. Absent
+  //   when it is not shared, and when the note is shared as a proposal
+  //   (`sharedRef.type === "proposal"`: the note itself is not what is
+  //   shared). Drives the shared mark next to a title in the note and
+  //   knowledge lists and the shared count on a folder in the sidebar
+  //   (`collectFolderSource().sharedFolders` → `sharedCountsByFolder`,
+  //   counted like the folder's own total: live human notes, a parent
+  //   includes its children). It says the local document holds a
+  //   `sharedRef`, not that the entry still exists in the folder.
+  sharedEntryId?: string;
 
   // v22: concatenated text read on-device out of the note's images
   //   (collected from page.mediaOcr), newline-joined. Lets a note that only
@@ -3886,7 +3900,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **38**.
+Defined in `src/features/navigation/index-file.ts`. Currently **39**.
 Bumping rules:
 
 | Version | Change |
@@ -3925,6 +3939,7 @@ Bumping rules:
 | **36** | Added `ocrAltText` on `NoteIndexEntry` — the newline-joined, search-only second reading (macOS Vision, `page.mediaOcr[*].altText`) of the note's images, collected in `buildIndexEntry` and included in `searchNotes` and the note list search; shown only in the image text panel's small "another reading" box, never as body text, in copies, exports or AI input. Legacy notes keep `ocrAltText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. The media index gets the matching `MediaIndexEntry.ocrAltText` (media index version 11). |
 | **37** | Added `kind` (`"plan"` / `"note"`) on `NoteIndexEntry`, mirrored from `GraphiumDocument.kind` (or, for a note without one, read from the former reserved "計画" / "plan" folder). Whether a note is a plan moved from its folder to the note itself, so the operations flow, the plan PROV export and MCP `export_prov` tell plans apart without opening notes. Knowledge and skill pages keep `kind: undefined`; `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **38** | Added `sourceDate` and `sourceDateKind` on `NoteIndexEntry`, mirrored from `GraphiumDocument.sourceDate` (the date of the source the note records, kept apart from `createdAt`) when it is in the stored form `YYYY` / `YYYY-MM` / `YYYY-MM-DD`. Feeds the note list's "Source date" column and sort. Note JSON is not rewritten; a v37 index is rebuilt on launch and picks the field up. |
+| **39** | Added `sharedEntryId` on `NoteIndexEntry`, mirrored from `GraphiumDocument.sharedRef.id` while a note or knowledge page is shared to a shared folder (not for a note shared as a proposal). Feeds the shared mark in the note and knowledge lists and the shared count on sidebar folders. Note JSON is not rewritten; a v38 index is rebuilt on launch and picks the field up. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this

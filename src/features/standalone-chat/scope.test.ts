@@ -19,8 +19,12 @@ describe("toStandaloneChatScope", () => {
     expect(DEFAULT_STANDALONE_CHAT_SCOPE).toBe("internal");
   });
 
-  it("チップに出す選択肢は外部参照と内部参照の 2 つで、既定が含まれる", () => {
-    expect(STANDALONE_CHAT_SCOPES).toEqual(["external", "internal"]);
+  it("使い方はそのまま通す", () => {
+    expect(toStandaloneChatScope("help")).toBe("help");
+  });
+
+  it("チップに出す選択肢は外部参照・内部参照・使い方の 3 つで、既定が含まれる", () => {
+    expect(STANDALONE_CHAT_SCOPES).toEqual(["external", "internal", "help"]);
     expect(STANDALONE_CHAT_SCOPES).toContain(DEFAULT_STANDALONE_CHAT_SCOPE);
   });
 });

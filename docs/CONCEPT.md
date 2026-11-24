@@ -130,6 +130,11 @@ every time you talk to the AI. Every AI conversation in Graphium carries a
 | **Internal** | Everything you cited, plus a cross-search of what you have accumulated — the Knowledge layer first, and short passages from your own notes and assets that match your question by keyword. On desktop, if you have a shared library configured, its entries are cross-searched the same way (excludable in Settings → Sharing) | Connecting and structuring what you have |
 | **This note** (default) | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
 
+The chat that is not tied to a note adds a fourth setting, **How to**,
+which reads neither brain: it answers whether and how Graphium does
+something from the user manual bundled into the app, so questions
+about the tool never mix with your own records.
+
 Two details carry the design. The cross-search in **Internal** reads the
 crystallized layer first, and it also pulls in a few short passages from raw
 notes and assets (image OCR, URL excerpts, PDF and Word text) — but only passages that

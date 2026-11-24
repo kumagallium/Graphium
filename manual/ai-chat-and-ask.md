@@ -131,7 +131,7 @@ The chat list starts with **+ New chat**, then your past conversations grouped b
 
 With nothing selected the right side is a **new chat**: a prompt reading "Ask something to get started" with the input and the **Grounding** chip in the middle of the screen. Your first message creates the conversation, adds it to the list, and moves the input to the bottom, where it stays for the rest of the exchange. `⌘K` and **Ask in chat** on a "Worth investigating" row in [Upkeep's Upkeep tab](/knowledge-layer#log-and-upkeep) start a new conversation on this screen the same way, with the question already sent.
 
-It always cross-searches your notes and Knowledge, so the **Grounding** chip next to the input has two settings rather than three: **Internal** (the default — your notes and Knowledge) and **External** (the same, plus a forced web search; see [Web search in chat](#web-search-in-chat) for what External needs and the banner you see without it). There is no **This note** here, since no note is attached. The scope you pick stays with that conversation — later messages use it, it is selected again when you reopen the chat, and a fork inherits it. A question sent from `⌘K` keeps the scope chosen on the Composer; **This note** chosen there behaves as **Internal**.
+It always cross-searches your notes and Knowledge, so the **Grounding** chip next to the input offers different settings from the note chat: **Internal** (the default — your notes and Knowledge), **External** (the same, plus a forced web search; see [Web search in chat](#web-search-in-chat) for what External needs and the banner you see without it), and **How to** (answers from Graphium's manual instead of your records; see [Asking how to use Graphium](#asking-how-to-use-graphium)). There is no **This note** here, since no note is attached. The scope you pick stays with that conversation — later messages use it, it is selected again when you reopen the chat, and a fork inherits it. A question sent from `⌘K` keeps the scope chosen on the Composer; **This note** chosen there behaves as **Internal**.
 
 <Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> To the left of it, the **Folder to search** chip narrows *where* the search looks. It starts at **All folders**. Click it and pick one of your [folders](/notes-and-editor#folders); the AI then sees only the notes in that folder (and its child folders) and the claims, topics and insights that [Knowledge](/knowledge-layer) made from them — nothing outside the folder, not even its titles. A topic that also draws on a note outside the folder still counts. Materials (web pages, PDFs, Word files) have no folder, so they are left out while a folder is chosen, and so is the [shared folder](/storage-and-sync). Click **×** on the chip to go back to **All folders**. Like the scope, the folder stays with the conversation. This is handy when you keep the records of your AI conversations in one folder — saved there by an assistant through [MCP](/mcp-server#create-note-folder) — and want to talk only about those.
 
@@ -172,6 +172,28 @@ The graph also shows the scope you set. The header names it (for example *Intern
 Use the note chat panel while you are writing and want the AI to see (or write into) that note. Use the sidebar chat when the question is not about any one note — general questions, working things out, or checking something across everything you have written.
 
 `⌘K` is another way in: press it from anywhere, including with a note open, and choose **Ask AI: "..."** (or `⌘Enter`) to start one of these note-independent conversations without leaving where you are. See [The Composer](#the-composer-k) below.
+
+## Asking how to use Graphium <Badge type="tip" text="Added in v0.158.0 (2026-11-24)" /> {#asking-how-to-use-graphium}
+
+You can ask in chat whether Graphium can do something, or where a feature is. The answer comes from this manual, which ships inside the app.
+
+There are two ways in:
+
+- Click **Ask how to** at the bottom of the left nav
+- In the desktop app, choose **Help → Ask How to Use Graphium** from the menu
+
+Both open a new chat with **Grounding** set to **How to**. Three example questions sit under the input, and clicking one sends it as is. You can also switch an ongoing chat to **How to** with the **Grounding** chip.
+
+![A new chat opened from Ask how to: How to is selected on the Grounding chip under the input, and three example questions sit below it, each sent as is when clicked](/screenshots/chat-how-to.png)
+
+While **How to** is selected:
+
+- Your notes, Knowledge and materials are not read, so your own records do not mix into answers about the app. If you switch to **How to** partway through a chat, the earlier exchange is still sent to the AI
+- The answer first says whether Graphium can do it, then how. It links the manual sections it was based on
+- When the manual does not describe something, the answer says so instead of claiming the feature exists
+- Connected MCP tools (such as Notion) and web search are not used
+
+The manual is inside the app, so finding the sections needs no network. Writing the answer still needs an [AI connection](/ai-setup), like any other chat. If you click **Ask how to** before setting one up, this manual opens in your browser instead. In the desktop app, **Help → User Manual** opens it at any time.
 
 ## Chats stay with the note — and keep running <Badge type="tip" text="Added in v0.17.1 (2026-07-06)" />
 
