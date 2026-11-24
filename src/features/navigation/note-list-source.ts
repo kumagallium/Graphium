@@ -5,6 +5,7 @@ import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./in
 import { sanitizeAltText, sanitizeOcrText } from "../../lib/ocr-text";
 import { normalizeStoredSourceDate } from "../../lib/source-date";
 import { buildLinkCounts, linkCountsOf } from "./link-counts";
+import { isPlanNote } from "../note-context/reserved-folders";
 
 export type NoteListEntry = {
   noteId: string;
@@ -32,6 +33,8 @@ export type NoteListEntry = {
   ocrAltText?: string;
   /** 共有フォルダに共有しているノートか（索引の sharedEntryId から）。題の横に印を出す */
   shared?: true;
+  /** 計画のノートか（isPlanNote。種類が無い旧ノートは旧「計画」フォルダで読む）。題の横に印を出す */
+  plan?: true;
 };
 
 export interface NoteListSource {
@@ -83,6 +86,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         ocrText: sanitizeOcrText(n.ocrText),
         ocrAltText: sanitizeAltText(n.ocrAltText),
         ...(n.sharedEntryId ? { shared: true as const } : {}),
+        ...(isPlanNote(n) ? { plan: true as const } : {}),
       };
     });
   }

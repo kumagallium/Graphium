@@ -179,6 +179,8 @@ export const ja: Record<string, string> = {
   "editor.paperA4": "A4 の幅で書く",
   "editor.treatAsPlan": "計画として扱う",
   "editor.treatAsPlanHint": "表のノートごとの行が工程になり、工程グラフと計画の来歴の書き出しの起点になります。フォルダには関係しません",
+  "plan.mark": "計画",
+  "plan.markTooltip": "計画のノートです。表のノートごとの行が工程になります。右上のメニューの「計画として扱う」で外せます",
   "editor.deleteNote": "ゴミ箱へ移動",
   "editor.archiveNote": "アーカイブ",
   "editor.archiveNoteHint": "一覧から隠れますが、元にしたノートとのつながりや引用は切れません。「ゴミ箱・アーカイブ」からいつでも戻せます。",
