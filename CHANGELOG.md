@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.164.1](https://github.com/kumagallium/Graphium/compare/v0.164.0...v0.164.1) - 2026-11-24
+
+- feat(voice-notes): summarize long meetings in parts and combine the overlaps by @kumagallium in https://github.com/kumagallium/Graphium/pull/1852
+
 ## [v0.164.0](https://github.com/kumagallium/Graphium/compare/v0.163.0...v0.164.0) - 2026-11-24
 
 - feat(records): list other people's shared records on Home under Shared authors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1849
