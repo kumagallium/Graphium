@@ -142,6 +142,7 @@ async function createOperationNoteFromRef(
     tableMetaStore,
     callbacks.onAddNoteLink,
     callbacks.currentFileId,
+    callbacks.getCurrentNoteFolders?.(),
   );
   if (!fileId) return;
 

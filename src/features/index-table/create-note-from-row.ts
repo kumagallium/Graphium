@@ -7,6 +7,7 @@ import { confirmAction } from "../../ui/confirm-dialog";
 import { isNewNotesOnA4 } from "../settings/store";
 import { newNoteWidthDocFields } from "../paper-mode/new-note-draft";
 import { stampNewNoteKind } from "../note-context/reserved-folders";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 
 // テーブル行の1列目テキストを取得する
 export function getFirstCellText(tableBlock: any, rowIndex: number): string {
@@ -49,6 +50,8 @@ export async function createNoteFromRow(
   store: { setNoteLink: (blockId: string, rowValue: string, noteId: string) => void },
   onAddNoteLink?: (targetNoteId: string, sourceBlockId: string) => void,
   parentNoteId?: string | null,
+  /** 親のノート（表のあるノート）のフォルダ。作るノートも同じフォルダに入れる */
+  parentFolders?: readonly string[] | null,
 ): Promise<string | null> {
   const block = editor.getBlock(tableBlockId);
   if (!block) return null;
@@ -67,12 +70,16 @@ export async function createNoteFromRow(
 
   // 新規ノートドキュメントを構築
   const now = new Date().toISOString();
+  // 親のフォルダを引き継ぐ。プロジェクトのフォルダにある計画から作った工程も、同じフォルダから辿れる。
+  // 計画かどうかは kind で決まり、作るノートは普通のノートなので、旧「計画」フォルダを引き継いでも計画にはならない
+  const folders = normalizeNoteContexts(parentFolders ?? undefined);
   const newDoc: GraphiumDocument = {
     version: 2,
     title,
     ...(parentNoteId ? { derivedFromNoteId: parentNoteId, derivedFromBlockId: tableBlockId } : {}),
     // 表の行から作るノートは自分で始めるノート。設定「新しいノートを A4 の幅で始める」に従う
     ...newNoteWidthDocFields(isNewNotesOnA4()),
+    ...(folders ? { noteContexts: folders } : {}),
     pages: [
       {
         id: crypto.randomUUID(),

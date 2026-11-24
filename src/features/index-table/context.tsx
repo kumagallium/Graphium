@@ -17,6 +17,8 @@ type IndexTableContextValue = {
   onOpenSidePeek: (noteId: string) => void;
   // 親ドキュメントに noteLink を追加するコールバック
   onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => void;
+  // 開いているノートのいまのフォルダ（未保存の付け外しも含む）。行から作るノートが引き継ぐ
+  getCurrentNoteFolders?: () => readonly string[] | undefined;
 };
 
 const IndexTableContext = createContext<IndexTableContextValue | null>(null);
@@ -105,6 +107,8 @@ export type EditorIndexTableCallbacks = {
   onOpenSidePeek: (noteId: string) => void;
   /** このエディタのノートの doc に noteLink（derived_from）を足す */
   onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => void;
+  /** このエディタのノートのいまのフォルダ（未保存の付け外しも含む）。行から作るノートが引き継ぐ */
+  getCurrentNoteFolders?: () => readonly string[] | undefined;
   /**
    * 作った直後にそのノートを開く。メインは表の横のサイドピークに開く。
    * SidePeek は渡さない — 開くとピークの中身が差し替わり、表が見えなくなる（戻る導線も無い）

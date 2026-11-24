@@ -161,3 +161,39 @@ describe("createNoteFromRow の本文の幅（自分で始めるノートとし�
     expect("fullWidth" in doc).toBe(false);
   });
 });
+
+describe("createNoteFromRow のフォルダ（親のノートと同じフォルダに入れる）", () => {
+  const editor = {
+    getBlock: () => ({
+      type: "table",
+      content: { rows: [{ cells: [[{ type: "text", text: "Sample-001" }]] }] },
+    }),
+  };
+  const store = { setNoteLink: vi.fn() };
+
+  beforeEach(() => {
+    createFile.mockClear();
+  });
+
+  it("親のフォルダを引き継ぐ（空白・重複は整える）。種類は普通のノート", async () => {
+    await createNoteFromRow(editor, "t1", 0, [], store, undefined, "parent", ["プロジェクト A", " プロジェクト A ", "熱電/試料"]);
+    const doc = createFile.mock.calls[0][1] as { noteContexts?: string[]; kind?: string };
+    expect(doc.noteContexts).toEqual(["プロジェクト A", "熱電/試料"]);
+    expect(doc.kind).toBe("note");
+  });
+
+  it("旧「計画」フォルダを引き継いでも計画にはならない", async () => {
+    await createNoteFromRow(editor, "t1", 0, [], store, undefined, "parent", ["計画"]);
+    const doc = createFile.mock.calls[0][1] as { noteContexts?: string[]; kind?: string };
+    expect(doc.noteContexts).toEqual(["計画"]);
+    expect(doc.kind).toBe("note");
+  });
+
+  it("親がフォルダに入っていなければ noteContexts を書かない", async () => {
+    await createNoteFromRow(editor, "t1", 0, [], store, undefined, "parent", []);
+    await createNoteFromRow(editor, "t1", 0, [], store, undefined, "parent");
+    for (const call of createFile.mock.calls) {
+      expect("noteContexts" in (call[1] as Record<string, unknown>)).toBe(false);
+    }
+  });
+});
