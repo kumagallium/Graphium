@@ -665,6 +665,7 @@ export function FileSidebar({
           >
             <FolderTree
               folders={folderData.folders}
+              sharedFolders={folderData.sharedFolders}
               emptyFolders={emptyFolders}
               unfiledCount={folderData.unfiledCount}
               selected={selectedFolder}

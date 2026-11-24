@@ -419,6 +419,15 @@ export function WikiListView({
     return counts;
   }, [noteIndex]);
 
+  // 共有フォルダに共有しているページ（索引の sharedEntryId から）。題の横に印を出す
+  const sharedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of noteIndex?.notes ?? []) {
+      if (entry.sharedEntryId) ids.add(entry.noteId);
+    }
+    return ids;
+  }, [noteIndex]);
+
   // 作成日は索引（= 知見に書かれた作成日）から引く。ファイルの作成時刻はコピー・同期・
   // 復元でその時刻に変わるので、索引に無いときの補いにだけ使う
   const createdAtById = useMemo(() => {
@@ -1063,6 +1072,18 @@ export function WikiListView({
                       <span className="text-foreground hover:text-primary transition-colors">
                         {entry.title}
                       </span>
+                      {sharedIds.has(entry.id) && (
+                        // 開いたページの「共有済み」と同じ印と色（ノートの一覧と揃える）
+                        <span
+                          className="inline-flex text-primary shrink-0"
+                          data-tooltip={t("share.badgeTooltip")}
+                          aria-label={t("share.badge")}
+                          role="img"
+                          data-testid="wiki-list-shared-mark"
+                        >
+                          <Share2 size={12} aria-hidden />
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-xs">

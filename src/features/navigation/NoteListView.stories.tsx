@@ -21,6 +21,8 @@ const MOCK_INDEX: GraphiumIndex = {
   notes: [
     {
       noteId: "note-1",
+      // 共有フォルダに共有しているノート（題の横に共有の印が出る）
+      sharedEntryId: "shared-1",
       title: "Cu粉末の焼結実験（第1回）",
       modifiedAt: hoursAgo(2),
       createdAt: daysAgo(14),

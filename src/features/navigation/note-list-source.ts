@@ -30,6 +30,8 @@ export type NoteListEntry = {
   ocrText?: string;
   /** 検索用の別の読み（macOS の Vision）。一覧の検索にだけ使い、表示しない */
   ocrAltText?: string;
+  /** 共有フォルダに共有しているノートか（索引の sharedEntryId から）。題の横に印を出す */
+  shared?: true;
 };
 
 export interface NoteListSource {
@@ -80,6 +82,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         primaryKnowledgeWikiId: wikiEntries[0]?.noteId,
         ocrText: sanitizeOcrText(n.ocrText),
         ocrAltText: sanitizeAltText(n.ocrAltText),
+        ...(n.sharedEntryId ? { shared: true as const } : {}),
       };
     });
   }
