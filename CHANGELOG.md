@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.162.0](https://github.com/kumagallium/Graphium/compare/v0.161.0...v0.162.0) - 2026-11-24
+
+- feat(mcp): search inside a source with get_source_text's query by @kumagallium in https://github.com/kumagallium/Graphium/pull/1844
+
 ## [v0.161.0](https://github.com/kumagallium/Graphium/compare/v0.160.1...v0.161.0) - 2026-11-24
 
 - feat(plan): show a Plan mark on the note header and in the note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1839
