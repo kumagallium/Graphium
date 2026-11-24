@@ -1722,6 +1722,7 @@ export const en: Record<string, string> = {
   "nav.noteCount": "{filtered} / {total} notes",
   "nav.loadingNotes": "Loading notes...",
   "nav.noMatchingNotes": "No matching notes",
+  "nav.onlySubfoldersHint": "No notes directly in this folder. Open its folders from the left nav",
   "nav.noteColumn": "Note",
   "nav.outgoing": "Outgoing",
   "nav.incoming": "Incoming",

@@ -1723,6 +1723,7 @@ export const ja: Record<string, string> = {
   "nav.noteCount": "{filtered} / {total} 件",
   "nav.loadingNotes": "ノートを読み込んでいます...",
   "nav.noMatchingNotes": "一致するノートがありません",
+  "nav.onlySubfoldersHint": "このフォルダの直下にノートはありません。中のフォルダは左のナビから開けます",
   "nav.noteColumn": "ノート",
   "nav.outgoing": "参照先",
   "nav.incoming": "被参照",
