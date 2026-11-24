@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.157.0](https://github.com/kumagallium/Graphium/compare/v0.156.4...v0.157.0) - 2026-11-24
+
+- [fix] Recovery screen instead of a blank window; no crash when quitting during live transcription by @kumagallium in https://github.com/kumagallium/Graphium/pull/1825
+- [feat] MCP: create topics and claims while Graphium is running by @kumagallium in https://github.com/kumagallium/Graphium/pull/1826
+- fix(settings): name the two storage folders by what Graphium does with them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1827
+- feat: ask before sharing pages that carry unshared sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1829
+
 ## [v0.156.4](https://github.com/kumagallium/Graphium/compare/v0.156.3...v0.156.4) - 2026-11-24
 
 - [fix] Build Topics for sources that have Claims but no Topics by @kumagallium in https://github.com/kumagallium/Graphium/pull/1822
