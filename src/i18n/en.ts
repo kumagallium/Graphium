@@ -2249,6 +2249,11 @@ export const en: Record<string, string> = {
   "wikiLint.legacyTopics.action": "Rebuild from sources",
   "wikiLint.legacyTopics.running": "Rebuilding…",
   "wikiLint.legacyTopics.done": "Rebuilt {rebuilt}, skipped {skipped} source(s), failed {failed}",
+  // Upkeep view: "Fill in what is missing" and "Rebuild everything" (bulk jobs moved from Settings → Knowledge)
+  "upkeep.fillGaps.header": "Fill in what is missing ({count})",
+  "upkeep.fillGaps.hint": "Adds what an interrupted ingest left out, or what an earlier version did not make. Each one shows how many AI calls it needs before it starts.",
+  "upkeep.rebuild.header": "Rebuild everything",
+  "upkeep.rebuild.hint": "Rebuilds knowledge from its sources after you change how it is made or which model makes it. This calls the AI many times, so use it only when you need it.",
   "wikiLint.bulk.select": "Select",
   "wikiLint.bulk.selected": "{count} selected",
   "wikiLint.bulk.archiveButton": "Archive {count}",

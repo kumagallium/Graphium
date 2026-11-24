@@ -2211,6 +2211,11 @@ export const ko: Record<string, string> = {
   "wikiLint.legacyTopics.action": "원본 자료로 재구성",
   "wikiLint.legacyTopics.running": "재구성하는 중…",
   "wikiLint.legacyTopics.done": "재구성 {rebuilt}개, 건너뛴 자료 {skipped}개, 실패 {failed}개",
+  // 정비 화면의 "빠진 부분 채우기" "전체 다시 만들기"(설정의 지식 관리에서 옮긴 일괄 처리)
+  "upkeep.fillGaps.header": "빠진 부분 채우기({count})",
+  "upkeep.fillGaps.hint": "가져오기 도중에 빠진 부분이나 이전 버전에서 만들어지지 않은 부분을 채웁니다. 모두 실행 전에 AI 호출 횟수를 확인합니다.",
+  "upkeep.rebuild.header": "전체 다시 만들기",
+  "upkeep.rebuild.hint": "만드는 방식이나 모델을 바꾼 뒤 지식을 자료에서 다시 만듭니다. AI를 많이 호출하므로 필요할 때만 사용하세요.",
   "wikiLint.bulk.select": "선택",
   "wikiLint.bulk.selected": "{count}개 선택됨",
   "wikiLint.bulk.archiveButton": "{count}개 아카이브",
