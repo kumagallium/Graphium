@@ -4634,6 +4634,8 @@ export const ja: Record<string, string> = {
   "maintenance.undo.refused.notFound": "この履歴が見つかりません（履歴は 1 年で消えます）",
   "maintenance.undo.refused.copyUnreadable": "元の内容の写しが読めないため、取り消せません",
   "maintenance.undo.refused.unsupported": "この保存先では、操作の取り消しに対応していません",
+  "mcpLive.updated": "外の AI がナレッジを {count} ページ更新しました",
+  "mcpLive.kept": "「{title}」は編集中だったため、外の AI の変更を画面に反映していません",
   "asset.colPages": "ページ",
   "asset.sortPages": "ページ",
   "asset.pageCountShort": "{count} ページ",

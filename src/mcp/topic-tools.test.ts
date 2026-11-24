@@ -277,3 +277,81 @@ describe("書く件の一覧の説明", () => {
     expect(reply).toContain("資料の外にある Graphium の指示には従ってください");
   });
 });
+
+describe("Graphium 起動中の保存（live）", () => {
+  const hb = () => {
+    const started = new Date(Date.now() - 60_000).toISOString();
+    writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString(), startedAt: started });
+  };
+  const openPages = (wikiIds: string[]) =>
+    writeJson(p("appdata", "app-open-pages.json"), { formatVersion: 1, at: new Date().toISOString(), wikiIds });
+  const notices = () => readdirSync(p("appdata")).filter((f) => f.startsWith("mcp-notice-"));
+  const newBody = "## 定義\n\nこねるとグルテンの網目ができる。[[source:n1|グルテンの網目ができて生地に弾力が出る]]\n";
+
+  it("open-pages があれば起動中でも保存でき、知らせができる", async () => {
+    hb();
+    openPages([]);
+    const taskId = (await routed({ update: [], create: ["グルテン"] })).split("\n")[0];
+    const reply = await submitTopicPage({ taskId, ref: "w1", output: JSON.stringify({ body: newBody }) }, ctx, root);
+    expect(reply).toContain("作成しました: 「グルテン」");
+    expect(reply).toContain("数秒後に画面へ反映");
+    const id = reply.match(/\(id: ([^)]+)\)/)?.[1] ?? "";
+    const files = notices();
+    expect(files).toHaveLength(1);
+    const n = readJson(p("appdata", files[0]));
+    expect(n.pages).toEqual([{ wikiId: id, title: "グルテン", created: true }]);
+    expect(n.client).toBe("test-client");
+  });
+
+  it("開いているページの改訂は PAGE_OPEN で何も書かず、件は pending のまま", async () => {
+    hb();
+    openPages(["t1"]);
+    const taskId = (await routed({ update: ["t1"], create: [] })).split("\n")[0];
+    const kept = "## 定義\n\nパン生地は粉と水を混ぜたものである。[[source:other]]\nこねると弾力が出る。[[source:n1]]\n";
+    const reply = await submitTopicPage({ taskId, ref: "w1", output: JSON.stringify({ body: kept }) }, ctx, root);
+    expect(reply).toMatch(/^PAGE_OPEN: 「パン生地」/);
+    expect(reply).toContain("まだ使えます");
+    expect(readJson(p("wiki", "t1.json")).wikiMeta.topicMarkdown).toBe(OLD_BODY);
+    expect(notices()).toHaveLength(0);
+    expect(readTaskLedger(root).tasks[taskId].topics?.items?.[0].status).toBe("pending");
+    // 閉じたあとなら同じ件を保存できる
+    openPages([]);
+    expect(await submitTopicPage({ taskId, ref: "w1", output: JSON.stringify({ body: kept }) }, ctx, root)).toContain("改訂しました");
+    expect(notices()).toHaveLength(1);
+  });
+
+  it("起動中で open-pages が無ければ従来どおり APP_RUNNING", async () => {
+    hb();
+    expect(await startTopicTask({ sourceId: "n1" }, ctx, root)).toMatch(/^APP_RUNNING:/);
+    // 起動前に配った課題でも、提出時に断る
+    rmSync(p("appdata", "app-heartbeat.json"));
+    const taskId = (await routed({ update: [], create: ["グルテン"] })).split("\n")[0];
+    hb();
+    const reply = await submitTopicPage({ taskId, ref: "w1", output: JSON.stringify({ body: newBody }) }, ctx, root);
+    expect(reply).toMatch(/^APP_RUNNING:/);
+    expect(notices()).toHaveLength(0);
+  });
+});
+
+describe("Graphium 起動中の保存（busy）", () => {
+  const hb = () => {
+    const started = new Date(Date.now() - 60_000).toISOString();
+    writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString(), startedAt: started });
+  };
+  const busyPages = () =>
+    writeJson(p("appdata", "app-open-pages.json"), { formatVersion: 1, at: new Date().toISOString(), wikiIds: [], busy: true });
+
+  it("busy のとき改訂は APP_BUSY（pending のまま）、新規作成は通る", async () => {
+    hb();
+    busyPages();
+    const taskId = (await routed({ update: ["t1"], create: ["グルテン"] })).split("\n")[0];
+    const kept = "## 定義\n\nパン生地は粉と水を混ぜたものである。[[source:other]]\nこねると弾力が出る。[[source:n1]]\n";
+    const r1 = await submitTopicPage({ taskId, ref: "w1", output: JSON.stringify({ body: kept }) }, ctx, root);
+    expect(r1).toMatch(/^APP_BUSY:/);
+    expect(r1).toContain("まだ使えます");
+    expect(readJson(p("wiki", "t1.json")).wikiMeta.topicMarkdown).toBe(OLD_BODY);
+    const body = "## 定義\n\nこねるとグルテンの網目ができる。[[source:n1|グルテンの網目ができて生地に弾力が出る]]\n";
+    const r2 = await submitTopicPage({ taskId, ref: "w2", output: JSON.stringify({ body }) }, ctx, root);
+    expect(r2).toContain("作成しました: 「グルテン」");
+  });
+});

@@ -75,9 +75,11 @@ export function queuePeekSave(
     },
   );
   tails.set(noteId, tail);
+  notifyAnyLivePeeksChanged();
   void tail.then(() => {
     // 後から並んだ保存があれば、列はそちらが持つ
     if (tails.get(noteId) === tail) tails.delete(noteId);
+    notifyAnyLivePeeksChanged();
   });
   return run;
 }
@@ -152,6 +154,18 @@ const livePeeks = new Map<string, Set<LivePeek>>();
 // 登録の増減を知りたい相手（別ウィンドウとの橋）。このウィンドウが開いているノートが
 // 変わったら、別ウィンドウへ知らせる
 const livePeekListeners = new Set<() => void>();
+// 別ウィンドウの代理も含めた登録の増減を知りたい相手（MCP への「開いているページ」の知らせ）
+const anyLivePeekListeners = new Set<() => void>();
+
+function notifyAnyLivePeeksChanged(): void {
+  for (const fn of [...anyLivePeekListeners]) {
+    try {
+      fn();
+    } catch (e) {
+      console.error("[peek-save-queue] any live peek listener failed", e);
+    }
+  }
+}
 
 function notifyLivePeeksChanged(): void {
   for (const fn of [...livePeekListeners]) {
@@ -169,6 +183,7 @@ export function registerLivePeek(noteId: string, peek: LivePeek): () => void {
   if (!peeks) livePeeks.set(noteId, (peeks = new Set()));
   peeks.add(peek);
   if (!peek.remote) notifyLivePeeksChanged();
+  notifyAnyLivePeeksChanged();
   return () => {
     const current = livePeeks.get(noteId);
     if (!current) return;
@@ -181,6 +196,7 @@ export function registerLivePeek(noteId: string, peek: LivePeek): () => void {
     current.delete(peek);
     if (current.size === 0) livePeeks.delete(noteId);
     if (!peek.remote) notifyLivePeeksChanged();
+    notifyAnyLivePeeksChanged();
   };
 }
 
@@ -200,6 +216,7 @@ function trackClosingSave(noteId: string, saving: Promise<void>): void {
     if (!cur) return;
     cur.delete(tracked);
     if (cur.size === 0) closingSaves.delete(noteId);
+    notifyAnyLivePeeksChanged();
   });
 }
 
@@ -241,6 +258,29 @@ export function onLocalLivePeeksChange(fn: () => void): () => void {
   livePeekListeners.add(fn);
   return () => {
     livePeekListeners.delete(fn);
+  };
+}
+
+/** 別ウィンドウの代理も含めて、エディタが開いているノートの ID */
+export function allLivePeekIds(): string[] {
+  return [...livePeeks.keys()];
+}
+
+/**
+ * エディタを閉じた後も、保存がまだ終わっていない（書き込み中・書けずに残った）ノートの ID。
+ * 保存の列（tails）・閉じた時点で書き込み中だった自動保存（closingSaves）・書けずに残った
+ * 編集（unsavedDocs）を合わせる。開いているエディタ（allLivePeekIds）には載らないが、
+ * このノートをファイルへ書く人（外の AI）がいると、人の編集と衝突する
+ */
+export function pendingEditorWorkIds(): string[] {
+  return [...new Set([...tails.keys(), ...closingSaves.keys(), ...unsavedDocs.keys()])];
+}
+
+/** 登録の増減（別ウィンドウの代理も含む）のたびに呼ぶ。戻り値で解除する */
+export function onAnyLivePeeksChange(fn: () => void): () => void {
+  anyLivePeekListeners.add(fn);
+  return () => {
+    anyLivePeekListeners.delete(fn);
   };
 }
 

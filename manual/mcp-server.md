@@ -23,7 +23,7 @@ and it reads the answer out of your own notes, with the note it came from.
 - **Maintaining knowledge pages.** The assistant can merge duplicate topics, rewrite a topic or Q&A page, or archive one. Every change is recorded and can be undone from Graphium.
 - **Exporting provenance.** `export_prov` hands back a note's record as W3C PROV-JSON-LD — the labeled steps plus the note's text, folders, sources, memos, materials and tables. Ask about a plan note and you get the whole plan. AI chats are left out unless you ask for them.
 
-Your notes never leave your machine except as answers the assistant reads. Reading, searching and adding notes work whether Graphium is open or closed — the server reads your note files directly. The one exception is **maintaining knowledge pages: quit Graphium first.** While the app is running it treats its own index as the truth, so a change made from outside would not show up until the next start and could be overwritten; the server refuses with `APP_RUNNING:` instead.
+Your notes never leave your machine except as answers the assistant reads. Reading, searching and adding notes work whether Graphium is open or closed — the server reads your note files directly. Creating topics and claims also works while Graphium is open. The exceptions are **maintaining knowledge pages, creating insights, and setting a source date: quit Graphium first.** While the app is running it treats its own index as the truth, so a change made from outside would not show up until the next start and could be overwritten; the server refuses with `APP_RUNNING:` instead.
 
 ## Setting it up
 
@@ -357,9 +357,9 @@ When the assistant adds to an existing claim, the new part is appended right awa
 Things to know:
 
 - **"Use claims" must be on.** If it is off in **Settings → AI → Preview features**, the tools answer `CLAIMS_DISABLED:`. If the vault has never been opened by this version of Graphium, they answer `SETTINGS_UNKNOWN:` — start Graphium once and quit it.
-- **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant): while it runs the tools answer `APP_RUNNING:`.
+- **It works while Graphium is open.** The assistant's pages are saved right away. A page that is open in Graphium is not rewritten (`PAGE_OPEN:`), and while the app is running its own work on knowledge, such as an import or upkeep, existing pages are not rewritten either (`APP_BUSY:`). Creating a new page is never blocked. Close the page or wait for the work to finish, then try again. If Graphium is in the background, the pages may appear on screen only when you bring it back to the front, with the message **An outside AI updated N knowledge page(s)**. An older version of Graphium that cannot take part still answers `APP_RUNNING:`.
 - **Each submission can be undone in one step.** It appears under **Upkeep → Upkeep history** as **Created claims via MCP**. Undoing it moves the claims it made to the Trash and puts back the ones it added to.
-- **Semantic search catches up on the next start.** Graphium adds the embeddings for these pages a few seconds after it starts.
+- **Semantic search catches up when the pages appear.** While Graphium is open, it adds the embeddings when it shows the change. If it was closed, it adds them a few seconds after the next start.
 - **Long material is cut, as in the app.** A PDF or Word file past about 80,000 characters is cut to fit one task. A web page is read again when the task is made.
 - **Topics and procedure notes can be made this way too**, from v0.134.0 — see [Having your assistant make topics](#topics-from-your-assistant) and [Having your assistant turn a source into a procedure note](#procedure-notes-from-your-assistant). Insights can be — see the next section.
 - **The note's text is material, not instructions.** The task tells the assistant not to follow anything written inside the note.
@@ -430,10 +430,10 @@ What stays with Graphium:
 
 Things to know:
 
-- **Quit Graphium first**, as with [maintenance](#maintaining-knowledge-pages-from-your-assistant). While it runs, saving answers `APP_RUNNING:`.
+- **It works while Graphium is open**, as with [claims](#having-your-assistant-make-claims). A page that is open in Graphium (`PAGE_OPEN:`) or an app task that is rewriting knowledge (`APP_BUSY:`) stops the rewrite of an existing page, not the creation of a new one.
 - **The source is read whole.** The app splits a long source into windows for its own model; the assistant reads it all, with `get_source_text` when it is long.
 - **Topics in the older format are not revised.** Use **Rebuild from sources** in the app first.
-- **Semantic search catches up on the next start**, as with claims.
+- **Semantic search catches up when the pages appear**, as with claims.
 
 ### Seeing graphs inside the conversation <Badge type="tip" text="Added in v0.134.0 (2026-11-14)" /> {#graphs-in-the-conversation}
 
@@ -591,6 +591,10 @@ What *is* recorded automatically is the write itself. A note created through MCP
 **A tool from this page is missing, or the answers look out of date.** The server file is still the one you built earlier. Rebuild it as described in [Updating to a newer version](#updating-to-a-newer-version).
 
 **A maintenance tool answers `APP_RUNNING:`.** Graphium is running. Quit it completely and try again. The browser version can look as if it is still running for about 90 seconds after you close it.
+
+**Saving a topic or a claim answers `PAGE_OPEN:`.** The page is open in Graphium, so it was not rewritten. Close the page in Graphium and try again. Creating a new page is not stopped.
+
+**Saving a topic or a claim answers `APP_BUSY:`.** Graphium is running a task that rewrites knowledge, such as an import or upkeep, so existing pages were not rewritten. Try again when it finishes. Creating a new page is not stopped.
 
 **A maintenance tool answers `BUSY:`.** Another MCP client is writing right now. Wait a moment and try again.
 

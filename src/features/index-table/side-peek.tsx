@@ -36,6 +36,7 @@ import {
   STANDALONE_PANEL_TAB_KEY,
 } from "./standalone-panel-tab";
 import { pendingPeekSave, queuePeekSave, registerLivePeek } from "../../lib/peek-save-queue";
+import { drainExternalChanges } from "../../lib/external-changes";
 import { copyBodyWidthFields } from "../paper-mode/bulk-body-width";
 import { isIncomingDocNewer } from "../../hooks/doc-recency";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -403,11 +404,28 @@ export function SidePeek(props: SidePeekProps) {
     (doc: GraphiumDocument) => setReopen((r) => ({ gen: (r?.gen ?? 0) + 1, noteId: props.noteId, doc })),
     [props.noteId],
   );
+  // ナレッジのページは、外の AI（MCP）が直接書いた内容の取り込みを待ってから開く。
+  // 内側は開いた瞬間の cachedDoc から表示を作るので、取り込み前の古いキャッシュで開くと、
+  // 編集したときに MCP の書き込みを上書きする（lib/external-changes。drainer が無ければ即座に進む）
+  const isWikiPeek = props.noteId.startsWith("wiki:");
+  const [externalSettledFor, setExternalSettledFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isWikiPeek) return;
+    let cancelled = false;
+    void drainExternalChanges().then(() => {
+      if (!cancelled) setExternalSettledFor(props.noteId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isWikiPeek, props.noteId]);
   // 別のノートへ切り替わっていたら、前のノートの差し替えは使わない
   const forced = reopen && reopen.noteId === props.noteId ? reopen : null;
+  if (isWikiPeek && externalSettledFor !== props.noteId) return null;
   const innerProps: SidePeekProps & SidePeekReopen = {
     ...props,
-    cachedDoc: forced ? forced.doc : props.cachedDoc,
+    // 取り込み後の最新を優先する（親の再レンダーより先に内側が開く場合に備えて getter を使う）
+    cachedDoc: forced ? forced.doc : ((isWikiPeek ? props.getCachedDoc?.(props.noteId) : undefined) ?? props.cachedDoc),
     reopenWithDoc,
     forceOpenDoc: !!forced,
   };

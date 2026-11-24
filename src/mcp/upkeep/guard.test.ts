@@ -9,8 +9,11 @@ import {
   acquireWriteLock,
   appRunningMessage,
   BUSY_MESSAGE,
+  detectLiveApp,
   detectRunningApp,
   readHeartbeat,
+  readOpenWikiIds,
+  writeLiveNotice,
 } from "./guard";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
@@ -174,5 +177,81 @@ describe("cleanupTempFiles", () => {
     expect(await cleanupTempFiles(root)).toBe(2);
     expect(await readdir(join(root, "appdata"))).toEqual(["x.json"]);
     expect(await readdir(join(root, "wiki"))).toEqual([]);
+  });
+});
+
+describe("detectLiveApp / readOpenWikiIds / writeLiveNotice", () => {
+  const putOpen = (v: unknown) => writeFile(join(root, "appdata", "app-open-pages.json"), JSON.stringify(v));
+  const open = (at: string, wikiIds: string[] = ["a"]) => ({ formatVersion: 1, at, wikiIds });
+
+  it("起動していなければ stopped", async () => {
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("stopped");
+  });
+
+  it("起動中で open-pages が無ければ blocked", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(100) });
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+  });
+
+  it("open-pages の at が startedAt より古ければ blocked（前回の起動の残り）", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(100) });
+    await putOpen(open(iso(200)));
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+  });
+
+  it("startedAt が無い・読めなければ blocked", async () => {
+    await putHb({ via: "web", at: iso(1) });
+    await putOpen(open(iso(10)));
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+    await putHb({ via: "web", at: iso(1), startedAt: "xxx" });
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+  });
+
+  it("open-pages が startedAt 以降なら live（開いているページを返す）", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(100) });
+    await putOpen(open(iso(50), ["a", "b"]));
+    const r = await detectLiveApp(root, deps(true));
+    expect(r.mode).toBe("live");
+    if (r.mode === "live") expect([...r.openWikiIds].sort()).toEqual(["a", "b"]);
+  });
+
+  it("壊れた open-pages は blocked・readOpenWikiIds は null", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(100) });
+    await writeFile(join(root, "appdata", "app-open-pages.json"), "{oops");
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+    expect(await readOpenWikiIds(root)).toBeNull();
+    await putOpen({ formatVersion: 1, at: "bad", wikiIds: [] });
+    expect(await readOpenWikiIds(root)).toBeNull();
+  });
+
+  it("writeLiveNotice は appdata に知らせを 1 件書く（一時ファイルは残さない）", async () => {
+    await writeLiveNotice(root, { client: "c", pages: [{ wikiId: "w1", title: "題", created: true }] });
+    const files = (await readdir(join(root, "appdata"))).filter((f) => f.startsWith("mcp-notice-"));
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/\.json$/);
+    const body = JSON.parse(await readFile(join(root, "appdata", files[0]), "utf8"));
+    expect(body.formatVersion).toBe(1);
+    expect(body.client).toBe("c");
+    expect(body.pages).toEqual([{ wikiId: "w1", title: "題", created: true }]);
+    expect(Number.isNaN(Date.parse(body.at))).toBe(false);
+  });
+});
+
+describe("detectLiveApp の時刻の境界", () => {
+  const putOpen = (at: string) =>
+    writeFile(join(root, "appdata", "app-open-pages.json"), JSON.stringify({ formatVersion: 1, at, wikiIds: [] }));
+
+  it("at と startedAt が等しければ live", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(50) });
+    await putOpen(iso(50));
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("live");
+  });
+
+  it("at が 60 秒を超えて未来なら blocked（60 秒以内は live）", async () => {
+    await putHb({ via: "web", at: iso(1), startedAt: iso(50) });
+    await putOpen(iso(-120));
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("blocked");
+    await putOpen(iso(-30));
+    expect((await detectLiveApp(root, deps(true))).mode).toBe("live");
   });
 });
