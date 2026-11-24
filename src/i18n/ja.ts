@@ -2254,6 +2254,7 @@ export const ja: Record<string, string> = {
   "upkeep.fillGaps.hint": "取り込みの途中で抜けた分や、前の版では作られなかった分を補います。どれも実行前に AI を呼ぶ回数を確かめます。",
   "upkeep.rebuild.header": "全体をやり直す",
   "upkeep.rebuild.hint": "作り方やモデルを変えたあとに、ナレッジを資料から作り直します。AI を多く呼ぶので、必要なときだけ使ってください。",
+  "upkeep.oneByOne.header": "1 つずつ実行する",
   "wikiLint.bulk.select": "選択",
   "wikiLint.bulk.selected": "{count} 件選択中",
   "wikiLint.bulk.archiveButton": "{count} 件をアーカイブ",

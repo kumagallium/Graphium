@@ -97,6 +97,20 @@ export function UpkeepJobRow({ job }: { job: UpkeepJob }) {
   );
 }
 
+/**
+ * おまかせ（AutoUpkeepPanel）と、その下の個別の手入れとの境目の小見出し。
+ * おまかせのボタンが下の見出しの中身まで実行するように読まれないよう、構造で範囲を分ける（2026-11-24 決定）
+ */
+export function UpkeepOneByOneDivider() {
+  const t = useT();
+  return (
+    <div className="px-4 pt-4 pb-0.5 flex items-center gap-2" role="separator" aria-label={t("upkeep.oneByOne.header")}>
+      <span className="text-[11px] font-medium text-foreground/80 shrink-0">{t("upkeep.oneByOne.header")}</span>
+      <span className="h-px flex-1 bg-border" aria-hidden />
+    </div>
+  );
+}
+
 function UpkeepFold({
   label,
   hint,

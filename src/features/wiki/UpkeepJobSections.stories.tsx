@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LocaleProvider, syncLocale, useT } from "../../i18n";
-import { UpkeepFillGapsSection, UpkeepRebuildSection, type UpkeepJob } from "./UpkeepJobSections";
+import { UpkeepFillGapsSection, UpkeepOneByOneDivider, UpkeepRebuildSection, type UpkeepJob } from "./UpkeepJobSections";
 import { BulkRegenerateBlock, type BulkRegenerateProgressView } from "./BulkRegenerateBlock";
 import { AutoUpkeepPanel } from "./AutoUpkeepPanel";
 import "../../app.css";
@@ -184,7 +184,7 @@ function useLegacyRow(): UpkeepJob {
 }
 
 export const RebuildOpen: Story = {
-  name: "やり直す: 開いたところ",
+  name: "やり直す: 開いたところ（おまかせが使えないときは旧形式の行も出る）",
   render: () => (
     <UpkeepRebuildSection jobs={[useLegacyRow()]} defaultOpen>
       <RegenHarness />
@@ -233,10 +233,11 @@ function ViewOrder() {
   return (
     <div className="border border-border rounded-md">
       <AutoUpkeepPanel progress={null} result={null} onRun={log("autoTidy.run")} />
+      <UpkeepOneByOneDivider />
       <UpkeepFillGapsSection jobs={useIdleFillGapJobs().slice(0, 2)} />
       {fold(t("autoTidy.manual.header"))}
       {fold(t("autoSourceCheck.manual.header"))}
-      <UpkeepRebuildSection jobs={[useLegacyRow()]}>
+      <UpkeepRebuildSection jobs={[]}>
         <RegenHarness />
       </UpkeepRebuildSection>
       <div className="h-3" />

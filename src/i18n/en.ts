@@ -2254,6 +2254,7 @@ export const en: Record<string, string> = {
   "upkeep.fillGaps.hint": "Adds what an interrupted ingest left out, or what an earlier version did not make. Each one shows how many AI calls it needs before it starts.",
   "upkeep.rebuild.header": "Rebuild everything",
   "upkeep.rebuild.hint": "Rebuilds knowledge from its sources after you change how it is made or which model makes it. This calls the AI many times, so use it only when you need it.",
+  "upkeep.oneByOne.header": "Run one at a time",
   "wikiLint.bulk.select": "Select",
   "wikiLint.bulk.selected": "{count} selected",
   "wikiLint.bulk.archiveButton": "Archive {count}",
