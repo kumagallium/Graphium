@@ -9,6 +9,7 @@ import type { GenerationLanguage } from "../lib/language";
 import { migrateToLatest } from "../lib/document-migration";
 import { clearAppDataFileCache } from "../lib/storage/app-data-file";
 import { getActiveProvider } from "../lib/storage/registry";
+import { drainExternalChanges, sameDocumentContent } from "../lib/external-changes";
 import { notifyViewerNoteSaved } from "../lib/viewer-window";
 import type { StorageProvider } from "../lib/storage/types";
 import { PROV_TEMPLATE } from "../lib/prov-template";
@@ -142,7 +143,7 @@ import { definedBodyWidthFields, type BodyWidth } from "../features/paper-mode/b
 import { isNewNotesOnA4 } from "../features/settings/store";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 import { normalizeTableRowIdentities } from "../lib/table-row-identity";
-import { applyLiveBodyWidth, applyLiveMentionRename, flushPeekSaves } from "../lib/peek-save-queue";
+import { applyLiveBodyWidth, applyLiveMentionRename, flushPeekSaves, hasPendingPeekEdits } from "../lib/peek-save-queue";
 import {
   bodyWidthOfDoc,
   bulkWidthCandidates,
@@ -191,6 +192,17 @@ const deleteFile = (id: string) => storage().deleteFile(id);
 const uploadMediaFileWithMeta = (file: File) => storage().uploadMedia(file);
 // Wiki ドキュメント操作ヘルパー
 const listWikiFiles = () => storage().listWikiFiles?.() ?? Promise.resolve([]);
+/** reloadWikiPagesFromStorage の結果 */
+export type ReloadedWikiPages = {
+  /** 反映したページ（内容が変わっていないものも含む） */
+  loaded: Map<string, GraphiumDocument>;
+  /** 未保存の編集などがあり、触らなかった id */
+  skipped: string[];
+  /** 読んだ内容が直前のキャッシュと違った id（キャッシュに無かったものを含む） */
+  changed: Set<string>;
+  /** 読めなかった id（取り消されて無い・保存先の一時失敗・アプリが保存中）。呼び出し側が再試行を決める */
+  failed: string[];
+};
 const loadWikiFile = (id: string) => {
   if (!storage().loadWikiFile) throw new Error("Wiki 非対応のストレージプロバイダーです");
   return storage().loadWikiFile!(id);
@@ -3141,7 +3153,7 @@ export function useFileManager(authenticated: boolean) {
   // --- Wiki ドキュメント操作 ---
 
   // Wiki を開く
-  const handleOpenWikiFile = useCallback(async (wikiId: string) => {
+  const handleOpenWikiFile = useCallback(async (wikiId: string, opts?: { skipExternalDrain?: boolean }) => {
     const request = ++openRequestRef.current;
     const generation = processIndexGenerationRef.current;
     const provider = storage();
@@ -3152,6 +3164,13 @@ export function useFileManager(authenticated: boolean) {
       setActiveAssetType(null);
       setActiveLabel(null);
       setActiveWikiKind(null);
+      // 外の AI（MCP）が直接書いたページの知らせが残っていれば、先に取り込む（古いキャッシュで開いて
+      // 編集し、MCP の書き込みを上書きしないため。lib/external-changes）。知らせの処理が
+      // 開き直す呼び出しは skipExternalDrain で来る（自分を待たない）
+      if (!opts?.skipExternalDrain) {
+        await drainExternalChanges();
+        if (!isCurrent() || request !== openRequestRef.current) return;
+      }
       // サイドピークで同じ Wiki を編集した直後なら、書き終わるのを待ってから読む（openRequestRef）
       const peekSaves = flushPeekSaves(`wiki:${wikiId}`);
       if (peekSaves) {
@@ -3383,6 +3402,158 @@ export function useFileManager(authenticated: boolean) {
       }
     },
     []
+  );
+
+  // 外の AI（MCP）がファイルへ直接書いたページを、ストレージから読み直して反映する。
+  // refreshFiles は呼ばない（ノート・スキルの一覧とシステムスキルの整備まで走り、2,000 ページ超の
+  // 保管庫では全ページ分の走査も要る）。変わった id だけを、handleSaveWikiFile / handleCreateWikiFile の
+  // 状態更新にならって一覧・メタ・索引・メディア索引へ反映する。
+  // 未保存の編集が残るページ（hasPendingPeekEdits）は触らず skipped で返す（古い内容で上書きされる・
+  // 編集を失うのを避ける）。読めないページ（MCP が取り消してもう無い等）は黙って飛ばす。
+  // 書き込みはしない（読み直すだけ）
+  const reloadWikiPagesFromStorage = useCallback(
+    async (
+      ids: string[],
+    ): Promise<ReloadedWikiPages> => {
+      const loaded = new Map<string, GraphiumDocument>();
+      const skipped: string[] = [];
+      const changed = new Set<string>();
+      const failed: string[] = [];
+      for (const id of new Set(ids)) {
+        const key = `wiki:${id}`;
+        if (hasPendingPeekEdits(key)) {
+          skipped.push(id);
+          continue;
+        }
+        // アプリの保存の最中は読まない（保存はファイルを書いてからキャッシュを進めるので、その途中で
+        // 読むと、どちらの内容か決められない）。失敗扱いにして、呼び出し側の再試行に任せる
+        if (savingRef.current) {
+          failed.push(id);
+          continue;
+        }
+        // 読む前のキャッシュを控える（読む間にアプリが保存して進めていないか、あとで見る）
+        const before = docCacheRef.current.get(key);
+        let doc: GraphiumDocument;
+        try {
+          doc = await loadWikiFile(id);
+        } catch {
+          // 取り消されてもう無い・保存先の一時的な失敗。呼び出し側が知らせの古さで再試行を決める
+          failed.push(id);
+          continue;
+        }
+        // 読む間に編集が始まった・アプリが保存した（キャッシュが進んだ）なら、読んだ内容では上書きしない。
+        // 保存は書き終えてからキャッシュを進めるので、参照が変わったかで見分けられる
+        if (hasPendingPeekEdits(key) || docCacheRef.current.get(key) !== before) {
+          skipped.push(id);
+          continue;
+        }
+        // 読む間に保存が始まっていた。まだキャッシュは進んでいないが、書き終えれば進む
+        if (savingRef.current) {
+          failed.push(id);
+          continue;
+        }
+        // 直前のキャッシュと同じ内容なら、キャッシュはそのまま（参照を変えず、エディタの作り直しもさせない）。
+        // 比較は来歴・更新時刻も含む全体（エディタが古い来歴で書き戻さないように）
+        if (before && sameDocumentContent(before, doc)) {
+          loaded.set(id, before);
+          continue;
+        }
+        docCacheRef.current.set(key, doc);
+        loaded.set(id, doc);
+        changed.add(id);
+      }
+      if (loaded.size === 0) return { loaded, skipped, changed, failed };
+
+      const now = new Date().toISOString();
+      // 一覧: 既存は名前と更新時刻だけ差し替え、新しいページは先頭に足す
+      setWikiFiles((prev) => {
+        const known = new Set(prev.map((f) => f.id));
+        const next = prev.map((f) => {
+          const doc = loaded.get(f.id);
+          return doc ? { ...f, name: `${doc.title}.graphium.json`, modifiedTime: doc.modifiedAt ?? now } : f;
+        });
+        const added: GraphiumFile[] = [];
+        for (const [id, doc] of loaded) {
+          if (known.has(id)) continue;
+          added.push({
+            id,
+            name: `${doc.title}.graphium.json`,
+            modifiedTime: doc.modifiedAt ?? now,
+            createdTime: doc.createdAt ?? now,
+          });
+        }
+        return added.length > 0 ? [...added, ...next] : next;
+      });
+      // メタ: 文書が正本（起動時の読み込みと同じ値）
+      setWikiMetas((prev) => {
+        const next = new Map(prev);
+        for (const [id, doc] of loaded) {
+          const validity = doc.wikiMeta?.grounding?.validity;
+          const sourceCheck = doc.wikiMeta?.sourceCheck;
+          next.set(id, {
+            title: doc.title,
+            kind: doc.wikiMeta?.kind ?? "claim",
+            model: doc.wikiMeta?.generatedBy?.model,
+            level: doc.wikiMeta?.level,
+            status: doc.wikiMeta?.status,
+            claimRole: doc.wikiMeta?.claimRole,
+            atomType: doc.wikiMeta?.atomType,
+            shape: doc.wikiMeta?.shape,
+            synthesisMode: doc.wikiMeta?.synthesisMode,
+            hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+            derivedFromClaims: doc.wikiMeta?.derivedFromClaims,
+            derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
+            topicIds: doc.wikiMeta?.topicIds,
+            topicType: doc.wikiMeta?.kind === "topic" ? doc.wikiMeta?.topicType : undefined,
+            theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
+            groundingValidity: validity
+              ? {
+                  verdict: validity.verdict,
+                  checkedAt: validity.checkedAt,
+                  entryId: validity.entryId,
+                  dismissed: validity.dismissed,
+                }
+              : undefined,
+            sourceCheckVerdict: sourceCheck
+              ? {
+                  verdict: sourceCheck.verdict,
+                  dismissed: sourceCheck.dismissed,
+                  claimHash: sourceCheck.claimHash,
+                }
+              : undefined,
+            hasFrames: hasAnyFrame(doc.wikiMeta),
+          });
+        }
+        return next;
+      });
+      // 索引（アーカイブ・ゴミ箱のフラグは updateIndexEntry が引き継ぐ）。1 回の保存にまとめる
+      if (noteIndexRef.current) {
+        let updated = noteIndexRef.current;
+        for (const [id, doc] of loaded) {
+          updated = updateIndexEntry(updated, id, doc, {
+            id,
+            name: `${doc.title}.graphium.json`,
+            modifiedTime: doc.modifiedAt ?? now,
+            createdTime: doc.createdAt ?? now,
+          });
+        }
+        noteIndexRef.current = updated;
+        setNoteIndex(updated);
+        queueSaveIndex(updated);
+      }
+      if (mediaIndexRef.current) {
+        let updated = mediaIndexRef.current;
+        for (const [id, doc] of loaded) {
+          const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
+          updated = syncUsedIn(updated, `wiki:${id}`, doc.title, mediaMap, collectSourceAssetFileIdsFromDoc(doc));
+        }
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      }
+      return { loaded, skipped, changed, failed };
+    },
+    [],
   );
 
   // Wiki をゴミ箱に送る（ソフトデリート）
@@ -4196,6 +4367,7 @@ export function useFileManager(authenticated: boolean) {
     setActiveWikiKind,
     handleOpenWikiFile,
     handleSaveWikiFile,
+    reloadWikiPagesFromStorage,
     handleDeleteWikiFile,
     handleCreateWikiFile,
     // Skill

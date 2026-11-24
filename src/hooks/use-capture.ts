@@ -322,8 +322,25 @@ export function useCapture(authenticated: boolean) {
     }
   }, []);
 
+  /**
+   * 索引を読み終えたか（indexRef を読むだけ）。読み込み前に handleRecordKnowledged などを呼ぶと、
+   * 空の索引（createEmptyCaptureIndex）へ変換をかけて保存し、既存のメモを消してしまう。
+   * 外の AI の知らせ（features/mcp-live）は、未読込なら処理を見送って次回に再試行する
+   */
+  const isCaptureIndexLoaded = useCallback(() => indexRef.current !== null, []);
+  /**
+   * 索引にそのメモがあるか。読み込みに失敗すると空の索引を「読み込み済み」として持つので、
+   * isCaptureIndexLoaded だけでは足りない。無いメモには記録を書かない（空の索引で上書きしない）
+   */
+  const hasCapture = useCallback(
+    (captureId: string) => !!indexRef.current?.captures.some((c) => c.id === captureId),
+    [],
+  );
+
   return {
     captureIndex,
+    isCaptureIndexLoaded,
+    hasCapture,
     captureLoading: loading,
     capturing,
     handleCreateCapture,

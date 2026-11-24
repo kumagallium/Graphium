@@ -4612,6 +4612,8 @@ export const en: Record<string, string> = {
   "maintenance.undo.refused.notFound": "The record for this operation was not found (records are removed after one year)",
   "maintenance.undo.refused.copyUnreadable": "The saved copy of the original content could not be read, so this cannot be undone",
   "maintenance.undo.refused.unsupported": "This storage does not support undoing operations",
+  "mcpLive.updated": "An outside AI updated {count} knowledge page(s)",
+  "mcpLive.kept": "\"{title}\" was being edited, so the outside AI's change is not shown here",
   "asset.colPages": "Pages",
   "asset.sortPages": "Pages",
   "asset.pageCountShort": "{count} p",

@@ -4955,6 +4955,44 @@ while Graphium is running (`src/mcp/upkeep/guard.ts`):
 - Writes go through `atomic-write.ts` (`<name>.json.tmp-<pid>` then `rename`,
   retried on Windows `EPERM` / `EBUSY`); leftovers are removed at startup.
 
+**Creating topics and claims while the app runs.** `start_topic_task` to
+`submit_topic_page` and `start_claim_task` / `submit_claims` / `submit_rewrite`
+are the only writes that may proceed against a running app (`allowLive` in
+`withWriteGuard`); maintenance, insights and `set_source_date` still answer
+`APP_RUNNING:`.
+
+- The app writes `appdata/app-open-pages.json` (`{ formatVersion: 1, at,
+  wikiIds, busy? }`): the knowledge pages open in an editor (main, side peek,
+  another window) or still being saved after their editor closed, and whether
+  an in-app knowledge rewrite (import, upkeep) is running
+  (`src/features/mcp-live/use-open-pages-beacon.ts`). A page is added to the
+  list at once and removed only after its saves have finished.
+- `detectLiveApp` returns one of three states. `stopped`: no live heartbeat.
+  `live`: the app runs and `app-open-pages.json` was written at or after the
+  heartbeat's `startedAt` (and is not from the future), so this app version reads
+  notices. `blocked`: it runs but the file is missing, unreadable or older than
+  this launch (an older app), so the tool refuses with `APP_RUNNING:` as before.
+- In `live` mode a write to an existing page is refused with `PAGE_OPEN:` if its
+  id is in `wikiIds` (or is not a plain file-name id, `isSafePageId`), and with
+  `APP_BUSY:` if `busy` is set; both are re-read right before each write.
+  Creating a new page is never refused. The write itself goes straight to the files, under the same
+  write lock and records.
+- After writing, MCP places `appdata/mcp-notice-<time>-<id>.json` (`{
+  formatVersion: 1, at, client?, pages: [{ wikiId, title, created }],
+  memoBacklinks? }`). `useMcpNotices` (every 10 seconds and on window focus)
+  drains them, re-reads the pages from storage into the cache, and for pages
+  whose content changed replaces open editors, builds the embeddings and shows
+  "An outside AI updated N knowledge page(s)" (`mcpLive.updated`), then deletes
+  the notice. A page with unsaved edits, or one the app saved while it was being
+  re-read, is left as the app has it. The app never writes page content on the
+  strength of a notice; it only re-reads (a memo's "made into knowledge" link is
+  recorded only for a memo the index already has).
+- The entries that hand a knowledge page's document to an editor
+  (`handleOpenWikiFile`, `SidePeek`) call `drainExternalChanges`
+  (`src/lib/external-changes.ts`, 0.8 s limit) first, so a page is not opened
+  from a cache older than a pending notice unless the storage is slower than
+  that limit.
+
 **Records are shared with the app.** The maintenance tools run
 `src/features/knowledge-maintenance/` `recorder` / `undo` on a file-system host
 (`src/mcp/upkeep/`, `MaintenanceStorageLike` over `appdata/`) and write the same
@@ -5489,6 +5527,16 @@ the API (`installApiAuthFetch`, `src/lib/api-auth-fetch.ts`) and never to anothe
 origin. At start-up the server warns loudly when it listens beyond loopback
 without a token, because the MCP connection test starts a local command: an open
 LAN port is remote command execution.
+
+**MCP notices (`appdata/`).** Anyone who can write to `appdata/` can place
+`app-open-pages.json` or a `mcp-notice-*.json`, but a notice can only make the
+app re-read an existing page from storage; it carries no content that is
+written. Page ids in a notice are filtered with `isSafePageId`, and an
+`app-open-pages.json` that is unreadable, malformed or older than the launch is
+treated as "refuse" (`blocked`). Known limit: if a background task in the app
+that writes pages without a toast (so `busy` is not set) overlaps an MCP
+rewrite of the same page, both are AI-written content and whichever writes
+last remains.
 
 Other tokens you may see in headers (`X-LLM-API-Key`, `X-MCP-Servers`,
 `X-Registry-URL`/`X-Registry-Key`) are passthrough to upstream LLM / MCP /

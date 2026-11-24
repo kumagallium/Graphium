@@ -272,18 +272,20 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { applyLiveExternalDocDetailed, flushPeekSaves, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
+import { applyLiveExternalDocDetailed, flushPeekSaves, hasPendingPeekEdits, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
 import {
   isMaintenanceRecordFailed,
   isMaintenanceSaveBusy,
   isMaintenanceSaveFailed,
   useKnowledgeMaintenance,
+  activeRunIds,
   type MaintenanceOperationHandle,
   type MaintenanceRunHandle,
   type UndoTarget,
 } from "./features/knowledge-maintenance";
 import type { MaintenanceListBinding } from "./features/knowledge-maintenance/MaintenanceRunList";
 import { useAppHeartbeat } from "./features/app-heartbeat/use-app-heartbeat";
+import { recordMemoBacklinks, requireMemoIndexLoaded, shouldRetryFailedPages, useMcpNotices, useOpenPagesBeacon } from "./features/mcp-live";
 import { useFeatureFlagsMirror } from "./features/mcp-bridge/feature-flags-mirror";
 import { useEmbeddingBackfill } from "./features/wiki/embedding-backfill";
 import { refreshEmbeddingDefaultProbe } from "./features/embedding/default-probe";
@@ -15022,6 +15024,8 @@ export function NoteApp() {
     loadDoc: async (id) => fm.getCachedDoc(`wiki:${id}`) ?? (await getActiveProvider().loadWikiFile?.(id)) ?? null,
     embed: (id, doc) => embedWikiSections(id, doc, { strict: true }),
   });
+  const captureRef = useRef(capture);
+  captureRef.current = capture;
   const maintenance = useKnowledgeMaintenance({
     fm,
     getProvider: getActiveProvider,
@@ -15048,6 +15052,84 @@ export function NoteApp() {
     requestUndo: requestMaintenanceUndo,
     listBinding: maintenanceListBinding,
   } = maintenance;
+  // 外の AI（MCP）が起動中に直接書いたナレッジのページを受け取る（features/mcp-live）。
+  // ・開いているページの一覧を書く（MCP はそのページを書き換えない。起動後に書かれたことが
+  //   「知らせを受け取れる版」の印にもなる）
+  // ・MCP の知らせを受けたら、ストレージから読み直すだけ（知らせの中身で書き込みはしない。flush もしない —
+  //   古い内容でディスクを上書きしてしまう）
+  const mcpLiveEnabled = !authLoading && !initFailure && !!storageProvider;
+  // アプリの中でナレッジを書き換える処理が動いている間は、MCP に既存のページを書き換えさせない
+  // （同じページを両方が読んで書くと片方の更新が消える）。トーストに出る生成・統合・作り直し・取り込みは
+  // ingestToast の generating で、手入れの実行は activeRunIds で拾う
+  const mcpLiveBusy =
+    !!ingestToast?.items?.some((i: IngestToastItem) => i.status === "generating" || i.status === "saving");
+  useOpenPagesBeacon(storageProvider, mcpLiveEnabled, {
+    busy: mcpLiveBusy,
+    pollBusy: () => ingestQueueRef.current.length > 0 || activeRunIds().size > 0,
+  });
+  const refreshMaintenanceList = maintenance.refresh;
+  // 反映できなかった旨を知らせたページ（再試行や同じ知らせの繰り返しで同じトーストを重ねない）
+  const mcpKeptNotifiedRef = useRef(new Set<string>());
+  useMcpNotices({
+    enabled: mcpLiveEnabled,
+    provider: storageProvider,
+    handle: async (notice) => {
+      // メモの索引を読み終える前に逆リンクを記録すると、空の索引へ変換をかけて保存し、既存のメモを
+      // 消してしまう。最初に確かめて、未読込なら何もせず知らせを残す（次回に再試行。トーストも重ならない）
+      requireMemoIndexLoaded(notice, () => captureRef.current.isCaptureIndexLoaded());
+      const { loaded, skipped, changed, failed } = await fmRef.current.reloadWikiPagesFromStorage(
+        notice.pages.map((p) => p.wikiId),
+      );
+      const titleOf = (id: string) =>
+        loaded.get(id)?.title ?? notice.pages.find((p) => p.wikiId === id)?.title ?? fmRef.current.wikiMetas.get(id)?.title ?? id;
+      const kept = new Set<string>(skipped);
+      // 内容が変わったページだけ、エディタ・埋め込み・トーストの対象にする
+      let reflected = 0;
+      for (const id of changed) {
+        const doc = loaded.get(id);
+        if (!doc) continue;
+        const key = `wiki:${id}`;
+        // 開いているサイドピークを差し替える。断られたら、画面は古いまま（知らせる）
+        const { refused } = applyLiveExternalDocDetailed(key, doc);
+        if (refused > 0) {
+          kept.add(id);
+        } else {
+          reflected++;
+        }
+        // メインエディタは差し替えの口を持たないので、いまメインで開いていて未保存が無ければ開き直す。
+        // await のあとなので最新の fm を読む。知らせの処理の中から開くので、知らせの待ちは飛ばす
+        if (fmRef.current.activeFileId === key && !hasPendingPeekEdits(key)) {
+          await fmRef.current.handleOpenWikiFile(id, { skipExternalDrain: true });
+        }
+        embedWikiSections(id, doc).catch(() => {});
+      }
+      // メモから作った知見の逆リンク（メモ側の一覧に「ナレッジ化した」と出す。同じ記録の繰り返しは無視される）
+      const backlinks = notice.memoBacklinks;
+      if (backlinks) {
+        // 索引にそのメモが無ければ何も書かない（読み込みに失敗した空の索引で上書きしない）
+        await recordMemoBacklinks(
+          backlinks,
+          (id) => captureRef.current.hasCapture(id),
+          (cid, noteId, title) => captureRef.current.handleRecordKnowledged(cid, noteId, title),
+        );
+      }
+      if (changed.size > 0) void refreshMaintenanceList();
+      if (reflected > 0) {
+        pushMaintenanceNotice("success", tStatic("mcpLive.updated", { count: String(reflected) }));
+      }
+      for (const id of kept) {
+        const memo = `${notice.at}|${id}`;
+        if (mcpKeptNotifiedRef.current.has(memo)) continue;
+        mcpKeptNotifiedRef.current.add(memo);
+        pushMaintenanceNotice("error", tStatic("mcpLive.kept", { title: titleOf(id) }));
+      }
+      // 読み込みの一時的な失敗は、知らせを残して次回に再試行する。古い知らせは諦める
+      // （取り消されてもう無いページを読み直し続けない）
+      if (shouldRetryFailedPages(notice, failed.length)) {
+        throw new Error(`wiki pages could not be read: ${failed.join(",")}`);
+      }
+    },
+  });
   /** 成功トーストに添える「取り消す」（押したら取り消しを頼むだけ。確認と結果の通知はフック） */
   const maintenanceUndoAction = useCallback(
     (target: UndoTarget) => ({

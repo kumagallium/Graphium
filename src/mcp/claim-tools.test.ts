@@ -4,7 +4,22 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 新規ページの保存だけを失敗させるスイッチ（タイトルで指定。failAfterWrite は書いてから落ちる）
-const saveCtl = vi.hoisted(() => ({ failTitles: new Set<string>(), failAfterWrite: false }));
+const saveCtl = vi.hoisted(() => ({
+  failTitles: new Set<string>(),
+  failAfterWrite: false,
+  afterSave: null as null | (() => void),
+}));
+const ledgerCtl = vi.hoisted(() => ({ failMarkDone: false }));
+vi.mock("./knowledge-tasks", async (importActual) => {
+  const actual = await importActual<typeof import("./knowledge-tasks")>();
+  return {
+    ...actual,
+    markTaskDone: async (...args: Parameters<typeof actual.markTaskDone>) => {
+      if (ledgerCtl.failMarkDone) throw new Error("ledger down");
+      return actual.markTaskDone(...args);
+    },
+  };
+});
 vi.mock("./upkeep/save", async (importActual) => {
   const actual = await importActual<typeof import("./upkeep/save")>();
   return {
@@ -15,7 +30,9 @@ vi.mock("./upkeep/save", async (importActual) => {
         if (saveCtl.failAfterWrite) await actual.saveWikiFileToVault(...args);
         throw new Error("disk full");
       }
-      return actual.saveWikiFileToVault(...args);
+      const r = await actual.saveWikiFileToVault(...args);
+      saveCtl.afterSave?.();
+      return r;
     },
   };
 });
@@ -160,6 +177,8 @@ beforeEach(() => {
 afterEach(() => {
   saveCtl.failTitles.clear();
   saveCtl.failAfterWrite = false;
+  saveCtl.afterSave = null;
+  ledgerCtl.failMarkDone = false;
   resetSearchIndex();
   rmSync(root, { recursive: true, force: true });
 });
@@ -721,5 +740,206 @@ describe("undo_operation（mcp_generate）", () => {
     // 作成の取り消しは、これで通る
     expect(await undoOperation(opIds(created), ctx, root)).toContain("取り消しました");
     expect(entryOf(id).deletedAt).toBeTruthy();
+  });
+});
+
+describe("Graphium 起動中の保存（live）", () => {
+  const hb = () => {
+    const started = new Date(Date.now() - 60_000).toISOString();
+    writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString(), startedAt: started });
+  };
+  const openPages = (wikiIds: string[]) =>
+    writeJson(p("appdata", "app-open-pages.json"), { formatVersion: 1, at: new Date().toISOString(), wikiIds });
+  const notices = () => readdirSync(p("appdata")).filter((f) => f.startsWith("mcp-notice-"));
+  const noticeOf = (f: string) => readJson(p("appdata", f));
+
+  it("open-pages があれば起動中でも保存でき、知らせができる", async () => {
+    hb();
+    openPages([]);
+    const taskId = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    const reply = await submitClaims({ taskId, output: claimOutput("知見X") }, ctx, root);
+    expect(reply).toContain("作成: 「知見X」");
+    expect(reply).toContain("数秒後に画面へ反映");
+    const id = createdId(reply);
+    const files = notices();
+    expect(files).toHaveLength(1);
+    expect(noticeOf(files[0]).pages).toEqual([{ wikiId: id, title: "知見X", created: true }]);
+  });
+
+  it("起動中で open-pages が無ければ従来どおり APP_RUNNING", async () => {
+    hb();
+    expect(await startClaimTask({ noteId: NOTE_A }, ctx, root)).toMatch(/^APP_RUNNING:/);
+  });
+
+  it("書き足し先が開いていれば PAGE_OPEN で何も保存しない（課題は使える）", async () => {
+    const taskId0 = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    const id = createdId(await submitClaims({ taskId: taskId0, output: claimOutput("粒径は決まる") }, ctx, root));
+    const startB = await startClaimTask({ noteId: NOTE_B }, ctx, root);
+    const taskId = taskIdOf(startB);
+    const before = readFileSync(p("wiki", `${id}.json`), "utf8");
+    hb();
+    openPages([id]);
+    const reply = await submitClaims(
+      { taskId, output: claimOutput("粒径は決まる", { suggestedAction: "merge", mergeTargetId: "c1" }) },
+      ctx,
+      root,
+    );
+    expect(reply).toMatch(/^PAGE_OPEN: 「粒径は決まる」/);
+    expect(reply).toContain("課題はまだ使えます");
+    expect(readFileSync(p("wiki", `${id}.json`), "utf8")).toBe(before);
+    expect(notices()).toHaveLength(0);
+    // 閉じれば同じ課題で書き足せ、知らせは created: false
+    openPages([]);
+    const ok = await submitClaims(
+      { taskId, output: claimOutput("粒径は決まる", { suggestedAction: "merge", mergeTargetId: "c1" }) },
+      ctx,
+      root,
+    );
+    expect(ok).toContain("書き足し: 「粒径は決まる」");
+    expect(noticeOf(notices()[0]).pages).toEqual([{ wikiId: id, title: "粒径は決まる", created: false }]);
+  });
+
+  it("メモが元のとき captures.json は書かず、知らせの memoBacklinks に載る", async () => {
+    const captures = { captures: [{ id: "cap1", text: "焼きなましで粒径が変わる", createdAt: "2026-10-01T00:00:00.000Z" }] };
+    writeJson(p("appdata", "captures.json"), captures);
+    const before = readFileSync(p("appdata", "captures.json"), "utf8");
+    hb();
+    openPages([]);
+    const taskId = taskIdOf(await startClaimTask({ noteId: "memo:cap1" }, ctx, root));
+    const reply = await submitClaims({ taskId, output: claimOutput("メモ由来の知見") }, ctx, root);
+    expect(reply).toContain("作成: 「メモ由来の知見」");
+    expect(readFileSync(p("appdata", "captures.json"), "utf8")).toBe(before);
+    const n = noticeOf(notices()[0]);
+    expect(n.memoBacklinks).toEqual({ captureId: "cap1", pages: [{ wikiId: createdId(reply), title: "メモ由来の知見" }] });
+  });
+
+  it("submit_rewrite: 開いていれば PAGE_OPEN、閉じれば差し替えて知らせる", async () => {
+    const taskId0 = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    const id = createdId(await submitClaims({ taskId: taskId0, output: claimOutput("粒径は決まる") }, ctx, root));
+    const reply = await submitClaims(
+      {
+        taskId: taskIdOf(await startClaimTask({ noteId: NOTE_B }, ctx, root)),
+        output: claimOutput("粒径は決まる", { suggestedAction: "merge", mergeTargetId: "c1" }),
+      },
+      ctx,
+      root,
+    );
+    const rewriteId = rewriteTaskIdOf(reply);
+    const out = JSON.stringify({ sections: [{ heading: "概要", content: "整理された本文。" }] });
+    hb();
+    openPages([id]);
+    expect(await submitRewrite({ taskId: rewriteId, output: out }, ctx, root)).toMatch(/^PAGE_OPEN:/);
+    expect(notices()).toHaveLength(0);
+    openPages([]);
+    expect(await submitRewrite({ taskId: rewriteId, output: out }, ctx, root)).toContain("差し替えました");
+    expect(noticeOf(notices()[0]).pages).toEqual([{ wikiId: id, title: "粒径は決まる", created: false }]);
+  });
+});
+
+describe("Graphium 起動中の保存（途中で開く・処理中）", () => {
+  const hb = () => {
+    const started = new Date(Date.now() - 60_000).toISOString();
+    writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString(), startedAt: started });
+  };
+  const openPages = (wikiIds: string[], busy = false) =>
+    writeJson(p("appdata", "app-open-pages.json"), {
+      formatVersion: 1,
+      at: new Date().toISOString(),
+      wikiIds,
+      ...(busy ? { busy: true } : {}),
+    });
+  const notices = () => readdirSync(p("appdata")).filter((f) => f.startsWith("mcp-notice-"));
+
+  async function seed(): Promise<string> {
+    const t = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    return createdId(await submitClaims({ taskId: t, output: claimOutput("粒径は決まる") }, ctx, root));
+  }
+  const mergeOut = (extra: Record<string, unknown> = {}) =>
+    claimOutput("粒径は決まる", { suggestedAction: "merge", mergeTargetId: "c1", ...extra });
+
+  it("計画のあとで書き足し先が開かれたら、その件だけ保存せず failures に出す", async () => {
+    const id = await seed();
+    const taskId = taskIdOf(await startClaimTask({ noteId: NOTE_B }, ctx, root));
+    const before = readFileSync(p("wiki", `${id}.json`), "utf8");
+    hb();
+    openPages([]);
+    const wikis = [
+      { ...JSON.parse(claimOutput("新規Y")).wikis[0] },
+      { ...JSON.parse(mergeOut()).wikis[0] },
+    ];
+    // 1 件目（新規）を保存した直後に、アプリが書き足し先を開いたことにする
+    saveCtl.afterSave = () => openPages([id]);
+    const reply = await submitClaims({ taskId, output: JSON.stringify({ wikis }) }, ctx, root);
+    expect(reply).toContain("作成: 「新規Y」");
+    expect(reply).toContain("「粒径は決まる」は Graphium で開いているため書き足しませんでした");
+    expect(readFileSync(p("wiki", `${id}.json`), "utf8")).toBe(before);
+    expect(notices()).toHaveLength(1);
+  });
+
+  it("busy のとき、書き足しは APP_BUSY で何も保存せず、新規作成は通る", async () => {
+    const id = await seed();
+    const taskId = taskIdOf(await startClaimTask({ noteId: NOTE_B }, ctx, root));
+    const before = readFileSync(p("wiki", `${id}.json`), "utf8");
+    hb();
+    openPages([], true);
+    const reply = await submitClaims({ taskId, output: mergeOut() }, ctx, root);
+    expect(reply).toMatch(/^APP_BUSY:/);
+    expect(reply).toContain("課題はまだ使えます");
+    expect(readFileSync(p("wiki", `${id}.json`), "utf8")).toBe(before);
+    const created = await submitClaims({ taskId, output: claimOutput("別の新規") }, ctx, root);
+    expect(created).toContain("作成: 「別の新規」");
+  });
+
+  it("busy のとき submit_rewrite は APP_BUSY", async () => {
+    const id = await seed();
+    const reply = await submitClaims(
+      { taskId: taskIdOf(await startClaimTask({ noteId: NOTE_B }, ctx, root)), output: mergeOut() },
+      ctx,
+      root,
+    );
+    const out = JSON.stringify({ sections: [{ heading: "概要", content: "整理された本文。" }] });
+    hb();
+    openPages([], true);
+    expect(await submitRewrite({ taskId: rewriteTaskIdOf(reply), output: out }, ctx, root)).toMatch(/^APP_BUSY:/);
+    expect(id).toBeTruthy();
+  });
+});
+
+describe("Graphium 起動中の保存（知らせの書き漏れ）", () => {
+  const hb = () => {
+    const started = new Date(Date.now() - 60_000).toISOString();
+    writeJson(p("appdata", "app-heartbeat.json"), { via: "web", at: new Date().toISOString(), startedAt: started });
+    writeJson(p("appdata", "app-open-pages.json"), { formatVersion: 1, at: new Date().toISOString(), wikiIds: [] });
+  };
+  const notices = () => readdirSync(p("appdata")).filter((f) => f.startsWith("mcp-notice-"));
+
+  it("保存後に台帳の更新が失敗しても、保存したページは知らせる", async () => {
+    hb();
+    const taskId = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    ledgerCtl.failMarkDone = true;
+    const reply = await submitClaims({ taskId, output: claimOutput("知見Z") }, ctx, root);
+    expect(reply).toContain("失敗");
+    expect(wikiFiles()).toHaveLength(1);
+    const files = notices();
+    expect(files).toHaveLength(1);
+    expect(readJson(p("appdata", files[0])).pages).toHaveLength(1);
+  });
+
+  it("安全でない id（wiki:abc）の既存ページへの書き足しは PAGE_OPEN", async () => {
+    writeJson(p("wiki", "wiki:abc.json"), noteDoc("既存知見", "本文", { source: "ai", wikiMeta: { kind: "claim", derivedFromNotes: ["x"] } }));
+    writeJson(p("appdata", "note-index.json"), {
+      version: INDEX_SCHEMA_VERSION,
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      notes: [claimEntry("wiki:abc", "既存知見")],
+    });
+    const taskId = taskIdOf(await startClaimTask({ noteId: NOTE_A }, ctx, root));
+    hb();
+    const reply = await submitClaims(
+      { taskId, output: claimOutput("既存知見", { suggestedAction: "merge", mergeTargetId: "c1" }) },
+      ctx,
+      root,
+    );
+    expect(reply).toMatch(/^PAGE_OPEN:/);
+    expect(notices()).toHaveLength(0);
   });
 });

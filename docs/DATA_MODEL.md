@@ -4324,6 +4324,8 @@ Graphium/
 │                                 #   file when missing or when format differs, deleted with the material
 └── appdata/
     ├── note-index.json             # the GraphiumIndex (the MCP maintenance tools also write flags and entries; the running app overwrites them)
+    ├── app-open-pages.json         # { formatVersion: 1, at, wikiIds, busy? } — written by the app: knowledge pages open in the editor, and whether an in-app knowledge rewrite is running; MCP proceeds only if it was written after the heartbeat's startedAt
+    ├── mcp-notice-<time>-<id>.json # { formatVersion: 1, at, client?, pages: [{ wikiId, title, created }], memoBacklinks? } — placed by MCP after writing pages; the app re-reads those pages from storage and deletes the file
     ├── app-heartbeat.json          # { pid?, via: "desktop" | "web", at, startedAt, version } — written every 30 s while the app runs (desktop: by Rust, deleted on exit)
     ├── mcp-write-lock.json         # { pid, token, at } — exists only while an MCP maintenance tool is writing
     ├── asterism-sent.json          # { version: 1, sent: { <claimId>: { datasetId, sentAt, exportedAt } } } — claims already handed to Asterism (MCP only; see §3.9 export)
