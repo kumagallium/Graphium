@@ -23,9 +23,9 @@ The desktop app writes ordinary files you can see in your file manager. Inside t
 
 ## Changing the storage folder <Badge type="tip" text="Added in v0.3.10 (2026-04-25)" />
 
-On the desktop app you can move the whole data folder: open **Settings** → **Storage** → **Where your notes are saved** and press **Change…**. The current and default paths are shown, and **Reset to default** takes you back to the Documents folder.
+On the desktop app you can move the whole data folder: open **Settings** → **Storage** → **Graphium save folder** and press **Change…**. The current and default paths are shown, and **Reset to default** takes you back to the Documents folder.
 
-![Storage tab of the settings dialog. At the top is where your notes are saved (the folder and a Change button), followed by export and backup, then the Send from your phone or browser and Advanced groups](/screenshots/settings-storage.png)
+![Storage tab of the settings dialog. At the top is the Graphium save folder (the folder and a Change button), followed by Linked folders (none registered yet), export and backup, then the Send from your phone or browser and Advanced groups](/screenshots/settings-storage.png)
 
 Two things to know before you switch:
 

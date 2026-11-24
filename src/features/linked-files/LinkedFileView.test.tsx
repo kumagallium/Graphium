@@ -104,7 +104,7 @@ describe("LinkedFileView", () => {
 
   it.each([
     ["missing", "The original can't be found"],
-    ["unreachable", "Can't reach the place"],
+    ["unreachable", "Can't reach the folder"],
     ["unregistered", "Not registered on this device"],
   ] as const)("%s: 状態を出し、開く・場所を表示を押せなくする", async (state, label) => {
     const fns = setup({ state });

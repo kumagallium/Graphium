@@ -4435,7 +4435,7 @@ localStorage.
 ### 6.5 Linked files and the data places ledger
 
 A **linked file** is a material that points at a file inside a folder the
-user registered as a **data place** (an organization's synced folder, a
+user registered as a **data place** (shown in the app as **Linked folders**; an organization's synced folder, a
 lab NAS) without copying it and without reading its contents. Desktop app
 only. Graphium keeps a small record of *where the file is* and *what it
 looked like when it was recorded*; the bytes stay where they are.

@@ -32,7 +32,7 @@ const page = await ctx.newPage();
 await page.goto(URL);
 const portal = page.locator('[data-modal-portal="true"]').first();
 await portal.waitFor({ state: "visible" });
-await page.getByText("Where your notes are saved").waitFor({ state: "visible" });
+await page.getByText("Graphium save folder").waitFor({ state: "visible" });
 await page.waitForTimeout(1200);
 const dialog = portal.locator('[role="dialog"]').first();
 const target = (await dialog.count()) ? dialog : portal;

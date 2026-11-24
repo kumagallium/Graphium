@@ -71,7 +71,7 @@ async function open() {
   await page.goto(URL);
   const portal = page.locator('[data-modal-portal="true"]').first();
   await portal.waitFor({ state: "visible" });
-  await page.getByText("Where your notes are saved").waitFor({ state: "visible" });
+  await page.getByText("Graphium save folder").waitFor({ state: "visible" });
   await page.waitForTimeout(1200);
   return { ctx, page, portal };
 }

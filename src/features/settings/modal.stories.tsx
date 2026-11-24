@@ -196,6 +196,8 @@ function SettingsModalHarness({
           // 共有フォルダの状態の印・届かないときの診断は「見えている」と答える（実在のフォルダは触らない）
           if (cmd === "shared_root_exists") return true;
           if (cmd === "shared_root_diagnose") return { reachable: true, alternatives: [] };
+          // リンクするフォルダはまだ無い状態で見せる（null を返すと一覧の描画が落ちる）
+          if (cmd === "place_list") return [];
           return null;
         },
       };
