@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.164.0](https://github.com/kumagallium/Graphium/compare/v0.163.0...v0.164.0) - 2026-11-24
+
+- feat(records): list other people's shared records on Home under Shared authors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1849
+
 ## [v0.163.0](https://github.com/kumagallium/Graphium/compare/v0.162.1...v0.163.0) - 2026-11-24
 
 - Bring in files you attach in a ChatGPT chat, after you approve them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1845
