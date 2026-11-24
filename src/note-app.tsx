@@ -364,6 +364,7 @@ import {
   shareNote,
   shareKnowledge,
   forkSharedNote,
+  resolvePlanRowForNote,
   saveForkBase,
   forkSharedKnowledge,
   unshareEntry,
@@ -421,6 +422,15 @@ import {
 } from "./features/sharing/NoteProposalsPanel";
 // 派生元チップ（§25b F）。同じ理由でファイル直 import
 import { NoteForkedFromChip } from "./features/sharing/NoteForkedFromChip";
+// 計画の行ごとに共有された記録（ヘッダのバッジ・右レール・右パネル）。同じ理由でファイル直 import。
+// useNotePlanRecordCount は件数（数値）を返すのでノート本体から呼べる
+import {
+  NotePlanRecordsLivePanel,
+  NotePlanRecordsBadge,
+  NotePlanRecordsRailIcon,
+  useNotePlanRecordCount,
+} from "./features/sharing/NotePlanRecordsPanel";
+import { planSharedIdsOf, readPlanRowRef } from "./features/sharing/plan-row-ref";
 import { applyProposalChanges, collectAdoptedProposals } from "./features/sharing/proposal-apply";
 import { applyAdoptedPageAnnotations } from "./features/sharing/proposal-adopt-stores";
 import { buildNoteSharedGraph } from "./features/sharing/note-shared-graph";
@@ -2574,12 +2584,12 @@ function NoteEditorInner({
     return () => { styleEl?.remove(); };
   }, [highlightBlockIds]);
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | null>(null);
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | "planRecords" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
   const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
   const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
   // アイコンレールのトグル: 同じタブクリックで閉じる
-  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals") => {
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | "planRecords") => {
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
@@ -4675,6 +4685,25 @@ function NoteEditorInner({
     },
     [fileId, isWikiDoc, t],
   );
+  // このノートが共有の計画のどの行の記録かを、手元の計画ノートの表から組む（plan-row-ref.ts）。
+  // 計画の行ではない・計画が共有に出ていないときは null（何も添えない）
+  const resolvePlanRow = useCallback(
+    async (doc: GraphiumDocument) => {
+      if (isWikiDoc || !fileId) return null;
+      const provider = getActiveProvider();
+      try {
+        return await resolvePlanRowForNote(fileId, doc, {
+          index: rawNoteIndex ?? noteIndex ?? null,
+          loadNote: (id) => provider.loadFile(id).catch(() => null),
+        });
+      } catch (e) {
+        // 対応を組めなくても共有は続ける（何も添えないだけ）
+        console.warn("[share] could not resolve the plan row for this note:", e);
+        return null;
+      }
+    },
+    [isWikiDoc, fileId, rawNoteIndex, noteIndex],
+  );
   const handleShare = useCallback(async (chosenRoot?: string) => {
     if (!sharedRoot || !sharedAuthor) return;
     if (!chosenRoot && needsSharedFolderChoice(!!sharedRefState)) {
@@ -4705,6 +4734,7 @@ function NoteEditorInner({
       // 共有先に無い資料（共有していないノートの一節や題）が入っていたら、外すか聞く
       const hideSourceIds = await askHiddenSources(docWithRef, shareTarget.root);
       if (!hideSourceIds) return;
+      const planRow = await resolvePlanRow(docWithRef);
       // Wiki（Knowledge ページ）は type: "knowledge" として共有する
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: shareTarget.root,
@@ -4714,6 +4744,7 @@ function NoteEditorInner({
         includePrivateHistory: getShareIncludesPrivateHistory(),
         readable: readableCopyContext,
         ...(hideSourceIds.size > 0 ? { hideSourceIds } : {}),
+        ...(planRow ? { planRow: planRow.ref } : {}),
       });
       if (!result.ok) {
         if ("conflict" in result && result.conflict) {
@@ -4752,7 +4783,11 @@ function NoteEditorInner({
         void saveSharedNoteLink(result.doc.sharedRef.id, fileId);
       }
       setShareFolderDialogOpen(false);
-      const successMessage = result.isUpdate ? t("share.successReshare") : t("share.successFirst");
+      const baseMessage = result.isUpdate ? t("share.successReshare") : t("share.successFirst");
+      // 計画の行の記録として出たときは、どの計画のどの行かを 1 行で伝える（添えたものを隠さない）
+      const successMessage = planRow
+        ? baseMessage + "\n" + t("share.planRowAttached", { plan: planRow.planTitle || t("library.untitled"), row: planRow.ref.rowName })
+        : baseMessage;
       // 読める写しだけ置けなかったときは、共有の成功に 1 行足して知らせる（共有は成功している）
       window.alert(
         "readableCopy" in result && result.readableCopy === "failed"
@@ -4762,7 +4797,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext, onForkSharedNote, askHiddenSources]);
+  }, [sharedRoot, sharedAuthor, buildDocument, saveDocTracked, t, sharedRefState, isWikiDoc, fileId, readableCopyContext, onForkSharedNote, askHiddenSources, resolvePlanRow]);
 
   // ── 別の共有フォルダへ移す（§26 PR4）──
   // 新しいフォルダへ同じ id で書いてから、元のフォルダで共有解除する（この順なら途中で失敗しても
@@ -4803,6 +4838,13 @@ function NoteEditorInner({
       // 移した先に無い資料も、共有のときと同じく外すか聞く
       const hideSourceIds = await askHiddenSources(docWithRef, toRoot);
       if (!hideSourceIds) return;
+      // 移した先の封筒は新しく書くので、計画の行との対応もここで組み直して添える。
+      // 組み直せないとき（計画の複製を片付けたあと等）は、元のフォルダの封筒の対応を引き継ぐ
+      // （移した先にはまだ封筒が無く、shareNote の「前の版の対応を残す」が効かない）
+      const previousPlanRow = readPlanRowRef(
+        getSharedLibrarySnapshot().entries.find((e) => e.id === sharedRefState.id) ?? null,
+      );
+      const movedPlanRow = (await resolvePlanRow(docWithRef))?.ref ?? previousPlanRow;
       const result = await (isWikiDoc ? shareKnowledge : shareNote)(docWithRef, {
         root: toRoot,
         author: sharedAuthor,
@@ -4810,6 +4852,7 @@ function NoteEditorInner({
         includePrivateHistory: getShareIncludesPrivateHistory(),
         readable: readableCopyContext,
         ...(hideSourceIds.size > 0 ? { hideSourceIds } : {}),
+        ...(movedPlanRow ? { planRow: movedPlanRow } : {}),
       });
       if (!result.ok) {
         window.alert(t("share.failed") + ": " + result.error);
@@ -4835,7 +4878,7 @@ function NoteEditorInner({
     } finally {
       setShareBusy(false);
     }
-  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting, askHiddenSources]);
+  }, [sharedRefState, sharedAuthor, moveFromRoot, buildDocument, isWikiDoc, saveDocTracked, t, readableCopyContext, moveBlockedByAccepting, askHiddenSources, resolvePlanRow]);
 
   // ── テンプレートとして共有（PR 3）──
   // ノート共有（記録のコピー）とは別に、いま開いているページを雛形として配る。
@@ -4871,6 +4914,20 @@ function NoteEditorInner({
   const proposalCount = useNoteProposalCount(
     !isProposalShared ? sharedRefState?.id : undefined,
   );
+  // この計画ノートを指す共有エントリの id（複製の元 → 自分の共有コピー）。共有された記録は
+  // 「どの計画のどの行か」をこの id で指している（plan-row-ref.ts）。
+  // 提案として共有しているノートは計画の共有ではないので、planSharedIdsOf が外す
+  const planRecordIdsKey = useMemo(
+    () => (isWikiDoc ? "" : planSharedIdsOf({ sharedRef: sharedRefState, forkedFrom }).join("|")),
+    [isWikiDoc, sharedRefState, forkedFrom],
+  );
+  const planRecordIds = useMemo(() => (planRecordIdsKey ? planRecordIdsKey.split("|") : []), [planRecordIdsKey]);
+  // 行の記録が 1 件も無いうちは、バッジもタブも出さない（件数が変わらない限り描き直さない）
+  const planRecordCount = useNotePlanRecordCount(planRecordIdsKey);
+  // 開いている間に記録が 0 件になったら（共有をやめた等）、レールから入口が消えるのでパネルも閉じる
+  useEffect(() => {
+    if (planRecordCount === 0) setRightTab((tab) => (tab === "planRecords" ? null : tab));
+  }, [planRecordCount]);
 
   // ── 共有ライブラリの全画面「このノートに取り込む」からの着地（§25b B-6）──
   // 右レールの「提案」を開き、指名された提案を選んだ状態にする。実処理（版を残す →
@@ -7854,6 +7911,15 @@ function NoteEditorInner({
             onOpen={(sharedId) => openSharedEntry(sharedId)}
           />
         )}
+        {/* 行の記録。この計画（または複製）の行から作って共有されたノートの数。
+            押すと右パネルに行ごとの一覧が開く。1 件も無いうちは出ない */}
+        {planRecordCount > 0 && isTauri() && sharedRoot && (
+          <NotePlanRecordsBadge
+            planIds={planRecordIds}
+            selfEmail={sharedAuthor?.email}
+            onClick={() => setRightTab("planRecords")}
+          />
+        )}
         {/* 提案として共有しているノートは「共有」ではなく提案の状態を出す
             （このノート自身が共有されているわけではない） */}
         {isShared && !isProposalShared && (
@@ -8668,6 +8734,7 @@ function NoteEditorInner({
                     : rightTab === "memos" ? t("panel.memos")
                     : rightTab === "comments" ? t("panel.comments")
                     : rightTab === "proposals" ? t("panel.proposals")
+                    : rightTab === "planRecords" ? t("panel.planRecords")
                     : t("panel.source")}
                 </span>
                 {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
@@ -8844,6 +8911,18 @@ function NoteEditorInner({
                     }}
                   />
                 )}
+                {rightTab === "planRecords" && sharedRoot && planRecordIds.length > 0 && (
+                  <NotePlanRecordsLivePanel
+                    editorRef={editorRef}
+                    planIds={planRecordIds}
+                    selfEmail={sharedAuthor?.email}
+                    onOpenEntry={(sharedId) => {
+                      // モバイルではこのパネルが全画面（z-200）なので畳んでから移る
+                      if (!isDesktop) setRightTab(null);
+                      openSharedEntry(sharedId);
+                    }}
+                  />
+                )}
                 {rightTab === "proposals" && sharedRoot && sharedRefState && (
                   <NoteProposalsPanel
                     targetId={sharedRefState.id}
@@ -8910,6 +8989,14 @@ function NoteEditorInner({
               icon: <NoteProposalsRailIcon targetId={sharedRefState?.id} />,
               label: t("panel.proposals"),
               show: isTauri() && !!sharedRoot && !!sharedRefState && proposalCount > 0,
+            },
+            // 行の記録: 共有した計画（またはその複製）の行ごとに、誰がいつ記録を共有したかを見る場所。
+            // 提案と同じく、1 件も無いうちは出さない
+            {
+              tab: "planRecords" as const,
+              icon: <NotePlanRecordsRailIcon planIds={planRecordIds} selfEmail={sharedAuthor?.email} />,
+              label: t("panel.planRecords"),
+              show: isTauri() && !!sharedRoot && planRecordCount > 0,
             },
             ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: t("panel.source"), show: true }] : []),
           ] as const).filter((item) => item.show).map((item) => (
@@ -12377,7 +12464,10 @@ export function NoteApp() {
     // fork 元はそのエントリがある共有フォルダから読む
     const root = getSharedEntryRoot(sharedId);
     if (!root) throw new Error("Shared root is not configured.");
-    const result = await forkSharedNote(sharedId, { root });
+    // 表の行のつながりのうち、この端末に無いノート（共有した人の手元のノート）を指すものは外す。
+    // 写した計画の行から、自分の記録を始められるようにする
+    const localNoteIds = new Set(fm.files.map((f) => f.id));
+    const result = await forkSharedNote(sharedId, { root, isLocalNote: (id) => localNoteIds.has(id) });
     if (!result.ok) {
       alert(`Fork failed: ${result.error}`);
       throw new Error(result.error);

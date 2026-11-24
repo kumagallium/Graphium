@@ -23,6 +23,8 @@ import {
 } from "../asset-browser/asset-folders";
 import { t } from "../../i18n";
 import { shareNote } from "./share-note";
+import { resolvePlanRowForNote } from "./plan-row-ref";
+import { isPlanNote } from "../note-context/reserved-folders";
 import { saveSharedNoteLink } from "./shared-note-link";
 import { shareKnowledge } from "./share-knowledge";
 import { shareMedia } from "./share-media";
@@ -211,6 +213,18 @@ async function shareOneMedia(
   }
 }
 
+/** 計画ノートを前に寄せる（それ以外の順は変えない）。export はテスト用 */
+export function orderPlansFirst(
+  targets: BulkShareTarget[],
+  index: GraphiumIndex | null,
+): BulkShareTarget[] {
+  if (!index) return targets;
+  const planIds = new Set(index.notes.filter((n) => isPlanNote(n)).map((n) => n.noteId));
+  if (planIds.size === 0) return targets;
+  const isPlan = (t: BulkShareTarget) => t.kind === "note" && planIds.has(t.id);
+  return [...targets.filter(isPlan), ...targets.filter((t) => !isPlan(t))];
+}
+
 export async function bulkShare(
   targets: BulkShareTarget[],
   deps: BulkShareDeps,
@@ -220,6 +234,11 @@ export async function bulkShare(
   let skippedLinked = 0;
   // 再共有の書き込み先（自分の共有コピーがあるフォルダ）を引く前に、一覧を読み終えておく
   await ensureSharedEntryRoots();
+
+  // 計画ノートを先に共有する。行のノートは、計画の共有の id が決まってからでないと
+  // 「どの計画のどの行か」を添えられない（計画と行のノートをまとめて共有する場面）。
+  // 索引が無ければ並べ替えない（受け取った順のまま）
+  targets = orderPlansFirst(targets, deps.noteIndex ?? null);
 
   for (let i = 0; i < targets.length; i++) {
     if (deps.isCancelled?.()) {
@@ -258,6 +277,14 @@ export async function bulkShare(
         continue;
       }
       const share = isKnowledge ? shareKnowledge : shareNote;
+      // 計画の行の記録なら、どの計画のどの行かを添える（単発の共有と同じ）。
+      // 同じ回に計画も共有するときは、計画を先に共有してあるので（下の並べ替え）その id が入る
+      const planRow = isKnowledge
+        ? null
+        : await resolvePlanRowForNote(target.id, doc, {
+            index: deps.noteIndex ?? null,
+            loadNote: deps.loadNote,
+          });
       const result = await share(doc, {
         root: dest.root,
         author: deps.author,
@@ -267,6 +294,7 @@ export async function bulkShare(
         readable: isKnowledge
           ? undefined
           : { noteId: target.id, noteIndex: deps.noteIndex ?? null, mediaIndex: deps.mediaIndex ?? null },
+        ...(planRow ? { planRow: planRow.ref } : {}),
       });
       if (!result.ok) {
         results.push({ ...target, title, ok: false, error: result.error });

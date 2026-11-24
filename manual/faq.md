@@ -102,7 +102,8 @@ What it does keep is the record-side of planning, and that may already cover wha
 | See decisions and TODOs from a meeting | The **summary** of a [voice note](/voice-notes) lists them, each linked to the line it came from |
 | Plan a project and break it into pieces | A **plan note** (a note with **Treat as a plan** turned on) with a table that has a note per row; each row becomes an operation note, and planned hand-offs are drawn as dotted lines next to what actually happened — see [folders](/notes-and-editor#folders) |
 | See the open items across all notes | Ask an assistant over [MCP](/mcp-server#your-to-dos-and-task-tools): `list_todos` returns every unchecked item with its note and block |
+| See who has recorded which row of a shared plan | **Row records** on a shared plan: the notes people create from its rows and share are listed by row, with who shared them and when — see [records for each row of a plan](/storage-and-sync#records-by-plan-row) |
 
-What it will not do: give an item a due date, an owner or a priority, tick it off from outside, or draw a progress dashboard. If you keep tasks in a tool that also speaks MCP, connect both to the same assistant — "turn the open items in this note into tasks" works today, and Graphium does not need to know which tool is on the other side.
+What it will not do: give an item a due date, an owner or a priority, tick it off from outside, or keep progress as a state of its own. Row records only count the records that have been shared; nothing is marked done. If you keep tasks in a tool that also speaks MCP, connect both to the same assistant — "turn the open items in this note into tasks" works today, and Graphium does not need to know which tool is on the other side.
 
 :::

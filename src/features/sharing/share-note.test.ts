@@ -888,3 +888,48 @@ describe("shareNote — 共有先に無い資料を外す（hideSourceIds）", (
     expect(fs.readable[fs.readable.length - 1].prov).toContain("Private idea");
   });
 });
+
+describe("shareNote — 計画の行との対応（extra.planRow）", () => {
+  const planRow = { planIds: ["plan-shared"], tableBlockId: "tbl-1", rowId: "row_a", rowName: "こね" };
+  const storedEntry = () => JSON.parse([...fs.entries.values()][0]).entry;
+
+  it("渡した対応が封筒に載る", async () => {
+    const result = await shareNote(makeDoc(), { root: "/tmp/shared", author, planRow });
+    expect(result.ok).toBe(true);
+    expect(storedEntry().extra.planRow).toEqual(planRow);
+  });
+
+  it("渡さなければ項目ごと出さない（既存の封筒と同じ形のまま）", async () => {
+    await shareNote(makeDoc(), { root: "/tmp/shared", author });
+    expect("planRow" in storedEntry().extra).toBe(false);
+  });
+
+  it("再共有で対応を組めなかったときは、前の版の対応を残す", async () => {
+    const first = await shareNote(makeDoc(), { root: "/tmp/shared", author, planRow });
+    if (!first.ok) throw new Error("first share failed");
+    const second = await shareNote({ ...first.doc, title: "Renamed" }, { root: "/tmp/shared", author });
+    expect(second.ok).toBe(true);
+    expect(fs.entries.size).toBe(1);
+    expect(storedEntry().extra.title).toBe("Renamed");
+    expect(storedEntry().extra.planRow).toEqual(planRow);
+  });
+
+  it("再共有で新しい対応を渡したら、そちらに置き換わる", async () => {
+    const first = await shareNote(makeDoc(), { root: "/tmp/shared", author, planRow });
+    if (!first.ok) throw new Error("first share failed");
+    const next = { ...planRow, rowName: "こね（改）" };
+    await shareNote(first.doc, { root: "/tmp/shared", author, planRow: next });
+    expect(storedEntry().extra.planRow).toEqual(next);
+  });
+
+  it("前の版の対応が壊れた形なら引き継がない", async () => {
+    const first = await shareNote(makeDoc(), { root: "/tmp/shared", author });
+    if (!first.ok) throw new Error("first share failed");
+    const key = [...fs.entries.keys()][0];
+    const stored = JSON.parse(fs.entries.get(key)!);
+    stored.entry.extra.planRow = { planIds: "oops" };
+    fs.entries.set(key, JSON.stringify(stored));
+    await shareNote(first.doc, { root: "/tmp/shared", author });
+    expect("planRow" in storedEntry().extra).toBe(false);
+  });
+});

@@ -44,6 +44,7 @@ import {
 import { appendHistory } from "./share-history";
 import { stripMemoTraces, stripUnsharedSources } from "./strip-memo-traces";
 import { collectAdoptedProposals } from "./proposal-apply";
+import { parsePlanRowRef, type PlanRowRef } from "./plan-row-ref";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -96,6 +97,12 @@ export type ShareNoteOptions = {
    */
   hideSourceIds?: ReadonlySet<string>;
   /**
+   * このノートが共有の計画のどの行の記録か（plan-row-ref.ts。ノートの共有だけが使う）。
+   * 呼び出し側が手元の計画ノートの表から組んで渡す。組めなかったときは渡さない
+   * （再共有なら、前に付けた対応がそのまま残る）
+   */
+  planRow?: PlanRowRef | null;
+  /**
    * テスト用フック（本番では未指定）。
    * - extractFileId: 既定で active StorageProvider のものを使う
    * - fetchBytes: 既定で Tauri の `read_media_file` を使う
@@ -145,7 +152,16 @@ export async function shareNote(
   //       ようにするため（鏡の原則）。本文にも noteContexts は入っているが、
   //       一覧は本文を読まずに描くのでメタデータ側にも持たせる。
   // 再共有（共有コピーの更新）も同じ経路を通るので、共有側のフォルダは常に上書きされる。
-  return shareGraphiumDocument(doc, "note", { noteContexts: doc.noteContexts ?? [] }, options);
+  return shareGraphiumDocument(
+    doc,
+    "note",
+    {
+      noteContexts: doc.noteContexts ?? [],
+      // 計画の行の記録なら、どの計画のどの行かを封筒に添える（先生の計画の行から辿れる）
+      ...(options.planRow ? { planRow: options.planRow } : {}),
+    },
+    options,
+  );
 }
 
 /**
@@ -276,6 +292,13 @@ export async function shareGraphiumDocument(
     // （その間に誰かが更新していたら上書きせず、衝突として返す）。受け付けていないノートは従来どおり
     const accepting = entryType === "note" && existingEntry !== undefined && canUpdateSharedNote(existingEntry);
 
+    // 計画の行との対応は、今回組めなくても前の版のものを残す（計画の写しを片付けたあとの
+    // 再共有で、先生の計画から記録が外れないように）。外れるのは共有をやめたとき
+    const keptPlanRow =
+      entryType === "note" && !("planRow" in extraFields)
+        ? parsePlanRowRef(existingEntry?.extra?.planRow)
+        : null;
+
     const bodyHash = await computeBlobHash(body);
     // 受け付け中に渡す「読んだ版」。共有の本文が手元で最後に共有したときのままなら、
     // スイッチの切り替えなどで entry の hash だけが動いていても衝突にしない。
@@ -299,6 +322,7 @@ export async function shareGraphiumDocument(
       extra: {
         title: doc.title,
         ...extraFields,
+        ...(keptPlanRow ? { planRow: keptPlanRow } : {}),
         // §25b C-1: 取り込んだ提案の id（提案側の状態バッジが "adopted" になる）
         ...(adoptedProposals.length > 0 ? { adoptedProposals } : {}),
         // Phase 2c-1: 埋め込まれた媒体の BlobRef 一覧（dedup 済み）

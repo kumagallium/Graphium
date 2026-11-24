@@ -91,3 +91,62 @@ describe("forkSharedNote", () => {
     expect(r.doc.pages[0].blocks).toHaveLength(1);
   });
 });
+
+describe("forkSharedNote — 表の行のつながり", () => {
+  const cell = (text: string, styles: Record<string, unknown> = {}) => ({
+    type: "tableCell",
+    content: [{ type: "text", text, styles }],
+  });
+  const planDoc = {
+    ...sharedDoc,
+    title: "食パンの計画",
+    kind: "plan",
+    pages: [
+      {
+        id: "p1",
+        title: "食パンの計画",
+        blocks: [
+          {
+            id: "tbl-1",
+            type: "table",
+            content: {
+              type: "tableContent",
+              rows: [
+                { cells: [cell("工程")] },
+                { cells: [cell("@こね", { textColor: "blue", tableRowIdentity: "row_a" })] },
+              ],
+            },
+            children: [],
+          },
+        ],
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+        tableMeta: { "tbl-1": { columns: { 工程: ["note-link"] }, noteLinks: { "@こね": "teacher-note" } } },
+      },
+    ],
+  } as unknown as GraphiumDocument;
+
+  it("isLocalNote を渡すと、この端末に無いノートへの行のつながりが外れる（行の id は残る）", async () => {
+    await installEntry(planDoc);
+    const result = await forkSharedNote(SHARED_ID, { root: ROOT, isLocalNote: () => false });
+    if (!result.ok) throw new Error(result.error);
+    const page = result.doc.pages[0] as any;
+    expect(page.tableMeta["tbl-1"].noteLinks).toBeUndefined();
+    expect(page.blocks[0].content.rows[1].cells[0].content[0]).toEqual({
+      type: "text",
+      text: "こね",
+      styles: { tableRowIdentity: "row_a" },
+    });
+    // 計画の種類と、複製の元は残る（行の記録を計画に結び付けるのに使う）
+    expect(result.doc.kind).toBe("plan");
+    expect(result.doc.forkedFrom?.sharedId).toBe(SHARED_ID);
+  });
+
+  it("isLocalNote を渡さなければ、行のつながりはそのまま", async () => {
+    await installEntry(planDoc);
+    const result = await forkSharedNote(SHARED_ID, { root: ROOT });
+    if (!result.ok) throw new Error(result.error);
+    expect((result.doc.pages[0] as any).tableMeta["tbl-1"].noteLinks).toEqual({ "@こね": "teacher-note" });
+  });
+});

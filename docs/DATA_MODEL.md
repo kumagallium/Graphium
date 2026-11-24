@@ -4764,6 +4764,64 @@ not be read or bundled (their `url` is emptied, shown as a broken reference).
 On import the shape of `blocks` / `labels` / `attributes` / `tableMeta` /
 `mediaInlineLabels` is validated and an unknown shape is rejected.
 
+#### Which plan row a shared note records (`extra.planRow`)
+
+A note created from a row of a table (a column with the `note-link` behavior)
+is linked to that row only inside the plan note, by local note id
+(`tableMeta.noteLinks`). Local ids mean nothing on another person's device, so
+when such a note is shared, the envelope says which shared plan and which row
+it records:
+
+```ts
+extra.planRow?: {
+  planIds: string[];     // shared entry ids of the plan; never empty
+  tableBlockId: string;  // block id of the table that holds the row
+  rowId?: string;        // the row's identity (the `tableRowIdentity` style on its first cell)
+  rowName: string;       // the row's name, without a leading "@"
+};
+```
+
+- `planIds` are read from the sharer's local plan note: `forkedFrom.sharedId`
+  first (the plan they forked), then `sharedRef.id` when that note is itself
+  shared as a note. A plan that is neither forked from a shared entry nor
+  shared gets no `planRow`.
+- The plan note is found from the note's `derivedFromNoteId`, then from the
+  notes that link to it (newest first, at most 8 are opened). Whether the note
+  is a plan (`kind`) does not matter; a table with a `note-link` column is
+  enough.
+- Nothing is added to the local note or to the shared body. The value is
+  rebuilt from the local plan note on every share by the author. When it cannot
+  be rebuilt on a re-share (the local fork of the plan was deleted, for
+  example), the previous version's `planRow` is kept; it goes away only when
+  the note is unshared. An update by someone else (`extra.acceptsUpdates`)
+  carries it over unchanged, and moving the entry to another shared folder
+  carries over the value from the folder it leaves.
+- Readers match a record to a row of the plan they have open by `rowId`; when
+  the record has no `rowId`, or the plan has no row with that id, by
+  `tableBlockId` plus the row name (trimmed, lower-cased, leading "@"
+  removed). Forking a shared note keeps block ids and row identities, which is
+  what makes the match work across people. A record that matches no row is
+  still listed, separately.
+- This is a pointer, not a status. No due date, owner or progress is stored;
+  "who recorded this row, and when" is read from the matching entries'
+  `author` and `updated_at`.
+- Shape and size are validated on read (`parsePlanRowRef`), because the
+  envelope is written by other people: only the first 8 `planIds` are looked
+  at, ids longer than 128 characters are dropped, and `rowName` is cut at 300
+  characters. A malformed `planRow` is treated as having none. The match is
+  self-declared, like the author's name: anyone who can write to the shared
+  folder can point a note at any plan.
+- The list in the plan note (header badge and right panel) is shown for a
+  note you own, the original or a fork, in the desktop app. A read-only view
+  of the plan in the shared folder lists the matching records by row name.
+
+**Forking and row links.** `forkSharedNote` drops, from the fork, the table
+row links (`tableMeta.noteLinks`) that point at notes which do not exist on
+the forking device, turns those rows' first cells from "@name" back into
+"name" (the row identity and other cell styles stay), and removes the
+matching entries from the document's `noteLinks`. Row links to notes that do
+exist locally (forking your own shared note) are kept.
+
 #### Accepting updates from other people (`extra.acceptsUpdates`, `extra.updatedBy`)
 
 For notes only, the author can switch on **accepting updates** per note:
