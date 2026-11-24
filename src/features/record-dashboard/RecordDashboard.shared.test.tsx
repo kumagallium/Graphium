@@ -48,7 +48,7 @@ describe("ホームに並ぶ共有フォルダの記録", () => {
     renderDashboard();
     expect(rowIds()).toEqual(["note:own"]);
     fireEvent.click(screen.getByRole("button", { name: t("records.whoFilter.other") }));
-    expect(rowIds()).toEqual(["shared:free", "shared:rec"]);
+    expect(rowIds()).toEqual(["shared:rec", "shared:free"]);
   });
 
   it("計画の行の記録には、計画の題 › 行の名前と、共有した時点の件数が付く", () => {
@@ -83,7 +83,7 @@ describe("ホームに並ぶ共有フォルダの記録", () => {
     fireEvent.click(screen.getByRole("option", { name: /カレー/ }));
     expect(rowIds()).toEqual(["note:other-folder"]);
     fireEvent.click(screen.getByRole("button", { name: t("records.whoFilter.other") }));
-    expect(rowIds()).toEqual(["shared:free", "shared:rec"]);
+    expect(rowIds()).toEqual(["shared:rec", "shared:free"]);
   });
 
   it("作者の名前で探すと、その人の記録だけが見つかった記録に並ぶ", () => {
