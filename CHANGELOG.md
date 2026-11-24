@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.158.0](https://github.com/kumagallium/Graphium/compare/v0.157.0...v0.158.0) - 2026-11-24
+
+- fix(source-check): rename "Found in source" to "Stated in source" by @kumagallium in https://github.com/kumagallium/Graphium/pull/1830
+- [feat] Ask Graphium how to use Graphium, answered from the bundled manual by @kumagallium in https://github.com/kumagallium/Graphium/pull/1828
+
 ## [v0.157.0](https://github.com/kumagallium/Graphium/compare/v0.156.4...v0.157.0) - 2026-11-24
 
 - [fix] Recovery screen instead of a blank window; no crash when quitting during live transcription by @kumagallium in https://github.com/kumagallium/Graphium/pull/1825
