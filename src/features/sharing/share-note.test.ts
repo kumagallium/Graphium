@@ -821,3 +821,70 @@ describe("shareNote — 読める写し", () => {
     expect(r.doc.sharedRef).toBeDefined();
   });
 });
+
+describe("shareNote — 共有先に無い資料を外す（hideSourceIds）", () => {
+  function storedBody(): GraphiumDocument {
+    const stored = JSON.parse([...fs.entries.values()][0]);
+    const bytes = Uint8Array.from(atob(stored.body_base64), (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+  const linked = () =>
+    makeDoc({
+      pages: [
+        {
+          id: "p1",
+          title: "Test note",
+          blocks: [
+            { id: "b1", type: "paragraph", content: [{ type: "text", text: "@Private idea", styles: { textColor: "blue" } }] },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [
+            { id: "k1", sourceBlockId: "b1", targetBlockId: "", targetNoteId: "private-1", type: "reference", layer: "knowledge", createdBy: "human" },
+          ],
+        },
+      ] as GraphiumDocument["pages"],
+      noteLinks: [{ targetNoteId: "private-1", sourceBlockId: "b1", type: "derived_from" }],
+    });
+
+  it("渡した id は共有 body と読める写しから外れ、戻り値の doc には残る", async () => {
+    setSharedFolders([{ ...createSharedFolder("/tmp/shared"), readableCopies: true }]);
+    const noteIndex = {
+      version: 1,
+      notes: [{ noteId: "private-1", title: "Private idea", modifiedAt: "", createdAt: "" }],
+    } as never;
+    const r = await shareNote(linked(), {
+      root: "/tmp/shared",
+      author,
+      hideSourceIds: new Set(["private-1"]),
+      readable: { noteId: "me", noteIndex, mediaIndex: null },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const body = storedBody();
+    expect(JSON.stringify(body)).not.toContain("private-1");
+    expect(JSON.stringify(body)).not.toContain("Private idea");
+    const written = fs.readable[fs.readable.length - 1];
+    expect(written.markdown).not.toContain("Private idea");
+    expect(written.prov).not.toContain("Private idea");
+    // 手元に保存し直す doc はそのまま
+    expect(r.doc.noteLinks).toEqual([{ targetNoteId: "private-1", sourceBlockId: "b1", type: "derived_from" }]);
+    expect(JSON.stringify(r.doc.pages)).toContain("@Private idea");
+  });
+
+  it("渡さなければ今までどおり残る（読める写しの来歴にも題が出る）", async () => {
+    setSharedFolders([{ ...createSharedFolder("/tmp/shared"), readableCopies: true }]);
+    const noteIndex = {
+      version: 1,
+      notes: [{ noteId: "private-1", title: "Private idea", modifiedAt: "", createdAt: "" }],
+    } as never;
+    const r = await shareNote(linked(), {
+      root: "/tmp/shared",
+      author,
+      readable: { noteId: "me", noteIndex, mediaIndex: null },
+    });
+    expect(r.ok).toBe(true);
+    expect(JSON.stringify(storedBody())).toContain("private-1");
+    expect(fs.readable[fs.readable.length - 1].prov).toContain("Private idea");
+  });
+});

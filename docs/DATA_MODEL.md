@@ -4682,7 +4682,24 @@ Key model choices:
   are not rewritten**, so a chat that quoted a memo still carries that
   text; turning the switch on is the author's choice to hand them over.
   A copy shared before this rule keeps these values until it is shared
-  again. Everything else travels unchanged — the rest of `pages` (blocks,
+  again. **Sources that are not in the destination folder** get the same
+  treatment, but only when the author chooses it at share time: before
+  sharing (and before moving to another folder), `decideHiddenSources`
+  (`src/features/sharing/unshared-sources.ts`) collects the ids the
+  document points at (page links, `noteLinks`, and in `wikiMeta` the
+  sources, passages, source-check entries and `[[source:…]]` citations),
+  and counts an id as present only when the local note or knowledge page
+  has a `sharedRef` whose entry is in the destination folder. Anything
+  else — not shared, shared to a different folder, a PDF or URL material,
+  or a note that cannot be opened — counts as absent. If any are absent,
+  the user picks **Share without them** (default), **Share as is**, or
+  cancel. Without them, `stripUnsharedSources` removes those ids the way
+  memos are removed, replaces their `@<title>` labels with
+  `@Unshared source` (`@共有していない資料`), and also drops them from
+  `noteLinks`, which the readable copy's `.prov.jsonld` would otherwise
+  name by title. The summary text of a knowledge page stays. The local
+  document keeps everything; only the shared copy and the readable copy
+  change. Everything else travels unchanged — the rest of `pages` (blocks,
   `labels`, `provLinks`), `noteContexts`, `forkedFrom`, `templateFrom`, `sharedRef`, `wikiMeta` —
   because the shared projection (§7.6) and the reverse links read them. The shared
   format version is unchanged: these fields were already optional, so an

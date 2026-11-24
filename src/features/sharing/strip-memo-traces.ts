@@ -17,6 +17,10 @@
 // 残すもの: ノートやナレッジの本文の文章。共有すると決めた文章そのものだから。
 // 履歴を含めて共有するときの AI チャットは、利用者が選んで渡すものなので書き換えない。
 // 受け取った側にメモは無いので、外しても読める内容は変わらない。
+//
+// 同じ外し方を「共有先に無い資料」にも使う（stripUnsharedSources）。共有するときに利用者が
+// 「外して共有」を選んだときだけ通す（unshared-sources.ts）。トピックや回答のページは、
+// 共有していないノートの一節と題をそのまま持つため（docs/internal/data-scope-design-2026-11.md の L1・L3）。
 
 import type { GraphiumDocument, GraphiumPage, WikiMeta } from "../../lib/document-types";
 import { getLocale } from "../../i18n";
@@ -25,6 +29,8 @@ import { SOURCE_CITATION_RE, parseSourceCitations } from "../../lib/source-citat
 const MEMO_SOURCE_PREFIX = "memo:";
 
 type LinkLike = { targetNoteId?: unknown; sourceBlockId?: unknown };
+/** 外す資料の id か（メモなら `memo:` で始まる id、共有していない資料なら指定した id の集合） */
+type Hidden = (id: unknown) => boolean;
 type InlineLike = { type?: string; text?: string; styles?: { textColor?: string } };
 type BlockLike = { id?: string; content?: unknown; children?: BlockLike[] };
 
@@ -32,12 +38,12 @@ function isMemoSource(id: unknown): boolean {
   return typeof id === "string" && id.startsWith(MEMO_SOURCE_PREFIX);
 }
 
-function pointsAtMemo(link: LinkLike): boolean {
-  return isMemoSource(link?.targetNoteId);
+function pointsAt(link: LinkLike, hidden: Hidden): boolean {
+  return hidden(link?.targetNoteId);
 }
 
-function hasMemoLink(links: unknown): boolean {
-  return Array.isArray(links) && links.some(pointsAtMemo);
+function hasLinkTo(links: unknown, hidden: Hidden): boolean {
+  return Array.isArray(links) && links.some((l) => pointsAt(l, hidden));
 }
 
 /** 引用の表示（青い `@<題>`）か */
@@ -74,10 +80,10 @@ function flattenBlocks(blocks: BlockLike[]): BlockLike[] {
  *   （参考文献の行は 1 行 1 資料なので、同じ題がそこで裏づけられる）
  * - リンク元のブロックが本文に無いメモのリンクがあるときは、どの表示か分からないので何も残さない
  */
-function memoLabelJudge(blocks: BlockLike[], textLinks: LinkLike[], allLinks: LinkLike[]) {
+function labelJudge(blocks: BlockLike[], textLinks: LinkLike[], allLinks: LinkLike[], hidden: Hidden) {
   const flat = flattenBlocks(blocks);
   const blockIds = new Set(flat.map((b) => b.id));
-  const orphaned = allLinks.some((l) => pointsAtMemo(l) && !blockIds.has(l.sourceBlockId as string));
+  const orphaned = allLinks.some((l) => pointsAt(l, hidden) && !blockIds.has(l.sourceBlockId as string));
 
   const labelsIn = (block: BlockLike) => inlineListsOf(block).flat().filter(isCitationLabel);
   const clean = new Set<string | undefined>();
@@ -86,7 +92,7 @@ function memoLabelJudge(blocks: BlockLike[], textLinks: LinkLike[], allLinks: Li
   for (const block of flat) {
     const shown = labelsIn(block);
     const pointingHere = allLinks.filter((l) => l.sourceBlockId === block.id);
-    const atMemo = pointingHere.filter(pointsAtMemo);
+    const atMemo = pointingHere.filter((l) => pointsAt(l, hidden));
     if (shown.length === 1 && atMemo.length > 0 && atMemo.length === pointingHere.length) {
       memoLabels.add(shown[0].text!);
     }
@@ -128,51 +134,77 @@ function replaceLabels(
   };
 }
 
-function stripPage(page: GraphiumPage, fixedLabel: string, docUsesMemo: boolean): GraphiumPage {
+type StripPageOptions = {
+  fixedLabel: string;
+  /** ナレッジの資料に隠すものが入っているか（本文の `@` を判定し直す） */
+  docUses: boolean;
+  hidden: Hidden;
+  /** memoQuotes を外すか（メモのときだけ） */
+  dropMemoQuotes: boolean;
+  /** 文書の noteLinks（`@` の裏づけの判定に足す。ページには無い） */
+  docLinks?: LinkLike[];
+};
+
+function stripPage(page: GraphiumPage, opts: StripPageOptions): GraphiumPage {
   if (!page) return page;
+  const { fixedLabel, docUses, hidden, dropMemoQuotes } = opts;
   const legacyLinks = (page as { links?: LinkLike[] }).links;
-  const linksAtMemo = hasMemoLink(page.knowledgeLinks) || hasMemoLink(page.provLinks) || hasMemoLink(legacyLinks);
-  if (!("memoQuotes" in page) && !linksAtMemo && !docUsesMemo) return page;
+  const docLinks = opts.docLinks ?? [];
+  const linksAtHidden =
+    hasLinkTo(page.knowledgeLinks, hidden) ||
+    hasLinkTo(page.provLinks, hidden) ||
+    hasLinkTo(legacyLinks, hidden) ||
+    hasLinkTo(docLinks, hidden);
+  const hasMemoQuotes = dropMemoQuotes && "memoQuotes" in page;
+  if (!hasMemoQuotes && !linksAtHidden && !docUses) return page;
 
   // キーごと消す（undefined を入れない）。JSON にしたとき、紐づけを持たないページと同じ形になる
-  const { memoQuotes: _memoQuotes, ...rest } = page;
-  const next = rest as GraphiumPage & { links?: LinkLike[] };
+  let next: GraphiumPage & { links?: LinkLike[] };
+  if (hasMemoQuotes) {
+    const { memoQuotes: _memoQuotes, ...rest } = page;
+    next = rest as GraphiumPage & { links?: LinkLike[] };
+  } else {
+    next = { ...page } as GraphiumPage & { links?: LinkLike[] };
+  }
 
   // リンクを外す前に、どの表示を残せるかを読む
-  if (linksAtMemo || docUsesMemo) {
+  if (linksAtHidden || docUses) {
     const blocks = (page.blocks ?? []) as BlockLike[];
-    const textLinks = [...(page.knowledgeLinks ?? []), ...(legacyLinks ?? [])];
-    const keep = memoLabelJudge(blocks, textLinks, [...textLinks, ...(page.provLinks ?? [])]);
+    // noteLinks も本文の `@` の裏づけになる（@ でつないだノートは noteLinks にも載る）。
+    // knowledgeLinks と重なると裏づけが 2 本に数えられるが、隠すリンクのあるブロックは
+    // 数に関係なく残さないので、表示を出す側には倒れない
+    const textLinks = [...(page.knowledgeLinks ?? []), ...(legacyLinks ?? []), ...docLinks];
+    const keep = labelJudge(blocks, textLinks, [...textLinks, ...(page.provLinks ?? [])], hidden);
     next.blocks = blocks.map((b) => replaceLabels(b, keep, fixedLabel)) as GraphiumPage["blocks"];
   }
 
-  if (hasMemoLink(next.knowledgeLinks)) next.knowledgeLinks = next.knowledgeLinks.filter((l) => !pointsAtMemo(l));
-  if (hasMemoLink(next.provLinks)) next.provLinks = next.provLinks.filter((l) => !pointsAtMemo(l));
-  if (hasMemoLink(next.links)) next.links = next.links!.filter((l) => !pointsAtMemo(l));
+  if (hasLinkTo(next.knowledgeLinks, hidden)) next.knowledgeLinks = next.knowledgeLinks.filter((l) => !pointsAt(l, hidden));
+  if (hasLinkTo(next.provLinks, hidden)) next.provLinks = next.provLinks.filter((l) => !pointsAt(l, hidden));
+  if (hasLinkTo(next.links, hidden)) next.links = next.links!.filter((l) => !pointsAt(l, hidden));
   return next;
 }
 
 /** このナレッジの資料にメモが入っているか */
-function wikiMetaUsesMemo(meta: WikiMeta | undefined): boolean {
+function wikiMetaUses(meta: WikiMeta | undefined, hidden: Hidden): boolean {
   if (!meta) return false;
   return (
-    (meta.derivedFromNotes?.some(isMemoSource) ?? false) ||
-    (meta.procedureContext?.derivedFromNotes?.some(isMemoSource) ?? false) ||
-    (meta.passageContexts?.some((p) => isMemoSource(p.sourceId)) ?? false) ||
-    (meta.sourceCheck?.entries?.some((e) => isMemoSource(e.sourceId)) ?? false) ||
-    parseSourceCitations(meta.topicMarkdown ?? "").some((c) => isMemoSource(c.sourceId))
+    (meta.derivedFromNotes?.some(hidden) ?? false) ||
+    (meta.procedureContext?.derivedFromNotes?.some(hidden) ?? false) ||
+    (meta.passageContexts?.some((p) => hidden(p.sourceId)) ?? false) ||
+    (meta.sourceCheck?.entries?.some((e) => hidden(e.sourceId)) ?? false) ||
+    parseSourceCitations(meta.topicMarkdown ?? "").some((c) => hidden(c.sourceId))
   );
 }
 
-function stripWikiMeta(meta: WikiMeta): WikiMeta {
-  if (!wikiMetaUsesMemo(meta)) return meta;
+function stripWikiMeta(meta: WikiMeta, hidden: Hidden): WikiMeta {
+  if (!wikiMetaUses(meta, hidden)) return meta;
 
   const next: WikiMeta = { ...meta };
-  if (meta.derivedFromNotes) next.derivedFromNotes = meta.derivedFromNotes.filter((id) => !isMemoSource(id));
+  if (meta.derivedFromNotes) next.derivedFromNotes = meta.derivedFromNotes.filter((id) => !hidden(id));
   if (meta.procedureContext?.derivedFromNotes) {
     next.procedureContext = {
       ...meta.procedureContext,
-      derivedFromNotes: meta.procedureContext.derivedFromNotes.filter((id) => !isMemoSource(id)),
+      derivedFromNotes: meta.procedureContext.derivedFromNotes.filter((id) => !hidden(id)),
     };
   }
   // どれも資料の原文をそのまま写した欄で、どの資料の文かを持たない。メモが資料に入っていれば外す
@@ -181,16 +213,16 @@ function stripWikiMeta(meta: WikiMeta): WikiMeta {
   delete next.ruleFrame;
   delete next.observationFrame;
   if (meta.passageContexts) {
-    const kept = meta.passageContexts.filter((p) => !isMemoSource(p.sourceId));
+    const kept = meta.passageContexts.filter((p) => !hidden(p.sourceId));
     if (kept.length > 0) next.passageContexts = kept;
     else delete next.passageContexts;
   }
   // 全体の判定はメモの結果も含めて出したものなので、一部だけ外すと判定と中身が合わなくなる。
   // 照合の結果ごと外す（受け取った側では「未照合」に見える）
-  if (meta.sourceCheck?.entries?.some((e) => isMemoSource(e.sourceId))) delete next.sourceCheck;
+  if (meta.sourceCheck?.entries?.some((e) => hidden(e.sourceId))) delete next.sourceCheck;
   if (meta.topicMarkdown !== undefined) {
     next.topicMarkdown = meta.topicMarkdown.replace(SOURCE_CITATION_RE, (raw, id: string) =>
-      isMemoSource(id.trim()) ? "" : raw,
+      hidden(id.trim()) ? "" : raw,
     );
   }
   return next;
@@ -205,14 +237,15 @@ function stripWikiMeta(meta: WikiMeta): WikiMeta {
 function stripProvenance(
   provenance: GraphiumDocument["documentProvenance"],
   usesMemo: boolean,
+  hidden: Hidden,
 ): GraphiumDocument["documentProvenance"] {
   if (!provenance || !usesMemo) return provenance;
   return {
     ...provenance,
     activities: (provenance.activities ?? []).map((activity) => {
-      if (!activity.used?.some(isMemoSource)) return activity;
+      if (!activity.used?.some(hidden)) return activity;
       const { used, ...rest } = activity;
-      const kept = used.filter((id) => !isMemoSource(id));
+      const kept = used.filter((id) => !hidden(id));
       return kept.length > 0 ? { ...rest, used: kept } : rest;
     }),
     revisions: (provenance.revisions ?? []).map((revision) => {
@@ -228,28 +261,64 @@ function stripProvenance(
  * 外すものが無ければ、渡された doc をそのまま返す。
  */
 export function stripMemoTraces(doc: GraphiumDocument): GraphiumDocument {
+  return stripTraces(doc, isMemoSource, { ja: "@メモ", en: "@Memo" }, { memo: true });
+}
+
+/**
+ * 共有コピー用に、指定した資料（共有先に無いノート・ナレッジ・素材）をたどれる値を落とした
+ * コピーを返す。外し方はメモと同じ（リンク・一節・`@<題>` の表示・照合の結果）で、加えて
+ * 文書の noteLinks（つながりの線。読める写しの来歴に相手の題が出る）からも外す。
+ * 元の doc は変更しない。外すものが無ければ、渡された doc をそのまま返す。
+ */
+export function stripUnsharedSources(doc: GraphiumDocument, ids: ReadonlySet<string>): GraphiumDocument {
+  if (ids.size === 0) return doc;
+  const hidden: Hidden = (id) => typeof id === "string" && ids.has(id);
+  return stripTraces(
+    doc,
+    hidden,
+    { ja: "@共有していない資料", en: "@Unshared source", ko: "@공유하지 않은 자료" },
+    { memo: false },
+  );
+}
+
+function stripTraces(
+  doc: GraphiumDocument,
+  hidden: Hidden,
+  /** 置き換える `@` の語（ko を省くと英語） */
+  labels: { ja: string; en: string; ko?: string },
+  mode: { memo: boolean },
+): GraphiumDocument {
   const pagesInDoc = Array.isArray(doc.pages) ? doc.pages : [];
-  const docUsesMemo = wikiMetaUsesMemo(doc.wikiMeta);
-  const usesMemo =
-    docUsesMemo ||
+  // メモは noteLinks に載らない（ノートではない）。共有していない資料は @ で noteLinks にも載る
+  const docLinks = !mode.memo && Array.isArray(doc.noteLinks) ? (doc.noteLinks as LinkLike[]) : [];
+  const docUses = wikiMetaUses(doc.wikiMeta, hidden);
+  const uses =
+    docUses ||
+    hasLinkTo(docLinks, hidden) ||
     pagesInDoc.some(
       (page) =>
         !!page &&
-        ("memoQuotes" in page ||
-          hasMemoLink(page.knowledgeLinks) ||
-          hasMemoLink(page.provLinks) ||
-          hasMemoLink((page as { links?: unknown }).links)),
+        ((mode.memo && "memoQuotes" in page) ||
+          hasLinkTo(page.knowledgeLinks, hidden) ||
+          hasLinkTo(page.provLinks, hidden) ||
+          hasLinkTo((page as { links?: unknown }).links, hidden)),
     ) ||
-    (doc.documentProvenance?.activities?.some((a) => a.used?.some(isMemoSource)) ?? false);
-  if (!usesMemo) return doc;
+    (doc.documentProvenance?.activities?.some((a) => a.used?.some(hidden)) ?? false);
+  if (!uses) return doc;
 
   const language = doc.wikiMeta?.language ?? getLocale();
-  const fixedLabel = language.startsWith("ja") ? "@メモ" : "@Memo";
-  const wikiMeta = doc.wikiMeta ? stripWikiMeta(doc.wikiMeta) : undefined;
-  const documentProvenance = stripProvenance(doc.documentProvenance, usesMemo);
+  const fixedLabel = language.startsWith("ja")
+    ? labels.ja
+    : language.startsWith("ko") && labels.ko
+      ? labels.ko
+      : labels.en;
+  const wikiMeta = doc.wikiMeta ? stripWikiMeta(doc.wikiMeta, hidden) : undefined;
+  const documentProvenance = stripProvenance(doc.documentProvenance, uses, hidden);
+  const pageOpts: StripPageOptions = { fixedLabel, docUses, hidden, dropMemoQuotes: mode.memo, docLinks };
   return {
     ...doc,
-    pages: Array.isArray(doc.pages) ? doc.pages.map((page) => stripPage(page, fixedLabel, docUsesMemo)) : doc.pages,
+    pages: Array.isArray(doc.pages) ? doc.pages.map((page) => stripPage(page, pageOpts)) : doc.pages,
+    ...(hasLinkTo(docLinks, hidden) ? { noteLinks: doc.noteLinks!.filter((l) => !pointsAt(l, hidden)) } : {}),
     ...(wikiMeta ? { wikiMeta } : {}),
     ...(documentProvenance ? { documentProvenance } : {}),
   };

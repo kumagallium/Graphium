@@ -31,7 +31,20 @@ export type ConfirmOptions = {
   destructive?: boolean;
 };
 
-type Pending = ConfirmOptions & { message: string; resolve: (ok: boolean) => void };
+/** 3 択の答え。confirm = 主のボタン、secondary = 2 つ目のボタン、cancel = 取り消し・閉じる・Esc */
+export type ChoiceAnswer = "confirm" | "secondary" | "cancel";
+
+export type ChoiceOptions = ConfirmOptions & {
+  /** 2 つ目のボタンの文言（取り消しと主のボタンの間に、枠線のボタンで出す） */
+  secondaryLabel: string;
+};
+
+type Pending = ConfirmOptions & {
+  message: string;
+  /** 3 択のときだけ */
+  secondaryLabel?: string;
+  resolve: (answer: ChoiceAnswer) => void;
+};
 
 let listener: ((p: Pending) => void) | null = null;
 
@@ -43,6 +56,14 @@ export function __setConfirmResponderForTest(
   testResponder = responder;
 }
 
+/** テスト用: 次に出る 3 択に答える関数を差し込む（null で外す） */
+let testChoiceResponder: ((message: string, options: ChoiceOptions) => ChoiceAnswer | Promise<ChoiceAnswer>) | null = null;
+export function __setChoiceResponderForTest(
+  responder: ((message: string, options: ChoiceOptions) => ChoiceAnswer | Promise<ChoiceAnswer>) | null,
+): void {
+  testChoiceResponder = responder;
+}
+
 /**
  * 確認を出して、押されるまで待つ。「OK」なら true、キャンセル・閉じる・Esc なら false。
  * ホスト（<ConfirmHost />）が無ければ false。
@@ -52,6 +73,21 @@ export function confirmAction(message: string, options: ConfirmOptions = {}): Pr
   return new Promise((resolve) => {
     if (!listener) {
       resolve(false);
+      return;
+    }
+    listener({ ...options, message, resolve: (answer) => resolve(answer === "confirm") });
+  });
+}
+
+/**
+ * 3 択を出して、押されるまで待つ（例:「外して共有」「そのまま共有」「キャンセル」）。
+ * ホスト（<ConfirmHost />）が無ければ "cancel"（黙って進めない）。
+ */
+export function chooseAction(message: string, options: ChoiceOptions): Promise<ChoiceAnswer> {
+  if (testChoiceResponder) return Promise.resolve(testChoiceResponder(message, options));
+  return new Promise((resolve) => {
+    if (!listener) {
+      resolve("cancel");
       return;
     }
     listener({ ...options, message, resolve });
@@ -67,7 +103,7 @@ export function ConfirmHost() {
     const own = (p: Pending) =>
       setPending((prev) => {
         // 前の確認が残っていれば断った扱いで閉じる（答えを宙に浮かせない）
-        prev?.resolve(false);
+        prev?.resolve("cancel");
         return p;
       });
     listener = own;
@@ -82,8 +118,8 @@ export function ConfirmHost() {
   }, [pending]);
 
   if (!pending) return null;
-  const answer = (ok: boolean) => {
-    pending.resolve(ok);
+  const answer = (choice: ChoiceAnswer | boolean) => {
+    pending.resolve(choice === true ? "confirm" : choice === false ? "cancel" : choice);
     setPending(null);
   };
   return (
@@ -118,6 +154,15 @@ export function ConfirmHost() {
           >
             {pending.cancelLabel ?? t("common.cancel")}
           </button>
+          {pending.secondaryLabel && (
+            <button
+              type="button"
+              onClick={() => answer("secondary")}
+              className="px-3 py-1.5 text-xs rounded-md border border-border text-foreground hover:bg-muted"
+            >
+              {pending.secondaryLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => answer(true)}

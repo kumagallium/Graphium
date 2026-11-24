@@ -5091,7 +5091,13 @@ Key pieces:
   `findCrossFolderCitations` (`src/features/sharing/cross-folder.ts`)
   counts the `sharedCitation` blocks whose entry lives in a different
   folder than the destination, and the user confirms; Graphium cannot
-  rank folders, so any difference is reported. A shared note or
+  rank folders, so any difference is reported. Next, `decideHiddenSources`
+  (`src/features/sharing/unshared-sources.ts`) counts the sources the
+  document points at that are not shared to the destination folder (a
+  knowledge page carries its sources' passages and titles; a note's
+  links put their titles in the readable copy) and offers to share
+  without them (DATA_MODEL §7). The same two checks run when a shared
+  item is moved to another folder. A shared note or
   knowledge page can be moved to another folder from its `⋯` menu: it is
   written to the new folder under the same id (citations and forks keep
   resolving by id), then unshared from the old folder; comments and

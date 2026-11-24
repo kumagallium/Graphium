@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ConfirmHost, confirmAction, type ConfirmOptions } from "./confirm-dialog";
+import { ConfirmHost, chooseAction, confirmAction, type ChoiceOptions, type ConfirmOptions } from "./confirm-dialog";
 import { Button } from "./button";
 
 function Demo({ message, options, autoOpen }: { message: string; options?: ConfirmOptions; autoOpen?: boolean }) {
@@ -58,4 +58,33 @@ export const LongJapanese: Story = {
     options: { destructive: true },
     autoOpen: true,
   },
+};
+
+function ChoiceDemo({ message, options }: { message: string; options: ChoiceOptions }) {
+  const [answer, setAnswer] = useState<string>("—");
+  const ask = async () => setAnswer(await chooseAction(message, options));
+  useEffect(() => {
+    void ask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="space-y-3">
+      <Button onClick={() => void ask()}>確認を開く</Button>
+      <p className="text-xs text-muted-foreground">答え: {answer}</p>
+      <ConfirmHost />
+    </div>
+  );
+}
+
+/** 3 択（共有していない資料を外すか聞く） */
+export const ThreeChoices: Story = {
+  name: "3 択（共有していない資料）",
+  render: () => (
+    <ChoiceDemo
+      message={
+        "このページは、共有先に無い資料 3 件から作られています。そのまま共有すると、引用した一節と資料の題も共有先の人に見えます。\n「外して共有」では、一節を外し、題を「@共有していない資料」に置き換えます。要約の文章は残ります。手元のページは変わりません。"
+      }
+      options={{ confirmLabel: "外して共有", secondaryLabel: "そのまま共有" }}
+    />
+  ),
 };
