@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "target": {
+        "kind": "note",
+        "title": "Sample 7 - repeat with a new lot of CaCO3"
+      },
+      "title": "First, a record a person wrote",
+      "body": "Thermoelectric sample 7 (a fictional study). Same conditions as sample 4, only the raw material lot changed, yet impurities appeared and it did not reproduce. This record is the only thing a person wrote; everything from here on was built by the AI"
+    },
+    {
+      "target": {
+        "kind": "topic",
+        "section": "Disagreements"
+      },
+      "title": "A topic the AI built from the records",
+      "body": "A topic the AI raised after reading the records. Every key point ends with an @ back to its record, and points where the records disagree go under \"Disagreements & open questions\""
+    },
+    {
+      "target": {
+        "kind": "chat",
+        "index": 0
+      },
+      "title": "A chat, recorded",
+      "body": "Asked \"Why did samples 4 and 7 come out differently?\", the AI answers from the sample records and the reading notes. Click a citation to open the source. To ask your own question, connect an AI in Settings"
+    }
+  ]
+}

@@ -1,0 +1,272 @@
+{
+  "beforeHeading": "Results",
+  "heading": "Steps",
+  "notes": {
+    "Sample 4 - two intermediate grindings": [
+      {
+        "title": "Weighing and mixing",
+        "lines": [
+          [
+            {
+              "t": "CaCO3 (lot A)",
+              "k": "material"
+            },
+            {
+              "t": " and "
+            },
+            {
+              "t": "Co3O4",
+              "k": "material"
+            },
+            {
+              "t": " weighed at "
+            },
+            {
+              "t": "Ca : Co = 3 : 4",
+              "k": "attribute"
+            },
+            {
+              "t": ", wet-mixed in an "
+            },
+            {
+              "t": "agate mortar",
+              "k": "tool"
+            },
+            {
+              "t": " for "
+            },
+            {
+              "t": "30 min",
+              "k": "attribute"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Calcination and intermediate grinding",
+        "lines": [
+          [
+            {
+              "t": "Furnace unit 2",
+              "k": "tool"
+            },
+            {
+              "t": ": "
+            },
+            {
+              "t": "900 C, 12 h",
+              "k": "attribute"
+            },
+            {
+              "t": " twice, with "
+            },
+            {
+              "t": "15 min",
+              "k": "attribute"
+            },
+            {
+              "t": " of grinding in between"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Pressing",
+        "lines": [
+          [
+            {
+              "t": "Pressed into a "
+            },
+            {
+              "t": "13 mm diameter",
+              "k": "attribute"
+            },
+            {
+              "t": " pellet at "
+            },
+            {
+              "t": "100 MPa",
+              "k": "attribute"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Sintering",
+        "lines": [
+          [
+            {
+              "t": "920 C, 24 h",
+              "k": "attribute"
+            },
+            {
+              "t": ", in air → "
+            },
+            {
+              "t": "Ca3Co4O9 sintered body (relative density 73%)",
+              "k": "output"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Measurement",
+        "lines": [
+          [
+            {
+              "t": "XRD",
+              "k": "tool"
+            },
+            {
+              "t": " and "
+            },
+            {
+              "t": "Seebeck and resistivity measurement system",
+              "k": "tool"
+            },
+            {
+              "t": " → "
+            },
+            {
+              "t": "S = 127 μV/K, ρ = 8.5 mΩcm",
+              "k": "output"
+            }
+          ]
+        ]
+      }
+    ],
+    "Sample 7 - repeat with a new lot of CaCO3": [
+      {
+        "title": "Weighing and mixing",
+        "lines": [
+          [
+            {
+              "t": "CaCO3 (lot B)",
+              "k": "material"
+            },
+            {
+              "t": " and "
+            },
+            {
+              "t": "Co3O4",
+              "k": "material"
+            },
+            {
+              "t": " weighed at "
+            },
+            {
+              "t": "Ca : Co = 3 : 4",
+              "k": "attribute"
+            },
+            {
+              "t": ", wet-mixed in an "
+            },
+            {
+              "t": "agate mortar",
+              "k": "tool"
+            },
+            {
+              "t": " for "
+            },
+            {
+              "t": "30 min",
+              "k": "attribute"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Calcination and intermediate grinding",
+        "lines": [
+          [
+            {
+              "t": "Furnace unit 2",
+              "k": "tool"
+            },
+            {
+              "t": ": "
+            },
+            {
+              "t": "900 C, 12 h",
+              "k": "attribute"
+            },
+            {
+              "t": " twice, with "
+            },
+            {
+              "t": "15 min",
+              "k": "attribute"
+            },
+            {
+              "t": " of grinding in between"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Pressing",
+        "lines": [
+          [
+            {
+              "t": "Pressed into a "
+            },
+            {
+              "t": "13 mm diameter",
+              "k": "attribute"
+            },
+            {
+              "t": " pellet at "
+            },
+            {
+              "t": "100 MPa",
+              "k": "attribute"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Sintering",
+        "lines": [
+          [
+            {
+              "t": "920 C, 24 h",
+              "k": "attribute"
+            },
+            {
+              "t": ", in air → "
+            },
+            {
+              "t": "Ca3Co4O9 sintered body (Co3O4 remains)",
+              "k": "output"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "Measurement",
+        "lines": [
+          [
+            {
+              "t": "XRD",
+              "k": "tool"
+            },
+            {
+              "t": " and "
+            },
+            {
+              "t": "Seebeck and resistivity measurement system",
+              "k": "tool"
+            },
+            {
+              "t": " → "
+            },
+            {
+              "t": "S = 124 μV/K, ρ = 13 mΩcm",
+              "k": "output"
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}
