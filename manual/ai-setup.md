@@ -30,9 +30,22 @@ If the backend stops on its own while the app is running, the desktop app shows 
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
+### One question first {#first-question}
+
+While no model is registered, **Settings → AI** first asks **Which AI do you use now?** Pick what you already have, and only one button appears.
+
+| Choice | Button that appears |
+|---|---|
+| **A paid ChatGPT plan (Plus / Pro)** | **Continue with ChatGPT** ([below](#chatgpt-plan)). In the browser version, **Get the desktop app** |
+| **GitHub Copilot** | **Connect** ([below](#connect-github-copilot-with-one-button)). In the browser version, **Get the desktop app** |
+| **A connection my lab or institution gave me** | **Load a file you were given** ([below](#share-a-connection)). If you were only given a URL, **Enter the URL** |
+| **None of these / not sure** | **Compare the ways to connect**, which moves to **Where do you want to connect?** below. No service is recommended |
+
+From any answer, **Show all ways to connect** moves to the choice below, and **Back to the single question** returns. You can skip this: bringing records in and searching them works without AI.
+
 ### Choose where to connect <Badge type="tip" text="Added in v0.95.8 (2026-10-26)" /> {#choose-where-to-connect}
 
-Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, **Settings → AI** shows this choice as soon as you open it.
+Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, you can also reach this choice from **Show all ways to connect** in [the single question above](#first-question).
 
 | Choice | What happens |
 |---|---|
