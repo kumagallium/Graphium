@@ -148,6 +148,8 @@ export const ja: Record<string, string> = {
   "sidebar.materialsHint": "論文・Web ページ・写真・データなど、取り込んだ出どころ。ノートから引用できます",
   "sidebar.skillHint": "AI に渡す、繰り返し使える指示（文体のガイド・用語集など）",
   "sidebar.globalGraphHint": "すべてのノート・素材・ナレッジのつながりを 1 枚で見ます",
+  "sidebar.askHowTo": "使い方を聞く",
+  "sidebar.askHowToHint": "「こういうことはできる？」を Graphium に聞きます。マニュアルをもとに答えます",
   "sidebar.knowledgeHint": "AI がノートから抽出したナレッジ層（トピック・問答（Q&A）・知見・洞察）",
   // ナレッジ内の Log / 点検 ボタン
   "sidebar.wikiLog": "ログ",
@@ -1498,6 +1500,10 @@ export const ja: Record<string, string> = {
   "standaloneChat.newChatTitle": "新しいチャット",
   "standaloneChat.placeholder": "気になることを聞いてみましょう",
   "standaloneChat.startHint": "ここで話しかけてみましょう",
+  "standaloneChat.helpStartHint": "Graphium の使い方を聞いてみましょう",
+  "standaloneChat.helpExample1": "PDF の一部を引用してノートに貼れる？",
+  "standaloneChat.helpExample2": "会議を録音して議事録にできる？",
+  "standaloneChat.helpExample3": "ノートを Word で書き出せる？",
   "standaloneChat.sendHint": "{shortcut} で送信",
   "standaloneChat.stop": "停止",
   "standaloneChat.removeAttachment": "{title} を外す",
@@ -3240,6 +3246,8 @@ export const ja: Record<string, string> = {
   "composer.scope.externalHint": "Web 検索で外部の情報源を取り込んで裏づける（調査向け）",
   "composer.scope.internalHint": "引用したもの＋蓄積した知識を横断検索してつなぐ（着想・構成向け）",
   "composer.scope.notesHint": "このノートで引用したものだけに絞る（横断検索しない・執筆や引用の正確さ向け）",
+  "composer.scope.help": "使い方",
+  "composer.scope.helpHint": "あなたの記録は読まず、Graphium のマニュアルをもとに、できることとやり方に答える",
   // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
   "composer.scope.webSearchMissing": "Web 検索の手段が未設定です。外部参照は Web を見ずに回答します。検索 MCP サーバー（例: Tavily）を追加すると有効になります。",
   "composer.scope.webSearchMissingCta": "設定を開く",

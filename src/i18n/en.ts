@@ -148,6 +148,8 @@ export const en: Record<string, string> = {
   "sidebar.materialsHint": "Papers, web pages, photos, data and other sources you brought in. Notes can cite them",
   "sidebar.skillHint": "Reusable instructions for the AI, such as a style guide or a glossary",
   "sidebar.globalGraphHint": "See how all your notes, sources and knowledge connect, in one view",
+  "sidebar.askHowTo": "Ask how to",
+  "sidebar.askHowToHint": "Ask Graphium whether it can do something. Answers come from the manual",
   "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (topics, claims, insights, Q&A)",
   // Log / Health buttons inside Knowledge
   "sidebar.wikiLog": "Log",
@@ -1498,6 +1500,10 @@ export const en: Record<string, string> = {
   "standaloneChat.newChatTitle": "New chat",
   "standaloneChat.placeholder": "Ask something...",
   "standaloneChat.startHint": "Ask something to get started",
+  "standaloneChat.helpStartHint": "Ask how to use Graphium",
+  "standaloneChat.helpExample1": "Can I quote part of a PDF into a note?",
+  "standaloneChat.helpExample2": "Can I record a meeting and turn it into minutes?",
+  "standaloneChat.helpExample3": "Can I export a note to Word?",
   "standaloneChat.sendHint": "{shortcut} to send",
   "standaloneChat.stop": "Stop",
   "standaloneChat.removeAttachment": "Remove {title}",
@@ -3241,6 +3247,8 @@ export const en: Record<string, string> = {
   "composer.scope.externalHint": "Search the web and ground the answer in external sources — for investigating something new",
   "composer.scope.internalHint": "Everything you cited, plus a cross-search of your accumulated knowledge — for ideation",
   "composer.scope.notesHint": "Only what this note cites, without a cross-search — for accurate writing and citations",
+  "composer.scope.help": "How to",
+  "composer.scope.helpHint": "Answers what Graphium can do and how, from its manual — without reading your notes",
   // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
   "composer.scope.webSearchMissing": "No web search is set up — External will answer without live web results. Add a search MCP server (e.g. Tavily).",
   "composer.scope.webSearchMissingCta": "Open settings",

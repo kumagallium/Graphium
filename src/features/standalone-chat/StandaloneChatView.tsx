@@ -15,6 +15,13 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 import { StandaloneChatComposer, type FolderScopeControl } from "./StandaloneChatComposer";
 import { DEFAULT_STANDALONE_CHAT_SCOPE } from "./scope";
 
+/** 使い方（help）の空の会話に出す、押すとそのまま送れる例 */
+const HELP_EXAMPLE_KEYS = [
+  "standaloneChat.helpExample1",
+  "standaloneChat.helpExample2",
+  "standaloneChat.helpExample3",
+] as const;
+
 export function StandaloneChatView({
   chatId,
   title,
@@ -120,7 +127,9 @@ export function StandaloneChatView({
         <div className="flex-1 overflow-y-auto px-3 py-2 flex items-center justify-center">
           <div className="w-full max-w-[46rem] -mt-10">
             {/* 題はヘッダーに「新しいチャット」と出ているので、ここは呼びかけの 1 行だけ */}
-            <div className="text-base font-semibold text-foreground mb-4">{t("standaloneChat.startHint")}</div>
+            <div className="text-base font-semibold text-foreground mb-4">
+              {scope === "help" ? t("standaloneChat.helpStartHint") : t("standaloneChat.startHint")}
+            </div>
             <StandaloneChatComposer
               onSend={onSend}
               loading={loading}
@@ -132,6 +141,22 @@ export function StandaloneChatView({
               folderScope={folderScope}
               autoFocus
             />
+            {/* 使い方: 何を聞けばよいか迷わないよう、押すとそのまま送れる例を出す */}
+            {scope === "help" && aiConfigured && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {HELP_EXAMPLE_KEYS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onSend(t(key))}
+                    disabled={loading}
+                    className="px-3 py-1 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+                  >
+                    {t(key)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : (
