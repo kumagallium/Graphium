@@ -299,6 +299,17 @@ const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
 /** クイックメモのショートカット（判定は note-app.tsx の ⌘⇧M ハンドラ） */
 const MEMO_SHORTCUT = ["mod", "shift", "M"];
 
+// 左ナビ下端のアイコンの帯のボタン（設定・ゴミ箱・使い方・リリースノート）
+function footerIconClass(active: boolean): string {
+  return `relative flex-1 flex items-center justify-center h-7 rounded-md transition-colors ${
+    active
+      ? "text-primary bg-sidebar-accent/40"
+      : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+  }`;
+}
+// 設定のアイコンの右上に付ける AI の接続の点
+const footerDotClass = "absolute top-1 left-1/2 ml-1 w-1.5 h-1.5 rounded-full";
+
 export function FileSidebar({
   activeFileId,
   onSelect,
@@ -1439,7 +1450,7 @@ export function FileSidebar({
       {/* 中段とフッターを 1 つの入れ物にまとめる。高い画面では今まで通り、中段だけが
           縮んでスクロールし、フッターは下に固定。高さが低い画面（max-height:620px。
           Windows 既定の 150% 表示は 660 でここに入らない）では入れ物のほうがスクロールし、
-          フッターの 5 項目が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
+          フッター（2 行とアイコンの帯）が中段の末尾に付いてくる（固定のままだと中段が 3 行ほどしか
           見えなくなる）。DOM は 1 か所のまま CSS だけで切り替えるので、フォーカス順も
           読み上げも変わらない。ヘッダーは常に上に固定。
           スクロールできる間（下にまだ項目があるとき）だけ、入れ物の下端に薄いフェードを出す。
@@ -1493,7 +1504,7 @@ export function FileSidebar({
         )}
       </div>
 
-      {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
+      {/* フッター（メタ群: スキル・全体グラフの行と、設定・ゴミ箱・使い方・Release Notes のアイコンの帯） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
         {/* スキルは AI チャット / ingest への注入専用なので、AI が使えない
             （バックエンド未到達 or モデル未登録）ときは項目ごと隠す。
@@ -1529,59 +1540,75 @@ export function FileSidebar({
             <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
           </button>
         )}
-        {onAskHowTo && (
-          <button
-            onClick={onAskHowTo}
-            data-tooltip={t("sidebar.askHowToHint")}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
-          >
-            <CircleHelp size={12} className="shrink-0" />
-            <span className="flex-1 text-left">{t("sidebar.askHowTo")}</span>
-          </button>
-        )}
-        <button
-          onClick={onShowSettings}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
+        {/* 設定・ゴミ箱・使い方・リリースノートはアイコンの帯 1 行にまとめる（2026-11-24 利用者の選択）。
+            行が 6 つ並んで下段が長くなったため。名前はヒント（data-tooltip）と aria-label で出す。
+            上の行（スキル・全体グラフ）があるときだけ細い線で分ける */}
+        <div
+          className={`flex items-center gap-0.5 ${
+            (onShowSkillList && aiAvailable && agentConfigured) || onShowGlobalGraph
+              ? "mt-1 pt-1 border-t border-sidebar-border/60"
+              : ""
+          }`}
         >
-          <SettingsIcon size={12} className="shrink-0" />
-          <span className="flex-1 text-left">{t("common.settings")}</span>
-          {/* デスクトップ版の起動待ちの間も点の場所を確保しておく。判定が付いた
-              瞬間に点が生えるより、灰色が色付く方が落ち着いて見える。 */}
-          {aiAvailable === null && isTauri() && (
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-pulse"
-              data-tooltip={t("sidebar.backendStarting")}
-            />
-          )}
-          {aiAvailable && (agentConfigured ? (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" data-tooltip={t("sidebar.aiConnected")} />
-          ) : (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" data-tooltip={t("sidebar.aiNotConfigured")} />
-          ))}
-        </button>
-        {onShowTrash && (
           <button
-            onClick={onShowTrash}
-            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-              trashActive
-                ? "text-primary font-semibold bg-sidebar-accent/40"
-                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
-            }`}
+            onClick={onShowSettings}
+            aria-label={t("common.settings")}
+            data-tooltip={t("common.settings")}
+            data-tooltip-usage={
+              aiAvailable === null && isTauri()
+                ? t("sidebar.backendStarting")
+                : aiAvailable
+                  ? agentConfigured ? t("sidebar.aiConnected") : t("sidebar.aiNotConfigured")
+                  : undefined
+            }
+            className={footerIconClass(false)}
           >
-            <Trash2 size={12} className="shrink-0" />
-            <span className="flex-1 text-left">{t("nav.trashAndArchive")}</span>
-            {trashCount > 0 && (
-              <span className="text-xs">{trashCount}</span>
+            <SettingsIcon size={14} />
+            {/* デスクトップ版の起動待ちの間も点の場所を確保しておく。判定が付いた
+                瞬間に点が生えるより、灰色が色付く方が落ち着いて見える。 */}
+            {aiAvailable === null && isTauri() && (
+              <span aria-hidden className={`${footerDotClass} bg-muted-foreground/40 animate-pulse`} />
+            )}
+            {aiAvailable && (
+              <span aria-hidden className={`${footerDotClass} ${agentConfigured ? "bg-emerald-500" : "bg-orange-400"}`} />
             )}
           </button>
-        )}
-        <button
-          onClick={onShowReleaseNotes}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"
-        >
-          <History size={12} className="shrink-0" />
-          <span className="flex-1 text-left">{t("sidebar.releaseNotes")}</span>
-        </button>
+          {onShowTrash && (
+            <button
+              onClick={onShowTrash}
+              aria-label={trashCount > 0 ? `${t("nav.trashAndArchive")} (${trashCount})` : t("nav.trashAndArchive")}
+              aria-current={trashActive ? "page" : undefined}
+              data-tooltip={t("nav.trashAndArchive")}
+              className={footerIconClass(trashActive)}
+            >
+              <Trash2 size={14} />
+              {trashCount > 0 && (
+                <span aria-hidden className="absolute top-0 left-1/2 ml-1.5 min-w-3.5 px-0.5 rounded-full bg-sidebar-accent text-[10px] leading-3.5 text-center text-muted-foreground">
+                  {trashCount > 99 ? "99+" : trashCount}
+                </span>
+              )}
+            </button>
+          )}
+          {onAskHowTo && (
+            <button
+              onClick={onAskHowTo}
+              aria-label={t("sidebar.askHowTo")}
+              data-tooltip={t("sidebar.askHowTo")}
+              data-tooltip-usage={t("sidebar.askHowToHint")}
+              className={footerIconClass(false)}
+            >
+              <CircleHelp size={14} />
+            </button>
+          )}
+          <button
+            onClick={onShowReleaseNotes}
+            aria-label={t("sidebar.releaseNotes")}
+            data-tooltip={t("sidebar.releaseNotes")}
+            className={footerIconClass(false)}
+          >
+            <History size={14} />
+          </button>
+        </div>
       </div>
       {sidebarMoreBelow && (
         // 高さ 0 の sticky を入れ物の末尾に置き、その上端に向けてフェードを描く（スクロールしても

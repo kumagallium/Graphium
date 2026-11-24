@@ -57,7 +57,7 @@ Deleting a note outright would break every link and citation pointing at it. Gra
 
 Both live in the note's `⋯` menu: **Archive** and **Move to trash**. If other notes link to the one you're trashing, Graphium warns you how many links will break before it proceeds.
 
-To bring something back, open **Trash & Archive** at the bottom of the sidebar. The view has a **Trash** tab (with **Restore** and **Delete permanently**) and an **Archive** tab (with **Restore from archive** and **Send to trash**). A trashed or archived note opened directly also offers **Restore from trash** / **Restore from archive** in its `⋯` menu.
+To bring something back, open the trash-can icon (**Trash & Archive**) in the icon row at the bottom of the sidebar. The view has a **Trash** tab (with **Restore** and **Delete permanently**) and an **Archive** tab (with **Restore from archive** and **Send to trash**). A trashed or archived note opened directly also offers **Restore from trash** / **Restore from archive** in its `⋯` menu.
 
 ![The Trash tab of Trash & Archive listing three notes (Starter feeding draft, Proofing box scratch notes, Bagel dough trial) with Deleted and References columns; the second row is checked and both Restore and Delete permanently are enabled.](/screenshots/trash-archive.png)
 

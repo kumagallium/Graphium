@@ -179,7 +179,7 @@ You can ask in chat whether Graphium can do something, or where a feature is. Th
 
 There are two ways in:
 
-- Click **Ask how to** at the bottom of the left nav
+- Click the question-mark icon (**Ask how to**) in the icon row at the bottom of the left nav
 - In the desktop app, choose **Help → Ask How to Use Graphium** from the menu
 
 Both open a new chat with **Grounding** set to **How to**. Three example questions sit under the input, and clicking one sends it as is. You can also switch an ongoing chat to **How to** with the **Grounding** chip.
