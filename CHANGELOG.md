@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.156.2](https://github.com/kumagallium/Graphium/compare/v0.156.1...v0.156.2) - 2026-11-24
+
+- [fix] A note made from a table row goes into the same folders as its parent note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1815
+- [fix] Keep linked table titles readable and ask before re-importing a table not imported here by @kumagallium in https://github.com/kumagallium/Graphium/pull/1816
+
 ## [v0.156.1](https://github.com/kumagallium/Graphium/compare/v0.156.0...v0.156.1) - 2026-11-24
 
 - [fix] Notes with code blocks in bash/sh/js open again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1812
