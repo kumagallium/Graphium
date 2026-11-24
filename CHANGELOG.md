@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.156.1](https://github.com/kumagallium/Graphium/compare/v0.156.0...v0.156.1) - 2026-11-24
+
+- [fix] Notes with code blocks in bash/sh/js open again by @kumagallium in https://github.com/kumagallium/Graphium/pull/1812
+
 ## [v0.156.0](https://github.com/kumagallium/Graphium/compare/v0.155.0...v0.156.0) - 2026-11-23
 
 - [docs] Manual: evaluations index by feature, with what was tried and not adopted by @kumagallium in https://github.com/kumagallium/Graphium/pull/1810
