@@ -5,6 +5,11 @@
 - fix(deps): bump url to 2.5.9 and cookie to 0.18.3 (RustSec advisories) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1818
 - [fix] Stop listing subfolders as rows in a folder's note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1820
 
+## [v0.156.3](https://github.com/kumagallium/Graphium/compare/v0.156.2...v0.156.3) - 2026-11-24
+
+- fix(deps): bump url to 2.5.9 and cookie to 0.18.3 (RustSec advisories) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1818
+- [fix] Stop listing subfolders as rows in a folder's note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1820
+
 ## [v0.156.2](https://github.com/kumagallium/Graphium/compare/v0.156.1...v0.156.2) - 2026-11-24
 
 - [fix] A note made from a table row goes into the same folders as its parent note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1815
