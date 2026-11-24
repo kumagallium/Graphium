@@ -360,11 +360,77 @@ function bulletListItemBlock(text, stash) {
   };
 }
 
+// コードブロックの言語名を、エディタが描ける名前に読み替える。
+// 表に無い名前（別名の bash・sh・js も含む）をそのまま入れると、ノートを開いたときに
+// エディタが立ち上がらない。src/lib/code-language.ts と同じ表（1 行 = キー 別名...）。
+// ずれは src/mcp/markdown-to-blocks.test.ts の突き合わせが検出する。
+const CODE_LANGUAGE_TABLE = `
+text txt plain
+c
+cpp c++
+css
+glsl
+graphql gql
+haml
+html htm
+java
+javascript js
+json
+jsonc
+jsonl
+jsx
+julia jl
+less
+markdown md
+mdx
+php
+postcss
+pug jade
+python py
+r
+regexp regex
+sass
+scss
+shellscript bash sh shell zsh console shell-session fish
+sql
+svelte
+typescript ts
+vue
+vue-html
+wasm
+wgsl
+xml svg
+yaml yml
+tsx typescriptreact
+haskell hs
+csharp c# cs
+latex tex
+lua
+mermaid mmd
+ruby rb
+rust rs
+scala
+swift
+kotlin kt kts
+objective-c objc
+`;
+const CODE_LANGUAGE_ALIASES = new Map(
+  CODE_LANGUAGE_TABLE.trim().split("\n").flatMap((line) => {
+    const [key, ...aliases] = line.split(" ");
+    return [key, ...aliases].map((name) => [name, key]);
+  }),
+);
+
+function normalizeCodeLanguage(lang) {
+  if (typeof lang !== "string") return "text";
+  return CODE_LANGUAGE_ALIASES.get(lang.trim().toLowerCase()) ?? "text";
+}
+
 function codeBlock(lang, code) {
   return {
     id: randomUUID(),
     type: "codeBlock",
-    props: { language: lang || "text" },
+    props: { language: normalizeCodeLanguage(lang) },
     // コードブロックはインライン装飾を解釈しない（そのまま出力）
     content: [{ type: "text", text: code, styles: {} }],
     children: [],

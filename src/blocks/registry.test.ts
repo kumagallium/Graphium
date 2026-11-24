@@ -321,6 +321,38 @@ describe("sanitize のカラム構造修復（不正構造で BlockNoteEditor.cr
   });
 });
 
+describe("sanitize のコードブロックの言語名（描けない名前で BlockNote が throw しない形にする）", () => {
+  const code = (language: unknown) => ({
+    id: "c1",
+    type: "codeBlock",
+    props: language === undefined ? {} : { language },
+    content: [{ type: "text", text: "ls", styles: {} }],
+    children: [],
+  });
+
+  it("別名はキーに寄せ、当てはまらない名前は text にする", () => {
+    expect(sanitizeLike([code("bash")])[0].props.language).toBe("shellscript");
+    expect(sanitizeLike([code("sh")])[0].props.language).toBe("shellscript");
+    expect(sanitizeLike([code("env")])[0].props.language).toBe("text");
+  });
+
+  it("描ける名前と本文はそのまま", () => {
+    const out = sanitizeLike([code("json")])[0];
+    expect(out.props.language).toBe("json");
+    expect(out.content[0].text).toBe("ls");
+  });
+
+  it("入れ子の中のコードブロックも読み替える", () => {
+    const parent = { id: "p", type: "bulletListItem", props: {}, content: [], children: [code("bash")] };
+    expect(sanitizeLike([parent])[0].children[0].props.language).toBe("shellscript");
+  });
+
+  it("コードブロック以外の props.language には触らない", () => {
+    const para = { id: "p", type: "paragraph", props: { language: "bash" }, content: [], children: [] };
+    expect(sanitizeLike([para])[0].props.language).toBe("bash");
+  });
+});
+
 describe("KNOWN_STYLE_KEYS と未知 style の除去", () => {
   // BlockNote は styleSchema に無い style キーで throw する（silent drop ではない）。
   // 未来のビルドが新しい永続 style を保存しても、このビルドがノートを開けることを保証する。

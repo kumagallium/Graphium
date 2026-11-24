@@ -17,6 +17,7 @@ import {
   type Block,
 } from "./markdown-to-blocks";
 import { blocksToMarkdown } from "./note-text";
+import { CODE_LANGUAGES } from "../lib/code-language";
 
 /** BlockNote のブロック content からプレーンテキストだけを取り出す小ヘルパー */
 function textOf(content: unknown): string {
@@ -61,6 +62,15 @@ describe("markdownToBlocks", () => {
     expect(textOf(blocks[2].content)).toBe("item3");
   });
 
+  it("フェンスの言語名を、エディタが描ける名前に読み替える（そのままだとノートが開けない）", () => {
+    const lang = (md: string) => (markdownToBlocks(md)[0].props as Record<string, unknown>).language;
+    expect(lang("```bash\nls\n```")).toBe("shellscript");
+    expect(lang("```sh\nls\n```")).toBe("shellscript");
+    expect(lang("```env\nA=1\n```")).toBe("text");
+    expect(lang("```\nplain\n```")).toBe("text");
+    expect(lang("```json\n{}\n```")).toBe("json");
+  });
+
   it("フェンス付きコードブロックを codeBlock に変換する（インライン装飾は解釈しない）", () => {
     const blocks = markdownToBlocks(
       "```ts\nconst a = 1;\n**not bold**\n```",
@@ -68,7 +78,8 @@ describe("markdownToBlocks", () => {
     expect(blocks).toHaveLength(1);
     const block = blocks[0] as Block;
     expect(block.type).toBe("codeBlock");
-    expect((block.props as Record<string, unknown>).language).toBe("ts");
+    // 別名 ts は、エディタが描けるキー typescript に読み替える
+    expect((block.props as Record<string, unknown>).language).toBe("typescript");
     const content = block.content as Array<Record<string, unknown>>;
     expect(content[0].text).toBe("const a = 1;\n**not bold**");
     expect(content[0].styles).toEqual({});
@@ -579,6 +590,11 @@ describe("save.mjs と同じブロックを出す", () => {
       "|---|---|",
     ].join("\n"),
     タグと数式の区切り: [...SCRIPT_DELIMITER_CASES, `${String.fromCharCode(0xfdef)}<sup>\\[1\\]</sup> と \\( y \\)`].join("\n\n"),
+    // save.mjs の言語名の表が code-language.ts とずれたら、ここで落ちる
+    コードの言語名: ["bash","sh","zsh","shell","console","shell-session","fish","env","dockerfile","js","ts","tsx","yml","py","md","tex","htm","svg","golang","c++","c#","objc","JSON"," Bash","text","shellscript","mermaid","nosuch"]
+      .concat(Object.values(CODE_LANGUAGES).flat())
+      .map((l) => "```" + l + "\nx\n```")
+      .join("\n\n"),
     閉じていないフェンス: "本文\n```\n$$\nx\n$$\n<sup>y</sup>",
     私用領域の文字: `$a$ と ${String.fromCharCode(0xe000)}0${String.fromCharCode(0xe001)} と <sup>b</sup>`,
     改行コード: "a $x$\r\n$$\r\ny\r\n$$\r\nb",

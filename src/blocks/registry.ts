@@ -21,6 +21,7 @@ import { columnListBlock, columnBlock } from "./multi-column";
 import { sharedCitationBlock } from "./shared-citation";
 import { dataTableBlock } from "./data-table";
 import { meetingTranscriptBlock } from "./meeting-transcript";
+import { normalizeCodeLanguage } from "../lib/code-language";
 
 // この配列に載せるのは「BlockNote が知らないブロック型」だけ。
 // 標準型（image / video / audio）の spec 差し替えはここに置かない —— 外部メディア
@@ -117,6 +118,12 @@ export function sanitizeBlocksForLoad(
     }
     out.push({
       ...b,
+      // コードブロックの言語名が BlockNote の表に無いと描画で throw してノートが
+      // 開けなくなる（MCP の create_note が ```bash をそのまま入れていた）。
+      // 描ける名前へ読み替える。保存済みのノートもここで救う。
+      ...(b.type === "codeBlock" && b.props?.language !== normalizeCodeLanguage(b.props?.language)
+        ? { props: { ...b.props, language: normalizeCodeLanguage(b.props?.language) } }
+        : {}),
       // 未知 style の除去（下記）は BlockNote の throw を防ぐ共通処理。
       // mapContent（呼び出し元ごとの inline 検査）とは独立に必ず通す。
       content: sanitizeContentStyles(mapContent ? mapContent(b.content) : b.content),

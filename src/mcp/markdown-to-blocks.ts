@@ -11,6 +11,7 @@
 // ブロック ID の生成（randomUUID）も踏襲する。
 
 import { randomUUID } from "node:crypto";
+import { normalizeCodeLanguage } from "../lib/code-language";
 
 /** BlockNote のインライン content の 1 要素（text / link / inlineMath）を緩く表す型 */
 export type InlineContent = Record<string, unknown>;
@@ -330,7 +331,9 @@ export function codeBlock(lang: string, code: string): Block {
   return {
     id: randomUUID(),
     type: "codeBlock",
-    props: { language: lang || "text" },
+    // フェンスの言語名（bash・sh・env など）はエディタが描ける名前に読み替える。
+    // そのまま入れると、ノートを開いたときに BlockNote が throw する
+    props: { language: normalizeCodeLanguage(lang) },
     // コードブロックはインライン装飾を解釈しない（そのまま出力）
     content: [{ type: "text", text: code, styles: {} }],
     children: [],
