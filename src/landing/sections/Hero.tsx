@@ -1,10 +1,11 @@
 import { useI18n } from "../i18n";
 import { MomentsPicture } from "./MomentsPicture";
+import { DESKTOP_DOWNLOAD_URL, labSampleHref } from "../links";
 
 export function Hero() {
   const { t, locale } = useI18n();
-  // 見本（features/demo）は言語ごとに束が分かれる（日本語はカレー作り、英語はパン作り）。LP の表示言語に合わせる
-  const sampleHref = `/Graphium/app/?demo=${locale === "ja" ? "curry-ja" : "bread-en"}`;
+  // ボタンは主 1 つ・副 1 つ。主はデスクトップ版（AI の接続・Web のクリップ・録音の文字起こしが揃う形）、
+  // 副は実験ノートの見本（AI をつながずに開ける）。ブラウザ版と GitHub は「はじめる」とフッターに置く
   return (
     <section className="lp-section" id="top">
       <p className="lp-eyebrow">{t("hero.eyebrow")}</p>
@@ -15,27 +16,11 @@ export function Hero() {
         {t("hero.subtitle")}
       </p>
       <div className="lp-cta-row">
-        <a className="lp-btn lp-btn-primary" href="/Graphium/app/">
-          {t("hero.tryOnline")} →
+        <a className="lp-btn lp-btn-primary" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noreferrer noopener">
+          {t("hero.download")} →
         </a>
-        <a className="lp-btn lp-btn-secondary" href={sampleHref}>
+        <a className="lp-btn lp-btn-secondary" href={labSampleHref(locale)}>
           {t("hero.seeSample")}
-        </a>
-        <a
-          className="lp-btn lp-btn-secondary"
-          href="https://github.com/kumagallium/Graphium/releases/latest"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          {t("hero.download")}
-        </a>
-        <a
-          className="lp-btn lp-btn-ghost"
-          href="https://github.com/kumagallium/Graphium"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          ★ {t("hero.starOnGithub")}
         </a>
       </div>
       <MomentsPicture />

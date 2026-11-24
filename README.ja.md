@@ -9,20 +9,20 @@
   <b>眠っている記録を、人にも AI にも読める形に。</b>
 </p>
 <p align="center">
-  紙の資料の写真、会議の録音、Web で読んだページ、昔のファイル。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。
+  実験ノートの写真、打ち合わせの録音、読んだ論文や Web ページ、昔の測定データ。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。
 </p>
 <p align="center">
   <a href="README.md">English</a> | <b>日本語</b>
 </p>
 
 <p align="center">
-  <a href="https://kumagallium.github.io/Graphium/"><img alt="ブラウザで試す" src="https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A9%A6%E3%81%99-2ea44f?style=for-the-badge"></a>
-  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="デスクトップ版を入手" src="https://img.shields.io/badge/%E3%83%87%E3%82%B9%E3%82%AF%E3%83%88%E3%83%83%E3%83%97%E7%89%88%E3%82%92%E5%85%A5%E6%89%8B-24292f?style=for-the-badge"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="デスクトップ版を入手" src="https://img.shields.io/badge/%E3%83%87%E3%82%B9%E3%82%AF%E3%83%88%E3%83%83%E3%83%97%E7%89%88%E3%82%92%E5%85%A5%E6%89%8B-2ea44f?style=for-the-badge"></a>
+  <a href="https://kumagallium.github.io/Graphium/"><img alt="ブラウザで試す" src="https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A9%A6%E3%81%99-24292f?style=for-the-badge"></a>
 </p>
 
 <p align="center">
   まず見てみたい方へ。<a href="https://youtu.be/L6bSov87eYo">1 分の動画</a>（音なし）: 記録のフォルダを入れると、トピックが立ち上がり、AI が自分の記録から答えます。<br />
-  <a href="https://kumagallium.github.io/Graphium/app/?demo=curry-ja">見本のノート</a>をブラウザで開くこともできます。カレー作りの記録 12 本と、AI がそこから作ったトピック、記録したチャット。AI の接続は要りません。
+  <a href="https://kumagallium.github.io/Graphium/app/?demo=thermo-ja">実験ノートの見本</a>をブラウザで開くこともできます。架空の熱電材料の研究の記録 12 本と、AI がそこから作ったトピック、記録したチャット。AI の接続は要りません。<a href="https://kumagallium.github.io/Graphium/app/?demo=curry-ja">カレー作りの見本</a>もあります。
 </p>
 
 <p align="center">
@@ -57,14 +57,16 @@ AI を使い始めたら、同じ記録がそのまま AI の読むものにな�
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="来歴パネル（洞察・知見・元ノート）を開いた洞察ページ" width="760" /></p>
 
-## 試行錯誤するすべての人へ
+## まず、実験の記録を溜めてきた研究者へ
 
-語彙は汎用的です。実験室でも、台所でも、工房でも、コードベースでも、教室でも。
+試料をどう作ったか、どの条件で測ったか、うまくいかなかった回。試したことを、あとから辿れる形で残します。同じ使い方は、台所でも、工房でも、コードベースでも、教室でもできます。
 
-- **研究者** — 来歴付きの実験ログ。ステップ・材料・結果が繋がったまま残ります。
+- **研究者** — 手順・材料・条件・結果がつながったまま残る実験ノート。条件を変えた回どうしを @ でつなぎ、前の回から何を変えたかを辿れます。
 - **料理人・つくる人** — 今回のパンが上手くいった理由を覚えているレシピ。上手くいかなかった 4 回も一緒に。
 - **エンジニア** — 次のポストモーテムまで生き残る調査ノート。
 - **学生・書き手** — 授業・本・会話を繋ぐ「第二の脳」。戻ってきたとき、自分で説明してくれます。
+
+**「いつ・何が」を、第三者が確かめられる。** 残した時点を「証拠として固定」すると、内容のハッシュ（32 バイト）だけを外部の時刻証明サービスに預けます。「この時刻より前に、この内容があった」ことを、書き出した zip から Graphium なしで確かめられます。証明するのはそこまでで、誰が書いたかは証明しません。時刻の証明はデスクトップ版で付きます。くわしくは[実験ノートとして使う](https://kumagallium.github.io/Graphium/manual/ja/lab-notebook)へ。
 
 ### もっと知りたい人へ（任意）
 
