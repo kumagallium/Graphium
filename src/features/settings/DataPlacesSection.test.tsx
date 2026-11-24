@@ -56,7 +56,7 @@ const openMenu = (row: HTMLElement) => fireEvent.click(within(row).getByRole("bu
 describe("DataPlacesSection", () => {
   it("置き場が無ければ案内と「フォルダを登録」を出す", async () => {
     setup([]);
-    await screen.findByText(/No data place yet/);
+    await screen.findByText(/No linked folder yet/);
     expect(screen.getByRole("button", { name: "Register a folder" })).toBeTruthy();
   });
 
@@ -80,7 +80,7 @@ describe("DataPlacesSection", () => {
     const { fns } = setup([ORG]);
     await waitFor(() => expect(rows()).toHaveLength(1));
     fireEvent.click(screen.getByRole("button", { name: "Register a folder" }));
-    const input = (await screen.findByLabelText("Data place name")) as HTMLInputElement;
+    const input = (await screen.findByLabelText("Folder label")) as HTMLInputElement;
     expect(input.value).toBe("Front-of-house");
     await waitFor(() => expect(rows()).toHaveLength(2));
 
@@ -97,7 +97,7 @@ describe("DataPlacesSection", () => {
     await waitFor(() => expect(rows()).toHaveLength(1));
     openMenu(rows()[0]);
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
-    const input = screen.getByLabelText("Data place name");
+    const input = screen.getByLabelText("Folder label");
     fireEvent.change(input, { target: { value: "Bakery HQ" } });
     fireEvent.blur(input);
     await waitFor(() => expect(fns.renamePlace).toHaveBeenCalledWith("p-org", "Bakery HQ"));

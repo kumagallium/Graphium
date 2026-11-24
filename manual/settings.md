@@ -35,28 +35,28 @@ Where your notes live and how they move between devices. Full details in [Storag
 
 | Group | What it does |
 |---|---|
-| **Where your notes are saved** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
-| **Data places** | Desktop only — register the folders (an organization's synced folder, a lab NAS) whose files you want to link without copying them. See [Data places](#data-places) below. |
+| **Graphium save folder** | Desktop only — change the folder where everything Graphium creates (notes, images, knowledge) is stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
+| **Linked folders** | Desktop only — register the folders (an organization's synced folder, a lab NAS) whose files you want to link without copying them; Graphium keeps only where each file is. See [Linked folders](#data-places) below. |
 | **Export and backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
 | **Send from your phone or browser** | A collapsed group holding the ways into this Graphium from your own phone and browser: **Send from your phone** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> (the desktop half of phone capture: a QR code that opens Graphium on your phone, the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option — see [Mobile capture](/mobile)) and **Web clip** (the pairing code for the Chrome extension that clips what you read into Graphium, with **Copy** and **Make a new code** — see [Web clip](/web-clip)). |
 | **Advanced** | A collapsed group holding **Search index** <Badge type="tip" text="Added in v0.39.0 (2026-08-17)" /> — the on-device full-text index over note bodies, knowledge pages, and asset text (image OCR, URL excerpts, PDF and Word text) that `⌘K` (`Ctrl+K` on Windows/Linux) search and the AI chat's cross-search use. It shows how many sources and passages are indexed, and **Rebuild index** clears and rebuilds it if results ever look wrong. **Browse contents** opens the index itself: **Passages** lists every indexed source — open one to see the passages it was cut into and the exact terms each passage was indexed under (how a Japanese sentence was segmented) — and typing a word runs a test search; **Vocabulary** lists every term in the index with the number of passages containing it, filterable. It never writes to your notes. |
 
 ::: warning
-Changing **Where your notes are saved** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
+Changing **Graphium save folder** does not move existing notes automatically — copy the old folder's contents into the new one first, then restart Graphium.
 :::
 
-### Data places <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#data-places}
+### Linked folders <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#data-places}
 
-Desktop app only. A data place is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is and does not copy it; it reads the contents only when you open them.
+Desktop app only. A linked folder is a folder you register so that files inside it can be [linked without copying](/materials-and-citations#linked-files). Graphium keeps only where each file is and does not copy it; it reads the contents only when you open them. It is separate from the **Graphium save folder**, where your notes and images are saved.
 
-![Two data places as rows. "Whole bakery" (/Volumes/Bakery/Shared) has a green dot. "Sourdough team" (/Volumes/Bakery/Sourdough) has an orange dot and is opened to show that the folder can't be reached right now, with its folder location. Register a folder sits below.](/screenshots/settings-data-places.png)
+![Two linked folders as rows. "Whole bakery" (/Volumes/Bakery/Shared) has a green dot. "Sourdough team" (/Volumes/Bakery/Sourdough) has an orange dot and is opened to show that the folder can't be reached right now, with its folder location. Register a folder sits below.](/screenshots/settings-data-places.png)
 
-- **Register a folder** opens your computer's folder picker. Pick the folder that holds the files — the synced folder, the NAS share. Graphium names the place after the folder.
-- Each place is a row with its name, its state (**Reachable** or **Can't reach it right now**) and a **Show details** button that shows the folder's location. The row's menu has **Rename** and **Unregister**. Renaming changes the name shown on the linked files that belong to the place.
-- **Unregister** removes the place from this device. The linked files stay in Graphium and the original files are not touched; until you register the folder again, the links show **Not registered on this device**. Registering the same folder again reconnects them.
-- When Graphium can write to the folder, it leaves a small `.graphium-place.json` file in it, so the same folder registered on another computer is recognized as the same place. If it can't write there, the row says the place is **Used on this device only**.
+- **Register a folder** opens your computer's folder picker. Pick the folder that holds the files — the synced folder, the NAS share. Graphium labels it with the folder's name.
+- Each registered folder is a row with its name, its state (**Reachable** or **Can't reach it right now**) and a **Show details** button that shows the folder's location. The row's menu has **Rename** and **Unregister**. Renaming changes the name shown on the linked files that belong to the folder.
+- **Unregister** removes the folder from this device. The linked files stay in Graphium and the original files are not touched; until you register the folder again, the links show **Not registered on this device**. Registering the same folder again reconnects them.
+- When Graphium can write to the folder, it leaves a small `.graphium-place.json` file in it, so the same folder registered on another computer is recognized as the same folder. If it can't write there, the row says the folder is **Used on this device only**.
 - These folders can't be registered: a drive or the top of a file system, your home folder (or a folder above it), and Graphium's own data and settings folders (or anything inside or above them). Pick a narrower folder instead.
-- The list of places is kept on each device, so register a place on every computer where you want to open its files.
+- The list of linked folders is kept on each device, so register a folder on every computer where you want to open its files.
 
 ## Sharing <Badge type="tip" text="Added in v0.122.0 (2026-11-06)" /> {#sharing}
 

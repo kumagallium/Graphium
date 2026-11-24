@@ -17,7 +17,7 @@ Inside the gallery you can:
 | **All** / **PDF** / **Word** / **Excel** / **PowerPoint** | In **Documents**, show one kind of file. Older `.doc` / `.xls` / `.ppt` files count with Word, Excel, and PowerPoint. Only kinds you have at least one file of are listed |
 | **Upload** | In **Images**, **Data**, **Videos** and **Audio**: upload files of the current type. Like **Add PDF** below, they go through the intake sheet, so you see progress and a report |
 | **Add URL** | In **URLs**: register a web page as a URL bookmark |
-| **Link a file from a data place** | In the image, document, data, video, audio and URL galleries, desktop app only: link a file that lives in a registered data place without copying it — see [Link a file without copying it](#linked-files) |
+| **Link a file from a registered folder** | In the image, document, data, video, audio and URL galleries, desktop app only: link a file that lives in a registered linked folder without copying it — see [Link a file without copying it](#linked-files) |
 | **Add PDF** / **Add Word** | In **Documents**, under the **⋯** menu at the top right: add PDF or Word files as materials — no note is created. They go through the same intake sheet as [Bring in what you already have](#bring-in-what-you-already-have), so you see progress and a report, and the work keeps going if you move to another screen |
 | Checkboxes | Multi-select for bulk download, delete, or bulk AI actions — in either view. Drag across items, or shift-click, to select a range |
 
@@ -89,7 +89,7 @@ There are several routes, all ending in the same library:
 | Gallery buttons | **Upload** (Images, Data, Videos, Audio), **Add URL** (URLs), and **Add PDF** / **Add Word** under the **⋯** menu in Documents — add materials without touching any note |
 | Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
 | Bring in AI conversations | In the desktop app, your Claude Code conversations can be kept as materials — see [Bring in AI conversations](#bring-in-ai-conversations) below |
-| Link a file from a data place | Desktop app only. Keep a file where it is (an organization's synced folder, say) and add only a record of its location to the library — see [Link a file without copying it](#linked-files) |
+| Link a file from a registered folder | Desktop app only. Keep a file where it is (an organization's synced folder, say) and add only a record of its location to the library — see [Link a file without copying it](#linked-files) |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.
@@ -191,30 +191,30 @@ Materials registered before v0.37.0 are read once in the background after you si
 
 ## Link a file without copying it <Badge type="tip" text="Added in v0.146.0 (2026-11-18)" /> {#linked-files}
 
-Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which data place, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied. Graphium reads the contents only when you ask it to (see [Show the contents or import it as a table](#linked-read)). This is for the desktop app only.
+Some files already have a home: an organization's synced folder, a lab NAS, a shared drive. Bringing them into Graphium would mean two copies, and the copy in Graphium would slowly drift from the original. A **linked file** avoids that. Graphium keeps only a record of where the file is — which linked folder, the path inside it, its size and its modified time — and the file itself stays where it is. Nothing is copied. Graphium reads the contents only when you ask it to (see [Show the contents or import it as a table](#linked-read)). This is for the desktop app only.
 
 ### Set it up and link a file
 
-1. Open Settings → **Storage** and, under **Data places**, press **Register a folder**. Pick the folder (for example the synced folder). See [Data places](/settings#data-places).
-2. Open a gallery (images, documents, data, videos, audio or URLs) and press **Link a file from a data place**.
-3. Pick one file, or several at once (up to 500). They have to be inside a registered data place; a file that is not is left out and a message says so — register that folder first, or use the regular import.
+1. Open Settings → **Storage** and, under **Linked folders**, press **Register a folder**. Pick the folder (for example the synced folder). See [Linked folders](/settings#data-places).
+2. Open a gallery (images, documents, data, videos, audio or URLs) and press **Link a file from a registered folder**.
+3. Pick one file, or several at once (up to 500). They have to be inside a registered linked folder; a file that is not is left out and a message says so — register that folder first, or use the regular import.
 4. The linked file is listed by its kind: a PDF or an Office file under documents, a CSV under data, a picture under images. A kind Graphium does not recognise is listed under URLs.
 
 The file appears in the gallery with a **Link** mark. Linking the same file again does not add a second material; it finds the one you already have.
 
 ### What you see
 
-Open a linked file and you see its **Data place**, **Location in the place**, **Size**, **Modified**, **Recorded** and **Status**. Graphium compares the size and modified time with the record to decide the status. In the gallery, a mark appears only when the status is not **No change**.
+Open a linked file and you see its **Linked folder**, **Location in the folder**, **Size**, **Modified**, **Recorded** and **Status**. Graphium compares the size and modified time with the record to decide the status. In the gallery, a mark appears only when the status is not **No change**.
 
-![The linked file "Dough hydration.xlsx" with a Link mark. It lists the data place Whole bakery, the location Recipes/Dough hydration.xlsx, size, modified and recorded times, and the status The original has changed. A Recorded and current table compares 47.1 KB with 50.7 KB, above the Record the current state, Open the original, Show in folder and Check again buttons.](/screenshots/linked-file-details.png)
+![The linked file "Dough hydration.xlsx" with a Link mark. It lists the linked folder Whole bakery, the location Recipes/Dough hydration.xlsx, size, modified and recorded times, and the status The original has changed. A Recorded and current table compares 47.1 KB with 50.7 KB, above the Record the current state, Open the original, Show in folder and Check again buttons.](/screenshots/linked-file-details.png)
 
 | Status | What it means | What to do |
 |---|---|---|
 | **No change** | The size and modified time match what was recorded. | Nothing. |
 | **The original has changed** | The size or modified time differs. The file may have been edited. | Compare the two columns (**Recorded** and **Current**). If the new version is the one you want to keep citing, press **Record the current state**; the earlier record stays in the history (the latest 20 are kept). |
-| **The original can't be found** | The place is reachable but the file is not there. It may have been moved or renamed. | Look for the file in the place. If it moved, link it again from its new location. |
-| **Can't reach the place** | The folder can't be reached right now. | Check that the drive or sync is connected, then press **Check again**. |
-| **Not registered on this device** | This device does not have that place registered. | Register the place in Settings. The folder is matched by the marker file Graphium leaves in it (below), so registering the same folder again reconnects the links. |
+| **The original can't be found** | The folder is reachable but the file is not there. It may have been moved or renamed. | Look for the file in the folder. If it moved, link it again from its new location. |
+| **Can't reach the folder** | The folder can't be reached right now. | Check that the drive or sync is connected, then press **Check again**. |
+| **Not registered on this device** | This device does not have that folder registered. | Register the folder in Settings. The folder is matched by the marker file Graphium leaves in it (below), so registering the same folder again reconnects the links. |
 
 With the status **No change** or **The original has changed**, **Open the original** opens the file in your computer's own app, and **Show in folder** shows it in Finder or Explorer. **Open the original** works only for a fixed set of kinds — documents, spreadsheets, slides, text and CSV, images, audio, video and PDF. For other kinds, use **Show in folder**.
 
@@ -225,9 +225,9 @@ Graphium compares only size and modified time. An edit that leaves both unchange
 Graphium reads a linked file only while you ask for it. Nothing is copied or kept, and the contents are not used for search, AI or sharing.
 
 - **Show contents** (PDF and pictures: PNG, JPEG, GIF, WebP, BMP, HEIC, AVIF; up to 100 MB). Press it to read the file and show it in place. **Hide contents** closes it; press **Cancel** while it is reading to stop. SVG is not shown.
-- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the data place. There are two ways in. In a note, type `/data` and choose the linked file (leave the insert style on **Embed**; choosing **Link** only puts in a reference). Or click the reference to a linked file inside a note to open it, then press **Import as table**. Pressing it from the material gallery, with no note open, only tells you to choose the file from `/data` in a note. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
+- **Import as table** (CSV, TSV, TXT, DAT; up to 200 MB). It opens the usual import dialog with the file read from the linked folder. There are two ways in. In a note, type `/data` and choose the linked file (leave the insert style on **Embed**; choosing **Link** only puts in a reference). Or click the reference to a linked file inside a note to open it, then press **Import as table**. Pressing it from the material gallery, with no note open, only tells you to choose the file from `/data` in a note. The original is not added to the library. The table is made as an ordinary table in the note (the choice of a data table block is not offered).
 
-Graphium shows "File read: (data place) / (location)" at the top of the import dialog, so you can check which file is being imported before you confirm. Only one read runs at a time; the buttons can't be pressed again until it finishes.
+Graphium shows "File read: (folder label) / (location)" at the top of the import dialog, so you can check which file is being imported before you confirm. Only one read runs at a time; the buttons can't be pressed again until it finishes.
 
 If you narrow the table with conditions, the small filtered CSV that is made is kept in the library as an ordinary material, so search, AI and sharing can reach it. The linked original itself is still never copied.
 
@@ -241,13 +241,13 @@ Say you link a 40 GB `raw.csv`, analyse it on your own computer, and bring the s
 
 1. Open `summary.csv` in full view and go to the **Metadata** tab. A **Source data** row appears there once you have a linked file that is not archived.
 2. Press **Set source data**, type part of a name to narrow the list, and pick the linked file. Pick several if there are several.
-3. The row lists each one with its data place and its location in the place. Press a name to go to that material; press the **×** beside it to remove it.
+3. The row lists each one with its linked folder and its location in the folder. Press a name to go to that material; press the **×** beside it to remove it.
 
 It can be set on images, PDFs, documents, data, videos and audio that you brought in (not on memos, AI conversations, URL bookmarks or linked files themselves). Only a linked file can be the source data. A material that was extracted from a PDF keeps that PDF as its origin; the **×** removes only linked files.
 
 ### Good to know
 
-- Where a place is on a computer is kept on that computer only. The notes and the library hold the place's id and the path inside it, never the full path on your disk. When Graphium can, it also leaves a small file named `.graphium-place.json` in the folder, so a colleague who registers the same folder on their own computer gets the same place. If it can't write there, the place works on this device only.
+- Where a linked folder is on a computer is kept on that computer only. The notes and the library hold the folder's id and the path inside it, never the full path on your disk. When Graphium can, it also leaves a small file named `.graphium-place.json` in the folder, so a colleague who registers the same folder on their own computer gets the same folder. If it can't write there, the folder works on this device only.
 - The provenance export of a note lists a linked file with its place id, its path in the place, its size and its modified time. The full path on your disk is not included. A material with source data is written as derived from that linked file (`prov:wasDerivedFrom`), so the chain from the small table back to the raw file can be followed in the export. The readable copy in a shared folder leaves source data out.
 - This has not been checked on Windows, nor with synced folders whose files are not downloaded to the computer yet. Treat both as untested.
 
