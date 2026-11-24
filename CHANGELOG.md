@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.156.4](https://github.com/kumagallium/Graphium/compare/v0.156.3...v0.156.4) - 2026-11-24
+
+- [fix] Build Topics for sources that have Claims but no Topics by @kumagallium in https://github.com/kumagallium/Graphium/pull/1822
+
 ## [v0.156.3](https://github.com/kumagallium/Graphium/compare/v0.156.2...v0.156.3) - 2026-11-24
 
 - fix(deps): bump url to 2.5.9 and cookie to 0.18.3 (RustSec advisories) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1818
