@@ -3,7 +3,8 @@
 // 見た目は「外のアプリで編集された素材」の知らせ（OpenedCopyNotice）にそろえる。
 // 自動では消さない（承認が要る知らせなので、見落とすと一時ファイル由来の申し出が溜まる）。
 // × は「あとで」— 隅からは消えるが、受け取り待ちには残り、取り込みの画面から選べる。
-// カードは 2 枚まで。それより多いときは残りの件数と「すべて取り込む」を 1 行で出す。
+// カードは 2 枚まで。それより多いときは残りの件数と「取り込みを開く」だけを出す（まとめて取り込むのは
+// 取り込みの画面で、全件が見えているときだけ。隅で押すと、見ていない 3 件目以降まで入ってしまう）。
 
 import { Check, Inbox, Loader2, X } from "lucide-react";
 import { useT } from "@/i18n";
@@ -31,7 +32,6 @@ export type MaterialOfferNoticeViewProps = {
   onAccept: (offer: MaterialOffer) => void;
   onDecline: (offer: MaterialOffer) => void;
   onLater: (offer: MaterialOffer) => void;
-  onAcceptAll: () => void;
   onOpenIntake: () => void;
 };
 
@@ -44,7 +44,6 @@ export function MaterialOfferNoticeView({
   onAccept,
   onDecline,
   onLater,
-  onAcceptAll,
   onOpenIntake,
 }: MaterialOfferNoticeViewProps) {
   const t = useT();
@@ -117,18 +116,9 @@ export function MaterialOfferNoticeView({
           <button
             type="button"
             onClick={onOpenIntake}
-            className="px-2 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="px-2.5 py-1 rounded-md border border-border text-foreground hover:bg-muted"
           >
             {t("materialOffer.openIntake")}
-          </button>
-          <button
-            type="button"
-            onClick={onAcceptAll}
-            disabled={busy !== null}
-            className="px-2.5 py-1 rounded-md border border-border text-foreground hover:bg-muted inline-flex items-center gap-1.5 disabled:opacity-60"
-          >
-            {busy === "all" && <Loader2 size={12} className="animate-spin" />}
-            {t("materialOffer.acceptAll", { count: String(offers.length) })}
           </button>
           </div>
         </div>

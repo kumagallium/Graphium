@@ -32,6 +32,7 @@ import { readMediaIndex } from "./sources";
 import { writeFileAtomic } from "./upkeep/atomic-write";
 import { acquireWriteLock } from "./upkeep/guard";
 import { appDataDir, resolveGraphiumRoot, vaultExists } from "./vault";
+import { BLOCKED_MATERIAL_EXTS } from "../lib/blocked-material-exts";
 
 /** get_media_file の inline と add_material で扱う bytes の上限 */
 export const MAX_MEDIA_BYTES = 32 * 1024 * 1024;
@@ -173,21 +174,7 @@ function nameExt(name: string): string | undefined {
   return base.slice(dot + 1);
 }
 
-/**
- * add_material が断る拡張子。実行ファイル・スクリプト・ショートカットなど、
- * 「アプリで開く」や OS の関連付けで実行されうるもの。外の AI が仕込めないようにする
- */
-export const BLOCKED_MATERIAL_EXTS: ReadonlySet<string> = new Set([
-  "exe", "bat", "cmd", "com", "scr", "pif", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh",
-  "hta", "lnk", "url", "jar", "app", "command", "terminal", "sh", "bash", "zsh", "csh", "ksh", "scpt", "workflow",
-  "dll", "reg", "cpl", "gadget", "inf", "action",
-  // インストーラ・ショートカット／設定ファイル・アプリ形式・OS が関連付けで起動するもの
-  // （解析用の .py や、マクロ付き Office は資料としての正当な利用があるので断らない）
-  "chm", "jnlp", "msc", "sct", "wsc", "xll", "wll", "ws", "bas", "tool", "run", "xbap", "ocx", "iqy", "diagcab",
-  "library-ms", "settingcontent-ms",
-  "xlam", "ppam", "appx", "msix", "appinstaller", "appref-ms", "application", "pkg", "dmg", "desktop", "webloc", "scf", "ps1xml",
-  "psd1",
-]);
+export { BLOCKED_MATERIAL_EXTS } from "../lib/blocked-material-exts";
 
 /** 保存に使う拡張子。名前を優先し、無ければ MIME から。決められなければ null（拡張子なし） */
 export function mediaExt(name: string, mimeType: string): string | null {

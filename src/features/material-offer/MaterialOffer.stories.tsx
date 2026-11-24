@@ -100,7 +100,6 @@ function NoticeFrame({
         onAccept={() => {}}
         onDecline={() => {}}
         onLater={() => {}}
-        onAcceptAll={() => {}}
         onOpenIntake={() => {}}
       />
     </div>

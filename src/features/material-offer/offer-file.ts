@@ -58,18 +58,47 @@ export function isOfferExpired(meta: Pick<OfferMeta, "offeredAt">, now: number =
   return now - t > OFFER_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
 }
 
-/** 読んだ JSON がメタの形か（壊れた・古い形のものは null） */
-export function parseOfferMeta(raw: unknown): OfferMeta | null {
+/** 画面に出す文から、制御文字と書式文字（RTL の上書き・ゼロ幅など。並びを見せかけられる）を落とす */
+export function sanitizeOfferText(s: string): string {
+  return s.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, "");
+}
+
+/** 申し出の中身の大きさの上限（MCP の MAX_MEDIA_BYTES と同じ） */
+export const OFFER_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * 読んだ JSON がメタの形か（壊れた・古い形・あり得ない値のものは null）。
+ * appdata は MCP 以外も書けるので、ここでも長さ・大きさ・日時を確かめる
+ */
+export function parseOfferMeta(raw: unknown, now: number = Date.now()): OfferMeta | null {
   if (!raw || typeof raw !== "object") return null;
   const m = raw as Record<string, unknown>;
   if (m.version !== 1) return null;
-  const str = (v: unknown) => typeof v === "string" && v.length > 0;
-  if (!str(m.id) || !str(m.name) || !str(m.mimeType) || !str(m.sha256) || !str(m.sourcePath) || !str(m.client) || !str(m.offeredAt)) {
+  const str = (v: unknown, max: number) => typeof v === "string" && v.length > 0 && v.length <= max;
+  if (
+    !str(m.id, 100) || !str(m.name, 255) || !str(m.mimeType, 200) || !str(m.sha256, 100) ||
+    !str(m.sourcePath, 4096) || !str(m.client, 60) || !str(m.offeredAt, 40)
+  ) {
     return null;
   }
-  if (typeof m.size !== "number" || !Number.isFinite(m.size) || m.size < 0) return null;
-  if (m.noteId !== undefined && !str(m.noteId)) return null;
-  return m as unknown as OfferMeta;
+  if (!/^sha256:[0-9a-f]{64}$/.test(m.sha256 as string)) return null;
+  if (typeof m.size !== "number" || !Number.isInteger(m.size) || m.size <= 0 || m.size > OFFER_MAX_BYTES) return null;
+  if (m.noteId !== undefined && !str(m.noteId, 200)) return null;
+  // 先の日時は期限切れにならないので受け付けない（時計のずれは 1 日まで許す）
+  const t = Date.parse(m.offeredAt as string);
+  if (!Number.isFinite(t) || t > now + 24 * 60 * 60 * 1000) return null;
+  return {
+    version: 1,
+    id: m.id as string,
+    name: sanitizeOfferText(m.name as string),
+    mimeType: m.mimeType as string,
+    size: m.size,
+    sha256: m.sha256 as string,
+    sourcePath: sanitizeOfferText(m.sourcePath as string),
+    client: sanitizeOfferText(m.client as string),
+    offeredAt: m.offeredAt as string,
+    ...(m.noteId !== undefined ? { noteId: m.noteId as string } : {}),
+  };
 }
 
 /** MCP の clientInfo.name を、画面の「どこから」に出す名前にする */

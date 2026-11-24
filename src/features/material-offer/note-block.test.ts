@@ -47,11 +47,15 @@ describe("offer-file", () => {
     expect(isOfferExpired({ offeredAt: "nope" }, now)).toBe(true);
   });
   it("形の違うメタは null", () => {
-    const ok = { version: 1, id: "a", name: "a.jpg", mimeType: "image/jpeg", size: 1, sha256: "h", sourcePath: "/tmp/a.jpg", client: "AI", offeredAt: "2026-11-24T00:00:00Z" };
-    expect(parseOfferMeta(ok)).toEqual(ok);
+    const ok = { version: 1, id: "a", name: "a.jpg", mimeType: "image/jpeg", size: 1, sha256: `sha256:${"a".repeat(64)}`, sourcePath: "/tmp/a.jpg", client: "AI", offeredAt: "2026-11-24T00:00:00Z" };
+    expect(parseOfferMeta(ok, Date.parse("2026-11-24T01:00:00Z"))).toEqual(ok);
     expect(parseOfferMeta({ ...ok, size: -1 })).toBeNull();
     expect(parseOfferMeta({ ...ok, version: 2 })).toBeNull();
     expect(parseOfferMeta({ ...ok, noteId: "" })).toBeNull();
+    // 先の日時・形の違うハッシュは断る。表示の文から書式文字を落とす
+    expect(parseOfferMeta({ ...ok, offeredAt: "2099-01-01T00:00:00Z" }, Date.parse("2026-11-24T00:00:00Z"))).toBeNull();
+    expect(parseOfferMeta({ ...ok, sha256: "abc" })).toBeNull();
+    expect(parseOfferMeta({ ...ok, name: "a\u202Egpj.exe" })?.name).toBe("agpj.exe");
   });
   it("クライアント名を画面の名前にする", () => {
     expect(displayClientName("codex-mcp-client")).toBe("ChatGPT / Codex");

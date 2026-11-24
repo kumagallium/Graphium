@@ -19320,7 +19320,6 @@ export function NoteApp() {
           onAccept={materialOffers.accept}
           onDecline={materialOffers.decline}
           onLater={materialOffers.later}
-          onAcceptAll={materialOffers.acceptAll}
           onOpenIntake={intake.openIntake}
         />
         <IngestToast

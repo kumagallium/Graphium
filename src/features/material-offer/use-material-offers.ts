@@ -24,12 +24,17 @@ import {
   type OfferMeta,
 } from "./offer-file";
 import type { MaterialOfferResult } from "./MaterialOfferNoticeView";
+import { safeForPreview } from "./image-size";
+import { blockedExtOfName } from "../../lib/blocked-material-exts";
+import { computeBlobHash } from "../../lib/storage/shared/hash";
 import type { MaterialOffer } from "./types";
 
 /** 見張る間隔 */
 export const OFFER_POLL_MS = 4000;
 /** 見た目（縮小図）を作る画像の大きさの上限。これより大きい画像は種類のアイコンにする */
 const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+/** 縮小図にする形（寸法を頭から読めるものだけ。SVG は文字で見た目を作れ・スクリプトを含みうるので描かない） */
+const PREVIEW_MIME = new Set(["image/png", "image/jpeg", "image/gif"]);
 
 type OfferStore = Required<Pick<StorageProvider, "readAppData" | "listAppDataKeys" | "deleteAppData">>;
 
@@ -116,11 +121,11 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     );
     // 画像の縮小図は 1 度だけ作る
     for (const m of next) {
-      if (previewsRef.current[m.id] || !m.mimeType.startsWith("image/") || m.size > PREVIEW_MAX_BYTES) continue;
-      // SVG は描かない（中身の文字が同じ見た目を作れてしまう・スクリプトを含みうる）
-      if (m.mimeType === "image/svg+xml") continue;
+      if (previewsRef.current[m.id] || !PREVIEW_MIME.has(m.mimeType) || m.size > PREVIEW_MAX_BYTES) continue;
       try {
         const bytes = await readOfferBytes(store, m.id);
+        // 寸法が巨大な画像はデコードで画面のプロセスを使い切るので、縮小図にしない
+        if (!safeForPreview(bytes)) continue;
         const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: m.mimeType }));
         setPreviews((p) => ({ ...p, [m.id]: url }));
       } catch {
@@ -188,7 +193,16 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     async (offer: MaterialOffer, paste: boolean): Promise<{ duplicate: boolean; pasted: boolean }> => {
       const store = getStore();
       if (!store) throw new Error("offers unavailable");
+      const meta = cacheRef.current.get(offer.id);
+      if (!meta) throw new Error("offer meta missing");
       const bytes = await readOfferBytes(store, offer.id);
+      // 見せたものと同じ中身か、取り込む直前に確かめ直す（appdata は MCP 以外も書ける。
+      // 見せてから押すまでの間に中身を差し替えられても、素材にしない）
+      if (bytes.length !== meta.size || (await computeBlobHash(bytes)) !== meta.sha256) {
+        throw new Error("offer content changed");
+      }
+      const blocked = blockedExtOfName(meta.name);
+      if (blocked) throw new Error(`blocked extension: ${blocked}`);
       const file = new File([bytes as BlobPart], offer.name, { type: offer.mimeType });
       const { entry, duplicate } = await depsRef.current.uploadAsset(file);
       let pasted = false;
@@ -262,8 +276,11 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     };
   });
 
-  const acceptAll = useCallback(async () => {
-    const list = offers;
+  /**
+   * 画面に出ている申し出をまとめて取り込む。渡された一覧（押した時点で利用者に見えていたもの）だけを
+   * 対象にする — 待っているすべてにすると、見ていない申し出（3 件目以降・押す直前に届いたもの）まで入る
+   */
+  const acceptAll = useCallback(async (list: MaterialOffer[]) => {
     if (list.length === 0) return;
     setBusy("all");
     let added = 0;
@@ -279,9 +296,7 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     }
     setBusy(null);
     setResult(failedName ? { kind: "failed", name: failedName } : { kind: "addedMany", count: added });
-    // offers は毎レンダーで作り直すので、依存は元の state で持つ
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metas, previews, pasteToNote, acceptOne, pasteFor]);
+  }, [acceptOne, pasteFor]);
 
   return {
     /** 待っているすべて（取り込みの画面・件数） */
@@ -295,6 +310,6 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     accept: (o: MaterialOffer) => void accept(o),
     decline: (o: MaterialOffer) => void decline(o),
     later: (o: MaterialOffer) => setLater((s) => new Set(s).add(o.id)),
-    acceptAll: () => void acceptAll(),
+    acceptAll: (list: MaterialOffer[]) => void acceptAll(list),
   };
 }

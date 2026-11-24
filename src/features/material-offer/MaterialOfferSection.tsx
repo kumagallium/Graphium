@@ -16,7 +16,8 @@ export type MaterialOfferSectionProps = {
   busy: string | null;
   onAccept: (offer: MaterialOffer) => void;
   onDecline: (offer: MaterialOffer) => void;
-  onAcceptAll: () => void;
+  /** 渡すのは、この区画に出ている申し出だけ */
+  onAcceptAll: (shown: MaterialOffer[]) => void;
   /** 承認されないまま消えるまでの日数（説明の文に出す） */
   expireDays: number;
 };
@@ -43,7 +44,7 @@ export function MaterialOfferSection({
         {offers.length >= 2 && (
           <button
             type="button"
-            onClick={onAcceptAll}
+            onClick={() => onAcceptAll(offers)}
             disabled={busy !== null}
             className="px-2.5 py-1 rounded-md border border-border text-xs text-foreground hover:bg-muted inline-flex items-center gap-1.5 disabled:opacity-60"
           >
