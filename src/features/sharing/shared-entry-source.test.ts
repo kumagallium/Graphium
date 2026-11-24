@@ -160,6 +160,24 @@ describe("extractSharedDerivedMeta", () => {
   it("本文が壊れていれば null", () => {
     expect(extractSharedDerivedMeta(entry({}), new TextEncoder().encode("{"), true)).toBeNull();
   });
+
+  it("本文にチェックリストがあれば件数も拾う（無ければ項目ごと出さない）", () => {
+    const check = (id: string, checked: boolean) => ({
+      id,
+      type: "checkListItem",
+      props: { checked },
+      content: [{ type: "text", text: "粉を量る" }],
+      children: [],
+    });
+    const withChecks = {
+      ...noteDoc,
+      pages: [{ ...noteDoc.pages[0], blocks: [check("c1", true), check("c2", false), check("c3", true)] }],
+    };
+    expect(extractSharedDerivedMeta(entry({}), encode(withChecks), true)).toEqual({
+      noteContexts: [],
+      checklist: { checked: 2, total: 3 },
+    });
+  });
 });
 
 describe("パース済み本文の受け取り", () => {

@@ -933,3 +933,61 @@ describe("shareNote — 計画の行との対応（extra.planRow）", () => {
     expect("planRow" in storedEntry().extra).toBe(false);
   });
 });
+
+describe("shareNote — チェックの件数の写し（extra.checklist）", () => {
+  const storedEntry = () => JSON.parse([...fs.entries.values()][0]).entry;
+  const check = (id: string, text: string, checked: boolean) => ({
+    id,
+    type: "checkListItem",
+    props: { checked },
+    content: [{ type: "text", text }],
+    children: [],
+  });
+  const withChecks = (blocks: unknown[]) => {
+    const base = makeDoc();
+    return { ...base, pages: [{ ...base.pages[0], blocks }] } as GraphiumDocument;
+  };
+
+  it("チェックリストのあるノートは、件数と本文の指紋が封筒に載る", async () => {
+    const r = await shareNote(withChecks([check("c1", "粉を量る", true), check("c2", "こねる", false)]), {
+      root: "/tmp/shared",
+      author,
+    });
+    expect(r.ok).toBe(true);
+    const extra = storedEntry().extra;
+    expect(extra.checklist).toEqual({ checked: 1, total: 2, bodyHash: extra.bodyHash });
+  });
+
+  it("チェックリストが無いノートには項目ごと載せない（既存の封筒と同じ形のまま）", async () => {
+    await shareNote(makeDoc(), { root: "/tmp/shared", author });
+    expect("checklist" in storedEntry().extra).toBe(false);
+  });
+
+  it("再共有で数え直す。チェックリストを消したら項目ごと外れる", async () => {
+    const first = await shareNote(withChecks([check("c1", "粉を量る", false)]), { root: "/tmp/shared", author });
+    if (!first.ok) throw new Error("first share failed");
+    expect(storedEntry().extra.checklist).toMatchObject({ checked: 0, total: 1 });
+
+    const ticked = { ...first.doc, pages: [{ ...first.doc.pages[0], blocks: [check("c1", "粉を量る", true)] }] } as GraphiumDocument;
+    const second = await shareNote(ticked, { root: "/tmp/shared", author });
+    if (!second.ok) throw new Error("second share failed");
+    const extra = storedEntry().extra;
+    expect(extra.checklist).toEqual({ checked: 1, total: 1, bodyHash: extra.bodyHash });
+
+    const cleared = { ...second.doc, pages: [{ ...second.doc.pages[0], blocks: makeDoc().pages[0].blocks }] } as GraphiumDocument;
+    await shareNote(cleared, { root: "/tmp/shared", author });
+    expect("checklist" in storedEntry().extra).toBe(false);
+  });
+
+  it("ナレッジの共有には載せない", async () => {
+    const doc = {
+      ...withChecks([check("c1", "粉を量る", true)]),
+      source: "ai",
+      wikiMeta: { kind: "concept" },
+    } as unknown as GraphiumDocument;
+    const r = await shareKnowledge(doc, { root: "/tmp/shared", author });
+    // ナレッジとして共有できた場合だけ確かめる（できない文書なら、そもそも封筒が無い）
+    if (r.ok) expect("checklist" in storedEntry().extra).toBe(false);
+    else expect(fs.entries.size).toBe(0);
+  });
+});

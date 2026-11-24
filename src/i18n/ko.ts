@@ -4396,6 +4396,8 @@ export const ko: Record<string, string> = {
   "planRecords.unmatched": "계획의 표에 없는 행의 기록({count})",
   "planRecords.unmatchedHint": "행을 지웠거나, 복제한 계획에 추가한 행의 기록입니다.",
   "planRecords.footnote": "이 계획 또는 그 복제본의 행에서 만들어 공유한 노트가 행별로 표시됩니다. 누르면 공유된 기록이 열립니다.",
+  "planRecords.checksHint": "공유한 시점의 체크: {total}개 중 {checked}개 체크됨",
+  "planRecords.checksFootnote": "체크 개수는 공유한 시점의 것입니다.",
   "share.planRowAttached": "계획 \"{plan}\"의 행 \"{row}\"의 기록으로 공유했습니다. 계획을 연 사람은 이 행에서 기록을 찾아갈 수 있습니다.",
   "library.detail.planRow": "계획의 행",
   "library.detail.planRecords": "이 계획의 행의 기록({count})",

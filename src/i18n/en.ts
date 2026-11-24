@@ -4457,6 +4457,8 @@ export const en: Record<string, string> = {
   "planRecords.unmatched": "Records for rows not in this plan's table ({count})",
   "planRecords.unmatchedHint": "The row was removed, or it was added to a copy of this plan.",
   "planRecords.footnote": "Notes created from a row of this plan (or a copy of it) and then shared are listed by row. Select one to open the shared record.",
+  "planRecords.checksHint": "Checklist when shared: {checked} of {total} checked",
+  "planRecords.checksFootnote": "Checklist counts are as of when each record was shared.",
   "share.planRowAttached": "Shared as the record for row \"{row}\" of the plan \"{plan}\". Anyone who opens the plan can reach this record from that row.",
   "library.detail.planRow": "Plan row",
   "library.detail.planRecords": "Records for this plan's rows ({count})",

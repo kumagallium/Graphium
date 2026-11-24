@@ -159,3 +159,60 @@ describe("NotePlanRecordsBadge", () => {
     expect(badge.textContent).toContain(t("planRecords.newBadge", { count: "1" }));
   });
 });
+
+describe("NotePlanRecordsPanel — チェックの件数", () => {
+  const withChecks = (entry: SharedEntry, checked: number, total: number): SharedEntry => ({
+    ...entry,
+    extra: { ...entry.extra, bodyHash: "sha256:body", checklist: { checked, total, bodyHash: "sha256:body" } },
+  });
+
+  it("件数の写しがある記録には「印の数/全体」を出し、注記を添える", () => {
+    render(
+      <LocaleProvider><NotePlanRecordsPanel
+        planIds={[PLAN_ID]}
+        rows={ROWS}
+        entries={[
+          withChecks(record("r1", "sato@example.com", "row_a", "こね"), 3, 5),
+          record("r2", "tanaka@example.com", "row_b", "一次発酵"),
+        ]}
+        seen={{}}
+        selfEmail="teacher@example.com"
+      /></LocaleProvider>,
+    );
+    const items = screen.getAllByTestId("plan-record-item");
+    const chip = within(items[0]).getByTestId("checklist-count");
+    expect(chip.textContent).toBe("3/5");
+    expect(chip.getAttribute("aria-label")).toBe(t("planRecords.checksHint", { checked: "3", total: "5" }));
+    // チェックリストの無い記録には何も出さない（0/0 と出さない）
+    expect(within(items[1]).queryByTestId("checklist-count")).toBeNull();
+    expect(screen.getByTestId("plan-records-checks-note").textContent).toContain(t("planRecords.checksFootnote"));
+  });
+
+  it("件数の分かる記録が 1 件も無ければ、注記も出さない", () => {
+    render(
+      <LocaleProvider><NotePlanRecordsPanel
+        planIds={[PLAN_ID]}
+        rows={ROWS}
+        entries={[record("r1", "sato@example.com", "row_a", "こね")]}
+        seen={{}}
+        selfEmail="teacher@example.com"
+      /></LocaleProvider>,
+    );
+    expect(screen.queryByTestId("checklist-count")).toBeNull();
+    expect(screen.queryByTestId("plan-records-checks-note")).toBeNull();
+  });
+
+  it("本文と合わない写し（bodyHash が違う）は出さない", () => {
+    const stale = record("r1", "sato@example.com", "row_a", "こね");
+    render(
+      <LocaleProvider><NotePlanRecordsPanel
+        planIds={[PLAN_ID]}
+        rows={ROWS}
+        entries={[{ ...stale, extra: { ...stale.extra, bodyHash: "sha256:new", checklist: { checked: 3, total: 5, bodyHash: "sha256:old" } } }]}
+        seen={{}}
+        selfEmail="teacher@example.com"
+      /></LocaleProvider>,
+    );
+    expect(screen.queryByTestId("checklist-count")).toBeNull();
+  });
+});

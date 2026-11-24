@@ -754,7 +754,7 @@ function SharedNoteViewInner({
               {hasReverseLinks ? (
                 <div className="space-y-2">
                   {planRecordCount > 0 && (
-                    <PlanRecordsSection planId={entry.id} entries={allEntries} onOpenEntry={onOpenEntry} />
+                    <PlanRecordsSection planId={entry.id} entries={allEntries} derived={snapshot.derived} onOpenEntry={onOpenEntry} />
                   )}
                   <ReverseLinksSection
                     links={reverseLinks}

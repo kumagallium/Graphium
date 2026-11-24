@@ -31,6 +31,7 @@ import {
   type ShareNoteOptions,
 } from "./share-note";
 import { stripMemoTraces } from "./strip-memo-traces";
+import { buildChecklistMirror } from "./checklist-count";
 import { syncReadableCopy, type ReadableCopyContext, type ReadableCopyStatus } from "./readable-copy";
 
 export { canUpdateSharedNote };
@@ -171,6 +172,7 @@ export async function updateSharedNoteFromCopy(
     const history = appendHistory(existing);
     const { history: _oldHistory, ...existingRest } = existing;
     void _oldHistory;
+    const bodyHash = await computeBlobHash(body);
     const entry: SharedEntry = {
       ...existingRest, // id / type / author / created_at / prov などは既存のまま
       updated_at: now,
@@ -182,7 +184,9 @@ export async function updateSharedNoteFromCopy(
         // 既存の extra.blobs が壊れていても引き継がない（形の合う要素だけを上で集めている）
         blobs: blobs.length > 0 ? blobs : undefined,
         updatedBy: { name: options.author.name, email: options.author.email },
-        bodyHash: await computeBlobHash(body),
+        bodyHash,
+        // チェックの件数は今書く本文で数え直す（前の版の件数を引き継がない。無ければキーごと外す）
+        checklist: buildChecklistMirror(entryDoc, bodyHash),
       },
     };
     const hash = await computeSharedEntryHash(entry, body);

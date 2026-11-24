@@ -13,6 +13,8 @@
 //   - 共有ストアの購読はこの部品の中だけ（提案・コメントのバッジと同じ作法）。
 //     ノート本体を共有フォルダの更新で描き直させない
 //   - 記録が 1 件も無いうちは、バッジもタブも出さない
+//   - 記録にチェックリストがあれば、共有した時点の件数（3/5）を添える。数えた結果を出すだけで、
+//     割合・並べ替え・色での警告はしない（checklist-count.ts）
 
 import { ClipboardList } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -24,6 +26,8 @@ import { getSharedLibrarySnapshot, subscribeSharedLibrary, useSharedLibrary } fr
 import { collectOperationRowsFromBlocks } from "../network-graph/plan-flow";
 import { useTableMetaStore } from "../table-meta/store";
 import { readSeenStore, type SharedSeenStore } from "./shared-seen";
+import { getSharedChecklistCount, type SharedChecklistCount } from "./checklist-count";
+import { ChecklistCountChip } from "./ChecklistCountChip";
 import {
   entryUpdatedAt,
   findPlanRecords,
@@ -167,12 +171,15 @@ function RecordButton({
   entry,
   freshness,
   isMine,
+  checks,
   secondary,
   onOpen,
 }: {
   entry: SharedEntry;
   freshness: PlanRecordFreshness;
   isMine: boolean;
+  /** 共有した時点のチェックの件数（チェックリストが無い・分からない記録は null） */
+  checks: SharedChecklistCount | null;
   /** 名前の後ろに添える補足（行名と違う題・表に無い行の名前） */
   secondary?: string;
   onOpen?: (sharedId: string) => void;
@@ -203,6 +210,7 @@ function RecordButton({
             {freshness === "new" ? t("planRecords.fresh.new") : t("comment.updatedBadge")}
           </span>
         )}
+        <ChecklistCountChip count={checks} />
         <span className="text-[11px] text-muted-foreground tabular-nums">{formatDate(entryUpdatedAt(entry))}</span>
       </span>
     </button>
@@ -267,6 +275,12 @@ export function NotePlanRecordsPanel({
   const withRecords = recordsOfRow.filter((list) => list.length > 0).length;
 
   const isMine = (entry: SharedEntry) => !!selfEmail && entry.author?.email === selfEmail;
+  // 封筒の写しが先、無ければ本文を読んだときの控え（共有ストアが持つ）
+  const checksOf = (entry: SharedEntry) => getSharedChecklistCount(entry, shared.derived);
+  const anyChecks = useMemo(
+    () => findPlanRecords(planIds, source).some((r) => getSharedChecklistCount(r.entry, shared.derived) !== null),
+    [planIds, source, shared.derived],
+  );
 
   return (
     <div className="h-full overflow-auto px-3 py-3 space-y-3" data-testid="note-plan-records-panel">
@@ -317,6 +331,7 @@ export function NotePlanRecordsPanel({
                               entry={entry}
                               freshness={planRecordFreshness(entry, selfEmail, seen)}
                               isMine={isMine(entry)}
+                              checks={checksOf(entry)}
                               secondary={secondary}
                               onOpen={onOpenEntry}
                             />
@@ -347,6 +362,7 @@ export function NotePlanRecordsPanel({
                 entry={entry}
                 freshness={planRecordFreshness(entry, selfEmail, seen)}
                 isMine={isMine(entry)}
+                checks={checksOf(entry)}
                 secondary={ref.rowName}
                 onOpen={onOpenEntry}
               />
@@ -355,7 +371,14 @@ export function NotePlanRecordsPanel({
         </section>
       )}
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">{t("planRecords.footnote")}</p>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        {t("planRecords.footnote")}
+        {anyChecks && (
+          <span className="block mt-1" data-testid="plan-records-checks-note">
+            {t("planRecords.checksFootnote")}
+          </span>
+        )}
+      </p>
     </div>
   );
 }

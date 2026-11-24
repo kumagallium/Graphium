@@ -318,7 +318,7 @@ After `save_answer` returns, the page appears in Graphium after a reload, same a
 - **Web page** — only a URL already registered in Graphium. The text is **fetched again from the network** at that moment, so it is the page as it is now, not the copy Graphium saved when you imported it.
 - **Note** — a note id returns the note's text.
 
-**Searching inside a source** — pass a phrase as `query` and, instead of the text, you get the places where it appears: each with its window number, its page for a PDF, and the words around it (up to 20 places, with the total count). The assistant can find the spot first and then read that window. Use it to check one point in a long source, such as "what does this paper say about the annealing temperature?"
+**Searching inside a source** <Badge type="tip" text="Added in v0.162.0 (2026-11-24)" /> — pass a phrase as `query` and, instead of the text, you get the places where it appears: each with its window number, its page for a PDF, and the words around it (up to 20 places, with the total count). The assistant can find the spot first and then read that window. Use it to check one point in a long source, such as "what does this paper say about the annealing temperature?"
 
 - The phrase is matched as written. Upper and lower case are treated the same.
 - Text taken from a PDF can have spaces inside words, at line breaks and between Japanese characters. Spaces between characters are ignored when matching.

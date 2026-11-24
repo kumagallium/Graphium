@@ -34,7 +34,10 @@ function record(
   rowName: string,
   updatedAt: string,
   title = rowName,
+  /** 共有した時点のチェックの件数 [印の数, 全体]。チェックリストの無い記録は渡さない */
+  checks?: [number, number],
 ): SharedEntry {
+  const bodyHash = `sha256:${id}-body`;
   return {
     id,
     type: "note",
@@ -43,14 +46,20 @@ function record(
     updated_at: updatedAt,
     hash: `sha256:${id}-v1`,
     prov: { derived_from: [] },
-    extra: { title, planRow: { planIds: [PLAN_ID], tableBlockId: "tbl-1", rowId, rowName } },
+    extra: {
+      title,
+      planRow: { planIds: [PLAN_ID], tableBlockId: "tbl-1", rowId, rowName },
+      bodyHash,
+      ...(checks ? { checklist: { checked: checks[0], total: checks[1], bodyHash } } : {}),
+    },
   } as SharedEntry;
 }
 
 const ENTRIES: SharedEntry[] = [
-  record("rec-1", SATO, "row_mix", "計量とこね", "2026-11-18T09:00:00Z"),
+  // 佐藤さんの記録にはチェックリストがある（共有した時点の件数が出る）。田中さん・先生の記録には無い
+  record("rec-1", SATO, "row_mix", "計量とこね", "2026-11-18T09:00:00Z", "計量とこね", [5, 5]),
   record("rec-2", TANAKA, "row_mix", "計量とこね", "2026-11-20T09:00:00Z", "計量とこね（全粒粉 30%）"),
-  record("rec-3", SATO, "row_ferment", "一次発酵", "2026-11-21T09:00:00Z"),
+  record("rec-3", SATO, "row_ferment", "一次発酵", "2026-11-21T09:00:00Z", "一次発酵", [3, 5]),
   record("rec-4", TEACHER, "row_bake", "焼成", "2026-11-12T09:00:00Z"),
 ];
 
@@ -177,9 +186,9 @@ const EN_ROWS: PlanRecordsRow[] = [
 ];
 
 const EN_ENTRIES: SharedEntry[] = [
-  record("en-1", EN_MAYA, "row_mix", "Mix and knead", "2026-11-18T09:00:00Z"),
+  record("en-1", EN_MAYA, "row_mix", "Mix and knead", "2026-11-18T09:00:00Z", "Mix and knead", [5, 5]),
   record("en-2", EN_LEO, "row_mix", "Mix and knead", "2026-11-20T09:00:00Z", "Mix and knead (30% whole wheat)"),
-  record("en-3", EN_MAYA, "row_bulk", "Bulk ferment", "2026-11-21T09:00:00Z"),
+  record("en-3", EN_MAYA, "row_bulk", "Bulk ferment", "2026-11-21T09:00:00Z", "Bulk ferment", [3, 5]),
   record("en-4", EN_TEACHER, "row_bake", "Bake", "2026-11-12T09:00:00Z"),
 ];
 
@@ -190,7 +199,7 @@ const EN_SEEN: SharedSeenStore = {
 
 export const ManualEnglish: Story = {
   name: "Manual (English, bread world)",
-  parameters: { frameHeight: 436 },
+  parameters: { frameHeight: 462 },
   args: {
     rows: EN_ROWS,
     entries: EN_ENTRIES,

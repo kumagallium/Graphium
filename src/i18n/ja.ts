@@ -4459,6 +4459,8 @@ export const ja: Record<string, string> = {
   "planRecords.unmatched": "計画の表に無い行の記録（{count}）",
   "planRecords.unmatchedHint": "行を消した、または複製した計画に足した行の記録です。",
   "planRecords.footnote": "この計画、またはその複製の行から作って共有されたノートが、行ごとに並びます。押すと共有された記録が開きます。",
+  "planRecords.checksHint": "共有した時点のチェック: {total} 件のうち {checked} 件に印",
+  "planRecords.checksFootnote": "チェックの件数は、共有した時点のものです。",
   "share.planRowAttached": "計画「{plan}」の行「{row}」の記録として共有しました。計画を開いた人は、この行から記録をたどれます。",
   "library.detail.planRow": "計画の行",
   "library.detail.planRecords": "この計画の行の記録（{count}）",
