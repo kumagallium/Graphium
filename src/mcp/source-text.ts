@@ -329,3 +329,84 @@ export async function getSourceText(
       : "ここが最後の窓です。",
   ].join("\n");
 }
+
+/** 資料の中の検索で返す箇所の上限と、箇所の前後に添える文字数 */
+export const MAX_SEARCH_HITS = 20;
+const SNIPPET_CONTEXT = 120;
+
+/**
+ * 検索語を正規表現にする。大文字・小文字は区別しない。正規表現の記号はそのままの文字として探す。
+ * PDF の抽出は文字のかたまりを空白でつなぐので、行の折り返しや日本語の文字の間に空白が入る
+ * （"sam ple"・"熱 伝導率"）。そのため文字の間の空白は有っても無くても当たりにし、
+ * 検索語の中の空白は 1 つ以上の空白として扱う
+ */
+function queryPattern(query: string): RegExp | null {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  const escapeChar = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wordPattern = (w: string) => Array.from(w, escapeChar).join("\\s*");
+  return new RegExp(words.map(wordPattern).join("\\s+"), "giu");
+}
+
+/** 箇所の前後を 1 行に詰めて切り出す */
+function snippetAt(text: string, start: number, end: number): string {
+  const a = Math.max(0, start - SNIPPET_CONTEXT);
+  const b = Math.min(text.length, end + SNIPPET_CONTEXT);
+  const body = text.slice(a, b).replace(/\s+/g, " ").trim();
+  return `${a > 0 ? "…" : ""}${body}${b < text.length ? "…" : ""}`;
+}
+
+/**
+ * 資料の中で語句を探し、出てくる箇所を窓の番号（PDF ならページも）と前後の文つきで返す。
+ * 返すのは箇所の一覧だけ。本文は返した window を get_source_text で読んでもらう。
+ */
+export async function searchSourceText(
+  input: SourceTextInput & { query: string },
+  root = resolveGraphiumRoot(),
+): Promise<string> {
+  const { sourceId, query } = input;
+  const pattern = queryPattern(query);
+  if (!pattern) return refuse("EMPTY_QUERY", "探す語句を指定してください");
+  const size = Math.max(MIN_WINDOW_CHARS, Math.floor(input.windowChars ?? DEFAULT_WINDOW_CHARS));
+  const extracted = await resolveFullSourceText(sourceId, root);
+  if (!extracted.ok) return extracted.message;
+
+  const { title, text, pageStarts } = extracted;
+  const windows = splitIntoWindows(text, { size, overlap: WINDOW_OVERLAP });
+  // 返す文に埋め込む検索語は 1 行に詰める（改行で sourceId: などの行を偽造させない）
+  const shown = query.trim().replace(/\s+/g, " ");
+
+  const hits: { start: number; end: number }[] = [];
+  let total = 0;
+  for (const m of text.matchAll(pattern)) {
+    total++;
+    if (hits.length < MAX_SEARCH_HITS) hits.push({ start: m.index, end: m.index + m[0].length });
+  }
+
+  const header = [`# ${title}`, `sourceId: ${sourceId}`, `検索語: ${shown}`];
+  if (total === 0) {
+    return [
+      refuse("NO_MATCH", `「${shown}」はこの資料の本文に見つかりませんでした（別の言い方・略語・単数形などで探し直せます）`),
+      ...header,
+    ].join("\n");
+  }
+
+  const lines = hits.map((h, i) => {
+    // 箇所がまるごと入る最初の窓を選ぶ（窓は重なるので、境目の箇所も切れずに読める）
+    const w =
+      windows.find((x) => x.start <= h.start && h.end <= x.end) ??
+      windows.find((x) => x.start <= h.start && h.start < x.end) ??
+      windows[windows.length - 1];
+    const page = pageStarts && pageStarts.length > 0 ? `・ページ ${pageOfOffset(pageStarts, h.start)}` : "";
+    return `${i + 1}. window: ${w.index}${page}\n   ${snippetAt(text, h.start, h.end)}`;
+  });
+
+  return [
+    ...header,
+    `${total} か所${total > hits.length ? `（先頭から ${hits.length} か所を表示）` : ""}・窓 ${windows.length} 枚（1 枚 ${size.toLocaleString("en-US")} 字）`,
+    "",
+    ...lines,
+    "",
+    "前後を詳しく読むときは、get_source_text に同じ sourceId とその window を渡してください（query は付けない）。",
+  ].join("\n");
+}

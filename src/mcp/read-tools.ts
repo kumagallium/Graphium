@@ -12,7 +12,7 @@ import { buildProvJsonLdText, resolveExportScope } from "./export-prov";
 import { checkKnowledge } from "./knowledge-check";
 import { MEDIA_TYPES, formatMediaHit, searchMedia } from "./media-search";
 import { jsonTextWithGuard, textWithGuard } from "./injection-guard";
-import { getSourceText } from "./source-text";
+import { getSourceText, searchSourceText } from "./source-text";
 import { DEFAULT_LIMIT, listTodos } from "./list-todos";
 import { listSourceCheck } from "./source-check-list";
 import type { ToolContext } from "./tools";
@@ -137,7 +137,8 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
         "資料（PDF・Word・Web ページ・AI との会話・ノート）の本文を文字起こしして、窓（既定 4,000 字）に切って返す。" +
         "トピックの出典（pdf:… / document:… / url:…）の中身を確かめたいとき、PDF の特定ページを読みたいときに使う。" +
         "PDF は窓ごとに「ページ n〜m」を示し、page を指定するとそのページを含む窓を返す。" +
-        "続きは window を 1 つ進める。Web ページは Graphium に登録済みのものだけを、ネットワークから取り直して読む。" +
+        "続きは window を 1 つ進める。query を渡すと本文は返さず、その語句が出てくる箇所（窓の番号・PDF はページ・前後の文）を返す。" +
+        "論文の特定の条件や値を探すときは、まず query で箇所を引き、その window を読む。Web ページは Graphium に登録済みのものだけを、ネットワークから取り直して読む。" +
         "Word は .docx だけに対応。AI との会話は、取り込んだときの本文（本人の発言の原文と AI の返答の抜粋）を返す。" +
         "資料の id は get_topic・search_media に出てくる。",
       inputSchema: {
@@ -156,14 +157,25 @@ export function registerReadTools(server: McpServer, ctx: ToolContext = {}): voi
           .int()
           .optional()
           .describe("窓の大きさ（文字数。既定 4000、1000 未満は 1000 になる）"),
+        query: z
+          .string()
+          .max(100)
+          .optional()
+          .describe(
+            "資料の中で探す語句。指定すると window / page は無視し、出てくる箇所の一覧（最大 20 か所）を返す。" +
+              "語句はそのまま探す（大文字・小文字と空白の違いは区別しない。言い換えや表記の揺れは拾わない）",
+          ),
       },
       // 登録済みの URL 資料はネットワークから取り直して読む
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async ({ sourceId, window, page, windowChars }) => {
+    async ({ sourceId, window, page, windowChars, query }) => {
       if (!vaultExists()) return vaultMissing();
       try {
-        const body = await getSourceText({ sourceId, window, page, windowChars });
+        const body =
+          query !== undefined
+            ? await searchSourceText({ sourceId, windowChars, query })
+            : await getSourceText({ sourceId, window, page, windowChars });
         // 断りの文（UNKNOWN_SOURCE: など）でなければ、読んだものとして全体グラフに渡す
         if (!/^[A-Z_]+: /.test(body)) ctx.activity?.push("read", sourceId);
         return textWithGuard(body);
