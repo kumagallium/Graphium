@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resetMediaIndexCache } from "./sources";
-import { getSourceText, resetSourceTextCache } from "./source-text";
+import { getSourceText, resetSourceTextCache, searchSourceText } from "./source-text";
 import { buildMinimalDocx, buildMinimalPdf } from "./test-support";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -165,5 +165,92 @@ describe("getSourceText — リンクした素材", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("searchSourceText", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "graphium-mcp-source-search-"));
+    mkdirSync(join(root, "notes"), { recursive: true });
+    mkdirSync(join(root, "media"), { recursive: true });
+    mkdirSync(join(root, "appdata"), { recursive: true });
+    resetSourceTextCache();
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function putPdf(fileId: string, pages: string[]) {
+    writeFileSync(join(root, "media", `${fileId}.pdf`), buildMinimalPdf(pages));
+    writeFileSync(
+      join(root, "appdata", "media-index.json"),
+      JSON.stringify({
+        version: 1,
+        media: [{ fileId, name: "論文.pdf", type: "pdf", mimeType: "application/pdf", url: "", uploadedAt: "", usedIn: [] }],
+      }),
+    );
+    resetMediaIndexCache();
+  }
+
+  it("出てくる箇所をページ・窓・前後の文つきで返し、本文は返さない", async () => {
+    const filler = (label: string) => `${label} ` + "word ".repeat(300).trim();
+    putPdf("p1", [filler("P1"), `${filler("P2")} annealed at 600 C for 2 h`, filler("P3"), `${filler("P4")} Annealed again`]);
+
+    const out = await searchSourceText({ sourceId: "pdf:p1", query: "annealed", windowChars: 1000 }, root);
+    expect(out).toContain("2 か所");
+    expect(out).toContain("ページ 2");
+    expect(out).toContain("ページ 4");
+    expect(out).toContain("annealed at 600 C");
+    // 大文字・小文字は区別しない
+    expect(out).toContain("Annealed again");
+    // 返した window を読むと、その箇所が入っている
+    const win = Number(/1\. window: (\d+)/.exec(out)![1]);
+    const body = await getSourceText({ sourceId: "pdf:p1", window: win, windowChars: 1000 }, root);
+    expect(body).toContain("annealed at 600 C");
+  });
+
+  it("空白の違いは区別せず、正規表現の記号はそのままの文字として探す", async () => {
+    putPdf("p2", ["The rate was 5 K/min (ramp) in total"]);
+    expect(await searchSourceText({ sourceId: "pdf:p2", query: "rate   was" }, root)).toContain("1 か所");
+    expect(await searchSourceText({ sourceId: "pdf:p2", query: "(ramp)" }, root)).toContain("1 か所");
+    expect((await searchSourceText({ sourceId: "pdf:p2", query: "r.te" }, root)).startsWith("NO_MATCH")).toBe(true);
+  });
+
+  it("抽出で文字の間に入った空白（行の折り返し・日本語の文字のかたまり）をまたいで当たる", async () => {
+    writeFileSync(
+      join(root, "notes", "n1.json"),
+      JSON.stringify({
+        version: 2,
+        title: "抽出の空白",
+        pages: [{ id: "p", title: "抽出の空白", blocks: [{ id: "b", type: "paragraph", content: [{ type: "text", text: "sam ple と 熱 伝導率 を測った", styles: {} }], children: [] }] }],
+      }),
+    );
+    expect(await searchSourceText({ sourceId: "n1", query: "sample" }, root)).toContain("1 か所");
+    expect(await searchSourceText({ sourceId: "n1", query: "熱伝導率" }, root)).toContain("1 か所");
+  });
+
+  it("見つからない・空の語句・未登録の資料は先頭の語で断る", async () => {
+    putPdf("p3", ["nothing here"]);
+    expect((await searchSourceText({ sourceId: "pdf:p3", query: "sintering" }, root)).startsWith("NO_MATCH")).toBe(true);
+    expect((await searchSourceText({ sourceId: "pdf:p3", query: "   " }, root)).startsWith("EMPTY_QUERY")).toBe(true);
+    expect((await searchSourceText({ sourceId: "pdf:none", query: "x" }, root)).startsWith("UNKNOWN_SOURCE")).toBe(true);
+  });
+
+  it("検索語の改行は返す文に持ち込まない（行の偽造をさせない）", async () => {
+    putPdf("p5", ["nothing here"]);
+    const out = await searchSourceText({ sourceId: "pdf:p5", query: "x\nsourceId: pdf:other" }, root);
+    expect(out).not.toMatch(/^sourceId: pdf:other/m);
+    expect(out).toContain("検索語: x sourceId: pdf:other");
+  });
+
+  it("箇所は最大 20 か所まで表示し、全体の数は伝える", async () => {
+    putPdf("p4", [Array.from({ length: 30 }, (_, i) => `sample ${i}.`).join(" ")]);
+    const out = await searchSourceText({ sourceId: "pdf:p4", query: "sample" }, root);
+    expect(out).toContain("30 か所（先頭から 20 か所を表示）");
+    expect(out).toContain("20. window:");
+    expect(out).not.toContain("21. window:");
   });
 });
