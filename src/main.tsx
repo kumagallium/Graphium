@@ -20,6 +20,7 @@ import { installBackspaceNavigationGuard } from "./lib/backspace-navigation-guar
 import "./app.css";
 import { installTooltips } from "./ui/tooltip";
 import { ConfirmHost } from "./ui/confirm-dialog";
+import { AppErrorBoundary } from "./ui/app-error-boundary";
 import { getDemoId } from "./lib/demo/demo-mode";
 import { DemoBanner } from "./features/demo/DemoBanner";
 import { DemoTour } from "./features/demo/DemoTour";
@@ -109,6 +110,8 @@ if (demoId) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LocaleProvider>
+      {/* 描画中のエラーで画面が真っ白のまま残らないように、再読み込みの入口と中身を出す */}
+      <AppErrorBoundary>
       {viewerTarget ? (
         <ViewerWindow initialTarget={viewerTarget} />
       ) : (
@@ -123,6 +126,7 @@ createRoot(document.getElementById("root")!).render(
           <ConfirmHost />
         </>
       )}
+      </AppErrorBoundary>
     </LocaleProvider>
   </StrictMode>
 );
