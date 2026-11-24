@@ -194,7 +194,36 @@ export function mediaExt(name: string, mimeType: string): string | null {
   return sanitizeExt(nameExt(name)) ?? sanitizeExt(EXT_FROM_MIME[mimeType]);
 }
 
-function guessMimeType(name: string): string {
+/**
+ * 実行ファイル・スクリプト・ショートカットとして断る拡張子なら、その拡張子（小文字）を返す。
+ * 名前の末尾と、MIME から決まる拡張子の両方を見る。断らないなら null。
+ * add_material と offer_material（material-offer.ts）が同じ規則で断る
+ */
+export function blockedMaterialExt(name: string, mimeType: string): string | null {
+  const nameExtLower = nameExt(name)?.toLowerCase();
+  const mimeExtLower = EXT_FROM_MIME[mimeType]?.toLowerCase();
+  if (nameExtLower && BLOCKED_MATERIAL_EXTS.has(nameExtLower)) return nameExtLower;
+  if (mimeExtLower && BLOCKED_MATERIAL_EXTS.has(mimeExtLower)) return mimeExtLower;
+  return null;
+}
+
+/**
+ * 同じ中身（SHA-256）の素材が、生きた状態（実体あり・アーカイブされていない）で既にあればその id。
+ * 索引（アプリが付けた contentHash）と、MCP が足した分の台帳の両方を見る。読むだけで何も書かない
+ */
+export function findLiveMaterialByHash(hash: string, root = resolveGraphiumRoot()): string | null {
+  const dir = mediaDir(root);
+  const index = readMediaIndex(root);
+  for (const m of index.values()) {
+    if (m.contentHash !== hash || m.archivedAt || !hasDataFile(m)) continue;
+    if (findMediaDataFile(dir, m.fileId)) return m.fileId;
+  }
+  const hit = readAddedLedger(root).added[hash];
+  if (hit && findMediaDataFile(dir, hit.fileId) !== null && !archivedInIndex(index, hit.fileId)) return hit.fileId;
+  return null;
+}
+
+export function guessMimeType(name: string): string {
   const ext = nameExt(name)?.toLowerCase();
   return (ext && MIME_FROM_EXT[ext]) || "application/octet-stream";
 }

@@ -82,6 +82,8 @@ const EXPECTED_TOOLS = [
   "export_asterism_claims", "mark_asterism_sent", "export_asterism_knowledge",
   // 素材（外部アプリの取り込み元。JSON を返す）
   "list_media", "get_media_file", "add_material",
+  // 手元のファイルを素材にしてほしいと申し出る（Graphium の画面で承認されるまで素材にならない）
+  "offer_material",
   // 会話の中に画面を描く（MCP Apps）
   "show_note",
   // グラフ（手順の流れ・来歴・全体グラフ）と、全体グラフの画面だけが呼ぶ道具
