@@ -120,6 +120,8 @@ const COMMON_PROPS = {
   onShowSkillList: () => {},
   skillActive: false,
   onShowTrash: () => {},
+  onShowGlobalGraph: () => {},
+  onAskHowTo: () => {},
   trashActive: false,
   trashCount: 0,
 } as const;
@@ -1414,6 +1416,7 @@ export const TabsEachTab: Story = {
                 {...TABS_COMPARISON_PROPS}
                 // 実アプリの左ナビに出るものをそろえる（マニュアルの図に使うので、行が欠けると図が嘘になる）
                 onShowGlobalGraph={() => {}}
+                onAskHowTo={() => {}}
                 onShowWikiLog={() => {}}
                 onShowWikiLint={() => {}}
                 onCollapse={() => {}}

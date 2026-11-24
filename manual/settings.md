@@ -1,6 +1,6 @@
 # Settings
 
-Every preference in Graphium lives in one modal: click **Settings** at the bottom of the sidebar. The modal has eight tabs — **Display & Language**, **Storage**, **Sharing**, **AI**, **Grounding data**, **Knowledge**, **Usage**, and **About** — arranged in setup order, so a first-time setup reads top to bottom and left to right. This page is a map of every tab; the deep-dive pages linked from each section explain the workflows in full.
+Every preference in Graphium lives in one modal: click the gear icon (**Settings**) in the icon row at the bottom of the sidebar. The modal has eight tabs — **Display & Language**, **Storage**, **Sharing**, **AI**, **Grounding data**, **Knowledge**, **Usage**, and **About** — arranged in setup order, so a first-time setup reads top to bottom and left to right. This page is a map of every tab; the deep-dive pages linked from each section explain the workflows in full.
 
 ![Settings modal open on the AI tab](/screenshots/settings-ai-tab.png)
 

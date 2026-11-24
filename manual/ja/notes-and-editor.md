@@ -52,7 +52,7 @@ Graphium は `⌘⇧N`（Windows/Linux は `Ctrl+Shift+N`）を「新規ノー�
 - **ノート** タブでは、**テンプレート** と **プロセス** の次
 - **ナレッジ** と **素材** のタブでは、一番下
 
-![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights（どちらも Preview の印付き）・Summaries、続けて Log と Upkeep、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs・AI conversations と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill・Global Graph・Settings・Trash & Archive・Release Notes が並ぶ。](/screenshots/sidebar-tabs.png)
+![左のナビをタブごとに 4 つ並べた図。上はどれも同じで、⌘K の付いた Search、+ Note、スマートフォンのアイコンと 3 が付いた Bring in。Notes のタブには Templates・Processes・Shared folder、その下に Input・Result・Step・Parameter・Tool の入った Labels、最後に All Notes。Knowledge のタブには Topics・Q&A・Claims・Insights（どちらも Preview の印付き）・Summaries、続けて Log と Upkeep、細い線をはさんで Shared folder。Materials のタブには Memos・Images・Documents・Data・Videos・Audio・URLs・AI conversations と、細い線をはさんで Shared folder。Chat のタブには + New chat と、Today・Yesterday・Previous 7 days・Older ごとの会話。下端には Skill と Global Graph、その下に 4 つのアイコンの並び（歯車の Settings〔AI が接続されていると緑の点〕・Trash & Archive・? の Ask how to・Release Notes）。](/screenshots/sidebar-tabs.png)
 
 **すべてのノート** は、全ノートを表で見せます。表には、検索ボックス（「検索...」）と件数表示（「12 / 40 件」）が付いています。検索ボックスは、タイトル、画像から読み取った文字、ノート本文を探します <Badge type="tip" text="v0.39.0 (2026-08-17) で追加" />。本文だけが一致した行には **本文** バッジが付き、カーソルを乗せると一致した箇所が見えます。
 
