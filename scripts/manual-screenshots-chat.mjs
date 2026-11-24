@@ -31,13 +31,18 @@ const shots = [
   // 入力欄の画像は play が貼り付けるので、送る前の画像の列が出るまで待つ
   { story: "molecules-chatimages--manual-english", file: "chat-images.png", waitFor: '[data-testid="pending-chat-images"] img' },
   { story: "organisms-standalonechat-chatbesidegraph--manual-english-bread", file: "chat-beside-graph.png", graph: true },
+  // 左ナビの「Ask how to」で開いた新しいチャット（渡す範囲が How to・例の問い）
+  { story: "organisms-standalonechatworkspace--manual-english-how-to-chat", file: "chat-how-to.png", waitFor: "text=Ask how to use Graphium" },
 ];
 
+// --only <file,...> で一部だけ撮る
+const onlyIdx = args.indexOf("--only");
+const only = onlyIdx !== -1 ? new Set(args[onlyIdx + 1].split(",")) : null;
 const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, locale: "en-US" });
 await ctx.addInitScript(() => localStorage.setItem("graphium_locale", "en"));
 const page = await ctx.newPage();
-for (const { story, file, waitFor, graph } of shots) {
+for (const { story, file, waitFor, graph } of shots.filter((s) => !only || only.has(s.file))) {
   await page.goto(`${SB}?id=${story}&viewMode=story`);
   if (graph) {
     // グラフの配置は読み込むたびに変わる。触れたページが重ならずに収まる配置になるまで読み直す
