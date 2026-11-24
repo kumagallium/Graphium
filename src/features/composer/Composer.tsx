@@ -25,6 +25,7 @@
 //
 // AI 質問:
 //   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
+//   - 一致が無いときの素の Enter は AI に送らない。「記録で探す」行が先に光り、それも無ければ何もしない
 //   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
 //   - ただしエディタが出ているとき（onNoteOpenInPeek / onMediaOpenInPeek あり）は、ノート・素材行の
 //     Enter・クリックで今のノートを開いたままサイドピークに開く（リンクの無いものを隣に置く。線は張らない）。
@@ -353,14 +354,15 @@ export function Composer(props: ComposerProps) {
       list.push({ kind: "media", hit });
     }
     if (mediaSlice.more > 0) list.push({ kind: "more", section: "media", count: mediaSlice.more });
+    // 同じ言葉で記録の画面を開く行。AI の行より前に置く。一致が無いときの Enter は
+    // 「もっと探す」に倒し、AI には送らない（探したかったのに AI に聞いてしまう取り違えを防ぐ。
+    // 描画の順もこれに合わせる）
+    if (!isEmptyQuery && onSeeInRecords) {
+      list.push({ kind: "records" });
+    }
     // 入力が非空のときだけ AI アクションを末尾に出す（空入力は履歴ビューとして純粋に保つ）
     if (!isEmptyQuery && canAskAi) {
       list.push({ kind: "ask-ai" });
-    }
-    // 同じ言葉で記録の画面を開く行。AI の行より後に置く（結果が無いときの Enter を、
-    // これまでどおり AI への質問のままにするため。描画の順もこれに合わせる）
-    if (!isEmptyQuery && onSeeInRecords) {
-      list.push({ kind: "records" });
     }
     if (showCards) {
       for (const card of cards) {
@@ -374,10 +376,12 @@ export function Composer(props: ComposerProps) {
     isEmptyQuery, showCards, cards, canAskAi, onSeeInRecords,
   ]);
 
-  // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
+  // 入力が変わるたびに、AI の行を除いた先頭にハイライトを戻す。AI の行しか無いときは
+  // どこも光らせない（素の Enter で AI に送らない。AI へは ↓ で選ぶか ⌘+Enter）
+  const defaultIndex = rows.findIndex((r) => r.kind !== "ask-ai");
   useEffect(() => {
-    setActiveIndex(0);
-  }, [prompt, open]);
+    setActiveIndex(defaultIndex);
+  }, [prompt, open, defaultIndex]);
 
   // キー操作でアクティブ行が動いたら、結果領域の見える範囲に入れる
   useEffect(() => {
@@ -534,14 +538,11 @@ export function Composer(props: ComposerProps) {
         full();
         return;
       }
-      // 通常 Enter は選択行のアクション。行が無ければ AI 送信フォールバック
+      // 通常 Enter は選択行のアクション。選んでいる行が無ければ何もしない
+      //（AI には倒さない。AI へは AI の行を選ぶか ⌘+Enter）
       e.preventDefault();
       const row = rows[activeIndex];
-      if (row) {
-        activateRow(row);
-      } else {
-        submitAi();
-      }
+      if (row) activateRow(row);
     }
   };
 
@@ -843,10 +844,22 @@ export function Composer(props: ComposerProps) {
               </div>
             )}
 
-            {/* 「アクション」セクション (AI に質問) */}
+            {/* 「アクション」セクション（記録で探す → AI に質問） */}
             {!isEmptyQuery && (canAskAi || onSeeInRecords) && (
               <>
                 <SectionHeading>{t("composer.search.actionsHeading")}</SectionHeading>
+                {(() => {
+                  const recordsIndex = rows.findIndex((r) => r.kind === "records");
+                  if (recordsIndex < 0 || !onSeeInRecords) return null;
+                  return (
+                    <RecordsRow
+                      label={t("records.seeInRecords", { query: trimmed })}
+                      active={recordsIndex === activeIndex}
+                      onMouseEnter={() => setActiveIndex(recordsIndex)}
+                      onClick={() => onSeeInRecords(trimmed)}
+                    />
+                  );
+                })()}
                 {(() => {
                   const askIndex = rows.findIndex((r) => r.kind === "ask-ai");
                   if (askIndex < 0) return null;
@@ -857,18 +870,6 @@ export function Composer(props: ComposerProps) {
                       active={askIndex === activeIndex}
                       onMouseEnter={() => setActiveIndex(askIndex)}
                       onClick={submitAi}
-                    />
-                  );
-                })()}
-                {(() => {
-                  const recordsIndex = rows.findIndex((r) => r.kind === "records");
-                  if (recordsIndex < 0 || !onSeeInRecords) return null;
-                  return (
-                    <RecordsRow
-                      label={t("records.seeInRecords", { query: trimmed })}
-                      active={recordsIndex === activeIndex}
-                      onMouseEnter={() => setActiveIndex(recordsIndex)}
-                      onClick={() => onSeeInRecords(trimmed)}
                     />
                   );
                 })()}
