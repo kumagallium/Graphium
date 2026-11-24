@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.160.0](https://github.com/kumagallium/Graphium/compare/v0.159.0...v0.160.0) - 2026-11-24
+
+- feat(sharing): list the shared records for each row of a shared plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/1833
+
 ## [v0.159.0](https://github.com/kumagallium/Graphium/compare/v0.158.0...v0.159.0) - 2026-11-24
 
 - feat: show what is shared in the lists and on sidebar folders by @kumagallium in https://github.com/kumagallium/Graphium/pull/1832
