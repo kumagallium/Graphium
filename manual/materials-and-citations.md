@@ -89,6 +89,7 @@ There are several routes, all ending in the same library:
 | Gallery buttons | **Upload** (Images, Data, Videos, Audio), **Add URL** (URLs), and **Add PDF** / **Add Word** under the **⋯** menu in Documents — add materials without touching any note |
 | Bring in what you already have | One intake sheet takes in files and folders you already have on disk — see [Bring in what you already have](#bring-in-what-you-already-have) below |
 | Bring in AI conversations | In the desktop app, your Claude Code conversations can be kept as materials — see [Bring in AI conversations](#bring-in-ai-conversations) below |
+| Files an assistant offers | In the desktop app, an assistant such as ChatGPT can offer a file you attached in a chat. It waits in the corner and at the top of **Bring in** until you choose **Bring in** or **Decline** — see [Files you attach in a chat](/mcp-server#files-you-attach-in-a-chat) |
 | Link a file from a registered folder | Desktop app only. Keep a file where it is (an organization's synced folder, say) and add only a record of its location to the library — see [Link a file without copying it](#linked-files) |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
