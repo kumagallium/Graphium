@@ -71,7 +71,8 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 function toToastItem(id: string, title: string, status: UpkeepJobStatus, aborted = false): IngestToastItem | null {
   if (status.kind === "idle") return null;
   if (status.kind === "running") {
-    return { id, status: "generating", noteTitle: title, detail: status.text, excludeFromCount: true };
+    // 2 回目の実行で前回の結果文が残らないよう、result を明示的に空にする（upsert は上書きで合成する）
+    return { id, status: "generating", noteTitle: title, detail: status.text, result: undefined, excludeFromCount: true };
   }
   return {
     id,
@@ -95,8 +96,13 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     (controller: AbortController) => toastRef.current.registerAbort(controller),
     [],
   );
+  // トーストの行は実行ごとに分ける（同じ id を使い回すと、所要時間が前回の開始・終了時刻を引き継ぐ）
+  const toastRunRef = useRef<Record<string, string>>({});
+  const beginToastRun = useCallback((jobId: string) => {
+    toastRunRef.current[jobId] = `upkeep:${jobId}:${Date.now().toString(36)}`;
+  }, []);
   const pushToast = useCallback((jobId: string, title: string, status: UpkeepJobStatus, aborted = false) => {
-    const item = toToastItem(`upkeep:${jobId}`, title, status, aborted);
+    const item = toToastItem(toastRunRef.current[jobId] ?? `upkeep:${jobId}`, title, status, aborted);
     if (item) toastRef.current.upsert(item);
   }, []);
 
@@ -180,6 +186,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     const controller = new AbortController();
     stAbortRef.current = controller;
     const unregister = startToastJob(controller);
+    beginToastRun("sourceTopics");
     const runningText = (p: { done: number; total: number; topicsTouched: number }) =>
       t("settings.maintenance.sourceTopics.running", {
         done: String(p.done),
@@ -203,7 +210,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
         pushToast("sourceTopics", title, st, outcome.aborted);
       } else {
         // AI が未設定などで始められなかった（理由は呼び出し側が別に知らせる）
-        toastRef.current.upsert({ id: "upkeep:sourceTopics", status: "aborted", noteTitle: title, result: t("ingest.aborted"), excludeFromCount: true });
+        pushToast("sourceTopics", title, { kind: "result", tone: "warn", text: t("ingest.aborted") }, true);
       }
     } catch (err) {
       setStError(errorText(err));
@@ -214,7 +221,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       setStRunning(false);
       void refreshSourceTopicsPlan();
     }
-  }, [sourceTopics, stRunning, t, startToastJob, pushToast, refreshSourceTopicsPlan]);
+  }, [sourceTopics, stRunning, t, startToastJob, beginToastRun, pushToast, refreshSourceTopicsPlan]);
 
   const runLinkClaims = useCallback(async () => {
     if (!linkClaims || lcRunning) return;
@@ -226,6 +233,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     const controller = new AbortController();
     lcAbortRef.current = controller;
     const unregister = startToastJob(controller);
+    beginToastRun("linkClaims");
     const runningText = (p: { done: number; total: number; linkedClaims: number }) =>
       t("settings.maintenance.linkClaimsToTopics.running", {
         done: String(p.done),
@@ -247,7 +255,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
         setLcOutcome(outcome);
         pushToast("linkClaims", title, linkClaimsResultStatus(t, outcome), outcome.aborted);
       } else {
-        toastRef.current.upsert({ id: "upkeep:linkClaims", status: "aborted", noteTitle: title, result: t("ingest.aborted"), excludeFromCount: true });
+        pushToast("linkClaims", title, { kind: "result", tone: "warn", text: t("ingest.aborted") }, true);
       }
     } catch (err) {
       setLcError(errorText(err));
@@ -258,7 +266,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       setLcRunning(false);
       void refreshLinkClaimsPlan();
     }
-  }, [linkClaims, lcRunning, t, startToastJob, pushToast, refreshLinkClaimsPlan]);
+  }, [linkClaims, lcRunning, t, startToastJob, beginToastRun, pushToast, refreshLinkClaimsPlan]);
 
   const runTopicTypes = useCallback(async () => {
     if (!topicTypes || ttRunning || topicTypes.untypedCount === 0) return;
@@ -272,6 +280,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     setTtResult(null);
     setTtError(null);
     setTtProgress({ done: 0, total: count });
+    beginToastRun("topicTypes");
     pushToast("topicTypes", title, { kind: "running", text: runningText(0, count) });
     try {
       const result = await topicTypes.run((done, total) => {
@@ -286,7 +295,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     } finally {
       setTtRunning(false);
     }
-  }, [topicTypes, ttRunning, t, pushToast]);
+  }, [topicTypes, ttRunning, t, beginToastRun, pushToast]);
 
   const runInsights = useCallback(async () => {
     if (!insights || inState?.kind === "running" || insights.claimCount < 2) return;
@@ -298,6 +307,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     const controller = new AbortController();
     inAbortRef.current = controller;
     const unregister = startToastJob(controller);
+    beginToastRun("insights");
     const runningText = (covered: number | undefined, total: number | undefined) => {
       const head = t("settings.maintenance.atomize.discovering", { count: String(insights.claimCount) });
       return covered !== undefined && total !== undefined
@@ -336,7 +346,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       unregister();
       inAbortRef.current = null;
     }
-  }, [insights, inState, t, startToastJob, pushToast]);
+  }, [insights, inState, t, startToastJob, beginToastRun, pushToast]);
 
   // ── 一括再生成 ──
   const summaries = regenerate?.summaries;
@@ -365,6 +375,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     const controller = new AbortController();
     regenAbortRef.current = controller;
     const unregister = startToastJob(controller);
+    beginToastRun("regenerate");
     setRegenRunning(true);
     setRegenCancelling(false);
     const runningText = (done: number, total: number, current?: string) =>
@@ -405,7 +416,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       setRegenRunning(false);
       setRegenCancelling(false);
     }
-  }, [regenerate, regenRunning, t, effectiveIngestModel, effectiveSynthesisModel, startToastJob, pushToast]);
+  }, [regenerate, regenRunning, t, effectiveIngestModel, effectiveSynthesisModel, startToastJob, beginToastRun, pushToast]);
 
   // ── 行に組み立てる ──
   const fillGaps: UpkeepJob[] = [];

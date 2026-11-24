@@ -24,6 +24,8 @@ const wrapper = ({ children }: { children: ReactNode }) => <LocaleProvider>{chil
 
 function makeToast() {
   const items = new Map<string, IngestToastItem>();
+  /** その処理の最後の行（id は実行ごとに upkeep:<処理>:<実行の印>） */
+  const last = (jobId: string) => [...items.values()].filter((i) => i.id.startsWith(`upkeep:${jobId}:`)).pop();
   const history: IngestToastItem[] = [];
   const controllers = new Set<AbortController>();
   const sink: UpkeepToastSink = {
@@ -36,7 +38,7 @@ function makeToast() {
       return () => controllers.delete(c);
     },
   };
-  return { sink, items, history, controllers };
+  return { sink, items, history, controllers, last };
 }
 
 function sourceTopics(sources: number, run?: SourceTopicBackfillHandlers["run"]): SourceTopicBackfillHandlers {
@@ -103,10 +105,24 @@ describe("useUpkeepJobs", () => {
     expect(row.status.kind).toBe("result");
     expect(row.onRun).toBeUndefined();
     // トーストは実行中から出て、終わると結果に変わる。見出しの件数には数えない
-    expect(toast.history[0]).toMatchObject({ id: "upkeep:sourceTopics", status: "generating", excludeFromCount: true });
-    expect(toast.items.get("upkeep:sourceTopics")).toMatchObject({ status: "success" });
+    expect(toast.history[0]).toMatchObject({ status: "generating", excludeFromCount: true });
+    expect(toast.history[0].id.startsWith("upkeep:sourceTopics:")).toBe(true);
+    expect(toast.last("sourceTopics")).toMatchObject({ status: "success" });
     // 終わったら停止の集合から外れる
     expect(toast.controllers.size).toBe(0);
+  });
+
+  it("もう一度走らせると、トーストには新しい行が出る（前の結果の行は残る）", async () => {
+    const run = vi.fn(async () => ({ assigned: 1, total: 1, calls: 1 }));
+    const { result, toast } = setup({ topicTypes: { untypedCount: 1, run } });
+    __setConfirmResponderForTest(() => true);
+    await act(async () => result.current.fillGaps[0].onRun?.());
+    await new Promise((r) => setTimeout(r, 2));
+    await act(async () => result.current.fillGaps[0].onRun?.());
+    expect(run).toHaveBeenCalledTimes(2);
+    const rows = [...toast.items.values()].filter((i) => i.id.startsWith("upkeep:topicTypes:"));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === "success" && r.result)).toBe(true);
   });
 
   it("トーストの停止で止まる", async () => {
@@ -135,7 +151,7 @@ describe("useUpkeepJobs", () => {
       toast.controllers.forEach((c) => c.abort());
       await running;
     });
-    await waitFor(() => expect(toast.items.get("upkeep:sourceTopics")?.status).toBe("aborted"));
+    await waitFor(() => expect(toast.last("sourceTopics")?.status).toBe("aborted"));
     expect(seen?.aborted).toBe(true);
     expect(result.current.fillGaps[0].status).toMatchObject({ kind: "result", tone: "warn" });
   });
@@ -168,6 +184,6 @@ describe("useUpkeepJobs", () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith("t1", expect.objectContaining({ model: "model-a", signal: expect.any(AbortSignal) }));
     expect(regen().progress).toMatchObject({ done: 1, total: 1, failed: 0 });
-    expect(toast.items.get("upkeep:regenerate")).toMatchObject({ status: "success" });
+    expect(toast.last("regenerate")).toMatchObject({ status: "success" });
   });
 });
