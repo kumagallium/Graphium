@@ -905,6 +905,22 @@ function collectChecklist(blocks: any[], out: NonNullable<NoteIndexEntry["checkl
   for (const b of blocks || []) visit(b);
 }
 
+/**
+ * ノートのチェックリスト項目を数える（全体の件数と、印の付いた件数）。
+ * 索引の checklist（＝ MCP の list_todos が返す一覧）と同じ決まりで数える:
+ * 最初のページのブロック木を深さを問わず辿り、本文が空の項目は数えない。
+ * 共有の封筒に添える件数（sharing/checklist-count.ts）が、一覧と食い違わないようにここに置く。
+ */
+export function countChecklist(doc: { pages?: { blocks?: unknown[] }[] } | null | undefined): {
+  checked: number;
+  total: number;
+} {
+  const items: NonNullable<NoteIndexEntry["checklist"]> = [];
+  const blocks = doc?.pages?.[0]?.blocks;
+  if (Array.isArray(blocks)) collectChecklist(blocks, items);
+  return { checked: items.filter((item) => item.checked).length, total: items.length };
+}
+
 /** inline content の中のリンク先 URL を順に集める（重複は 1 つにまとめる） */
 function collectInlineLinks(content: any): string[] {
   if (!Array.isArray(content)) return [];

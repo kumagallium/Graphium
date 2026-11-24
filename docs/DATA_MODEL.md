@@ -4837,6 +4837,53 @@ the forking device, turns those rows' first cells from "@name" back into
 matching entries from the document's `noteLinks`. Row links to notes that do
 exist locally (forking your own shared note) are kept.
 
+#### Checklist count of a shared note (`extra.checklist`)
+
+So that the list of row records can say how many checklist items were checked
+without opening every record, a shared note's envelope carries a count of the
+body's checklist:
+
+```ts
+extra.checklist?: {
+  checked: number;   // checklist items that are checked
+  total: number;     // checklist items; never 0 (the key is absent instead)
+  bodyHash: string;  // the body that was counted; equals extra.bodyHash
+};
+```
+
+- Notes only. It is counted the way `NoteIndexEntry.checklist` is (§5): the
+  `checkListItem` blocks of the first page at any depth, skipping items with
+  no text. A note without a checklist gets no key.
+- It is a mirror of the shared body, not a state. Every write that changes the
+  body counts again from the body it writes: sharing and re-sharing by the
+  author, and an update by someone else (`extra.acceptsUpdates`). Restoring a
+  previous version brings back that version's value together with its body.
+  Nothing is added to the local note, the shared body or the note index.
+- Readers use it only when `checklist.bodyHash === extra.bodyHash`. A version
+  of the app that does not know the key carries `extra` over when it rewrites
+  the body, so `bodyHash` moves on while the old count stays; the mismatch
+  makes readers ignore it.
+- A device also keeps its own count, taken whenever it reads a shared body
+  whose hash checks out (opening the record, for example), with the other
+  derived metadata and keyed by the entry's `hash`. When that count exists for
+  the current `hash`, readers use it in preference to the envelope's, because
+  it was counted from a verified body rather than declared. Listing the
+  records does not read bodies, so for a record whose envelope has no usable
+  count — one shared by a version that does not write the key — nothing is
+  shown until the body has been read on this device or the record is shared
+  again. With neither count, nothing is shown: "no checklist" and "not known"
+  look the same.
+- Shape is validated on read (`parseChecklistCount`), because the envelope is
+  written by other people: integers, `1 ≤ total ≤ 9999`,
+  `0 ≤ checked ≤ total`. Like the author's name, the envelope's value is
+  self-declared: anyone who can write to the shared folder can write a count
+  that does not match the body, and it is shown until this device has read
+  that body.
+- The count is shown as "checked/total" next to each record in the plan's row
+  records. It is not turned into a percentage, a progress bar, a sort order or
+  a warning: items do not weigh the same, and a checklist is not always a list
+  of things to do.
+
 #### Accepting updates from other people (`extra.acceptsUpdates`, `extra.updatedBy`)
 
 For notes only, the author can switch on **accepting updates** per note:

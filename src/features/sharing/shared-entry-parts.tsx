@@ -21,6 +21,8 @@ import { HashBadge, type HashStatus } from "./hash-badge";
 import type { SharedReverseLinks } from "./shared-projection";
 import { proposalStatus, readProposalExtra } from "./share-proposal";
 import { entryUpdatedAt, findPlanRecords, readPlanRowRef } from "./plan-row-ref";
+import { getSharedChecklistCount } from "./checklist-count";
+import { ChecklistCountChip } from "./ChecklistCountChip";
 
 /** 題名（extra.title）。無ければ「無題」 */
 export function sharedEntryTitle(
@@ -218,10 +220,13 @@ export function PlanRowMeta({
 export function PlanRecordsSection({
   planId,
   entries,
+  derived,
   onOpenEntry,
 }: {
   planId: string;
   entries: readonly SharedEntry[];
+  /** 本文を読んだときの控え（共有ストアの derived）。封筒に件数が無い記録のチェックの件数を補う */
+  derived?: Parameters<typeof getSharedChecklistCount>[1];
   onOpenEntry?: (id: string) => void;
 }) {
   const uiT = useT();
@@ -246,7 +251,8 @@ export function PlanRecordsSection({
               title={entry.id}
             >
               <span className="truncate min-w-0">{ref.rowName}</span>
-              <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+              <span className="ml-auto shrink-0 text-muted-foreground tabular-nums inline-flex items-baseline gap-1.5">
+                <ChecklistCountChip count={getSharedChecklistCount(entry, derived)} />
                 {typeof entry.author?.name === "string" && entry.author.name ? entry.author.name : uiT("library.unknownAuthor")} ·{" "}
                 {formatDate(entryUpdatedAt(entry))}
               </span>

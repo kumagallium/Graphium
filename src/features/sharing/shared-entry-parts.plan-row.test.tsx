@@ -108,6 +108,39 @@ describe("PlanRecordsSection", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
+  it("記録にチェックの件数があれば添える（封筒の写し、または本文を読んだときの控え）", () => {
+    const entries = [
+      entry(PLAN_ID, { title: "食パンの計画" }),
+      // 封筒に写しがある
+      entry("rec-1", {
+        title: "こね",
+        planRow,
+        bodyHash: "sha256:body-1",
+        checklist: { checked: 3, total: 5, bodyHash: "sha256:body-1" },
+      }),
+      // 写しは無いが、この端末で本文を読んだ控えがある
+      entry("rec-2", { title: "焼成", planRow: { ...planRow, rowId: "row_c", rowName: "焼成" } }),
+      // どちらも無い
+      entry("rec-3", { title: "成形", planRow: { ...planRow, rowId: "row_d", rowName: "成形" } }),
+    ];
+    render(
+      <LocaleProvider>
+        <PlanRecordsSection
+          planId={PLAN_ID}
+          entries={entries}
+          derived={{ "rec-2": { hash: "sha256:rec-2", checklist: { checked: 1, total: 4 } } }}
+        />
+      </LocaleProvider>,
+    );
+    const section = screen.getByTestId("shared-entry-plan-records");
+    const buttons = within(section).getAllByRole("button");
+    const countOf = (name: string) =>
+      within(buttons.find((b) => b.textContent?.includes(name))!).queryByTestId("checklist-count")?.textContent ?? null;
+    expect(countOf("こね")).toBe("3/5");
+    expect(countOf("焼成")).toBe("1/4");
+    expect(countOf("成形")).toBeNull();
+  });
+
   it("記録が無ければ何も出さない", () => {
     const { container } = render(
       <LocaleProvider>

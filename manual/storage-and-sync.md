@@ -332,22 +332,24 @@ This is for when one person writes the plan and other people work through its ro
 4. At a natural stopping point, they share the row's note with **Share with team** in the `⋯` menu (and **Update shared copy** after writing more). Graphium says which plan and which row the note was shared as the record for
 5. **Open the plan as your own note** (the person who shared it opens the original; everyone else opens their fork), and **Row records N** appears in the note's header. Selecting it opens the right panel, which lists who shared a record for each row of the plan, with the date. Selecting a record opens it
 
-![The right panel of a plan note. Each row lists who shared a record and on what date. Records not opened yet are marked New, records updated since they were opened are marked Updated, and rows without a record say None yet](/screenshots/plan-row-records.png)
+![The right panel of a plan note. Each row lists who shared a record and on what date. Records that contain a checklist also show a count such as 5/5 or 3/5. Records not opened yet are marked New, records updated since they were opened are marked Updated, and rows without a record say None yet](/screenshots/plan-row-records.png)
 
 - A record you have not opened yet is marked **New**; one that was updated after you opened it is marked **Updated**. Your own records are not marked
 - A row with no record says **None yet**
+- If a record contains a checklist, its count at the time it was shared is shown as **3/5** (checked items / all items). A record without a checklist shows nothing
 - Renaming a row in the plan keeps the match, because rows are matched by the id each row carries. Records for a row that was removed from the plan's table, or that was added to a fork of the plan, are listed at the end under **Records for rows not in this plan's table**
 - A fork of the plan shows the same list, including records other people shared for the same row
 - If you have not forked the plan, open it in the shared folder: its backlinks show **Records for this plan's rows**. That list is ordered by row name and does not show rows without a record. A record's own details show **Plan row** (the plan's title › the row's name)
 - The badge and the right panel appear in the desktop app, once a shared folder is set up
 - In a fork of a plan, rows that were linked to notes on the sharer's own device are unlinked, because those notes do not exist on your device. You can then create your own note from the row
 
-The only thing added to the shared note is which plan and which row it belongs to. The note's body does not change.
+The only things added to the shared note are which plan and which row it belongs to and, when it contains a checklist, that count. The note's body does not change.
 
 ::: warning Limits
 - **Only shared records are listed.** A note that has not been shared does not appear in anyone else's plan
-- **There are no due dates, owners or progress states.** What you see is whether a record exists, and who shared it and when. For the reason, see "Can I manage tasks or projects in Graphium?" in the [FAQ](/faq)
+- **There are no due dates, owners or progress states.** What you see is whether a record exists, who shared it and when, and the checklist count at the time it was shared. The count is shown as counted; it is not turned into a percentage, a sort order or a "done" mark. For the reason, see "Can I manage tasks or projects in Graphium?" in the [FAQ](/faq)
 - **Rows added after the plan was shared** do not appear in forks that were made earlier. To start a record for a new row, fork the plan again. The row notes created before, and their shared copies, stay as they are
+- **Checklist counts are as of when the record was shared.** Items checked after that do not reach other people's lists until you choose **Update shared copy** on the row's note
 - **If a row's note was shared before the plan was**, choose **Update shared copy** on the row's note after sharing the plan, and the match is added
 - **Names are self-declared.** The name on a record is the one its author typed in
 :::

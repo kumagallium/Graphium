@@ -19,6 +19,7 @@ import { chunkNoteDocument, chunkPlainText } from "../lexical-search/chunk";
 import { extractWikiSections } from "../wiki/section-extract";
 import { normalizeNoteContexts } from "../note-context/context-tags";
 import type { SharedEntry } from "../../lib/storage/shared";
+import { checklistCountOfDocument, type SharedChecklistCount } from "./checklist-count";
 
 /** 索引対象にする共有エントリの type（template / report は共有導線が無いので対象外） */
 export const SHARED_INDEXABLE_TYPES = ["note", "knowledge", "reference", "data-manifest"] as const;
@@ -112,6 +113,11 @@ export function sharedEntryToSourceInput(
 export type SharedDerivedMeta = {
   /** 共有した時点のノートのフォルダ（正規化済み。無ければ空配列） */
   noteContexts: string[];
+  /**
+   * 本文のチェックリストの件数（無ければ省く）。封筒に件数の写し（extra.checklist）が無い、
+   * または本文と合わない共有ノートを補う（checklist-count.ts の getSharedChecklistCount）
+   */
+  checklist?: SharedChecklistCount;
 };
 
 /**
@@ -128,5 +134,9 @@ export function extractSharedDerivedMeta(
   if (entry.type !== "note" || !verified) return null;
   const doc = parseSharedBody(body);
   if (!doc) return null;
-  return { noteContexts: normalizeNoteContexts(doc.noteContexts) ?? [] };
+  const checklist = checklistCountOfDocument(doc);
+  return {
+    noteContexts: normalizeNoteContexts(doc.noteContexts) ?? [],
+    ...(checklist ? { checklist } : {}),
+  };
 }

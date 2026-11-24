@@ -331,8 +331,10 @@ Saying what Graphium is *not* is part of saying what it is.
   across your notes over MCP and carry them into whatever task tool you use;
   Graphium itself does not know that tool exists. When a plan is shared with
   a team, the records people share for its rows are listed by row, with who
-  shared them and when. That list is read from the records themselves; no
-  status is stored, and a row without a record is not marked late.
+  shared them and when, and how many of a record's checklist items were
+  checked when it was shared. That list is read from the records themselves;
+  no status is stored, a row without a record is not marked late, and the
+  count is not turned into a percentage or a ranking.
 - **Not a finished product.** Several pillars in this document — sharing
   and packs — are partial or paused. I would rather ship a stable spine
   and grow from it than promise everything at once.

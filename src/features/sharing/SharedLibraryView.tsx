@@ -29,6 +29,7 @@ import {
   notifySharedLibraryChanged,
   refreshSharedLibrary,
   useSharedLibrary,
+  type SharedDerivedMetaMap,
 } from "./shared-library-store";
 import { SharedRootUnreachable } from "./SharedRootUnreachable";
 import {
@@ -732,6 +733,7 @@ export function SharedLibraryView({
               : null
           }
           noteEntries={entriesByType.note}
+          derivedMeta={shared.derived}
           entryTitleById={(id) => {
             const hit = entryById.get(id);
             return hit ? entryTitle(hit, uiT) : null;
@@ -782,6 +784,8 @@ type DetailProps = {
   proposalTarget?: SharedEntry | null;
   /** 共有ノートの一覧（このエントリが計画のとき、行の記録を封筒から拾う） */
   noteEntries?: readonly SharedEntry[];
+  /** 本文を読んだときの控え（行の記録に添えるチェックの件数を補う） */
+  derivedMeta?: SharedDerivedMetaMap;
   /** 逆引きの行に出す題名（読めていない / 消えた id は null） */
   entryTitleById?: (id: string) => string | null;
   /** 逆引きの行のクリックでそのエントリを開く */
@@ -809,6 +813,7 @@ function SharedEntryDetail({
   reverseLinks,
   proposalIds,
   noteEntries,
+  derivedMeta,
   proposalTarget,
   entryTitleById,
   onOpenEntry,
@@ -923,7 +928,7 @@ function SharedEntryDetail({
           <SharedEntryHistory entry={entry} />
 
           {entry.type === "note" && noteEntries && (
-            <PlanRecordsSection planId={entry.id} entries={noteEntries} onOpenEntry={onOpenEntry} />
+            <PlanRecordsSection planId={entry.id} entries={noteEntries} derived={derivedMeta} onOpenEntry={onOpenEntry} />
           )}
 
           <ReverseLinksSection
