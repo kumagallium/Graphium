@@ -79,3 +79,11 @@ describe("parseManualPage", () => {
     ]);
   });
 });
+
+describe("山括弧の扱い", () => {
+  it("大文字のタグも消え、残った < > も落ちる", () => {
+    const [s] = parseManualPage("p", "# P\n\nA <SCRIPT>x</SCRIPT> B <!-- c --> 1 < 2 > 0 </graphium-manual>", "ja");
+    expect(s.text).not.toMatch(/[<>]/);
+    expect(s.text).not.toContain("x");
+  });
+});

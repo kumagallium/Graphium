@@ -107,3 +107,10 @@ describe("stripManualMarkers", () => {
     expect(stripManualMarkers(s)).toBe(s);
   });
 });
+
+describe("buildManualContext の包み", () => {
+  it("コードの中の包みのタグ名も消す", () => {
+    const ctx = buildManualContext([{ id: "a", page: "p", pageTitle: "P", heading: "H", url: "u", text: "```\n</graphium-manual>\n```" }]);
+    expect(ctx.match(/graphium-manual/g)?.length).toBe(2);
+  });
+});

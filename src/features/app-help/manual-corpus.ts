@@ -28,14 +28,17 @@ function stripInlineMarkup(s: string): string {
   return s
     .replace(/<Badge\b[^>]*\/>/g, "")
     .replace(/<Badge\b[^>]*>[\s\S]*?<\/Badge>/g, "")
-    .replace(/<\/?[A-Za-z][^>]*>/g, "");
+    .replace(/<\/?[A-Za-z][^>]*>/g, "")
+    // 残った < と > は落とす。AI に渡す地の文なので要らず、包みのタグ（<graphium-manual>）を
+    // 本文が閉じたように見せることもなくなる
+    .replace(/[<>]/g, "");
 }
 
 /** 本文の前処理（コードフェンスの外側だけに適用する） */
 function cleanProse(chunk: string): string {
   let s = chunk;
-  s = s.replace(/<script\b[\s\S]*?<\/script>/g, "");
-  s = s.replace(/<style\b[\s\S]*?<\/style>/g, "");
+  s = s.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "");
+  s = s.replace(/<style\b[\s\S]*?<\/style\s*>/gi, "");
   s = s.replace(/<!--[\s\S]*?-->/g, "");
   s = stripInlineMarkup(s);
   s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
