@@ -48,7 +48,7 @@ describe("WikiListView 出典列", () => {
     ]);
     renderList("claim", metas, files);
     expect(screen.getByText("Source check")).toBeTruthy();
-    expect(screen.getByText("Found in source")).toBeTruthy();
+    expect(screen.getByText("Stated in source")).toBeTruthy();
   });
 
   it("topic 一覧にも「出典」列が出る（世界照合列とは逆に topic を含む）", () => {
@@ -73,7 +73,7 @@ describe("WikiListView 出典列", () => {
     const metas = new Map<string, WikiMetaSummary>([["c1", { title: "知見1", kind: "claim" }]]);
     renderList("claim", metas, files);
     expect(screen.getByText("Source check")).toBeTruthy();
-    expect(screen.queryByText("Found in source")).toBeNull();
+    expect(screen.queryByText("Stated in source")).toBeNull();
   });
 
   it("synthesis 一覧には「出典」列が出ない（claim/topic 以外は対象外）", () => {

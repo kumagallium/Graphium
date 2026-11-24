@@ -231,7 +231,7 @@
 
 | 키 | 영어 | 한국어 |
 |---|---|---|
-| `sourceCheck.verdict.supported` | Found in source | 출처에 있음 |
+| `sourceCheck.verdict.supported` | Stated in source | 출처에 적혀 있음 |
 | `sourceCheck.verdict.contradicted` | Differs from source | 출처와 다름 |
 | `sourceCheck.verdict.not-in-source` | Not in source | 출처에 없음 |
 | `sourceCheck.verdict.unclear` | Couldn't tell | 판단 불가 |

@@ -1952,7 +1952,7 @@ export const ko: Record<string, string> = {
   "wikiList.colWorldVerdictTooltip": "최근 일반 지식 대조 판정. 판정의 강도순으로 정렬할 수 있습니다.",
   "wikiList.colWorldVerdictNoMatch": "일치 없음",
   "wikiList.colSourceVerdict": "출처 대조",
-  "wikiList.colSourceVerdictTooltip": "최근 출처 대조 결과. 출처와 다름 → 출처에 없음 → 판단 불가 → 출처를 열 수 없음 → 출처에 있음 순으로 정렬됩니다.",
+  "wikiList.colSourceVerdictTooltip": "최근 출처 대조 결과. 출처와 다름 → 출처에 없음 → 판단 불가 → 출처를 열 수 없음 → 출처에 적혀 있음 순으로 정렬됩니다.",
   "wikiList.worldCheckSelected": "일반 지식 대조({count})",
   "wikiList.worldCheckSelectedTitle": "선택한 항목을 일반 지식과 대조합니다(대조 데이터를 먼저 보고, 없을 때만 모델로 판단). 기존 판정을 덮어쓰므로 다시 판정할 때도 씁니다.",
   "wikiList.clearWorldSelected": "결과 지우기({count})",
@@ -4445,7 +4445,7 @@ export const ko: Record<string, string> = {
   // but "does the cited source actually say this". UI copy for the badge and detail section.
   "sourceCheck.title": "출처 대조",
   "sourceCheck.detailTitle": "출처 대조 상세",
-  "sourceCheck.verdict.supported": "출처에 있음",
+  "sourceCheck.verdict.supported": "출처에 적혀 있음",
   "sourceCheck.verdict.contradicted": "출처와 다름",
   "sourceCheck.verdict.not-in-source": "출처에 없음",
   "sourceCheck.verdict.unclear": "판단 불가",

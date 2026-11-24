@@ -568,7 +568,7 @@ SHOTS["source-check-list"] = async () => {
   await page.waitForTimeout(1000);
   await page.mouse.move(1270, 790);
   await hideNoise(page);
-  // 最後の判定行（Found in source の 2 行目）の下端で切る（次の行が半端に切れないように）
+  // 最後の判定行（Stated in source の 2 行目）の下端で切る（次の行が半端に切れないように）
   const last = page.locator("tr", { hasText: "Daily equal flour" }).first();
   const lb = await last.boundingBox();
   await shot(page, "source-check-list", { clip: { x: 256, y: 0, width: VIEWPORT.width - 256, height: Math.ceil(lb.y + lb.height + 6) } });
