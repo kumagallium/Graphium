@@ -320,7 +320,7 @@ Normally only the author can change a shared note; everyone else forks it or pro
 - **An author on an old version of the app** who shares again will overwrite the note **without the check**, so updates by others can be lost. Update the app for everyone who shares into this folder (the previous versions above are the way back)
 :::
 
-### See the shared records for each row of a plan {#records-by-plan-row}
+### See the shared records for each row of a plan <Badge type="tip" text="Added in v0.160.0 (2026-11-24)" /> {#records-by-plan-row}
 
 This is for when one person writes the plan and other people work through its rows. In a lab, for example, a supervisor plans the experiments and students carry them out one row at a time. Once the plan is shared, the notes people create from its rows and then share are listed by row, so opening the plan shows who has shared a record for which row, and when.
 
