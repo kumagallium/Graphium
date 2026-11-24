@@ -123,7 +123,7 @@ The shared copy is still the original; these files are extra copies for reading.
 
 Open a note's `⋯` menu and choose **Share with team**. A **Shared** badge appears on the note, and teammates see it in the shared folder. When you share a note containing media, the files are copied into the large files folder automatically — you never attach them by hand.
 
-You can see what you've shared without opening each note. In the note list and the knowledge list, a share mark appears next to the title of anything you've shared. In the sidebar, a folder that holds shared notes shows how many, with the same mark, to the left of its note count. A parent folder counts its subfolders too. Notes shared as a proposal are not counted.
+You can see what you've shared without opening each note. <Badge type="tip" text="Added in v0.159.0 (2026-11-24)" /> In the note list and the knowledge list, a share mark appears next to the title of anything you've shared. In the sidebar, a folder that holds shared notes shows how many, with the same mark, to the left of its note count. A parent folder counts its subfolders too. Notes shared as a proposal are not counted.
 
 The shared copy is a snapshot. To update it, edit your local note and choose **Update shared copy** from the same menu. To withdraw it, use **Unshare** in the shared folder; Graphium warns that other members may have already viewed, cached, or forked it, so it cannot be fully erased.
 
