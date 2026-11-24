@@ -2317,7 +2317,7 @@ Notes:
   question boilerplate such as "Can I" / 「できる？」) and sends the top
   sections as `<graphium-manual>` in `wiki_context`. The server
   (`HELP_GROUNDING_INSTRUCTION` in `src/server/routes/agent.ts`) then
-  answers from those sections only, linking the section URLs, and leaves
+  answers from those sections only, in the app's display language, linking the section URLs (the client strips any leaked `[M1]` excerpt labels), and leaves
   out custom instructions, the Knowledge Schema, context labels, skills
   and every MCP tool for that turn. A second chip beside it picks a **folder to
   search** (`StandaloneChat.folder`), a separate axis from the grounding

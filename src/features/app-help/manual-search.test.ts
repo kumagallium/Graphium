@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXCLUDED_MANUAL_PAGES, parseManualPage, type ManualLocale, type ManualSection } from "./manual-corpus";
-import { buildManualContext, createManualSearcher, toManualQuery } from "./manual-search";
+import { buildManualContext, createManualSearcher, stripManualMarkers, toManualQuery } from "./manual-search";
 import { ja as jaDict } from "../../i18n/ja";
 import { en as enDict } from "../../i18n/en";
 
@@ -92,5 +92,18 @@ describe("例の問いがマニュアル全体から目当ての節を拾う", (
     [enDict["standaloneChat.helpExample3"], "storage-and-sync", /Export to Word/],
   ])("en: %s", (q, page, heading) => {
     expect(hit(en.search(q), page, heading)).toBe(true);
+  });
+});
+
+describe("stripManualMarkers", () => {
+  it("節の番号を括弧ごと消す", () => {
+    expect(stripManualMarkers("許可が必要です【[M3]】。")).toBe("許可が必要です。");
+    expect(stripManualMarkers("扱われます（[M2]）。")).toBe("扱われます。");
+    expect(stripManualMarkers("see [M1][M3] for details")).toBe("see for details");
+    expect(stripManualMarkers("詳細は [M2] 「素材」")).toBe("詳細は 「素材」");
+  });
+  it("リンクや普通の角括弧は残す", () => {
+    const s = "[Word に書き出す](https://example.com/a#b) と [x] と M2";
+    expect(stripManualMarkers(s)).toBe(s);
   });
 });

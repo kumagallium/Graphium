@@ -10215,6 +10215,11 @@ export function NoteApp() {
           agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
         );
         let assistantMessage = response.message;
+        // 使い方: AI に渡した節の番号（[M1] など）が答えに漏れていたら消す（出典は節へのリンクで示す）
+        if (helpMode) {
+          const { stripManualMarkers } = await import("./features/app-help");
+          assistantMessage = stripManualMarkers(assistantMessage);
+        }
         // 引用の正規化は、最初に貼った文脈と道具が返した結果の両方の番号を見る
         const citationContext = [wikiContext, agentic?.collectedContext()].filter(Boolean).join("\n\n");
         if (citationContext) {

@@ -67,11 +67,13 @@ describe("POST /run", () => {
     it("使い方の指示とマニュアルの節が入り、スキル・ナレッジの案内は入らない", async () => {
       const res = await post(
         { "X-MCP-Servers": JSON.stringify(servers) },
-        { grounding_scope: "help", wiki_context: "<graphium-manual>[M1] X</graphium-manual>", custom_instructions: "SKILL-VOICE" },
+        { grounding_scope: "help", wiki_context: "<graphium-manual>[M1] X</graphium-manual>", custom_instructions: "SKILL-VOICE", language: "ja" },
       );
       expect(res.status).toBe(200);
       const prompt = runAgentLoop.mock.calls[0][0].systemPrompt as string;
       expect(prompt).toContain(HELP_GROUNDING_INSTRUCTION);
+      // 指示が英語でも、画面の言語で返させる
+      expect(prompt).toContain("Reply in Japanese");
       expect(prompt).toContain("<graphium-manual>[M1] X</graphium-manual>");
       expect(prompt).not.toContain("SKILL-VOICE");
       expect(prompt).not.toContain("schema");

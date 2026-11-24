@@ -6,5 +6,5 @@ export {
   type ManualLocale,
   type ManualSection,
 } from "./manual-corpus";
-export { createManualSearcher, buildManualContext, retrieveManualContext } from "./manual-search";
+export { createManualSearcher, buildManualContext, retrieveManualContext, stripManualMarkers, toManualQuery } from "./manual-search";
 export { MANUAL_BASE_URL, manualHomeUrl } from "./manual-url";

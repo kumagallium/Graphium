@@ -26,7 +26,7 @@ import {
   resolveToolResult,
 } from "../services/client-tool-bridge.js";
 import { approvalExemptionsFromServers, resolveToolApproval, toolsNeedingApproval, withToolApproval } from "../services/tool-approval.js";
-import { chatReplyLanguageInstruction } from "../../lib/language.js";
+import { chatReplyLanguageInstruction, generationLanguageName } from "../../lib/language.js";
 
 const app = new Hono();
 
@@ -84,11 +84,13 @@ export const HELP_GROUNDING_INSTRUCTION = [
   "## Graphium help mode",
   "The user is asking how to use Graphium (this app) or whether Graphium can do something.",
   "Answer ONLY from the Graphium manual excerpts provided in <graphium-manual>. Do not use or ask about the user's notes, and do not call tools.",
-  "- Start with a direct answer: whether Graphium can do it (yes / partly / not described in the manual), in one sentence.",
+  "- Reply in the language of the user's question, even though these instructions and some excerpts are in English.",
+  "- Start with a direct answer: whether Graphium can do it (yes / partly / not described in the manual), in one sentence. When the manual does not describe it, do not open with \"yes\".",
   "- Then give the concrete steps or where to find it in the app, using the exact UI wording that appears in the excerpts.",
+  "- Teach it right here: the user should be able to do it from your answer alone, without opening the manual. The links are only a supplement, so never answer with just \"see the manual\".",
   "- Link the manual section(s) you used as inline markdown links, using the URL given for each excerpt exactly as written. Never invent or modify a URL.",
   "- If the excerpts do not describe the feature, say plainly that the manual does not describe it, and do not claim it exists. Suggest the closest described feature if there is one.",
-  "- Keep it short. Do not output [#N] citation markers or context labels.",
+  "- Keep it short. Do not output [#N] citation markers, the excerpt labels ([M1], [M2], ...) or context labels; cite a section only by its markdown link.",
 ].join("\n");
 
 // Crucible Agent 互換のリクエスト/レスポンス形式
@@ -170,6 +172,8 @@ app.post("/run", async (c) => {
   // Wiki コンテキストを注入（Retriever 結果）
   if (helpMode) {
     systemPrompt += `\n\n${HELP_GROUNDING_INSTRUCTION}`;
+    // 指示が英語なので、言語を名指ししないと英語で返すモデルがある（gpt-oss-120b で実測）
+    systemPrompt += `\n- The app's display language is ${generationLanguageName(body.language || "en")}. Reply in ${generationLanguageName(body.language || "en")} unless the question is clearly written in another language.`;
   }
   if (body.wiki_context) {
     systemPrompt += `\n\n${body.wiki_context}`;

@@ -92,3 +92,14 @@ export async function retrieveManualContext(
   const sections = searcher.search(query, limit);
   return { context: buildManualContext(sections), sections };
 }
+
+/**
+ * 答えに漏れた節の番号（[M1]・【[M2]】・[M1][M3] など）を消す。節の番号は AI に渡すときの
+ * 目印で、利用者には意味が無い（出典は節へのリンクで示す）。指示しても書くモデルがある
+ */
+export function stripManualMarkers(answer: string): string {
+  return answer
+    // 前後に空白があった番号は空白 1 つに、文字に挟まれた番号は詰める
+    .replace(/[（(【]?\s*(?:\[M\d+\]\s*[,、]?\s*)+[】)）]?/g, (m) => (/^\s|\s$/.test(m) ? " " : ""))
+    .replace(/[ \t]+\n/g, "\n");
+}
