@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.161.0](https://github.com/kumagallium/Graphium/compare/v0.160.1...v0.161.0) - 2026-11-24
+
+- feat(plan): show a Plan mark on the note header and in the note list by @kumagallium in https://github.com/kumagallium/Graphium/pull/1839
+- Keep ⌘K Enter from asking AI on no match, and fold the left-nav footer into an icon row by @kumagallium in https://github.com/kumagallium/Graphium/pull/1840
+
 ## [v0.160.1](https://github.com/kumagallium/Graphium/compare/v0.160.0...v0.160.1) - 2026-11-24
 
 - fix: split multi-line text pasted into an empty list item into blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/1837
