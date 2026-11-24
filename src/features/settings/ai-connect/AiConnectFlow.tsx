@@ -19,6 +19,8 @@ import {
 } from "../free-providers/catalog";
 import { ConnectChooserView, type LocalProviderId } from "./ConnectChooserView";
 import { KeyConnectView, type KeyConnectPhase } from "./KeyConnectView";
+import { ConnectionFileImport, type ImportModelSpec } from "../ai-connection-file/ConnectionFileImport";
+import type { ExistingModel } from "../ai-connection-file/format";
 
 /** 入力画面に渡す、つなぎ先の決まりごと */
 type Target = {
@@ -59,6 +61,10 @@ export type AiConnectFlowProps = {
   existingGroups?: { id: string; label: string }[];
   onPickExisting?: (id: string) => void;
   onOpenCopilotSettings?: () => void;
+  /** 配られた接続のファイルをまとめて登録する。無ければ「配られたファイルを読み込む」の行を出さない */
+  importModels?: (specs: ImportModelSpec[]) => Promise<void>;
+  /** 読み込みで重複を避けるための、今の接続の一覧 */
+  existingModels?: ExistingModel[];
 };
 
 export function AiConnectFlow({
@@ -72,7 +78,10 @@ export function AiConnectFlow({
   existingGroups,
   onPickExisting,
   onOpenCopilotSettings,
+  importModels,
+  existingModels = [],
 }: AiConnectFlowProps) {
+  const [importing, setImporting] = useState(false);
   const { locale, t } = useLocale();
   const [target, setTarget] = useState<Target | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -150,6 +159,17 @@ export function AiConnectFlow({
     </div>
   );
 
+  if (importing && importModels) {
+    return wrap(
+      <ConnectionFileImport
+        existing={existingModels}
+        importModels={importModels}
+        keylessPlaceholder={KEYLESS_PLACEHOLDER}
+        onBack={() => setImporting(false)}
+      />,
+    );
+  }
+
   if (!target) {
     return wrap(
       <ConnectChooserView
@@ -159,6 +179,7 @@ export function AiConnectFlow({
         onPickCloud={openCloud}
         onPickLocal={(id) => open(LOCAL_TARGETS[id])}
         onPickCustom={onPickCustom}
+        onImportFile={importModels ? () => setImporting(true) : undefined}
         existingGroups={existingGroups}
         onPickExisting={onPickExisting}
         onOpenCopilotSettings={onOpenCopilotSettings}

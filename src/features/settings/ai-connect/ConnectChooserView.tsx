@@ -38,6 +38,8 @@ export type ConnectChooserViewProps = {
   /** GitHub の Copilot 設定（学習への利用を止める）を開く */
   onOpenCopilotSettings?: () => void;
   onPickCustom: () => void;
+  /** 配られた接続のファイル（.graphium-ai.json）を読み込む。無ければ行を出さない */
+  onImportFile?: () => void;
   onOpenSignup: (url: string) => void;
   onOpenComparison: () => void;
   /** 最初に開いておく行（Storybook 用） */
@@ -62,6 +64,7 @@ export function ConnectChooserView({
   onPickExisting,
   onOpenCopilotSettings,
   onPickCustom,
+  onImportFile,
   onOpenSignup,
   onOpenComparison,
   initialOpen = null,
@@ -97,6 +100,23 @@ export function ConnectChooserView({
   return (
     <div className="space-y-2 text-left">
       <h4 className="text-xs font-semibold text-foreground">{t("settings.aiConnect.question")}</h4>
+
+      {/* 研究室や機関で 1 人がつないだ接続を、ファイルで受け取る。受け取った人は選ぶものが無いので一番上 */}
+      {onImportFile && (
+        <button
+          type="button"
+          onClick={onImportFile}
+          className={`${rowClass} flex w-full items-start gap-2 p-3 hover:bg-accent/40`}
+        >
+          <span className="mt-0.5 text-muted-foreground">
+            <ChevronRight size={12} aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-xs font-semibold text-foreground">{t("settings.aiConnect.fromFile.title")}</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">{t("settings.aiConnect.fromFile.summary")}</span>
+          </span>
+        </button>
+      )}
 
       {/* 登録済みの接続先に別のモデルを足す（今までの「既存プロバイダーから追加」） */}
       {existingGroups.length > 0 && onPickExisting && (
