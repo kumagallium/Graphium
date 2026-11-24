@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { lstat, open, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -35,6 +35,7 @@ import {
   parseOfferMeta,
   type OfferMeta,
 } from "../features/material-offer/offer-file";
+import { computeBlobHash } from "../lib/storage/shared/hash";
 import { MAX_MEDIA_BYTES, MediaToolError, blockedMaterialExt, findLiveMaterialByHash, guessMimeType } from "./media-tools";
 import type { ToolContext } from "./tools";
 import { writeFileAtomic } from "./upkeep/atomic-write";
@@ -203,7 +204,8 @@ async function offerMaterialLocked(
 
   const bytes = await readBounded(real);
   if (bytes.length === 0) throw new MediaToolError("空のファイルです");
-  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  // アプリの素材の被り判定と同じ形（"sha256:<16 進>"）。形が違うと既にある素材と一度も一致しない
+  const sha256 = await computeBlobHash(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 
   const existing = findLiveMaterialByHash(sha256, root);
   if (existing) return { status: "already_material", materialId: existing };

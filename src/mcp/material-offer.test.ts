@@ -63,7 +63,7 @@ describe("offer_material", () => {
 
   it("同じ中身の素材が既にあれば、写しを置かずに素材の id を返す", async () => {
     const content = "already here";
-    const hash = createHash("sha256").update(content).digest("hex");
+    const hash = `sha256:${createHash("sha256").update(content).digest("hex")}`;
     writeFileSync(join(root, "media", "m1.txt.dat"), content);
     writeFileSync(join(root, "media", "m1"), content);
     writeFileSync(

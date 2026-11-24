@@ -22,7 +22,7 @@ export type OfferMeta = {
   name: string;
   mimeType: string;
   size: number;
-  /** 中身の SHA-256（16 進） */
+  /** 中身の SHA-256（アプリの contentHash と同じ "sha256:<16 進>" の形） */
   sha256: string;
   /** 元の場所（AI が渡したパスを realpath で解いたもの） */
   sourcePath: string;
