@@ -457,3 +457,65 @@ describe("点検で出た指摘の回帰", () => {
     expect(fs.entry(id).extra?.blobs).toBeUndefined();
   });
 });
+
+describe("チェックの件数の写し（extra.checklist）", () => {
+  const check = (id: string, text: string, checked: boolean) => ({
+    id,
+    type: "checkListItem",
+    props: { checked },
+    content: [{ type: "text", text }],
+    children: [],
+  });
+
+  async function ownerSharesChecks() {
+    const base = makeDoc("v1");
+    const doc = { ...base, pages: [{ ...base.pages[0], blocks: [check("c1", "粉を量る", false), check("c2", "こねる", false)] }] } as GraphiumDocument;
+    const shared = await shareNote(doc, { root: ROOT, author: owner });
+    if (!shared.ok) throw new Error("share failed");
+    const id = shared.doc.sharedRef!.id;
+    const r = await setAcceptsUpdates(id, true, { root: ROOT, author: owner });
+    if (!r.ok) throw new Error("toggle failed");
+    return id;
+  }
+
+  it("スイッチの切り替えでは、本文が同じなので写しもそのまま", async () => {
+    const id = await ownerSharesChecks();
+    const extra = fs.entry(id).extra!;
+    expect(extra.checklist).toEqual({ checked: 0, total: 2, bodyHash: extra.bodyHash });
+  });
+
+  it("他の人の更新では、書く本文で数え直す（前の版の件数を引き継がない）", async () => {
+    const id = await ownerSharesChecks();
+    const forked = await forkSharedNote(id, { root: ROOT });
+    if (!forked.ok) throw new Error("fork failed");
+    const doc = {
+      ...forked.doc,
+      pages: [{ ...forked.doc.pages[0], blocks: [check("c1", "粉を量る", true), check("c2", "こねる", true), check("c3", "丸める", false)] }],
+    } as GraphiumDocument;
+    const r = await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
+    expect(r.ok).toBe(true);
+    const extra = fs.entry(id).extra!;
+    expect(extra.checklist).toEqual({ checked: 2, total: 3, bodyHash: extra.bodyHash });
+  });
+
+  it("更新でチェックリストが無くなったら、写しも外れる", async () => {
+    const id = await ownerSharesChecks();
+    const doc = await bobForks(id, "no checks");
+    const r = await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
+    expect(r.ok).toBe(true);
+    expect(fs.entry(id).extra?.checklist).toBeUndefined();
+  });
+
+  it("前の版に戻すと、写しも戻した本文のものになる", async () => {
+    const id = await ownerSharesChecks();
+    const doc = await bobForks(id, "no checks");
+    const upd = await updateSharedNoteFromCopy(doc, { root: ROOT, author: bob });
+    expect(upd.ok).toBe(true);
+    const provider = await import("../../lib/storage/shared").then((m) => new m.LocalFolderSharedProvider(ROOT, owner));
+    const names = await provider.listVersions(id);
+    const r = await restoreSharedVersion(id, names[0], { root: ROOT, author: owner });
+    expect(r.ok).toBe(true);
+    const extra = fs.entry(id).extra!;
+    expect(extra.checklist).toEqual({ checked: 0, total: 2, bodyHash: extra.bodyHash });
+  });
+});

@@ -45,6 +45,7 @@ import { appendHistory } from "./share-history";
 import { stripMemoTraces, stripUnsharedSources } from "./strip-memo-traces";
 import { collectAdoptedProposals } from "./proposal-apply";
 import { parsePlanRowRef, type PlanRowRef } from "./plan-row-ref";
+import { buildChecklistMirror } from "./checklist-count";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -309,6 +310,7 @@ export async function shareGraphiumDocument(
       !!doc.sharedRef?.bodyHash &&
       existingEntry.extra.bodyHash === doc.sharedRef.bodyHash;
     const expectedHash = sameBody ? existingEntry!.hash : (doc.sharedRef?.hash ?? "");
+    const checklist = entryType === "note" ? buildChecklistMirror(entryDoc, bodyHash) : undefined;
 
     const baseEntry: SharedEntry = {
       id,
@@ -331,6 +333,9 @@ export async function shareGraphiumDocument(
         ...(accepting ? { acceptsUpdates: true } : {}),
         // 本文だけの指紋（スイッチの切り替えで entry の hash が動いても、本文が同じかを見分ける）
         bodyHash,
+        // 共有した時点のチェックの件数（ノートだけ）。行の記録の一覧が本文を読まずに出せるよう、
+        // 本文と同じ版の写しを添える。チェックリストが無ければ載せない
+        ...(checklist ? { checklist } : {}),
       },
     };
 

@@ -15,7 +15,7 @@
 //   - readSharedEntryBody は `id|hash` をキーに小さな LRU で本文を持つ。
 //     語彙索引・埋め込み・プレビューが同じ本文を続けて読むため
 //   - hash が合わなかった id は mismatched に貯める（設定の索引カードで見せる）
-//   - 本文を読んだついでに拾える値（フォルダ）は derived に貯め、localStorage に
+//   - 本文を読んだついでに拾える値（フォルダ・チェックの件数）は derived に貯め、localStorage に
 //     残す。一覧は本文を読まずに描くので、読めた分だけ表に出せるようにする
 //     （新しい読み取りは足さない — 語彙索引レーンが読む経路に相乗りする）
 
@@ -32,6 +32,7 @@ import { computeSharedEntryHash } from "../../lib/storage/shared/hash";
 import { isTauri } from "../../lib/platform";
 import { loadAllSharedEntries, type SharedLibraryLoadResult } from "./shared-library-loader";
 import { extractSharedDerivedMeta, type SharedDerivedMeta } from "./shared-entry-source";
+import { parseChecklistCount } from "./checklist-count";
 
 /** 本文由来のメタを id ごとに覚えたもの。hash はそれを読んだときのエントリの hash */
 export type SharedDerivedMetaMap = Record<string, SharedDerivedMeta & { hash: string }>;
@@ -107,10 +108,20 @@ export function parseDerivedMetaStore(raw: string | null): SharedDerivedMetaMap 
     const out: SharedDerivedMetaMap = {};
     for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
       if (!value || typeof value !== "object") continue;
-      const { hash, noteContexts } = value as { hash?: unknown; noteContexts?: unknown };
+      const { hash, noteContexts, checklist } = value as {
+        hash?: unknown;
+        noteContexts?: unknown;
+        checklist?: unknown;
+      };
       if (typeof hash !== "string" || !hash) continue;
       if (!Array.isArray(noteContexts)) continue;
-      out[id] = { hash, noteContexts: noteContexts.filter((c): c is string => typeof c === "string") };
+      // 件数はあとから足した項目。無い・形が違う控えは、件数だけ落として残す
+      const count = parseChecklistCount(checklist);
+      out[id] = {
+        hash,
+        noteContexts: noteContexts.filter((c): c is string => typeof c === "string"),
+        ...(count ? { checklist: count } : {}),
+      };
     }
     return out;
   } catch {
@@ -369,7 +380,9 @@ class SharedLibraryStore {
       prev &&
       prev.hash === entry.hash &&
       prev.noteContexts.length === meta.noteContexts.length &&
-      prev.noteContexts.every((c, i) => c === meta.noteContexts[i])
+      prev.noteContexts.every((c, i) => c === meta.noteContexts[i]) &&
+      prev.checklist?.checked === meta.checklist?.checked &&
+      prev.checklist?.total === meta.checklist?.total
     ) {
       return; // 同じ値なら再描画を起こさない
     }

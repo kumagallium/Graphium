@@ -195,6 +195,32 @@ describe("派生メタ（本文由来のフォルダ）", () => {
     });
   });
 
+  it("本文にチェックリストがあれば、件数も派生メタに入る", async () => {
+    const check = (id: string, checked: boolean) => ({
+      id,
+      type: "checkListItem",
+      props: { checked },
+      content: [{ type: "text", text: "粉を量る" }],
+      children: [],
+    });
+    const body = new TextEncoder().encode(
+      JSON.stringify({ title: "x", pages: [{ id: "p1", blocks: [check("c1", true), check("c2", false)] }] }),
+    );
+    const e = await signedEntry(body, { id: NOTE_ID });
+    __setSharedLibraryLoaderForTest(async () => result([e]), {
+      root: ROOT,
+      reader: async () => ({ entry: e, body }),
+    });
+    await refreshSharedLibrary();
+    await readSharedEntryBody(e);
+
+    expect(getSharedLibrarySnapshot().derived[NOTE_ID]).toEqual({
+      hash: e.hash,
+      noteContexts: [],
+      checklist: { checked: 1, total: 2 },
+    });
+  });
+
   it("共有から消えた id の派生メタは refresh で落ちる", async () => {
     const body = docBody(["共通/装置"]);
     const e = await signedEntry(body, { id: NOTE_ID });
@@ -269,6 +295,19 @@ describe("parseDerivedMetaStore（localStorage からの復元）", () => {
       objectでない: 3,
     });
     expect(parseDerivedMetaStore(raw)).toEqual({ ok: { hash: "sha256:h", noteContexts: ["卒論"] } });
+  });
+
+  it("チェックの件数は形が合うものだけ残す（合わなければ件数だけ落とし、フォルダは残す）", () => {
+    const raw = JSON.stringify({
+      a: { hash: "sha256:h", noteContexts: [], checklist: { checked: 2, total: 3 } },
+      b: { hash: "sha256:h", noteContexts: ["卒論"], checklist: { checked: 9, total: 3 } },
+      c: { hash: "sha256:h", noteContexts: [], checklist: "2/3" },
+    });
+    expect(parseDerivedMetaStore(raw)).toEqual({
+      a: { hash: "sha256:h", noteContexts: [], checklist: { checked: 2, total: 3 } },
+      b: { hash: "sha256:h", noteContexts: ["卒論"] },
+      c: { hash: "sha256:h", noteContexts: [] },
+    });
   });
 
   it("壊れた JSON・未保存では空", () => {
