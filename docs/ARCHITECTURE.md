@@ -4987,6 +4987,12 @@ are the only writes that may proceed against a running app (`allowLive` in
   re-read, is left as the app has it. The app never writes page content on the
   strength of a notice; it only re-reads (a memo's "made into knowledge" link is
   recorded only for a memo the index already has).
+- A page MCP wrote may cite a note the app has not indexed yet (a note an
+  assistant created while the app was running). When a re-read page has such a
+  source, the app re-lists its files first so the note enters the index. The
+  automatic archive of pages whose source notes are gone also checks the file
+  of any source that is missing from the index, and keeps the page when the
+  note file exists.
 - The entries that hand a knowledge page's document to an editor
   (`handleOpenWikiFile`, `SidePeek`) call `drainExternalChanges`
   (`src/lib/external-changes.ts`, 0.8 s limit) first, so a page is not opened

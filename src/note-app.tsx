@@ -811,8 +811,33 @@ async function autoArchiveEmptyWiki(
   validNoteIds: Set<string>,
   handleArchiveWikiFile: (wikiId: string) => Promise<void>,
   setIngestToast: React.Dispatch<React.SetStateAction<IngestToastState>>,
+  /** 索引にあるすべてのノート（ゴミ箱・アーカイブも含む）。渡すと、索引に無い出どころをファイルで確かめる */
+  indexedNoteIds?: Set<string>,
 ): Promise<WikiSnapshot[]> {
-  const candidates = detectAutoArchivable(snapshots, validNoteIds);
+  const detected = detectAutoArchivable(snapshots, validNoteIds);
+  // 「出どころのノートが残っていない」は索引だけで判定している。索引にまだ載っていないノート
+  // （外の AI が起動中に作ったノートなど）を出どころにしたページを片付けないよう、索引に無い
+  // 出どころはファイルがあるかを確かめ、あれば残す。索引にあってゴミ箱にあるノートは今までどおり「無い」扱い
+  const candidates: typeof detected = [];
+  for (const c of detected) {
+    if (c.reason !== "empty-topic" && indexedNoteIds) {
+      const sources = (snapshots.find((s) => s.id === c.id)?.derivedFromNotes ?? []).filter(
+        (id) => !id.includes(":") && !indexedNoteIds.has(id),
+      );
+      let unindexedSourceExists = false;
+      for (const id of sources) {
+        try {
+          await getActiveProvider().loadFile(id);
+          unindexedSourceExists = true;
+          break;
+        } catch {
+          // 読めない＝無い
+        }
+      }
+      if (unindexedSourceExists) continue;
+    }
+    candidates.push(c);
+  }
   if (candidates.length === 0) return snapshots;
 
   for (const candidate of candidates) {
@@ -13986,6 +14011,7 @@ export function NoteApp() {
         validNoteIds,
         fm.handleArchiveWikiFile,
         setIngestToast,
+        new Set((fm.noteIndex?.notes ?? []).map((n) => n.noteId)),
       );
       if (snapshots.length < 2) {
         updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
@@ -14547,6 +14573,7 @@ export function NoteApp() {
           validNoteIds,
           fm.handleArchiveWikiFile,
           setIngestToast,
+          new Set((fm.noteIndex?.notes ?? []).map((n) => n.noteId)),
         );
         if (snapshots.length < 2) return;
 

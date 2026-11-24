@@ -3464,6 +3464,21 @@ export function useFileManager(authenticated: boolean) {
       }
       if (loaded.size === 0) return { loaded, skipped, changed, failed };
 
+      // 読んだページが、索引に無いノートを出どころにしているとき（外の AI が起動中に作ったノートなど）は、
+      // 先にファイルの一覧を取り直してノートを索引に載せる。載せないまま自動の点検が走ると、
+      // 「出どころのノートが残っていない」と判定してそのページを片付けてしまう
+      const knownNoteIds = new Set((noteIndexRef.current?.notes ?? []).map((n) => n.noteId));
+      const hasUnknownNoteSource = [...loaded.values()].some((doc) =>
+        (doc.wikiMeta?.derivedFromNotes ?? []).some((id) => !id.includes(":") && !knownNoteIds.has(id)),
+      );
+      if (hasUnknownNoteSource) {
+        try {
+          await refreshFiles();
+        } catch (err) {
+          console.warn("[mcp-live] ファイル一覧の取り直しに失敗:", err);
+        }
+      }
+
       const now = new Date().toISOString();
       // 一覧: 既存は名前と更新時刻だけ差し替え、新しいページは先頭に足す
       setWikiFiles((prev) => {
@@ -3553,7 +3568,7 @@ export function useFileManager(authenticated: boolean) {
       }
       return { loaded, skipped, changed, failed };
     },
-    [],
+    [refreshFiles],
   );
 
   // Wiki をゴミ箱に送る（ソフトデリート）
