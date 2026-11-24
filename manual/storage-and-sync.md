@@ -336,7 +336,7 @@ This is for when one person writes the plan and other people work through its ro
 
 - A record you have not opened yet is marked **New**; one that was updated after you opened it is marked **Updated**. Your own records are not marked
 - A row with no record says **None yet**
-- If a record contains a checklist, its count at the time it was shared is shown as **3/5** (checked items / all items). A record without a checklist shows nothing
+- If a record contains a checklist, its count at the time it was shared is shown as **3/5** (checked items / all items) <Badge type="tip" text="Added in v0.162.1 (2026-11-24)" />. A record without a checklist shows nothing
 - Renaming a row in the plan keeps the match, because rows are matched by the id each row carries. Records for a row that was removed from the plan's table, or that was added to a fork of the plan, are listed at the end under **Records for rows not in this plan's table**
 - A fork of the plan shows the same list, including records other people shared for the same row
 - If you have not forked the plan, open it in the shared folder: its backlinks show **Records for this plan's rows**. That list is ordered by row name and does not show rows without a record. A record's own details show **Plan row** (the plan's title › the row's name)
