@@ -87,3 +87,14 @@ describe("山括弧の扱い", () => {
     expect(s.text).not.toContain("x");
   });
 });
+
+describe("タグの除去の揺れ", () => {
+  it("閉じタグに空白や属性があっても中身ごと消す", () => {
+    const [s] = parseManualPage("p", "# P\n\nA <script>x</script\t\n bar> B <style>y</STYLE > C", "ja");
+    expect(s.text.replace(/\s+/g, " ")).toBe("A B C");
+  });
+  it("閉じていないコメントは末尾まで消す", () => {
+    const [s] = parseManualPage("p", "# P\n\nA <!-- 閉じない", "ja");
+    expect(s.text).toBe("A");
+  });
+});

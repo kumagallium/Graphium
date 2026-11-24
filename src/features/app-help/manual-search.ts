@@ -70,7 +70,7 @@ export function buildManualContext(sections: ManualSection[]): string {
   if (sections.length === 0) return "";
   const blocks = sections.map(
     (s, i) =>
-      `[M${i + 1}] ${s.pageTitle} › ${s.heading}\nURL: ${s.url}\n${s.text.slice(0, CONTEXT_TEXT_CHARS).replace(/<\/?graphium-manual/gi, "")}`,
+      `[M${i + 1}] ${s.pageTitle} › ${s.heading}\nURL: ${s.url}\n${s.text.slice(0, CONTEXT_TEXT_CHARS).replace(/graphium-manual/gi, "graphium manual")}`,
   );
   return `<graphium-manual>\n${blocks.join("\n\n")}\n</graphium-manual>`;
 }

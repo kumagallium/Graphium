@@ -23,24 +23,55 @@ export const EXCLUDED_MANUAL_PAGES = ["release-history", "roadmap"];
 /** 1 節の最大文字数。超えたら分ける */
 const MAX_SECTION_CHARS = 2400;
 
-/** 見出し・本文から Badge / HTML タグを消す（タグだけ消して中の文字は残す） */
+/** 中身ごと消すタグ（Badge は版の印で、本文ではない） */
+const DROP_WITH_CONTENT = new Set(["script", "style", "badge"]);
+
+/**
+ * 見出し・本文から HTML / Vue のタグを消す（タグだけ消して中の文字は残す）。
+ * script・style・Badge は中身ごと、コメントも丸ごと消す。正規表現ではなく 1 文字ずつ読む
+ * （閉じタグの書き方の揺れで取りこぼさないように）。残った < と > も落とす。AI に渡す
+ * 地の文なので要らず、包みのタグ（<graphium-manual>）を本文が閉じたように見せることもなくなる
+ */
 function stripInlineMarkup(s: string): string {
-  return s
-    .replace(/<Badge\b[^>]*\/>/g, "")
-    .replace(/<Badge\b[^>]*>[\s\S]*?<\/Badge>/g, "")
-    .replace(/<\/?[A-Za-z][^>]*>/g, "")
-    // 残った < と > は落とす。AI に渡す地の文なので要らず、包みのタグ（<graphium-manual>）を
-    // 本文が閉じたように見せることもなくなる
-    .replace(/[<>]/g, "");
+  const lower = s.toLowerCase();
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch !== "<") {
+      if (ch !== ">") out += ch;
+      i += 1;
+      continue;
+    }
+    if (lower.startsWith("<!--", i)) {
+      const end = lower.indexOf("-->", i + 4);
+      i = end === -1 ? s.length : end + 3;
+      continue;
+    }
+    const name = /^<\/?([a-z][a-z0-9-]*)/.exec(lower.slice(i, i + 40))?.[1];
+    const tagEnd = name ? lower.indexOf(">", i) : -1;
+    if (!name || tagEnd === -1) {
+      // ただの「<」（不等号など）は落とすだけ
+      i += 1;
+      continue;
+    }
+    const isOpen = lower[i + 1] !== "/";
+    const selfClosing = lower[tagEnd - 1] === "/";
+    if (isOpen && !selfClosing && DROP_WITH_CONTENT.has(name)) {
+      // 閉じタグ（名前の後に空白や属性があってもよい）まで飛ばす
+      const close = lower.indexOf(`</${name}`, tagEnd);
+      const closeEnd = close === -1 ? -1 : lower.indexOf(">", close);
+      i = closeEnd === -1 ? s.length : closeEnd + 1;
+      continue;
+    }
+    i = tagEnd + 1;
+  }
+  return out;
 }
 
 /** 本文の前処理（コードフェンスの外側だけに適用する） */
 function cleanProse(chunk: string): string {
-  let s = chunk;
-  s = s.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "");
-  s = s.replace(/<style\b[\s\S]*?<\/style\s*>/gi, "");
-  s = s.replace(/<!--[\s\S]*?-->/g, "");
-  s = stripInlineMarkup(s);
+  let s = stripInlineMarkup(chunk);
   s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
   s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
   return s;
