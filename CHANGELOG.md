@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.163.0](https://github.com/kumagallium/Graphium/compare/v0.162.1...v0.163.0) - 2026-11-24
+
+- Bring in files you attach in a ChatGPT chat, after you approve them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1845
+- [fix] Show note previews in Claude Desktop by fetching them from a reference by @kumagallium in https://github.com/kumagallium/Graphium/pull/1848
+
 ## [v0.162.1](https://github.com/kumagallium/Graphium/compare/v0.162.0...v0.162.1) - 2026-11-24
 
 - feat(sharing): show checklist counts on the row records of a shared plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/1843
