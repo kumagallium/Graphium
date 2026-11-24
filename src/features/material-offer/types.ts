@@ -21,6 +21,11 @@ export type MaterialOffer = {
   noteId?: string;
   /** noteId のノートの題（アプリが引いて付ける。見つからなければ付けない） */
   noteTitle?: string;
+  /**
+   * 「ノートの末尾に貼る」を最初から入れておくか。AI が同じ会話で作ったばかりのノート（申し出の
+   * 1 時間前から後）だけ入れる。AI は既存のどのノートの id も渡せるので、古いノートには既定で貼らない
+   */
+  pasteDefault?: boolean;
   /** 画像の見た目（アプリが写しから作る。無ければ種類のアイコン） */
   previewUrl?: string;
 };

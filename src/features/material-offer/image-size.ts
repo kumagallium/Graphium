@@ -3,7 +3,8 @@
 // プロセスのメモリを使い切る。申し出は外の AI が置けるので、寸法の分かる形だけ縮小図にする。
 
 /** 縮小図にしてよい画素数の上限 */
-export const PREVIEW_MAX_PIXELS = 40_000_000;
+// RGBA で 1 枚 約 50 MB まで。12 MP のスマホの写真までは縮小図になる（48 MP の写真は種類のアイコン）
+export const PREVIEW_MAX_PIXELS = 12_600_000;
 /** 縮小図にしてよい 1 辺の上限 */
 export const PREVIEW_MAX_SIDE = 16_384;
 

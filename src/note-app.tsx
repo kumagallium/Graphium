@@ -15246,9 +15246,9 @@ export function NoteApp() {
     enabled: !!fm.mediaIndex && !!fm.rawNoteIndex,
     deps: {
       uploadAsset: (file) => fm.handleUploadAsset(file),
-      noteTitle: (noteId) => {
+      noteInfo: (noteId) => {
         const n = fm.rawNoteIndex?.notes.find((x) => x.noteId === noteId && !x.deletedAt);
-        return n ? n.title || tStatic("nav.untitled") : undefined;
+        return n ? { title: n.title || tStatic("nav.untitled"), createdAt: n.createdAt } : undefined;
       },
       pasteToNote: async (noteId, entry) => {
         const block = materialBlockFor(entry);

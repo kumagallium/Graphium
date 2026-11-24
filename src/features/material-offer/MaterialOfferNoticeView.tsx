@@ -79,7 +79,7 @@ export function MaterialOfferNoticeView({
             </div>
             <MaterialOfferItem
               offer={offer}
-              pasteToNote={pasteToNote[offer.id] ?? Boolean(offer.noteTitle)}
+              pasteToNote={pasteToNote[offer.id] ?? Boolean(offer.pasteDefault)}
               onPasteToNoteChange={(v) => onPasteToNoteChange(offer.id, v)}
               disabled={running}
             />

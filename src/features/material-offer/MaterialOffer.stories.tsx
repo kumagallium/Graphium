@@ -39,6 +39,7 @@ const PHOTO_WITH_NOTE: MaterialOffer = {
   id: "o2",
   noteId: "n1",
   noteTitle: "Rye sourdough, 48 h cold proof",
+  pasteDefault: true,
 };
 
 const PDF: MaterialOffer = {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appendBlockToDoc, materialBlockFor } from "./note-block";
+import { isFreshNote } from "./use-material-offers";
 import { displayClientName, isOfferExpired, offerIdsFromKeys, parseOfferMeta } from "./offer-file";
 import type { GraphiumDocument } from "../../lib/document-types";
 
@@ -61,5 +62,15 @@ describe("offer-file", () => {
     expect(displayClientName("codex-mcp-client")).toBe("ChatGPT / Codex");
     expect(displayClientName("claude-ai")).toBe("Claude");
     expect(displayClientName(undefined)).toBe("AI");
+  });
+});
+
+describe("isFreshNote", () => {
+  it("申し出の 1 時間前から 5 分後までに作ったノートだけ", () => {
+    const o = "2026-11-24T10:00:00Z";
+    expect(isFreshNote("2026-11-24T09:58:00Z", o)).toBe(true);
+    expect(isFreshNote("2026-11-24T08:30:00Z", o)).toBe(false);
+    expect(isFreshNote("2026-11-24T10:10:00Z", o)).toBe(false);
+    expect(isFreshNote(undefined, o)).toBe(false);
   });
 });

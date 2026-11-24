@@ -64,7 +64,7 @@ export function MaterialOfferSection({
               <div className="flex-1 min-w-0">
                 <MaterialOfferItem
                   offer={offer}
-                  pasteToNote={pasteToNote[offer.id] ?? Boolean(offer.noteTitle)}
+                  pasteToNote={pasteToNote[offer.id] ?? Boolean(offer.pasteDefault)}
                   onPasteToNoteChange={(v) => onPasteToNoteChange(offer.id, v)}
                   disabled={running}
                 />

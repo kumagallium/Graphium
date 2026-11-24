@@ -29,6 +29,8 @@ describe("imageDimensions / safeForPreview", () => {
     expect(safeForPreview(png(640, 480))).toBe(true);
     expect(safeForPreview(png(60000, 60000))).toBe(false);
     expect(safeForPreview(png(16000, 16000))).toBe(false);
+    expect(safeForPreview(png(4032, 3024))).toBe(true);
+    expect(safeForPreview(png(8000, 6000))).toBe(false);
     expect(safeForPreview(new Uint8Array([1, 2, 3]))).toBe(false);
   });
 });

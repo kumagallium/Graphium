@@ -41,8 +41,8 @@ type OfferStore = Required<Pick<StorageProvider, "readAppData" | "listAppDataKey
 export type MaterialOfferDeps = {
   /** 素材を登録する（同じ中身があればそれを返す） */
   uploadAsset: (file: File) => Promise<{ fileId: string; entry: MediaIndexEntry; duplicate: boolean }>;
-  /** ノートの題（ゴミ箱・見つからないなら undefined — 貼る選択肢を出さない） */
-  noteTitle: (noteId: string) => string | undefined;
+  /** ノートの題と作成日時（ゴミ箱・見つからないなら undefined — 貼る選択肢を出さない） */
+  noteInfo: (noteId: string) => { title: string; createdAt: string } | undefined;
   /** ノートの末尾に素材を貼る */
   pasteToNote: (noteId: string, entry: MediaIndexEntry) => Promise<void>;
 };
@@ -73,6 +73,14 @@ async function removeOffer(store: OfferStore, id: string): Promise<void> {
   await store.deleteAppData(offerBytesKey(id));
 }
 
+/** 作ったばかりのノートか（申し出の 1 時間前から、5 分後まで） */
+export function isFreshNote(createdAt: string | undefined, offeredAt: string): boolean {
+  const c = Date.parse(createdAt ?? "");
+  const o = Date.parse(offeredAt);
+  if (!Number.isFinite(c) || !Number.isFinite(o)) return false;
+  return c >= o - 60 * 60 * 1000 && c <= o + 5 * 60 * 1000;
+}
+
 export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: MaterialOfferDeps }) {
   const [metas, setMetas] = useState<OfferMeta[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -87,6 +95,8 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
   const cacheRef = useRef(new Map<string, OfferMeta>());
   /** 処理中・処理済みの id（消すまでの間に見張りが拾い直して出し直さないように） */
   const settledRef = useRef(new Set<string>());
+  /** 縮小図を作らないと決めた申し出（読み直さない） */
+  const noPreviewRef = useRef(new Set<string>());
   const previewsRef = useRef(previews);
   previewsRef.current = previews;
 
@@ -121,7 +131,13 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
     );
     // 画像の縮小図は 1 度だけ作る
     for (const m of next) {
-      if (previewsRef.current[m.id] || !PREVIEW_MIME.has(m.mimeType) || m.size > PREVIEW_MAX_BYTES) continue;
+      if (previewsRef.current[m.id] || noPreviewRef.current.has(m.id)) continue;
+      if (!PREVIEW_MIME.has(m.mimeType) || m.size > PREVIEW_MAX_BYTES) {
+        noPreviewRef.current.add(m.id);
+        continue;
+      }
+      // 結果によらず 1 度だけ試す（作れない画像を見張りのたびに読み直さない）
+      noPreviewRef.current.add(m.id);
       try {
         const bytes = await readOfferBytes(store, m.id);
         // 寸法が巨大な画像はデコードで画面のプロセスを使い切るので、縮小図にしない
@@ -218,7 +234,7 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
   );
 
   const pasteFor = useCallback(
-    (offer: MaterialOffer) => pasteToNote[offer.id] ?? Boolean(offer.noteTitle),
+    (offer: MaterialOffer) => pasteToNote[offer.id] ?? Boolean(offer.pasteDefault),
     [pasteToNote],
   );
 
@@ -262,7 +278,8 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
   );
 
   const offers: MaterialOffer[] = metas.map((m) => {
-    const noteTitle = m.noteId ? deps.noteTitle(m.noteId) : undefined;
+    const note = m.noteId ? deps.noteInfo(m.noteId) : undefined;
+    const noteTitle = note?.title;
     return {
       id: m.id,
       name: m.name,
@@ -271,7 +288,7 @@ export function useMaterialOffers({ enabled, deps }: { enabled: boolean; deps: M
       sourcePath: m.sourcePath,
       client: m.client,
       offeredAt: m.offeredAt,
-      ...(m.noteId && noteTitle ? { noteId: m.noteId, noteTitle } : {}),
+      ...(m.noteId && noteTitle ? { noteId: m.noteId, noteTitle, pasteDefault: isFreshNote(note?.createdAt, m.offeredAt) } : {}),
       ...(previews[m.id] ? { previewUrl: previews[m.id] } : {}),
     };
   });

@@ -5758,7 +5758,7 @@ premise of its safety is **a person approves every file**: an assistant steered
 by injected text can name a file the person never attached. The MCP only copies
 it into the vault's `appdata/` (not listed as a material, not shared, not sent
 to an AI), and the app shows the name, size, the full, unshortened source path
-and — for PNG / JPEG / GIF whose header dimensions are within 40 Mpx — a
+and — for PNG / JPEG / GIF whose header dimensions are within 12.6 Mpx — a
 thumbnail before the person brings it in. There is no setting to skip the
 approval, and "bring in all" exists only where every pending offer is listed,
 taking exactly the offers that were on screen. Before adding, the app re-checks
