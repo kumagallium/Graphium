@@ -37,9 +37,13 @@ import { createFsMaintenanceStorage } from "./fs-storage";
 import {
   acquireWriteLock,
   appRunningMessage,
+  detectLiveApp,
   detectRunningApp,
+  readOpenPages,
+  writeLiveNotice,
   type WriteLock,
 } from "./guard";
+import { isSafePageId, type McpLiveNotice } from "../../features/mcp-live/format";
 import { createMcpMaintenanceHost } from "./host";
 import { getFlags, readIndexStrict, setFlag } from "./index-store";
 import { describeActorJa, describeOperationJa, describeRefusalJa, describeStateJa } from "./messages";
@@ -83,11 +87,41 @@ export function isNewFormat(doc: GraphiumDocument): boolean {
   return typeof doc.wikiMeta?.topicMarkdown === "string";
 }
 
+export type LiveContext = {
+  /** そのページを Graphium が開いているか。毎回読み直し、読めなければ開いている側に倒す */
+  isOpen(wikiId: string): Promise<boolean>;
+  /** アプリがナレッジを書き換える処理中か。毎回読み直し、読めなければ true */
+  isBusy(): Promise<boolean>;
+  /** 書いたページをアプリに知らせる（失敗は握る） */
+  notify(pages: McpLiveNotice["pages"], memoBacklinks?: McpLiveNotice["memoBacklinks"]): Promise<void>;
+  clientName?: string;
+};
+
+export type WriteGuardOptions = {
+  /** Graphium が起動中（知らせを受け取れる版）でも進む */
+  allowLive?: boolean;
+  /** 知らせに載せる MCP クライアント名 */
+  clientName?: string;
+};
+
+export function pageOpenMessage(title: string): string {
+  return `PAGE_OPEN: 「${title}」は Graphium で開いているため、書き換えませんでした。Graphium でそのページを閉じてから、もう一度お試しください。`;
+}
+
 /**
  * 書き換え系の共通の前置き: vault → 索引 → 起動中か → ロック。
+ * 起動中は allowLive かつ知らせを受け取れる版のときだけ進む（live を fn に渡す）。
  * fn の成否にかかわらず最後にロックを解放する
  */
-export async function withWriteGuard(root: string, fn: (lock: WriteLock) => Promise<string>): Promise<string> {
+export function appBusyMessage(): string {
+  return "APP_BUSY: Graphium の中でナレッジを書き換える処理が動いているため、既存のページは書き換えませんでした。終わってからもう一度お試しください。";
+}
+
+export async function withWriteGuard(
+  root: string,
+  fn: (lock: WriteLock, live: LiveContext | null) => Promise<string>,
+  opts: WriteGuardOptions = {},
+): Promise<string> {
   if (!vaultExists(root)) return vaultMissingMessage(root);
   const idx = readIndexStrict(root);
   if (!idx.ok) {
@@ -95,19 +129,47 @@ export async function withWriteGuard(root: string, fn: (lock: WriteLock) => Prom
       ? "NO_INDEX: Graphium を一度起動してください（note-index.json がありません）。"
       : "INDEX_UNREADABLE: note-index.json を読めません。Graphium を一度起動して索引を作り直してください。";
   }
-  const running = await detectRunningApp(root);
-  if (running.running) return appRunningMessage(running);
+  const state = await detectLiveApp(root);
+  let live: LiveContext | null = null;
+  if (state.mode === "blocked") return appRunningMessage(state.running);
+  if (state.mode === "live") {
+    if (!opts.allowLive) return appRunningMessage(state.running);
+    live = {
+      isOpen: async (wikiId) => {
+        // 知らせに載せられない id は、開いている扱い（書き換えない）
+        if (!isSafePageId(wikiId)) return true;
+        const o = await readOpenPages(root);
+        return o === null ? true : o.wikiIds.has(wikiId);
+      },
+      isBusy: async () => {
+        const o = await readOpenPages(root);
+        return o === null ? true : o.busy;
+      },
+      notify: (pages, memoBacklinks) => {
+        // 安全でない id が 1 つでもあるとアプリが知らせ全体を捨てるので、載せない（残りは書く）
+        const safe = pages.filter((pg) => isSafePageId(pg.wikiId));
+        const mb = memoBacklinks
+          ? { ...memoBacklinks, pages: memoBacklinks.pages.filter((pg) => isSafePageId(pg.wikiId)) }
+          : undefined;
+        const mbOk = mb && isSafePageId(mb.captureId) && mb.pages.length > 0 ? mb : undefined;
+        if (safe.length === 0 && !mbOk) return Promise.resolve();
+        return writeLiveNotice(root, { client: opts.clientName, pages: safe, ...(mbOk ? { memoBacklinks: mbOk } : {}) });
+      },
+      clientName: opts.clientName,
+    };
+  }
   const lock = await acquireWriteLock(root);
   if (!lock.ok) return lock.message;
   try {
-    return await fn(lock);
+    return await fn(lock, live);
   } finally {
     await lock.release().catch(() => undefined);
   }
 }
 
 /** 書く直前の再判定。起動していたら「途中で止めました」の文を返す */
-export async function stoppedIfRunning(root: string): Promise<string | null> {
+export async function stoppedIfRunning(root: string, live?: LiveContext | null): Promise<string | null> {
+  if (live) return null; // 起動中が前提（知らせで反映する）なので止めない
   const r = await detectRunningApp(root);
   return r.running ? STOPPED_MIDWAY : null;
 }

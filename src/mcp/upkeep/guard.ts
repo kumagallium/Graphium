@@ -6,6 +6,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  MCP_LIVE_FORMAT_VERSION,
+  MCP_LIVE_MAX_FUTURE_MS,
+  makeNoticeKey,
+  OPEN_PAGES_KEY,
+  parseOpenPages,
+  type McpLiveNotice,
+} from "../../features/mcp-live/format";
 
 /** pid が無い（web 版）ハートビートを「起動中」とみなす鮮度（秒） */
 export const WEB_FRESH_SEC = 90;
@@ -116,6 +124,53 @@ export async function detectRunningApp(root: string, deps: GuardDeps = {}): Prom
   if (ageSec === undefined) return { running: false, reason: "exited", ...base };
   if (ageSec <= WEB_FRESH_SEC) return { running: true, reason: "fresh", ...base };
   return { running: false, reason: "stale", ...base };
+}
+
+export type LiveAppState =
+  | { mode: "stopped" }
+  | { mode: "live"; openWikiIds: Set<string>; running: RunningResult }
+  | { mode: "blocked"; running: RunningResult };
+
+/** 開いているページの一覧を読む。無い・壊れていれば null */
+export async function readOpenPages(root: string): Promise<{ wikiIds: Set<string>; busy: boolean } | null> {
+  const open = parseOpenPages(await readJson(appdataPath(root, `${OPEN_PAGES_KEY}.json`)));
+  return open ? { wikiIds: new Set(open.wikiIds), busy: open.busy === true } : null;
+}
+
+export async function readOpenWikiIds(root: string): Promise<Set<string> | null> {
+  return (await readOpenPages(root))?.wikiIds ?? null;
+}
+
+/**
+ * 起動中のアプリが「知らせを受け取れる版」か（app-open-pages.json が今回の起動後に書かれているか）まで見て判定する。
+ * ・stopped: 起動していない
+ * ・live: 起動中で、知らせを受け取れる（開いているページの一覧つき）
+ * ・blocked: 起動中だが受け取れない（従来どおり断る）
+ */
+export async function detectLiveApp(root: string, deps: GuardDeps = {}): Promise<LiveAppState> {
+  const running = await detectRunningApp(root, deps);
+  if (!running.running) return { mode: "stopped" };
+  const open = parseOpenPages(await readJson(appdataPath(root, `${OPEN_PAGES_KEY}.json`)));
+  const hb = await readHeartbeat(root);
+  const startedMs = typeof hb?.startedAt === "string" ? Date.parse(hb.startedAt) : Number.NaN;
+  const atMs = open ? Date.parse(open.at) : Number.NaN;
+  if (!open || Number.isNaN(startedMs) || Number.isNaN(atMs) || atMs < startedMs || atMs - (deps.now ?? Date.now)() > MCP_LIVE_MAX_FUTURE_MS) return { mode: "blocked", running };
+  return { mode: "live", openWikiIds: new Set(open.wikiIds), running };
+}
+
+/** アプリへの知らせを appdata に書く。失敗は握る（保存そのものは成功しているため） */
+export async function writeLiveNotice(
+  root: string,
+  notice: Omit<McpLiveNotice, "formatVersion" | "at">,
+): Promise<void> {
+  try {
+    const now = new Date();
+    const body: McpLiveNotice = { formatVersion: MCP_LIVE_FORMAT_VERSION, at: now.toISOString(), ...notice };
+    await mkdir(join(root, "appdata"), { recursive: true });
+    await writeJsonAtomic(appdataPath(root, `${makeNoticeKey(now, randomUUID())}.json`), body);
+  } catch (e) {
+    console.error(`[mcp-live] 知らせの書き込みに失敗: ${(e as Error).message}`);
+  }
 }
 
 /** 断る文。先頭の `APP_RUNNING:` で e2e が判定する */
