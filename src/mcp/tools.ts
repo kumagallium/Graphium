@@ -14,10 +14,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { buildIndexEntry } from "../features/navigation/index-file";
 import { markAsterismSent, SentLedgerCorruptError } from "./asterism-sent";
-import { NOTE_PREVIEW_TOOL_META, PREVIEW_META_KEY } from "./app-tools";
+import { NOTE_PREVIEW_TOOL_META, notePreviewResult } from "./app-tools";
 import { createNote } from "./create-note";
 import { exportAsterismKnowledge } from "./export-knowledge";
-import { buildNotePreview } from "./note-preview";
 import { ENTITY_LABELS, findNotesUsing, listEntities } from "./entities";
 import { noteLinkKind } from "../lib/note-link-kind";
 import { SOURCE_DATE_KINDS, normalizeSourceDateKind, normalizeStoredSourceDate } from "../lib/source-date";
@@ -46,13 +45,6 @@ function text(body: string) {
   return { content: [{ type: "text" as const, text: body }] };
 }
 
-/**
- * 文字の結果に、画面（MCP Apps）向けのプレビューを _meta で添える。
- * structuredContent には入れない（画面を描かないクライアントがモデルへ渡してしまう）
- */
-function withPreview<T extends object>(result: T, preview: unknown) {
-  return { ...result, _meta: { [PREVIEW_META_KEY]: preview } };
-}
 
 /** vault が無いときの共通エラー。設定の直し方まで書く */
 function vaultMissing() {
@@ -737,12 +729,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
         // 「保存して」の直後に「探して」が来ても引けるよう、索引にも即座に足す
         addCreatedNoteToIndex(result.noteId, result.doc);
         ctx.activity?.push("wrote", result.noteId);
-        const preview = buildNotePreview({
-          noteId: result.noteId,
-          doc: result.doc as any,
-          modifiedAt: (result.doc as { modifiedAt?: string }).modifiedAt,
-        });
-        return withPreview(text(
+        // プレビューの中身は画面が note_preview で取りに行く（結果には参照だけ）
+        return notePreviewResult(
           [
             `ノートを作成しました。`,
             `  タイトル: ${result.title}`,
@@ -755,7 +743,8 @@ export function registerTools(server: McpServer, ctx: ToolContext = {}): void {
             "",
             `Graphium を再読み込みすると一覧に表示されます。`,
           ].join("\n"),
-        ), preview);
+          result.noteId,
+        );
       } catch (err) {
         return text(`ノートの作成に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }

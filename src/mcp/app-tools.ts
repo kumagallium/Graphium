@@ -66,6 +66,22 @@ export const PREVIEW_META_KEY = "graphium/preview";
 /** 結果の _meta に画像を載せるキー（画面だけが読む。モデルの文脈には入らない） */
 export const PREVIEW_IMAGES_META_KEY = "graphium/previewImages";
 
+/** 結果の structuredContent に、どのノートを見せるかの参照を載せるキー（画面はこれを note_preview に渡す） */
+export const NOTE_REF_KEY = "graphiumNote";
+
+/**
+ * ノートのプレビューを見せる道具の結果。中身（プレビューと画像）は結果に載せず、画面が画面専用の道具
+ * note_preview で取りに行く。Claude Desktop では、結果の _meta が画面に届かず「プレビューを表示できません
+ * でした」になった（2026-11-21。全体グラフの #1785 と同じ）。structuredContent は画面を描かないクライアント
+ * （Claude Code）ではモデルに渡るので、参照と要約の文だけにして小さく保つ
+ */
+export function notePreviewResult(summary: string, noteId: string): CallToolResult {
+  return {
+    content: [{ type: "text", text: summary }],
+    structuredContent: { summary, [NOTE_REF_KEY]: { noteId } },
+  };
+}
+
 /** 画面に埋め込む画像の上限。会話の中の画面なので、大きな原寸画像は名前だけにする */
 const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const IMAGES_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
@@ -181,16 +197,32 @@ export function registerAppTools(server: McpServer, ctx: ToolContext = {}): void
       const preview = notePreviewFor(noteId);
       if (!preview) return text(`ノートが見つかりません: ${noteId}`);
       void ctx.usage?.recordRead(noteId);
+      return notePreviewResult(
+        `ノート「${preview.title}」を画面に表示しました（noteId: ${noteId}、${preview.blocks.length} ブロック）。` +
+          "本文の中身が必要なら get_note で読んでください。",
+        noteId,
+      );
+    },
+  );
+
+  // 画面だけが呼ぶ道具（モデルには見せない）。ノートのプレビューと画像を、参照（noteId）から組み直して返す
+  registerAppTool(
+    server,
+    "note_preview",
+    {
+      title: "ノートのプレビューを受け取る",
+      description: "ノートのプレビューの画面が、show_note / create_note / submit_procedure の結果に載った参照から、描くデータを受け取る。画面専用。",
+      inputSchema: { noteId: z.string().describe("ノート ID") },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: NOTE_PREVIEW_URI, visibility: ["app"] } },
+    },
+    async ({ noteId }) => {
+      if (!vaultExists()) return { ...text("Graphium の vault が見つかりません。"), isError: true };
+      const preview = notePreviewFor(noteId);
+      if (!preview) return { ...text(`ノートが見つかりません: ${noteId}`), isError: true };
       return {
-        content: [
-          {
-            type: "text",
-            text:
-              `ノート「${preview.title}」を画面に表示しました（noteId: ${noteId}、${preview.blocks.length} ブロック）。` +
-              "本文の中身が必要なら get_note で読んでください。",
-          },
-        ],
-        _meta: { [PREVIEW_META_KEY]: preview, [PREVIEW_IMAGES_META_KEY]: resolvePreviewImages(preview) },
+        content: [{ type: "text", text: `${preview.blocks.length} blocks` }],
+        structuredContent: { preview, images: resolvePreviewImages(preview) },
       };
     },
   );

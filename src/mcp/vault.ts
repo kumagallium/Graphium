@@ -150,7 +150,16 @@ export function scanUnlistedDocuments(
   const seen = new Set<string>();
   for (const dir of [notesDir(root), wikiDir(root)]) {
     if (!existsSync(dir)) continue;
-    for (const file of readdirSync(dir)) {
+    // Claude Desktop が起動した MCP プロセスでは、~/Documents の中でフォルダの一覧（scandir）だけが
+    // macOS の権限で拒否されることがある（EPERM。名指しの読み書きは通る。2026-11-16〜21 に発生）。
+    // 一覧が取れないときは、索引に載っているものだけで答える（検索・list_folders をまとめて落とさない）
+    let files: string[];
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const file of files) {
       if (!file.endsWith(".json")) continue;
       const noteId = file.slice(0, -".json".length);
       // 同じ id が notes/ と wiki/ の両方にあれば、readNote と同じく notes/ を採る
