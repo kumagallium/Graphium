@@ -8,6 +8,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin, PictureInPicture2 } from "lucide-react";
 import { openViewerWindow } from "../../lib/viewer-window";
+import {
+  hasStructuredHtml,
+  pasteMultilineIntoEmptyListItem,
+} from "../block-lifecycle/multiline-list-paste";
 import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
@@ -1075,8 +1079,12 @@ function SidePeekInner({
           const cleaned = plain.replace(/\r?\n+$/g, "");
           const token = cleaned.trim();
           if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
+          // 複数行で HTML にリストなどの構造があれば BlockNote の貼り付けに任せる
+          if (hasStructuredHtml(plain, e.clipboardData.getData("text/html"))) return;
           e.preventDefault();
           e.stopImmediatePropagation();
+          // 複数行（別のページの箇条書きなど）は Markdown として読み、ブロックに分けて入れる
+          if (pasteMultilineIntoEmptyListItem(editor, cursorBlock, plain)) return;
           editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
           maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
           return;
