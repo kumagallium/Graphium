@@ -2897,12 +2897,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                     ? { label: t("settings.aiStatus.copilotExpiredAction"), onClick: () => setReloginOpen(true), disabled: reloginOpen }
                     : chatgptExpiredShown
                     ? { label: t("settings.aiStatus.chatgptExpiredAction"), onClick: () => setChatgptReloginOpen(true), disabled: chatgptReloginOpen }
-                    : models.length > 0
-                    ? undefined
-                    : {
-                        label: t("settings.aiStatus.setupAction"),
-                        onClick: () => { setShowAddForm(true); setAddMode("new"); },
-                      }
+                    : // 未登録のときはボタンを出さない。すぐ下の「いま使っている AI はありますか？」が入口（入口を 1 つにする）
+                      undefined
                 }
               />
             )}
@@ -2959,7 +2955,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                 ) : (
                   <h3 className={SETTINGS_BLOCK_TITLE_TEXT_CLASS}>{t("settings.models.title")}</h3>
                 )}
-                {!showAddForm && (
+                {/* 未登録のあいだは、すぐ下に 1 問が出ているので「モデルを追加」は出さない（入口を 1 つにする） */}
+                {!showAddForm && models.length > 0 && (
                   <div className="flex items-center gap-2">
                     {/* 研究室で 1 人がつないだ接続を、ファイルにしてほかの人へ渡す */}
                     {exportGroups.length > 0 && !exportOpen && (
