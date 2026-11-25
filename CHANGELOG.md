@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.167.0](https://github.com/kumagallium/Graphium/compare/v0.166.0...v0.167.0) - 2026-11-25
+
+- feat: rename URL materials everywhere, from note peeks, and chats by @kumagallium in https://github.com/kumagallium/Graphium/pull/1863
+
 ## [v0.166.0](https://github.com/kumagallium/Graphium/compare/v0.165.0...v0.166.0) - 2026-11-25
 
 - [feat] Share an AI connection as a file (.graphium-ai.json) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1857
