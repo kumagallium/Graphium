@@ -132,9 +132,6 @@ importers:
       cytoscape:
         specifier: ^3.33.1
         version: 3.33.1
-      cytoscape-edgehandles:
-        specifier: ^4.0.1
-        version: 4.0.1(cytoscape@3.33.1)
       cytoscape-fcose:
         specifier: ^2.2.0
         version: 2.2.0(cytoscape@3.33.1)
@@ -271,9 +268,6 @@ importers:
       '@types/cytoscape':
         specifier: ^3.31.0
         version: 3.31.0
-      '@types/cytoscape-edgehandles':
-        specifier: ^4.0.5
-        version: 4.0.5
       '@types/katex':
         specifier: ^0.16.8
         version: 0.16.8
@@ -3016,9 +3010,6 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
-  '@types/cytoscape-edgehandles@4.0.5':
-    resolution: {integrity: sha512-CHgYD/NV90bx+0/w0QjLsi9JYYSh9RlvoklEe2T/5/+zXv1rsXbvQMM4PX5AxqZ9FatQOa/h3zSnAquPfLAuyg==}
-
   '@types/cytoscape@3.31.0':
     resolution: {integrity: sha512-EXHOHxqQjGxLDEh5cP4te6J0bi7LbCzmZkzsR6f703igUac8UGMdEohMyU3GHAayCTZrLQOMnaE/lqB2Ekh8Ww==}
     deprecated: This is a stub types definition. cytoscape provides its own type definitions, so you do not need this installed.
@@ -3760,11 +3751,6 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
-
-  cytoscape-edgehandles@4.0.1:
-    resolution: {integrity: sha512-uSYshkqRZ4luCxK295bEVTg46q4ZW+fwJhcIzMrtfNR7zeAnJ38Z48kUGeu5ibtXkgLbcZAg0YE4ED2dRuaePg==}
-    peerDependencies:
-      cytoscape: ^3.2.0
 
   cytoscape-fcose@2.2.0:
     resolution: {integrity: sha512-ki1/VuRIHFCzxWNrsshHYPs6L7TvLu3DL+TyIGEsRcvVERmxokbf5Gdk7mFxZnTdiGtnA4cfSmjZJMviqSuZrQ==}
@@ -4864,12 +4850,6 @@ packages:
 
   lodash.debounce@4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
-
-  lodash.memoize@4.1.2:
-    resolution: {integrity: sha512-t7j+NzmgnQzTAYXcsHYLgimltOV1MXHtlOWf6GjL9Kj8GK5FInw5JotxvbOs+IvV1/Dzo04/fCGfLVs7aXb4Ag==}
-
-  lodash.throttle@4.1.1:
-    resolution: {integrity: sha512-wIkUCfVKpVsWo3JSZlc+8MB5it+2AN5W8J7YVMST30UrvcQNZ1Okbj+rbVniijTWE6FGYy4XJq/rHkas8qJMLQ==}
 
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
@@ -9318,10 +9298,6 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
-  '@types/cytoscape-edgehandles@4.0.5':
-    dependencies:
-      cytoscape: 3.33.1
-
   '@types/cytoscape@3.31.0':
     dependencies:
       cytoscape: 3.33.1
@@ -10093,12 +10069,6 @@ snapshots:
   cssom@0.5.0: {}
 
   csstype@3.2.3: {}
-
-  cytoscape-edgehandles@4.0.1(cytoscape@3.33.1):
-    dependencies:
-      cytoscape: 3.33.1
-      lodash.memoize: 4.1.2
-      lodash.throttle: 4.1.1
 
   cytoscape-fcose@2.2.0(cytoscape@3.33.1):
     dependencies:
@@ -11307,10 +11277,6 @@ snapshots:
       uhyphen: 0.2.0
 
   lodash.debounce@4.0.8: {}
-
-  lodash.memoize@4.1.2: {}
-
-  lodash.throttle@4.1.1: {}
 
   lodash@4.18.1: {}
 
