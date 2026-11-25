@@ -1556,6 +1556,8 @@ export const ko: Record<string, string> = {
   "standaloneChat.stop": "중지",
   "standaloneChat.removeAttachment": "{title} 빼기",
   "standaloneChat.deleteConfirm": "이 채팅을 삭제하시겠습니까?",
+  "standaloneChat.rename": "이름 바꾸기",
+  "standaloneChat.renameLabel": "채팅 이름",
   // Chat list (child nav): date groups and toggle
   "standaloneChat.navLabel": "채팅 목록",
   "standaloneChat.groupToday": "오늘",

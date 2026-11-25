@@ -89,6 +89,26 @@ export async function saveStandaloneChat(
   await writeIndex(provider, next);
 }
 
+/**
+ * 会話の題を変える。空白だけの題は受け付けない（null を返す）。
+ * 保存済みの全文を読み直して題だけ差し替えるので、開いていない会話にも使える。
+ * 変えた後の会話を返す（見つからなければ null）。
+ */
+export async function renameStandaloneChat(
+  provider: StorageProvider,
+  id: string,
+  title: string,
+): Promise<StandaloneChat | null> {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const chat = await loadStandaloneChat(provider, id);
+  if (!chat) return null;
+  // 題を変えただけで一覧の並び（modifiedAt 降順）が動かないよう、modifiedAt は据え置く
+  const renamed: StandaloneChat = { ...chat, title: trimmed };
+  await saveStandaloneChat(provider, renamed);
+  return renamed;
+}
+
 /** 会話を削除する（本体を null で論理削除し、索引から行を落とす） */
 export async function deleteStandaloneChat(provider: StorageProvider, id: string): Promise<void> {
   if (!provider.writeAppData) return;

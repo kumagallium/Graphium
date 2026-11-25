@@ -28,6 +28,7 @@ export {
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   findBlockIdsByMediaUrl,
+  mediaBlockNameProp,
   updateBlockNameByUrl,
   mimeToMediaType,
   ensureMediaIndex,

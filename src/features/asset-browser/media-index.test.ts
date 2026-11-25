@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   findBlockIdsByMediaUrl,
   updateBlockNameByUrl,
+  mediaBlockNameProp,
   collectPdfFileIdsFromDoc,
   collectSourceAssetFileIdsFromDoc,
   collectDataTableAssetFileIdsFromBlocks,
@@ -156,6 +157,27 @@ describe("updateBlockNameByUrl", () => {
     expect(changed).toBe(true);
     expect(blocks[0].props.name).toBe("renamed");
     expect(blocks[1].props.name).toBe("renamed");
+  });
+
+  it("URL ブックマークのカードは props.title を書き換える（name は足さない）", () => {
+    const pageUrl = "https://example.com/article";
+    const blocks: any[] = [
+      { id: "b1", type: "bookmark", props: { url: pageUrl, title: "OGP の題", description: "", domain: "example.com" } },
+    ];
+    const changed = updateBlockNameByUrl(blocks, pageUrl, "自分で付けた名前");
+    expect(changed).toBe(true);
+    expect(blocks[0].props.title).toBe("自分で付けた名前");
+    expect(blocks[0].props).not.toHaveProperty("name");
+    expect(findBlockIdsByMediaUrl(blocks, pageUrl)).toEqual(["b1"]);
+  });
+});
+
+describe("mediaBlockNameProp", () => {
+  it("素材の名前を映すブロックの prop 名を返す", () => {
+    expect(mediaBlockNameProp("pdf")).toBe("name");
+    expect(mediaBlockNameProp("bookmark")).toBe("title");
+    expect(mediaBlockNameProp("paragraph")).toBeUndefined();
+    expect(mediaBlockNameProp("toString")).toBeUndefined();
   });
 });
 

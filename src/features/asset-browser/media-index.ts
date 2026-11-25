@@ -2286,12 +2286,32 @@ export function generateUrlBookmarkId(): string {
   return `url_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * 素材の名前を映すブロックの、名前を持つ prop。
+ * 画像・PDF などは props.name、URL ブックマークのカードは props.title に名前を出す。
+ * 素材の名前を変えたら、ここに挙げたブロックの該当 prop も揃える。
+ */
+const MEDIA_BLOCK_NAME_PROP: Record<string, "name" | "title"> = {
+  image: "name",
+  video: "name",
+  audio: "name",
+  file: "name",
+  pdf: "name",
+  bookmark: "title",
+};
+
+/** ブロックが素材の名前を映すなら、その prop 名を返す（映さないなら undefined） */
+export function mediaBlockNameProp(blockType: string): "name" | "title" | undefined {
+  return Object.prototype.hasOwnProperty.call(MEDIA_BLOCK_NAME_PROP, blockType)
+    ? MEDIA_BLOCK_NAME_PROP[blockType]
+    : undefined;
+}
+
 /** 指定 URL を参照しているメディアブロックの ID リストを返す */
 export function findBlockIdsByMediaUrl(blocks: any[], targetUrl: string): string[] {
   const ids: string[] = [];
-  const MEDIA_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
   for (const block of blocks) {
-    if (MEDIA_TYPES.has(block.type) && block.props?.url === targetUrl) {
+    if (mediaBlockNameProp(block.type) && block.props?.url === targetUrl) {
       ids.push(block.id);
     }
     if (block.children?.length) {
@@ -2301,13 +2321,16 @@ export function findBlockIdsByMediaUrl(blocks: any[], targetUrl: string): string
   return ids;
 }
 
-/** 指定 URL を参照しているメディアブロックの props.name を一括更新する（破壊的） */
+/**
+ * 指定 URL を参照しているメディアブロックの名前を一括更新する（破壊的）。
+ * 画像・PDF などは props.name、URL ブックマークは props.title を書き換える。
+ */
 export function updateBlockNameByUrl(blocks: any[], targetUrl: string, newName: string): boolean {
   let changed = false;
-  const MEDIA_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
   for (const block of blocks) {
-    if (MEDIA_TYPES.has(block.type) && block.props?.url === targetUrl) {
-      block.props.name = newName;
+    const prop = mediaBlockNameProp(block.type);
+    if (prop && block.props?.url === targetUrl) {
+      block.props[prop] = newName;
       changed = true;
     }
     if (block.children?.length) {

@@ -38,6 +38,7 @@ const meta: Meta<typeof StandaloneChatNav> = {
     onSelect: (id) => console.info("[story] onSelect", id),
     onNew: () => console.info("[story] onNew"),
     onDelete: (id) => console.info("[story] onDelete", id),
+    onRename: (id, title) => console.info("[story] onRename", id, title),
   },
 };
 export default meta;

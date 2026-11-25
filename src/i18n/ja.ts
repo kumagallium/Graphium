@@ -1585,6 +1585,8 @@ export const ja: Record<string, string> = {
   "standaloneChat.stop": "停止",
   "standaloneChat.removeAttachment": "{title} を外す",
   "standaloneChat.deleteConfirm": "この会話を削除しますか？",
+  "standaloneChat.rename": "名前を変更",
+  "standaloneChat.renameLabel": "会話の名前",
   // 子ナビ（チャット一覧）の日付のまとまりと開閉
   "standaloneChat.navLabel": "チャット一覧",
   "standaloneChat.groupToday": "今日",

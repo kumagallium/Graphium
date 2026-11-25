@@ -43,6 +43,13 @@ Under **Documents**, PDF, Word and PowerPoint files show how many pages they hav
 
 PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted a few at a time in the background after the app starts, and the counts appear in the list in small batches. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
 
+### Renaming a material {#renaming-materials}
+
+Open a material and click its name at the top to rename it in place (Enter to confirm, Esc to cancel). This works the same in the side peek you open from a card or link inside a note, and for every kind of material — PDFs, images, URL bookmarks and so on.
+
+- Renaming also updates how the material appears in the notes that use it. For a URL bookmark, the card's title changes; the URL itself stays the same.
+- A URL that is not in your materials yet (one you opened from a link in a note) cannot be renamed. Click **Add to materials** first.
+
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 
 A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word and PowerPoint files.
