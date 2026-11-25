@@ -63,7 +63,7 @@ export type TemplateDef = {
 
 // ── 計画テンプレート ─────────────────────────────────────────
 //
-// # （計画タイトル）
+// （題はノートの題に書く。本文には題の見出しを置かない）
 // ## 背景・目的         (paragraph)
 // ## 対象と条件         (index table: 対象 / 種類 / 条件1 / 条件2 — 先頭列に note-link)
 // ## 期待する成果        (paragraph)
@@ -80,37 +80,31 @@ const planTemplate: TemplateDef = {
   // 計画ノートとして始める（表の行を工程として扱う）。置き場（フォルダ）は付けない —
   // 計画かどうかはノートの種類で決まる（note-context/reserved-folders.ts）
   kind: "plan",
-  focusPath: [0],
+  // 「背景・目的」の本文から書き始める
+  focusPath: [1],
   build: (t) => ({
     blocks: [
-      // [0] H1 計画タイトル
-      {
-        type: "heading",
-        props: { level: 1 },
-        content: [{ type: "text", text: t("template.plan.h1Placeholder"), styles: {} }],
-        children: [],
-      },
-      // [1] H2 背景・目的
+      // [0] H2 背景・目的
       {
         type: "heading",
         props: { level: 2 },
         content: [{ type: "text", text: t("template.plan.backgroundHeading"), styles: {} }],
         children: [],
       },
-      // [2] paragraph 動機
+      // [1] paragraph 動機
       {
         type: "paragraph",
         content: [{ type: "text", text: "", styles: {} }],
         children: [],
       },
-      // [3] H2 試料と条件
+      // [2] H2 試料と条件
       {
         type: "heading",
         props: { level: 2 },
         content: [{ type: "text", text: t("template.plan.samplesHeading"), styles: {} }],
         children: [],
       },
-      // [4] インデックステーブル: 対象（=ノート名） / 種類 / 条件1 / 条件2
+      // [3] インデックステーブル: 対象（=ノート名） / 種類 / 条件1 / 条件2
       // ※ 1列目のテキストがノート名になり、行頭ボタンで @ リンクに変換される
       //   （インデックステーブル化は下の columnTypes で行う）
       {
@@ -145,14 +139,14 @@ const planTemplate: TemplateDef = {
           ],
         },
       },
-      // [5] H2 予想される結果
+      // [4] H2 予想される結果
       {
         type: "heading",
         props: { level: 2 },
         content: [{ type: "text", text: t("template.plan.hypothesisHeading"), styles: {} }],
         children: [],
       },
-      // [6] paragraph 仮説
+      // [5] paragraph 仮説
       {
         type: "paragraph",
         content: [{ type: "text", text: "", styles: {} }],
@@ -160,14 +154,14 @@ const planTemplate: TemplateDef = {
       },
     ],
     labels: [],
-    // [4] の表をインデックステーブルにする（先頭列「対象」に note-link）
-    columnTypes: [{ path: [4], type: "note-link" }],
+    // [3] の表をインデックステーブルにする（先頭列「対象」に note-link）
+    columnTypes: [{ path: [3], type: "note-link" }],
   }),
 };
 
 // ── 実験テンプレート ─────────────────────────────────────────
 //
-// # （試料名: S-01 など）
+// （題はノートの題に書く。本文には題の見出しを置かない）
 // ## Overview                   (paragraph)
 // ## [[label:procedure]] 手順1   (Activity)
 //   ### 計画                    (no role)
@@ -200,7 +194,8 @@ const experimentTemplate: TemplateDef = {
   titleKey: "template.experiment.title",
   descKey: "template.experiment.desc",
   tagKeys: ["template.tag.run", "template.tag.prov"],
-  focusPath: [0],
+  // Overview の本文から書き始める
+  focusPath: [1],
   build: (t) => {
     // 1 段落の中に複数の inline-highlighted span を並べる散文 placeholder を作る。
     // segments: ["前置きテキスト", { role, text }, "次の接続詞", { role, text }, ...]
@@ -269,31 +264,23 @@ const experimentTemplate: TemplateDef = {
     ];
 
     // フラット展開: 各ステップは 5 ブロック
-    // [0] H1 試料名
-    // [1] H2 Overview
-    // [2] paragraph (overview body)
-    // [3..7]   step 1 (5 blocks)
-    // [8..12]  step 2 (5 blocks)
+    // [0] H2 Overview
+    // [1] paragraph (overview body)
+    // [2..6]   step 1 (5 blocks)
+    // [7..11]  step 2 (5 blocks)
     const step1 = buildStep(t("template.experiment.step1"), 1);
     const step2 = buildStep(t("template.experiment.step2"), 2);
 
     return {
       blocks: [
-        // [0] H1 タイトル（試料名プレースホルダ）
-        {
-          type: "heading",
-          props: { level: 1 },
-          content: [{ type: "text", text: t("template.experiment.h1Placeholder"), styles: {} }],
-          children: [],
-        },
-        // [1] H2 Overview
+        // [0] H2 Overview
         {
           type: "heading",
           props: { level: 2 },
           content: [{ type: "text", text: t("template.experiment.overviewHeading"), styles: {} }],
           children: [],
         },
-        // [2] paragraph overview 本文
+        // [1] paragraph overview 本文
         {
           type: "paragraph",
           content: [{ type: "text", text: t("template.experiment.overviewPlaceholder"), styles: {} }],
@@ -307,17 +294,17 @@ const experimentTemplate: TemplateDef = {
         // Phase D-2: H3 plan 配下の Entity は graphium:phase=plan メタ + ノード ID 末尾に _plan が付く。
         // 同 entityId が H3 result 配下に出ると execution Entity との wasDerivedFrom エッジが張られる
         // → 「計画値 vs 実測値」の対比が PROV グラフ上で可視化できる。
-        { path: [3], label: "procedure" },
-        { path: [4], label: "plan" },
-        { path: [6], label: "result" },
+        { path: [2], label: "procedure" },
+        { path: [3], label: "plan" },
+        { path: [5], label: "result" },
         // step 2
-        { path: [8], label: "procedure" },
-        { path: [9], label: "plan" },
-        { path: [11], label: "result" },
+        { path: [7], label: "procedure" },
+        { path: [8], label: "plan" },
+        { path: [10], label: "result" },
       ],
       provLinks: [
         // step 2 → step 1 (前手順リンク)
-        { sourcePath: [8], targetPath: [3], type: "informed_by" },
+        { sourcePath: [7], targetPath: [2], type: "informed_by" },
       ],
     };
   },
