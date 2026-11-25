@@ -2,7 +2,8 @@
 // 更新の行は、更新した日に並ぶ。記録の数と見つかった記録には入れない（同じノートを 2 回数えない）。
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { LocaleProvider, t } from "../../i18n";
+import { getLocale, LocaleProvider, t } from "../../i18n";
+import { formatDate } from "./model";
 import { RecordDashboard } from "./RecordDashboard";
 import type { RecordItem } from "./types";
 
@@ -46,7 +47,10 @@ describe("ホームの更新の行", () => {
     expect(ids).toEqual(["note-updated:n1", "note:n2"]);
     const updated = today.querySelector('[data-event="updated"]') as HTMLElement;
     expect(updated.textContent).toContain(t("records.updated"));
-    expect(updated.textContent).toContain(t("records.createdOn", { date: "11月10日" }).replace("11月10日", ""));
+    // 作った日は、作成の行の日時をこの画面の言語で書いたもの
+    const createdOn = updated.querySelector(".rd-created-on time") as HTMLElement;
+    expect(createdOn.getAttribute("datetime")).toBe("2026-11-10T09:15:00");
+    expect(createdOn.textContent).toBe(t("records.createdOn", { date: formatDate("2026-11-10", getLocale()) }));
   });
 
   it("記録の数には更新の行を入れない", () => {
@@ -66,5 +70,27 @@ describe("ホームの更新の行", () => {
     const onOpen = renderDashboard();
     fireEvent.click(document.querySelector('[data-record-id="note-updated:n1"]') as HTMLElement);
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "note-updated:n1", kind: "note" }));
+  });
+});
+
+describe("更新の行のまとめ", () => {
+  it("更新の行が続いたまとめには「更新」の札が付く", () => {
+    const many: RecordItem[] = [9, 10, 11, 12, 13, 14].map((h) => ({
+      id: `note-updated:u${h}`,
+      kind: "note",
+      at: `2026-11-17T${String(h).padStart(2, "0")}:00:00`,
+      origin: "written",
+      who: { type: "self" },
+      title: `ノート ${h}`,
+      update: { createdAt: "2026-11-01T09:00:00" },
+    }));
+    render(
+      <LocaleProvider>
+        <RecordDashboard items={many} now={NOW} layout="find" />
+      </LocaleProvider>,
+    );
+    const bundle = document.querySelector(".rd-bundle") as HTMLElement;
+    expect(bundle.getAttribute("data-event")).toBe("updated");
+    expect(bundle.querySelector(".rd-origin-update")?.textContent).toBe(t("records.updated"));
   });
 });

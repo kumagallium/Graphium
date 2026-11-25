@@ -18,7 +18,7 @@ import {
   type BodyHits,
   type RecordBundle,
 } from "./model";
-import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
+import { OriginBadge, RecordRow, UpdateBadge, WhoLabel, WhoMark } from "./RecordRow";
 import type { RecordItem, RecordWho } from "./types";
 
 /** まとめ行を開いたときに、一度に出す件数 */
@@ -68,7 +68,7 @@ function BundleRow({
     .filter(Boolean)
     .join(" · ");
   return (
-    <li className="rd-row rd-bundle" data-kind={first.kind} data-open={open ? "true" : undefined} data-dim={dim ? "true" : undefined}>
+    <li className="rd-row rd-bundle" data-kind={first.kind} data-event={first.update ? "updated" : undefined} data-open={open ? "true" : undefined} data-dim={dim ? "true" : undefined}>
       <time className="rd-time" dateTime={latest}>
         {formatTime(latest)}
         {formatTime(earliest) !== formatTime(latest) && <span className="rd-time-to">{formatTime(earliest)}</span>}
@@ -78,7 +78,8 @@ function BundleRow({
       </span>
       <div className="rd-body">
         <p className="rd-meta">
-          <OriginBadge origin={first.origin} copy={copy} />
+          {/* 更新の行のまとめは「更新」の札（作成のまとめと見分けられるように。bundleRuns は両者を混ぜない） */}
+          {first.update ? <UpdateBadge copy={copy} /> : <OriginBadge origin={first.origin} copy={copy} />}
           <WhoLabel who={whoWithoutDetail(first.who)} copy={copy} />
           <span className="rd-kind">{copy.kind[first.kind]}</span>
         </p>
