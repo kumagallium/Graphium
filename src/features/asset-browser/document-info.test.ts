@@ -10,6 +10,7 @@ import {
   titleToName,
   isSameName,
   canCountPages,
+  canExtractTitle,
   countDocumentPages,
   extractDocumentTitle,
   backfillDocumentInfo,
@@ -217,6 +218,34 @@ describe("docx", () => {
   it("該当スタイルが無ければ最初の段落を採らず undefined", async () => {
     const bytes = zip({ "word/document.xml": docXml(para(null, "ただの最初の段落です")) });
     expect(await extractDocumentTitle(bytes, docxEntry)).toBeUndefined();
+  });
+});
+
+describe("xlsx / URL のタイトル", () => {
+  const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const xlsxEntry = { type: "document" as const, mimeType: XLSX };
+
+  it("タイトルを読める素材に Excel (.xlsx) と URL を含める", () => {
+    expect(canExtractTitle(xlsxEntry)).toBe(true);
+    expect(canExtractTitle({ type: "url", mimeType: "text/x-uri" })).toBe(true);
+    // 画像・データ・旧形式の Excel は対象外
+    expect(canExtractTitle({ type: "image", mimeType: "image/png" })).toBe(false);
+    expect(canExtractTitle({ type: "data", mimeType: "text/csv" })).toBe(false);
+    expect(canExtractTitle({ type: "document", mimeType: "application/vnd.ms-excel" })).toBe(false);
+  });
+
+  it("xlsx は core.xml の dc:title を使う", async () => {
+    const bytes = zip({ "docProps/core.xml": coreXml("測定結果 2026") });
+    expect(await extractDocumentTitle(bytes, xlsxEntry)).toBe("測定結果 2026");
+  });
+
+  it("xlsx に題のプロパティが無ければ、シートの中身からは拾わず undefined", async () => {
+    const bytes = zip({ "xl/worksheets/sheet1.xml": "<worksheet/>" });
+    expect(await extractDocumentTitle(bytes, xlsxEntry)).toBeUndefined();
+  });
+
+  it("xlsx の拡張子も新しい名前に残す", () => {
+    expect(titleToName("測定結果", "Book1.xlsx")).toBe("測定結果.xlsx");
   });
 });
 
