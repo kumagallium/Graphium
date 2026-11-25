@@ -2829,6 +2829,10 @@ export const en: Record<string, string> = {
   "mobile.emptyInbox": "Nothing new",
   "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
   "mobile.scanFailed": "Could not read the inbox: {error}",
+  "mobile.panel.hint": "Drag an item into your note, or double-click it.",
+  "mobile.panel.insertOne": "Put in note",
+  "mobile.panel.select": "Select",
+  "mobile.panel.insertSelected": "Put {count} selected in note",
 
   // ── Mobile capture history (phone → cloud Inbox) ──
   // Captures land here first (persisted on this device), then upload to

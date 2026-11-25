@@ -15,6 +15,23 @@ export { FolderInbox } from "./transport";
 export { runInboxImport } from "./importer";
 export { InboxView } from "./InboxView";
 export type { InboxViewProps, InboxSource } from "./InboxView";
+export { MobileInboxPanel, INBOX_DRAG_MIME } from "./MobileInboxPanel";
+export type { MobileInboxPanelProps } from "./MobileInboxPanel";
+export { useInboxPending, useAutoRescan, INBOX_POLL_INTERVAL_MS } from "./use-inbox-pending";
+export type { InboxPending } from "./use-inbox-pending";
+export {
+  cursorInsertTarget,
+  dropInsertTarget,
+  insertInboxItems,
+  readInboxDragNames,
+} from "./insert-into-note";
+export type {
+  InboxInsertable,
+  InboxCapturedPayload,
+  InboxInsertTarget,
+  InboxInsertResult,
+  MobileInboxBinding,
+} from "./insert-into-note";
 export type {
   UploadCapturedAsset,
   InboxImportOptions,

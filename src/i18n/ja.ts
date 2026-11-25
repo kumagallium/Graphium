@@ -2827,6 +2827,11 @@ export const ja: Record<string, string> = {
   "mobile.emptyInbox": "新しいものはありません",
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
+  // 右パネルの受信箱: ノートを開いたまま、届いたものをその場でノートに入れる
+  "mobile.panel.hint": "ノートへドラッグするか、ダブルクリックで入ります。",
+  "mobile.panel.insertOne": "ノートに入れる",
+  "mobile.panel.select": "選ぶ",
+  "mobile.panel.insertSelected": "選んだ {count} 件をノートに入れる",
 
   // ── モバイルの記録履歴（スマホ → クラウド Inbox） ──
   // 撮ったものはまずこの端末に永続化され、Google Drive の Graphium/Inbox へ
