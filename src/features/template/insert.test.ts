@@ -169,14 +169,22 @@ describe("insertTemplateDef（公式テンプレート）", () => {
     expect(calls.labels).toEqual([]);
   });
 
-  it("カーソルは focusPath のブロック（計画タイトルの見出し）に置く", () => {
+  it("カーソルは focusPath のブロック（「背景・目的」の本文）に置く", () => {
     const editor = makeEditor([paragraph("slash", "/")]);
     const { stores } = recordingStores();
 
     insertTemplateDef(editor, editor.getBlock("slash"), officialTemplate("plan"), stores, identity);
 
-    expect(editor.cursorBlockId).toBe(editor.document[0].id);
-    expect(editor.document[0]).toMatchObject({ type: "heading", props: { level: 1 } });
+    expect(editor.cursorBlockId).toBe(editor.document[1].id);
+    expect(editor.document[1]).toMatchObject({ type: "paragraph" });
+  });
+
+  it("組み込みテンプレートは本文に題の見出し（H1）を置かない（題はノートの題に書く）", () => {
+    for (const id of ["plan", "experiment"]) {
+      const { blocks } = officialTemplate(id).build(identity);
+      expect(blocks.some((b: any) => b.type === "heading" && b.props?.level === 1)).toBe(false);
+      expect(blocks[0]).toMatchObject({ type: "heading", props: { level: 2 } });
+    }
   });
 });
 

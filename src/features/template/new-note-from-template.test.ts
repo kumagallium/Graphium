@@ -155,8 +155,11 @@ describe("組み込みテンプレートから新規ノート", () => {
   it("createNoteFromOfficialTemplate は作成してから開く。未知 id は null", async () => {
     const d = deps();
     expect(await createNoteFromOfficialTemplate("plan", d, identity)).toBe("new-note-1");
-    expect(d.created[0].title).toBe("template.plan.title");
+    // 題は白紙の新規ノートと同じ既定の題（テンプレート名は題にしない）。由来にはテンプレート名を残す
+    expect(d.created[0].title).toBe("editor.newNote");
+    expect(d.created[0].pages[0].title).toBe("editor.newNote");
     expect(d.created[0].templateFrom?.officialTemplateId).toBe("plan");
+    expect(d.created[0].templateFrom?.title).toBe("template.plan.title");
     expect(d.openNote).toHaveBeenCalledWith("new-note-1");
     const d2 = deps();
     expect(await createNoteFromOfficialTemplate("nope", d2, identity)).toBeNull();
