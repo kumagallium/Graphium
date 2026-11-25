@@ -114,8 +114,8 @@ function InboxTile({
         {url ? (
           <img src={url} alt="" className="w-full h-full object-cover" draggable={false} />
         ) : (
-          <span className="flex-1 flex flex-col gap-1.5 p-2.5 min-h-0">
-            <KindIcon kind={kind} size={16} />
+          // 上の 1 段は、左上のチェックと右上の ＋ のために空けておく（文字に重ねない）
+          <span className="flex-1 flex flex-col gap-1.5 px-2.5 pt-8 pb-2.5 min-h-0">
             <span className="text-xs text-foreground leading-snug line-clamp-4 break-words">
               {label}
             </span>
@@ -124,8 +124,11 @@ function InboxTile({
             )}
           </span>
         )}
-        {/* 下の帯: 届いた時刻 */}
-        <span className="absolute inset-x-0 bottom-0 flex items-center px-2 py-1 text-[10px] bg-background/85 text-muted-foreground">
+        {/* 下の帯: 種類のアイコンと届いた時刻（アイコンを左上に置くと、選ぶときのチェックと重なる） */}
+        <span className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 px-2 py-1 text-[10px] bg-background/85 text-muted-foreground">
+          <span className="shrink-0 inline-flex">
+            <KindIcon kind={kind} size={12} />
+          </span>
           <span className="truncate">{time}</span>
         </span>
       </button>

@@ -1,5 +1,5 @@
 /**
- * マニュアル用スクリーンショット撮影（Storybook の小さな部品 4 枚）
+ * マニュアル用スクリーンショット撮影（Storybook の小さな部品 5 枚）
  *
  * 実アプリでは撮りにくい（デスクトップ専用・AI や外部アプリの状態が要る）部品を、
  * Storybook の英語・パン作り世界観のストーリーから局所クリップで撮る。AI は呼ばない。
@@ -14,6 +14,7 @@
  *   material-opened-copy-notice.png  外のアプリで編集された素材の知らせ（AssetBrowser/OpenedCopyNotice）
  *   update-banner.png              更新バナー（Components/UpdateBanner）
  *   mobile-inbox.png               デスクトップの受信画面（Mobile Capture / InboxView）
+ *   mobile-inbox-panel.png         ノートの横の受信箱（Mobile Capture / MobileInboxPanel）
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "fs";
@@ -101,6 +102,24 @@ if (want("mobile-inbox")) {
   const rb = await root.boundingBox();
   await page.screenshot({ path: out("mobile-inbox.png"), clip: { x: rb.x, y: rb.y, width: rb.width, height: 340 } });
   console.log("saved mobile-inbox.png");
+}
+
+if (want("mobile-inbox-panel")) {
+  await open("mobile-capture-mobileinboxpanel--manual-english");
+  const root = page.locator("#storybook-root > div").first();
+  await root.waitFor({ state: "visible" });
+  // 写真のサムネイル 3 枚が読み込まれるのを待つ
+  await page.waitForFunction(() => document.querySelectorAll("[data-test=mobileInboxTile] img").length >= 3);
+  // 写真を 2 枚選ぶ（下に「Put 2 selected in note」が出る）。チェックは hover まで透明なので DOM から押す
+  await page.evaluate(() => {
+    const photos = [...document.querySelectorAll("[data-test=mobileInboxTile]")].filter((t) => t.querySelector("img"));
+    for (const t of photos.slice(0, 2)) t.querySelector("[role=checkbox]").click();
+  });
+  await page.getByText("Put 2 selected in note").waitFor({ state: "visible" });
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: out("mobile-inbox-panel.png"), clip: pad(await root.boundingBox()) });
+  console.log("saved mobile-inbox-panel.png");
 }
 
 await browser.close();

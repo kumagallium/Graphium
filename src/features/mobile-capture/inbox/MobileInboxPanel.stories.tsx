@@ -72,10 +72,21 @@ async function makeJpeg(index: number): Promise<Blob> {
   return await new Promise((resolve) => c.toBlob((b) => resolve(b!), "image/jpeg", 0.9));
 }
 
-const fakeSource: InboxSource = {
+// マニュアルの図用（英語）。メモと URL の中身だけ英語にする
+const JSON_BY_NAME_EN: Record<string, unknown> = {
+  ...JSON_BY_NAME,
+  [MEMO_NAME]: {
+    graphium: 1,
+    kind: "memo",
+    createdAt: "2026-07-27T15:30:00.000Z",
+    text: "Stopped the final proof at 35 minutes. The surface had dried a little",
+  },
+};
+
+const makeSource = (jsonByName: Record<string, unknown>): InboxSource => ({
   listPending: async () => MIXED,
   readBlob: async (ref) => {
-    const json = JSON_BY_NAME[ref.name];
+    const json = jsonByName[ref.name];
     if (json) {
       return new Blob([JSON.stringify(json)], { type: "application/vnd.graphium.capture+json" });
     }
@@ -84,7 +95,17 @@ const fakeSource: InboxSource = {
     }
     return new Blob([new Uint8Array(1024)]);
   },
-};
+});
+const fakeSource = makeSource(JSON_BY_NAME);
+const fakeSourceEn = makeSource(JSON_BY_NAME_EN);
+
+const INITIAL_BLOCKS_EN: NoteBlock[] = [
+  { id: "h", text: "Country loaf, trial 3", heading: true },
+  { id: "p1", text: "Raised hydration to 75%. Bulk fermentation at 27 °C for 3 hours." },
+  { id: "p2", text: "The dough after shaping:", caret: true },
+  { id: "p3", text: "Final proof 35 minutes. One score." },
+  { id: "p4", text: "The crumb after baking:" },
+];
 
 type NoteBlock = {
   id: string;
@@ -109,7 +130,10 @@ function PanelHost({
   connected = true,
   width = 360,
   initialBusy = [],
+  english = false,
 }: {
+  /** マニュアルの図用: ノートのモックとメモの中身を英語にする。 */
+  english?: boolean;
   initialItems: CaptureRef[];
   connected?: boolean;
   /** 右パネルの幅（既定 clamp(320px, 30vw, 480px)）。 */
@@ -118,7 +142,7 @@ function PanelHost({
 }) {
   const [items, setItems] = useState(initialItems);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set(initialBusy));
-  const [blocks, setBlocks] = useState<NoteBlock[]>(INITIAL_BLOCKS);
+  const [blocks, setBlocks] = useState<NoteBlock[]>(english ? INITIAL_BLOCKS_EN : INITIAL_BLOCKS);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   // 取り込み（0.8 秒）→ 受信箱から消える → ノートの index の位置に入る
@@ -187,7 +211,7 @@ function PanelHost({
         className="bg-background border border-border rounded-lg overflow-hidden flex flex-col"
       >
         <MobileInboxPanel
-          source={connected ? fakeSource : null}
+          source={connected ? (english ? fakeSourceEn : fakeSource) : null}
           items={items}
           busyNames={busy}
           onRefresh={() => setItems(initialItems)}
@@ -253,4 +277,13 @@ export const Empty: Story = {
 /** 同期フォルダが未接続。 */
 export const NotConnected: Story = {
   args: { initialItems: [], connected: false },
+};
+
+/**
+ * マニュアルの図用（英語・パン作り）。scripts/manual-screenshots-storybook-extra.mjs が
+ * 写真を 2 枚選んだ状態で撮る。
+ */
+export const ManualEnglish: Story = {
+  name: "Manual (English, bread world)",
+  args: { initialItems: MIXED.filter((r) => !r.name.endsWith(".m4a")), english: true, width: 400 },
 };
