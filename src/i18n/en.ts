@@ -1585,6 +1585,8 @@ export const en: Record<string, string> = {
   "standaloneChat.stop": "Stop",
   "standaloneChat.removeAttachment": "Remove {title}",
   "standaloneChat.deleteConfirm": "Delete this chat?",
+  "standaloneChat.rename": "Rename",
+  "standaloneChat.renameLabel": "Chat name",
   // Chat list (child nav): date groups and toggle
   "standaloneChat.navLabel": "Chat list",
   "standaloneChat.groupToday": "Today",

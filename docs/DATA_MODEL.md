@@ -1477,7 +1477,10 @@ scope to anchor to, so it is not a `ScopeChat`; it uses a separate type,
 ```ts
 type StandaloneChat = {
   id: string;
-  // AI-assigned short title, added later; undefined until generated.
+  // Short title. The AI assigns one after the first exchange (undefined
+  // until then); the user can rename it from the chat list
+  // (`renameStandaloneChat`), and a title already set — by the user or
+  // the AI — is never overwritten by a later AI title.
   title?: string;
   messages: ChatMessage[];
   // Notes/Knowledge pages attached as context when the chat was started

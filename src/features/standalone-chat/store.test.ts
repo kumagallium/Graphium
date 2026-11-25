@@ -7,6 +7,7 @@ import {
   saveStandaloneChat,
   deleteStandaloneChat,
   createStandaloneChat,
+  renameStandaloneChat,
 } from "./store";
 
 /** readAppData / writeAppData だけを in-memory で実装した最小プロバイダ */
@@ -148,5 +149,33 @@ describe("standalone-chat/store: 渡す範囲（scope）", () => {
 
   it("createStandaloneChat は scope を持たずに始まる（既定は表示側で internal）", () => {
     expect(createStandaloneChat().scope).toBeUndefined();
+  });
+});
+
+describe("renameStandaloneChat", () => {
+  it("題を変え、索引の行にも反映する（modifiedAt は据え置く）", async () => {
+    const provider = makeProvider();
+    const chat = makeChat({ title: "AI が付けた題", modifiedAt: "2026-11-01T00:00:00.000Z" });
+    await saveStandaloneChat(provider, chat);
+
+    const renamed = await renameStandaloneChat(provider, chat.id, "  自分で付けた題  ");
+    expect(renamed?.title).toBe("自分で付けた題");
+    expect(renamed?.modifiedAt).toBe("2026-11-01T00:00:00.000Z");
+
+    const stored = await loadStandaloneChat(provider, chat.id);
+    expect(stored?.title).toBe("自分で付けた題");
+    expect(stored?.messages).toHaveLength(2);
+    const index = await loadStandaloneChatIndex(provider);
+    expect(index.find((c) => c.id === chat.id)?.title).toBe("自分で付けた題");
+  });
+
+  it("空白だけの題・無い会話は何もしない", async () => {
+    const provider = makeProvider();
+    const chat = makeChat({ title: "元の題" });
+    await saveStandaloneChat(provider, chat);
+
+    expect(await renameStandaloneChat(provider, chat.id, "   ")).toBeNull();
+    expect((await loadStandaloneChat(provider, chat.id))?.title).toBe("元の題");
+    expect(await renameStandaloneChat(provider, "missing", "題")).toBeNull();
   });
 });

@@ -55,6 +55,7 @@ export function StandaloneChatWorkspace({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  onRenameChat,
   onSend,
   onStop,
   onScopeChange,
@@ -86,6 +87,8 @@ export function StandaloneChatWorkspace({
   onSelectChat: (chatId: string) => void;
   onNewChat: () => void;
   onDeleteChat?: (chatId: string) => void;
+  /** 一覧から会話の題を変える */
+  onRenameChat?: (chatId: string, title: string) => void;
   /** 送信。会話が無い（新しいチャット）ときは呼び出し側が会話を作ってから送る */
   onSend: (text: string, scope: GroundingScope, folder: string | undefined, images?: ChatImageRef[]) => void;
   onStop?: () => void;
@@ -214,6 +217,7 @@ export function StandaloneChatWorkspace({
                 setMobilePane("chat");
               }}
               onDelete={onDeleteChat}
+              onRename={onRenameChat}
               now={now}
             />
           </aside>

@@ -211,7 +211,9 @@ export function BookmarkCard({ block, editor }: BookmarkCardProps) {
       {/* 左: テキスト情報 */}
       <div style={styles.cardBody}>
         <div style={styles.titleRow}>
-          <span style={styles.title}>{meta.title || displayDomain}</span>
+          {/* props.title を先に見る。素材の名前を変えると props.title だけが書き換わり、
+              初回に取ったメタデータ（meta）は古いままなので */}
+          <span style={styles.title}>{title || meta.title || displayDomain}</span>
         </div>
         {meta.description && (
           <span style={styles.description}>{meta.description}</span>

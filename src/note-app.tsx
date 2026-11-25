@@ -570,6 +570,7 @@ import {
   saveStandaloneChat,
   deleteStandaloneChat,
   createStandaloneChat,
+  renameStandaloneChat,
 } from "./features/standalone-chat/store";
 import { shouldGenerateChatTitle } from "./features/standalone-chat/title";
 import { toStandaloneChatScope } from "./features/standalone-chat/scope";
@@ -618,6 +619,7 @@ import {
   registerUrlAsset,
   type MediaType,
   findBlockIdsByMediaUrl,
+  mediaBlockNameProp,
   type MediaIndexEntry,
   type AssetDisplayMode,
   hasExpandedOffice,
@@ -1515,6 +1517,8 @@ type NoteEditorProps = {
   noteFolderLookup?: NoteFolderLookup;
   /** エディタ内から開く素材サイドピークで、素材のフォルダを付け外しする */
   onEditMediaContexts?: EditMediaContexts;
+  /** エディタ内から開く素材サイドピークで、素材の名前を変える（登録済みの素材だけ） */
+  onRenameMedia?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** エディタを開いた回（fm.editorKey）。保存先の判定に使う（use-file-manager の saveEditorDoc） */
   editorSession?: number;
   /**
@@ -2185,6 +2189,7 @@ function NoteEditorInner({
   startUnsaved = false,
   noteFolderLookup,
   onEditMediaContexts,
+  onRenameMedia,
   docKey,
   editorSession,
   onSave,
@@ -3819,6 +3824,25 @@ function NoteEditorInner({
     !mediaIndex?.media.some(
       (m) => m.type === "url" && m.url === materialSidePeekEntry.url,
     );
+
+  // ノートから開いた素材ピークの名前変更。登録済みの素材だけ（未登録 URL の仮エントリは
+  // 索引に行が無く、変えても保存先が無い）。ピークのエントリは開いた時点の写しなので、
+  // 変えた名前をその場で写しにも入れて見出しを揃える。
+  const materialPeekRegistered =
+    !!materialSidePeekEntry &&
+    !!mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId);
+  const handleRenameFromMaterialPeek = useMemo(
+    () =>
+      onRenameMedia && materialPeekRegistered
+        ? async (entry: MediaIndexEntry, newName: string) => {
+            await onRenameMedia(entry, newName);
+            setMaterialSidePeekEntry((prev) =>
+              prev && prev.fileId === entry.fileId ? { ...prev, name: newName } : prev,
+            );
+          }
+        : undefined,
+    [onRenameMedia, materialPeekRegistered],
+  );
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
@@ -8638,6 +8662,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
+            onRename={handleRenameFromMaterialPeek}
             onClose={() => {
               setMaterialSidePeekEntry(null);
               setMaterialPeekFocus(null);
@@ -8672,6 +8697,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             noteFolderLookup={noteFolderLookup}
             onEditFolders={onEditMediaContexts}
+            onRename={handleRenameFromMaterialPeek}
             onClose={() => {
               setMaterialSidePeekEntry(null);
               setMaterialPeekFocus(null);
@@ -10431,6 +10457,9 @@ export function NoteApp() {
           ],
           modifiedAt: assistantAt,
         };
+        // 応答を待つあいだに一覧から名前を変えていたら、その題を残す（古い題で上書きしない）。
+        const storedTitle = (await loadStandaloneChat(provider, chatId))?.title;
+        if (storedTitle && storedTitle !== finalChat.title) finalChat.title = storedTitle;
         // 保存はこの会話宛てにそのまま行う（送った質問と応答は本来の会話に残す）。
         await saveStandaloneChat(provider, finalChat);
         setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
@@ -10444,8 +10473,12 @@ export function NoteApp() {
           void generateTitle(text)
             .then(async (title) => {
               if (!title) return;
+              // 題を待つあいだに利用者が自分で名前を付けていたら、そちらを残す。
+              const latest = await loadStandaloneChat(provider, chatId);
+              if (latest?.title) return;
               // 保存は必ず元の会話 id 宛て（呼び出し中に別の会話へ切り替わっていてもよい）。
-              const titledChat: StandaloneChat = { ...finalChat, title };
+              // 元にするのは保存済みの最新（題を待つあいだに次の送信が済んでいても落とさない）
+              const titledChat: StandaloneChat = { ...(latest ?? finalChat), title };
               await saveStandaloneChat(provider, titledChat);
               setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
               // 画面がまだこの会話を開いていれば、開いている内容にも反映する。
@@ -10495,6 +10528,16 @@ export function NoteApp() {
     },
     [activeStandaloneChatId, clearActiveStandaloneChat],
   );
+
+  // 一覧からの会話の名前変更。開いている会話なら、画面の会話にも題を入れる
+  // （次の送信の保存で古い題に戻さないため）。
+  const handleRenameStandaloneChat = useCallback(async (id: string, title: string) => {
+    const provider = getActiveProvider();
+    const renamed = await renameStandaloneChat(provider, id, title);
+    if (!renamed) return;
+    setStandaloneChatSummaries(await loadStandaloneChatIndex(provider));
+    setActiveStandaloneChat((prev) => (prev && prev.id === id ? { ...prev, title: renamed.title } : prev));
+  }, []);
 
   // 編集&再実行・回答の再生成の共通経路。rewindIndex 以降を捨てて text から送り直す
   // （ノート内チャットの handleAiChatSubmit と同じ考え方。会話 id は既存のものを使い回す）。
@@ -15295,15 +15338,18 @@ export function NoteApp() {
     })();
   }, [fm.activeFileId, fm.loadDoc, fm.handleSaveImportedDoc, capture.handleRecordUsage]);
 
-  // メディアリネーム（ブロック props.name 同期付き）
+  // メディアリネーム（ブロックの名前の同期付き）
   const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     await fm.handleRenameMedia(entry, newName);
-    // エディタ内で同じ URL を参照しているブロックの props.name も更新
+    // エディタ内で同じ URL を参照しているブロックの名前も更新
+    // （画像・PDF などは props.name、URL ブックマークのカードは props.title）
     const editor = noteEditorRef.current;
     if (!editor) return;
     const blockIds = findBlockIdsByMediaUrl(editor.document, entry.url);
     for (const blockId of blockIds) {
-      editor.updateBlock(blockId, { props: { name: newName } });
+      const prop = mediaBlockNameProp(editor.getBlock(blockId)?.type ?? "");
+      if (!prop) continue;
+      editor.updateBlock(blockId, { props: { [prop]: newName } });
     }
   }, [fm.handleRenameMedia]);
 
@@ -17627,6 +17673,7 @@ export function NoteApp() {
         onSelect={handleOpenStandaloneChatFromNav}
         onNew={handleNewStandaloneChatFromNav}
         onDelete={handleDeleteStandaloneChat}
+        onRename={(id, title) => void handleRenameStandaloneChat(id, title)}
       />
     ) : undefined,
     chatCount: standaloneChatSummaries.length,
@@ -18792,6 +18839,7 @@ export function NoteApp() {
             onNewChat={handleNewStandaloneChatFromNav}
             draftScopeRequest={standaloneDraftScopeRequest}
             onDeleteChat={handleDeleteStandaloneChat}
+            onRenameChat={(id, title) => void handleRenameStandaloneChat(id, title)}
             onSend={handleWorkspaceSend}
             onStop={handleStandaloneChatStop}
             onScopeChange={handleStandaloneChatScopeChange}
@@ -19040,6 +19088,7 @@ export function NoteApp() {
             getKnowledgeSchemaPrompt={fm.getKnowledgeSchemaPrompt}
             noteFolderLookup={noteFolderLookup}
             onEditMediaContexts={fm.editMediaContexts}
+            onRenameMedia={handleRenameMediaWithBlockSync}
             renderPeekWikiContext={renderPeekWikiContext}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
@@ -19511,6 +19560,18 @@ export function NoteApp() {
           onOpenMemo={handleOpenMemoSource}
           onSaveSelectionAsMemo={listPeekUrlUnregistered ? undefined : (source) => { void saveSelectionMemo(source); }}
           onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
+          // 名前変更は登録済みの素材だけ（未登録 URL の仮エントリは保存先が無い）。
+          // ピークのエントリは開いた時点の写しなので、変えた名前を写しにも入れる
+          onRename={
+            fm.mediaIndex?.media.some((m) => m.fileId === listMaterialPeekEntry.fileId)
+              ? async (entry, newName) => {
+                  await handleRenameMediaWithBlockSync(entry, newName);
+                  setListMaterialPeekEntry((prev) =>
+                    prev && prev.fileId === entry.fileId ? { ...prev, name: newName } : prev,
+                  );
+                }
+              : undefined
+          }
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
             fm.mediaIndex?.media.some((m) => m.fileId === listMaterialPeekEntry.fileId)

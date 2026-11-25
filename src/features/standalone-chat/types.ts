@@ -9,7 +9,7 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 /** 一覧の 1 行に表示する分だけの要約情報 */
 export type StandaloneChatSummary = {
   id: string;
-  /** AI が後から付ける短い題。未生成なら undefined */
+  /** 短い題。最初のやり取りのあとに AI が付け、一覧から利用者が変えられる。未生成なら undefined */
   title?: string;
   /** 最初のユーザーメッセージ */
   firstQuestion: string;
@@ -21,7 +21,7 @@ export type StandaloneChatSummary = {
 /** ノートに紐づかないチャットの本体（全文） */
 export type StandaloneChat = {
   id: string;
-  /** AI が後から付ける短い題。未生成なら undefined */
+  /** 短い題。最初のやり取りのあとに AI が付け、一覧から利用者が変えられる。未生成なら undefined */
   title?: string;
   messages: ChatMessage[];
   /** 開始時に引用として添えたノート/ナレッジの id（⌘K から飛んできたとき） */
