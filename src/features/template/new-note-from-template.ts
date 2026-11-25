@@ -27,10 +27,17 @@ export async function createNoteFromOfficialTemplate(
 ): Promise<string | null> {
   const def = getAllTemplates().find((x) => x.id === templateId);
   if (!def) return null;
-  const title = t(def.titleKey);
+  // ノートの題は、白紙の新規ノートと同じ既定の題（editor.newNote）で始める。
+  // 組み込みテンプレートの名前は「計画テンプレート」のような道具の名前で、ノートの題にはならない。
+  // 空文字にはしない — エディタは空の題を editor.newNote で表示するので、保存前の一覧だけ
+  // 「(無題)」になって食い違う。どのテンプレートから作ったかは templateFrom.title に残す。
+  // 個人・共有テンプレートは利用者が付けた名前なので、題に引き継ぐ（下の関数と note-app）
   const doc = buildDocumentFromTemplateDef(
     def,
-    { title, templateFrom: { officialTemplateId: def.id, title, usedAt: new Date().toISOString() } },
+    {
+      title: t("editor.newNote"),
+      templateFrom: { officialTemplateId: def.id, title: t(def.titleKey), usedAt: new Date().toISOString() },
+    },
     t,
   );
   const noteId = await deps.createNote(doc);
