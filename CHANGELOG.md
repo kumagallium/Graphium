@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.170.0](https://github.com/kumagallium/Graphium/compare/v0.169.0...v0.170.0) - 2026-11-25
+
+- feat: rename by title for URLs (page title) and Excel files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1872
+
 ## [v0.169.0](https://github.com/kumagallium/Graphium/compare/v0.168.0...v0.169.0) - 2026-11-25
 
 - [chore] Remove unused docx import module, echarts check script, and cytoscape-edgehandles by @kumagallium in https://github.com/kumagallium/Graphium/pull/1865
