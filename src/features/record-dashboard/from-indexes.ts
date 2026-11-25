@@ -12,7 +12,7 @@ import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { isPlaceUrl } from "../linked-files/link-url";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
 import type { NoteIndexEntry } from "../navigation/index-file";
-import { dayKeyOf, timeOf, UPDATED_ID_PREFIX } from "./model";
+import { dayKeyOf, timeOf, updatedRowId } from "./model";
 import type { RecordItem, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
 export type RecordSources = {
@@ -158,37 +158,54 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
 }
 
 /**
- * 更新の行。自分のノートを、作った日とは別に、最後に更新した日（modifiedAt）にもう 1 行出す。
- * 作成の行は作った日に残る（動かない）。更新の行は最後の更新日の 1 点にだけ出るので、もう一度更新すると
- * 前の日の更新の行は新しい日へ移る。
+ * 更新の行。自分のノートを、作った日とは別に、書き換えた日ごとに 1 行ずつ出す。
+ * 書き換えた日は、索引の editedAt（人の操作で残った版の、日ごとの最後の保存時刻・v40）。
+ * 同じ日は 1 行にまとめ、その日の最後の時刻に置く。版を残さない変更（題だけ・フォルダの付け替え）と
+ * AI の書き足しは日を足さない。作成の行は作った日に残る。過去の日の更新の行も、あとで書き換えても動かない。
+ * editedAt を持たない索引（v39 以前・版の記録が無い古いノート）では、最後の更新日（modifiedAt）の 1 行だけになる。
  * 出さないもの:
  *   - AI のページ（知識の流れの処理が書き足すたびに更新日が進み、実データでは 1 日に数百件になる。
  *     更新の行は「自分がさわったノート」を見つけるためのもの。書き足しはページの版の記録で分かる）
- *   - 更新日時が読めない・作った日時が無い・作った日と同じ日の更新（同じ日に 2 行並べない）
+ *   - 日時が読めない・作った日時が無い・作った日と同じ日の更新（同じ日に 2 行並べない）
  *   - 作った日時より前の更新日時（時計のずれや引き継ぎで起きる。更新とは言えない）
  * 索引には「誰が最後に更新したか」が無い。自分の保存先のノートなので自分と導く（素材・メモと同じ）。
  * AI が書いたノート（自分と AI）も、その後にさわるのは自分なので自分
  */
-export function noteUpdateToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<string>): RecordItem | null {
-  if (entry.source === "ai") return null;
+export function noteUpdatesToRecords(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<string>): RecordItem[] {
+  if (entry.source === "ai") return [];
   const created = entry.createdAt;
-  const modified = entry.modifiedAt;
-  if (!created || !modified) return null;
+  if (!created) return [];
   const createdMs = timeOf(created);
-  const modifiedMs = timeOf(modified);
   // timeOf は読めない日時を -Infinity にする
-  if (!Number.isFinite(createdMs) || !Number.isFinite(modifiedMs) || modifiedMs <= createdMs) return null;
-  if (dayKeyOf(created) === dayKeyOf(modified)) return null;
-  return {
-    id: `${UPDATED_ID_PREFIX}${entry.noteId}`,
-    kind: "note",
-    at: modified,
-    origin: deriveNoteOrigin(entry, webClipNoteIds),
-    who: { type: "self" },
+  if (!Number.isFinite(createdMs)) return [];
+  const createdDay = dayKeyOf(created);
+  const lastByDay = new Map<string, { at: string; ms: number }>();
+  // 版の記録があるノートは、人が書き換えた日（editedAt）だけを見る。modifiedAt は AI の書き足しや
+  // 資料の日付の付け替えでも進むので混ぜると、その日の行が次の書き換えで消える（過去の日が動く）。
+  // editedAt が無い（v39 以前の索引・版の記録が無い古いノート）ときだけ、最後の更新日で代える
+  const days = entry.editedAt?.length ? entry.editedAt : [entry.modifiedAt];
+  for (const at of days) {
+    if (!at) continue;
+    const ms = timeOf(at);
+    if (!Number.isFinite(ms) || ms <= createdMs) continue;
+    const day = dayKeyOf(at);
+    if (day === createdDay) continue;
+    const prev = lastByDay.get(day);
+    if (!prev || ms > prev.ms) lastByDay.set(day, { at, ms });
+  }
+  if (lastByDay.size === 0) return [];
+  const origin = deriveNoteOrigin(entry, webClipNoteIds);
+  const folders = foldersOf(entry.noteContexts);
+  return [...lastByDay.entries()].map(([day, { at }]) => ({
+    id: updatedRowId(entry.noteId, day),
+    kind: "note" as const,
+    at,
+    origin,
+    who: { type: "self" as const },
     title: entry.title,
     update: { createdAt: created },
-    ...foldersOf(entry.noteContexts),
-  };
+    ...folders,
+  }));
 }
 
 export function mediaToRecord(entry: MediaIndexEntry, recordingNoteIds?: ReadonlySet<string>): RecordItem {
@@ -227,7 +244,7 @@ export function memoToRecord(entry: CaptureEntry): RecordItem {
 }
 
 /**
- * 3 つの置き場の記録を 1 本にして、新しい順に並べる。自分のノートは、更新の行も足す（noteUpdateToRecord）。
+ * 3 つの置き場の記録を 1 本にして、新しい順に並べる。自分のノートは、更新の行も足す（noteUpdatesToRecords）。
  * 外すもの: ゴミ箱・アーカイブに入っているもの、スキル（プロンプトのひな形）、
  * メモを素材として見せるための一時エントリ（type が "memo"）。
  */
@@ -238,8 +255,7 @@ export function buildRecords(sources: RecordSources): RecordItem[] {
   for (const n of sources.notes) {
     if (n.deletedAt || n.archivedAt || n.source === "skill") continue;
     items.push(noteToRecord(n, webClipNoteIds));
-    const updated = noteUpdateToRecord(n, webClipNoteIds);
-    if (updated) items.push(updated);
+    items.push(...noteUpdatesToRecords(n, webClipNoteIds));
   }
   for (const m of sources.media) {
     if (m.archivedAt || m.type === "memo") continue;

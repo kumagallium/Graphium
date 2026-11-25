@@ -14,6 +14,7 @@ import {
   type NoteIndexEntry,
 } from "./index-file";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
+import type { DocumentProvenance, EditActivityType } from "../document-provenance/types";
 import { getActiveProvider, registerProvider, setActiveProvider } from "../../lib/storage/registry";
 import type { StorageProvider } from "../../lib/storage/types";
 
@@ -764,7 +765,7 @@ describe("ensureIndex の更新日時（v30）", () => {
 
     const result = await ensureIndex([mockFile("a")], docCache, existing);
     expect(result.version).toBe(INDEX_SCHEMA_VERSION);
-    expect(INDEX_SCHEMA_VERSION).toBe(39);
+    expect(INDEX_SCHEMA_VERSION).toBe(40);
     const a = result.notes.find((n) => n.noteId === "a");
     expect(a?.modifiedAt).toBe("2026-03-31T00:00:00Z");
     expect(a?.fileModifiedAt).toBe("2026-03-31T12:00:00Z");
@@ -1047,5 +1048,51 @@ describe("hasRecordedTranscript（v35）", () => {
   it("文字起こしブロックが無ければ false", () => {
     expect(hasRecordedTranscript([{ id: "p", type: "paragraph", content: [] }])).toBe(false);
     expect(hasRecordedTranscript([])).toBe(false);
+  });
+});
+
+describe("人が書き換えた日（editedAt・v40）", () => {
+  // 端末の時刻帯に関わらず同じ暦日になるよう、日中（12 時台 UTC）の時刻だけを使う
+  const prov = (revs: [string, EditActivityType][]): DocumentProvenance => ({
+    agents: [],
+    activities: revs.map(([at, type], i) => ({ id: `edit_${i + 1}`, type, startedAt: at, endedAt: at, wasAssociatedWith: "a" })),
+    revisions: revs.map(([at], i) => ({
+      id: `rev_${i + 1}`,
+      savedAt: at,
+      summary: {} as DocumentProvenance["revisions"][number]["summary"],
+      contentHash: `h${i}`,
+      wasGeneratedBy: `edit_${i + 1}`,
+    })),
+  });
+
+  it("人の操作の版を日ごとにまとめ、その日の最後の保存時刻を古い順に写す", () => {
+    const entry = buildIndexEntry(
+      "n",
+      mockDoc({
+        documentProvenance: prov([
+          ["2026-11-12T12:40:00.000Z", "human_edit"],
+          ["2026-11-10T12:00:00.000Z", "template_create"],
+          ["2026-11-12T12:10:00.000Z", "human_edit"],
+          ["2026-11-15T12:00:00.000Z", "ai_generation"],
+          ["2026-11-16T12:00:00.000Z", "source_date_set"],
+          ["2026-11-18T12:00:00.000Z", "snapshot_restore"],
+        ]),
+      }),
+    );
+    expect(entry.editedAt).toEqual(["2026-11-12T12:40:00.000Z", "2026-11-18T12:00:00.000Z"]);
+  });
+
+  it("版の記録が無い・人の版が無いノートと、ナレッジのページは持たない", () => {
+    expect(buildIndexEntry("n", mockDoc()).editedAt).toBeUndefined();
+    expect(
+      buildIndexEntry("n", mockDoc({ documentProvenance: prov([["2026-11-15T12:00:00.000Z", "ai_generation"]]) }))
+        .editedAt,
+    ).toBeUndefined();
+    expect(
+      buildIndexEntry(
+        "n",
+        mockDoc({ source: "ai", documentProvenance: prov([["2026-11-15T12:00:00.000Z", "human_edit"]]) }),
+      ).editedAt,
+    ).toBeUndefined();
   });
 });

@@ -22,6 +22,7 @@ import { collectOcrAltText, collectOcrText } from "../media-ocr/collect";
 import { inlineContentToText } from "../markdown-export/inline-text";
 import { allSettledWithLimit, FILE_LOAD_CONCURRENCY } from "../../lib/async-pool";
 import { normalizeSourceDateKind, normalizeStoredSourceDate } from "../../lib/source-date";
+import { isHumanActivityType } from "../document-provenance/tracker";
 
 // ── 型定義 ──
 
@@ -210,7 +211,15 @@ import { normalizeSourceDateKind, normalizeStoredSourceDate } from "../../lib/so
 //      v38 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
 //      bump を必ず実地確認する: Graphium 起動時に v38 インデックスが v39 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 39;
+// v40: 人が書き換えた日ごとの最後の保存時刻（editedAt）を NoteIndexEntry に写す。
+//      来歴の版（documentProvenance.revisions）のうち人の操作で残った版の savedAt を、端末の
+//      暦日でまとめる。ホームは今まで最後の更新日（modifiedAt）の 1 日にしか「更新」の行を
+//      出せず、続けて書き換えると前の日の行が消えていた。日ごとに行を出すため、本体を
+//      読まずに書き換えた日が分かるよう索引に持つ。ナレッジのページは持たない。
+//      保存されたノートは書き換えない。v39 以前の索引（項目が無い）は、起動時の全件作り直しで埋まる。
+//      bump を必ず実地確認する: Graphium 起動時に v39 インデックスが v40 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 40;
 
 export type GraphiumIndex = {
   version: number;
@@ -234,6 +243,14 @@ export type NoteIndexEntry = {
    */
   fileModifiedAt?: string;
   createdAt: string;
+  /**
+   * 人がこのノートを書き換えた日ごとの、その日の最後の保存時刻（v40・古い順）。
+   * 来歴（documentProvenance）の版のうち、人の操作（isHumanActivityType）で残った版の
+   * savedAt を端末の暦日でまとめた。日の区切りは索引を作った端末の時刻帯。
+   * ホームの「更新」の行を、書き換えた日ごとに出すのに使う。
+   * ナレッジ（source === "ai"）のページと、人の版が 1 つも無いノートは持たない。
+   */
+  editedAt?: string[];
   headings: {
     blockId: string;
     text: string;
@@ -557,6 +574,37 @@ function isReadableDate(value: unknown): value is string {
   return typeof value === "string" && value !== "" && !Number.isNaN(new Date(value).getTime());
 }
 
+/** 端末の時刻帯での暦日（YYYY-MM-DD）。読めない日時は null */
+function localDayKey(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * 人が書き換えた日ごとの、その日の最後の保存時刻を古い順に返す（v40）。
+ * 来歴の版のうち、人の操作（isHumanActivityType）で残った版だけを見る。
+ * AI の書き足し・既定への同期・資料の日付の付け替えは数えない。1 つも無ければ undefined。
+ */
+export function collectHumanEditDays(doc: GraphiumDocument): string[] | undefined {
+  const prov = doc.documentProvenance;
+  if (!prov?.revisions?.length) return undefined;
+  const activityType = new Map(prov.activities?.map((a) => [a.id, a.type]) ?? []);
+  const lastByDay = new Map<string, { iso: string; ms: number }>();
+  for (const rev of prov.revisions) {
+    const type = activityType.get(rev.wasGeneratedBy);
+    if (!type || !isHumanActivityType(type)) continue;
+    const day = localDayKey(rev.savedAt);
+    if (!day) continue;
+    const ms = new Date(rev.savedAt).getTime();
+    const prev = lastByDay.get(day);
+    if (!prev || ms > prev.ms) lastByDay.set(day, { iso: rev.savedAt, ms });
+  }
+  if (lastByDay.size === 0) return undefined;
+  return [...lastByDay.values()].sort((a, b) => a.ms - b.ms).map((v) => v.iso);
+}
+
 /** 索引エントリのファイル更新時刻（古さの判定用）。無ければ modifiedAt で代用 */
 function entryFileModifiedAt(entry: Pick<NoteIndexEntry, "fileModifiedAt" | "modifiedAt">): string {
   return entry.fileModifiedAt ?? entry.modifiedAt;
@@ -756,6 +804,8 @@ export function buildIndexEntry(
     // 作り直したときに一覧の作成日がずれ、保存した瞬間（doc の値で作り直される）に
     // 並びが動く。doc に無いときだけファイルの時刻で補う
     createdAt: doc.createdAt || file?.createdTime || "",
+    // 人が書き換えた日ごとの最後の保存時刻（v40）。ナレッジのページは持たない
+    editedAt: doc.source === "ai" ? undefined : collectHumanEditDays(doc),
     headings,
     // step を使わないノートでは undefined のまま（既存インデックスと同じ形）
     steps: steps.length ? steps : undefined,

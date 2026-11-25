@@ -14,6 +14,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { registerAppTools } from "./app-tools";
+import { installExitWhenReplaced } from "./exit-when-replaced";
 import { createGraphiumMcpServer } from "./create-server";
 import { registerClaimTools } from "./claim-tools";
 import { registerInsightTools } from "./insight-tools";
@@ -83,7 +84,24 @@ async function main(): Promise<void> {
   // 会話の中に画面を描く道具（MCP Apps）。対応していないクライアントには文字の結果だけが届く
   registerAppTools(server, ctx);
 
-  await server.connect(new StdioServerTransport());
+  const transport = new StdioServerTransport();
+  // アプリの更新で自分のファイルが差し替えられたら、処理中の要求が無いときに終える。
+  // 開いたままのセッションが古い版を使い続けて、古いプロセスが溜まるのを防ぐ
+  installExitWhenReplaced(transport, {
+    scriptPath: process.argv[1],
+    exit: (reason) => exitAfterFlush(`差し替えを検知（${reason}）`),
+  });
+  // クライアントが閉じた（標準入力が閉じた）ら終える。親が消えたあとに残らないように
+  process.stdin.once("end", () => exitAfterFlush("標準入力が閉じた"));
+  process.stdin.once("close", () => exitAfterFlush("標準入力が閉じた"));
+
+  await server.connect(transport);
+}
+
+/** 書きかけの応答を stdout に出し切ってから終える（macOS のパイプは非同期書き込み） */
+function exitAfterFlush(why: string): void {
+  process.stderr.write(`[graphium-mcp] 終了: ${why}\n`);
+  process.stdout.write("", () => process.exit(0));
 }
 
 main().catch((err) => {

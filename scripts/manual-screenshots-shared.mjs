@@ -141,7 +141,7 @@ const SHOTS = [
     viewport: { width: 1180, height: 640 },
   },
   {
-    // ホームの更新の行（作った日とは別に、最後に更新した日に出る行。題は細く、作った日を添える）
+    // ホームの更新の行（作った日とは別に、書き換えた日ごとに出る行。題は細く、作った日を添える）
     id: "record-dashboard-3-dashboard--b-find-updated-english",
     name: "home-updated-rows",
     clip: "view",

@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.172.0](https://github.com/kumagallium/Graphium/compare/v0.171.2...v0.172.0) - 2026-11-25
+
+- fix: stop the MCP server once the app has replaced it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1882
+- [feat] Show an Updated row on Home for each day a note was changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1883
+
 ## [v0.171.2](https://github.com/kumagallium/Graphium/compare/v0.171.1...v0.171.2) - 2026-11-25
 
 - fix(windows): start the backend with plain paths, not \\?\ paths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1879
