@@ -1151,6 +1151,8 @@ export const ko: Record<string, string> = {
   "settings.health.title": "연결 상태",
   "settings.health.checking": "확인하는 중…",
   "settings.health.unavailable": "백엔드에 연결할 수 없습니다. AI 기능에는 데스크톱 앱이 필요합니다.",
+  "settings.health.unavailableDesktop": "앱에 포함된 백엔드(AI와 검색을 맡는 부분)가 응답하지 않습니다. '백엔드 다시 시작'을 눌러 주세요.",
+  "settings.health.unavailableDesktopAiTab": "앱에 포함된 백엔드(AI와 검색을 맡는 부분)가 응답하지 않습니다. '정보' 탭의 '백엔드 다시 시작'을 눌러 주세요.",
   "settings.health.restart": "백엔드 다시 시작",
   "settings.health.restarting": "다시 시작하는 중…",
   "settings.health.restartFailed": "다시 시작하지 못했습니다",

@@ -1180,6 +1180,8 @@ export const ja: Record<string, string> = {
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",
   "settings.health.unavailable": "バックエンドに接続できません。AI 機能にはデスクトップ版が必要です。",
+  "settings.health.unavailableDesktop": "アプリ内のバックエンド（AI や検索を受け持つ部分）が応答していません。「バックエンドを再起動」を押してください。",
+  "settings.health.unavailableDesktopAiTab": "アプリ内のバックエンド（AI や検索を受け持つ部分）が応答していません。「アプリ情報」タブの「バックエンドを再起動」を押してください。",
   "settings.health.restart": "バックエンドを再起動",
   "settings.health.restarting": "再起動中...",
   "settings.health.restartFailed": "再起動に失敗しました",

@@ -2705,7 +2705,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
               <>
               <div className={`${SETTINGS_CARD_CLASS} p-4`}>
                 <p className="text-xs text-muted-foreground text-center">
-                  {t("settings.health.unavailable")}
+                  {/* デスクトップ版では「デスクトップ版が必要」と出すと、入れ直しが要ると誤解される */}
+                  {t(isTauri() ? "settings.health.unavailableDesktopAiTab" : "settings.health.unavailable")}
                 </p>
               </div>
               {meetingSection}
@@ -4539,7 +4540,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
               ) : (
                 <div className="flex items-center gap-2 text-xs text-red-500">
                   <XCircle size={14} />
-                  {t("settings.health.unavailable")}
+                  {t(isTauri() ? "settings.health.unavailableDesktop" : "settings.health.unavailable")}
                 </div>
               )}
             </div>
