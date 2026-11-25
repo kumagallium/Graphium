@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.166.0](https://github.com/kumagallium/Graphium/compare/v0.165.0...v0.166.0) - 2026-11-25
+
+- [feat] Share an AI connection as a file (.graphium-ai.json) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1857
+- [feat] Ask one question first when no AI is connected yet by @kumagallium in https://github.com/kumagallium/Graphium/pull/1858
+- [feat] Aim the landing page at researchers, with a sample lab notebook by @kumagallium in https://github.com/kumagallium/Graphium/pull/1855
+- fix(settings): stop telling desktop users they need the desktop app when the backend is down by @kumagallium in https://github.com/kumagallium/Graphium/pull/1862
+
 ## [v0.165.0](https://github.com/kumagallium/Graphium/compare/v0.164.2...v0.165.0) - 2026-11-24
 
 - [refactor] Move the Knowledge management jobs from Settings into the Upkeep screen by @kumagallium in https://github.com/kumagallium/Graphium/pull/1859
