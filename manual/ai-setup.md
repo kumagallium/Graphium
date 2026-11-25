@@ -17,7 +17,7 @@ Open [Settings](/settings) and pick the **AI** tab. Everything on this page live
 ::: info Checking the connection
 When you launch the desktop app, the backend takes a few seconds to come up. While it does, the **Knowledge** tab in the sidebar reads **Starting the backend…** and the dot beside **Settings** stays grey — it turns green once AI is ready. If the backend never comes up, that same tab offers a **Restart backend** button.
 
-The AI tab checks the backend each time you open it. A per-component **Connection Status** panel lives on the **Knowledge** tab; when the backend is down, the desktop app also offers a **Restart backend** button there, with **Show log** to see what went wrong.
+The AI tab checks the backend each time you open it. A per-component **Connection Status** panel lives at the top of the **About** tab in Settings; when the backend is down, the desktop app also offers a **Restart backend** button there, with **Show log** to see what went wrong.
 
 If the backend stops on its own while the app is running, the desktop app shows a banner at the top of the window — **The AI backend has stopped. Restart it to use AI features.** — with the same **Restart backend** and **Show log** buttons, so you don't have to open Settings to recover.
 :::
@@ -30,9 +30,22 @@ If the backend stops on its own while the app is running, the desktop app shows 
 - **Have an API key?** Any of the key-based providers works; the model assignment below lets you mix them.
 :::
 
+### One question first {#first-question}
+
+While no model is registered, **Settings → AI** first asks **Which AI do you use now?** Pick what you already have, and only one button appears.
+
+| Choice | Button that appears |
+|---|---|
+| **A paid ChatGPT plan (Plus / Pro)** | **Continue with ChatGPT** ([below](#chatgpt-plan)). In the browser version, **Get the desktop app** |
+| **GitHub Copilot** | **Connect** ([below](#connect-github-copilot-with-one-button)). In the browser version, **Get the desktop app** |
+| **A connection my lab or institution gave me** | **Load a file you were given** ([below](#share-a-connection)). If you were only given a URL, **Enter the URL** |
+| **Other ways to connect** | Moves straight to **Where do you want to connect?** below. No service is recommended |
+
+**Back to the single question**, above that choice, returns here. You can skip this: bringing records in and searching them works without AI.
+
 ### Choose where to connect <Badge type="tip" text="Added in v0.95.8 (2026-10-26)" /> {#choose-where-to-connect}
 
-Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, **Settings → AI** shows this choice as soon as you open it.
+Under **Registered Models**, click **Add model**. The first question is **Where do you want to connect?** While no model is registered, you can also reach this choice from **Other ways to connect** in [the single question above](#first-question).
 
 | Choice | What happens |
 |---|---|
@@ -123,6 +136,30 @@ The figures and how to compare the services are in [AI usage and free tiers](/ai
 - **Connect** shows a screen with just the key field. Paste your key and Graphium checks the connection and picks the model the list expects (otherwise the newest of the service's everyday family)
 - For Cloudflare Workers AI, an **Account ID** field also appears. Enter the 32-character ID shown on the right of your Cloudflare dashboard, and the address is filled in
 - The figures are as of the date they were checked. Six months after that date, the list says it may be out of date. Check each service's own page for the current terms before you rely on it
+
+### Share a connection as a file {#share-a-connection}
+
+When one person in a lab has connected Graphium to something (such as the lab's own server), they can hand that connection to others. Whoever receives it opens the file and is connected, without typing an address or picking models.
+
+**Sharing**
+
+1. On the **AI** tab, press **Share connection** next to **Registered models**.
+2. Pick the connection and the models to include. **Your name** is shown on the receiver's check screen.
+3. Choose whether to include the key. If the destination needs no key, you can leave it out. To include it, paste the key again (saved keys can't be read back).
+4. With a key, **Encrypt with a passphrase** is on by default. Pass the passphrase on another way than the file (for example, in person).
+5. Press **Save file** to get a `.graphium-ai.json` file.
+
+**Receiving**
+
+1. On the **AI** tab, open **Add model** (or the chooser already showing if nothing is registered) and pick **Load a file you were given**.
+2. Choose the file. You see the **destination** (where the note content you give the AI is sent), who sent it, and the models to add. Check that the destination matches what the sender told you.
+3. If the key is encrypted, enter the passphrase.
+4. Press **Load** to register the models.
+
+- Existing connections are never replaced. The same model at the same destination is skipped as already added. If only the name clashes, it is added under another name such as "Name (2)".
+- You can share connections made with an API key or an address. GitHub Copilot and ChatGPT plans need each person to sign in.
+- Anyone who has the file can use the connection. If a file with a key leaks, make a new key at the destination and share again. A key included without encryption can stay in the history of shared folders or email even after you delete it.
+- A loaded key is stored in the same place as one you register yourself (next section).
 
 ### Where your API keys live
 

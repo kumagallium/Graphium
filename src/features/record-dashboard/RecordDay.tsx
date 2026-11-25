@@ -13,6 +13,7 @@ import {
   formatWeekday,
   isBundle,
   isHit,
+  timeOf,
   type BodyHits,
   type RecordBundle,
 } from "./model";
@@ -56,7 +57,10 @@ function BundleRow({
   onToggle: () => void;
 }) {
   const first = bundle.items[0];
-  const last = bundle.items[bundle.items.length - 1];
+  // 時刻の列は上から新しい順に読むので、遅い時刻を上、早い時刻を下に出す（中の並びの向きによらない）
+  const times = bundle.items.map((it) => it.at).sort((a, b) => timeOf(b) - timeOf(a));
+  const latest = times[0];
+  const earliest = times[times.length - 1];
   const peek = bundle.items
     .slice(0, 2)
     .map((it) => it.title ?? it.text ?? "")
@@ -64,9 +68,9 @@ function BundleRow({
     .join(" · ");
   return (
     <li className="rd-row rd-bundle" data-kind={first.kind} data-open={open ? "true" : undefined} data-dim={dim ? "true" : undefined}>
-      <time className="rd-time" dateTime={first.at}>
-        {formatTime(first.at)}
-        {formatTime(last.at) !== formatTime(first.at) && <span className="rd-time-to">{formatTime(last.at)}</span>}
+      <time className="rd-time" dateTime={latest}>
+        {formatTime(latest)}
+        {formatTime(earliest) !== formatTime(latest) && <span className="rd-time-to">{formatTime(earliest)}</span>}
       </time>
       <span className="rd-node">
         <WhoMark type={first.who.type} />

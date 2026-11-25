@@ -221,7 +221,7 @@ A few things to know:
 - A material added this way shows up in Graphium, and in `list_media`, after Graphium next rebuilds its media index (restarting Graphium is the sure way). Until then, dropping the same file in the app may create a second copy.
 - Folders cannot be set yet; added files land in the top level of your materials.
 
-### Files you attach in a chat {#files-you-attach-in-a-chat}
+### Files you attach in a chat <Badge type="tip" text="Added in v0.163.0 (2026-11-24)" /> {#files-you-attach-in-a-chat}
 
 In the ChatGPT desktop app (and Codex, or any assistant that can see the file on your PC), you can ask the assistant to add a file you attached to your Graphium materials — a photo of a result, a PDF, a spreadsheet. The assistant passes Graphium the file's location with `offer_material`; nothing becomes a material yet.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.165.0](https://github.com/kumagallium/Graphium/compare/v0.164.2...v0.165.0) - 2026-11-24
+
+- [refactor] Move the Knowledge management jobs from Settings into the Upkeep screen by @kumagallium in https://github.com/kumagallium/Graphium/pull/1859
+
+## [v0.164.2](https://github.com/kumagallium/Graphium/compare/v0.164.1...v0.164.2) - 2026-11-24
+
+- fix: list Home records newest first within each day too by @kumagallium in https://github.com/kumagallium/Graphium/pull/1853
+
 ## [v0.164.1](https://github.com/kumagallium/Graphium/compare/v0.164.0...v0.164.1) - 2026-11-24
 
 - feat(voice-notes): summarize long meetings in parts and combine the overlaps by @kumagallium in https://github.com/kumagallium/Graphium/pull/1852

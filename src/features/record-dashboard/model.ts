@@ -30,7 +30,10 @@ export function dayKeyOf(iso: string): string {
   return Number.isNaN(d.getTime()) ? "" : keyOfDate(d);
 }
 
-/** 記録を日ごとにまとめる。日は新しい順、日の中は時刻の早い順（1 日の流れとして読めるように） */
+/**
+ * 記録を日ごとにまとめる。日も日の中も新しい順。
+ * いちばん上に今日の最新の記録が来て、上から読むほど過去へ向かう（日の区切りで向きが折り返さない）
+ */
 export function groupByDay(items: readonly RecordItem[]): RecordDayGroup[] {
   const map = new Map<string, RecordItem[]>();
   for (const item of items) {
@@ -41,7 +44,7 @@ export function groupByDay(items: readonly RecordItem[]): RecordDayGroup[] {
   }
   return [...map.entries()]
     .sort(([a], [b]) => (a < b ? 1 : -1))
-    .map(([key, list]) => ({ key, items: [...list].sort((a, b) => timeOf(a.at) - timeOf(b.at)) }));
+    .map(([key, list]) => ({ key, items: [...list].sort((a, b) => timeOf(b.at) - timeOf(a.at)) }));
 }
 
 /** 本文で当たった箇所の抜粋（全文の索引から）。ranges は text の中の強調する範囲 */

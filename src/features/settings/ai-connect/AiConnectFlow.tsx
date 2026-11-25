@@ -18,7 +18,10 @@ import {
   type FreeProvider,
 } from "../free-providers/catalog";
 import { ConnectChooserView, type LocalProviderId } from "./ConnectChooserView";
+import { SimpleAiEntryView } from "./SimpleAiEntryView";
 import { KeyConnectView, type KeyConnectPhase } from "./KeyConnectView";
+import { ConnectionFileImport, type ImportModelSpec } from "../ai-connection-file/ConnectionFileImport";
+import type { ExistingModel } from "../ai-connection-file/format";
 
 /** 入力画面に渡す、つなぎ先の決まりごと */
 type Target = {
@@ -59,6 +62,17 @@ export type AiConnectFlowProps = {
   existingGroups?: { id: string; label: string }[];
   onPickExisting?: (id: string) => void;
   onOpenCopilotSettings?: () => void;
+  /** 配られた接続のファイルをまとめて登録する。無ければ「配られたファイルを読み込む」の行を出さない */
+  importModels?: (specs: ImportModelSpec[]) => Promise<void>;
+  /** 読み込みで重複を避けるための、今の接続の一覧 */
+  existingModels?: ExistingModel[];
+  /**
+   * 最初に「いま使っている AI」を 1 問だけ聞く簡易表示を出す（まだ何もつないでいないとき）。
+   * 「その他のつなぎ方」で今の選択画面へ移る
+   */
+  simpleFirst?: boolean;
+  /** デスクトップ版の入手先を開く（簡易表示の Web 版で ChatGPT・Copilot を選んだとき） */
+  onOpenDesktopDownload?: () => void;
 };
 
 export function AiConnectFlow({
@@ -72,7 +86,13 @@ export function AiConnectFlow({
   existingGroups,
   onPickExisting,
   onOpenCopilotSettings,
+  importModels,
+  existingModels = [],
+  simpleFirst = false,
+  onOpenDesktopDownload,
 }: AiConnectFlowProps) {
+  const [importing, setImporting] = useState(false);
+  const [showAll, setShowAll] = useState(!simpleFirst);
   const { locale, t } = useLocale();
   const [target, setTarget] = useState<Target | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -150,8 +170,47 @@ export function AiConnectFlow({
     </div>
   );
 
+  if (importing && importModels) {
+    return wrap(
+      <ConnectionFileImport
+        existing={existingModels}
+        importModels={importModels}
+        keylessPlaceholder={KEYLESS_PLACEHOLDER}
+        onBack={() => setImporting(false)}
+      />,
+    );
+  }
+
+  if (!target && !showAll) {
+    return wrap(
+      <SimpleAiEntryView
+        onConnectChatGpt={onConnectChatGpt}
+        onConnectCopilot={onConnectCopilot}
+        onPickCustom={onPickCustom}
+        onImportFile={importModels ? () => setImporting(true) : undefined}
+        onShowAll={() => setShowAll(true)}
+        onOpenDesktopDownload={onOpenDesktopDownload ?? (() => {})}
+        onOpenCopilotSettings={onOpenCopilotSettings}
+      />,
+    );
+  }
+
   if (!target) {
     return wrap(
+      <>
+      {simpleFirst && (
+        // 簡易表示から来たときだけ、1 問の画面へ戻れるようにする
+        // 置き場所（設定の空の状態）が中央寄せなので、行ごと左に寄せる
+        <div className="mb-2 text-left">
+          <button
+            type="button"
+            onClick={() => setShowAll(false)}
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            ← {t("settings.simpleAiEntry.backToSimple")}
+          </button>
+        </div>
+      )}
       <ConnectChooserView
         cloudProviders={CLOUD_PROVIDERS}
         onConnectChatGpt={onConnectChatGpt}
@@ -159,12 +218,14 @@ export function AiConnectFlow({
         onPickCloud={openCloud}
         onPickLocal={(id) => open(LOCAL_TARGETS[id])}
         onPickCustom={onPickCustom}
+        onImportFile={importModels ? () => setImporting(true) : undefined}
         existingGroups={existingGroups}
         onPickExisting={onPickExisting}
         onOpenCopilotSettings={onOpenCopilotSettings}
         onOpenSignup={openExternal}
         onOpenComparison={() => openExternal(comparisonUrl)}
       />
+      </>,
     );
   }
 
