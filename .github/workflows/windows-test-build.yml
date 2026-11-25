@@ -179,6 +179,61 @@ jobs:
       - name: Bundle server
         run: node scripts/bundle-server.mjs
 
+      # 同梱の node.exe で sidecar を実起動し、/api/health が応答するか確かめる。
+      # アプリ（start_native_sidecar）と同じく絶対パス・同じ環境変数で起動する。
+      # v0.134.0〜v0.171 では Windows で `\\?\C:\...` 形式のパスを node に渡していて、
+      # Node.js v22.23.5 がエントリを解決できず起動直後に exit 1 で落ちていた（どの CI も
+      # node.exe を実起動していなかったので気付けなかった）。参考として `\\?\` 形式の結果も出す。
+      - name: Smoke test bundled sidecar with bundled node.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $node = (Resolve-Path 'src-tauri/sidecar/node.exe').Path
+          $server = (Resolve-Path 'src-tauri/sidecar/server.mjs').Path
+          & $node --version
+
+          # 参考: `\\?\` 形式（修正前にアプリが渡していた形）。結果は判定に使わない
+          $verbatimLog = Join-Path $env:RUNNER_TEMP 'sidecar-verbatim.log'
+          $p0 = Start-Process -FilePath $node -ArgumentList "`"\\?\$server`"" -PassThru -NoNewWindow -RedirectStandardError $verbatimLog -RedirectStandardOutput "$verbatimLog.out"
+          if (-not $p0.WaitForExit(10000)) { $p0.Kill() }
+          Write-Host "verbatim path: exit=$($p0.ExitCode)"
+          Get-Content $verbatimLog -ErrorAction SilentlyContinue | Select-Object -First 5
+
+          # 本番: 修正後の形（`\\?\` を外した絶対パス）
+          $dataDir = Join-Path $env:RUNNER_TEMP 'sidecar-data'
+          New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+          $env:PORT = '13001'
+          $env:DATA_DIR = $dataDir
+          $env:GRAPHIUM_DESKTOP = '1'
+          $env:GRAPHIUM_AUTH_TOKEN = ('0' * 64)
+          $env:GRAPHIUM_USE_KEYCHAIN = '0'
+          $env:GRAPHIUM_PARENT_PID = "$PID"
+          $env:CORS_ORIGINS = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost'
+          $log = Join-Path $env:RUNNER_TEMP 'sidecar.log'
+          $p = Start-Process -FilePath $node -ArgumentList "`"$server`"" -PassThru -NoNewWindow -RedirectStandardError $log -RedirectStandardOutput "$log.out"
+          try {
+            for ($i = 1; $i -le 30; $i++) {
+              Start-Sleep -Seconds 1
+              if ($p.HasExited) {
+                Write-Host "ERROR: sidecar exited with code $($p.ExitCode)"
+                Get-Content $log, "$log.out" -ErrorAction SilentlyContinue
+                exit 1
+              }
+              try {
+                $r = Invoke-WebRequest -Uri 'http://127.0.0.1:13001/api/health' -UseBasicParsing -TimeoutSec 2
+                if ($r.StatusCode -eq 200) {
+                  Write-Host "Sidecar healthy after ${i}s"
+                  exit 0
+                }
+              } catch { }
+            }
+            Write-Host 'ERROR: sidecar did not respond on /api/health within 30s'
+            Get-Content $log, "$log.out" -ErrorAction SilentlyContinue
+            exit 1
+          } finally {
+            if (-not $p.HasExited) { $p.Kill() }
+          }
+
       # pnpm build が scripts/fetch-fonts.mjs 経由で日本語 Web フォント（約 8MB）を取得する。
       # キー / restore-keys の方針は test.yml の同ステップのコメント参照。
       - name: Cache Japanese webfonts
