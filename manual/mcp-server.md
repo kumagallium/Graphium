@@ -160,7 +160,7 @@ These tools are available. You do not call them by name — you ask in plain lan
 | `search_notes` | "Find my notes about thermoelectric measurements" |
 | `get_note` | "Show me that note" |
 | `show_note` <Badge type="tip" text="Added in v0.129.0 (2026-11-10)" /> | "Open that note here so I can see it" (draws the note inside the conversation in clients that support it; see [below](#note-preview-in-the-conversation)) |
-| `get_note_steps` | "What were the steps, with the conditions?" / "Draw this procedure as a diagram" (`format: "mermaid"` returns a flowchart) |
+| `get_note_steps` | "What were the steps, with the conditions?" / "Draw this procedure as a diagram" (`format: "mermaid"` returns a flowchart). The memos you put on steps and connections come along; see [below](#memos-with-the-steps) |
 | `find_notes_using` | "Which experiments used a planetary ball mill?" |
 | `list_entities` | "What materials and instruments show up across my notes?" |
 | `list_topics` <Badge type="tip" text="Added in v0.76.0 (2026-09-16)" /> | "What topics has Graphium worked out from my notes?" |
@@ -253,6 +253,15 @@ A note made today from a 2012 paper is still about something from 2012. Graphium
 - **`set_source_date`** adds, changes or removes the source date of notes you already have, up to 500 in one call — for example after bringing in many papers and posts, when each note's body still has the original date written in it. It changes only the source date: the body, title, folders, creation date and modified date stay as they are, so dating many notes at once does not reorder the list by modified date. Quit Graphium first; while it is running the call is refused. Every item is checked before anything is written, so one unreadable date or unknown note id leaves all notes unchanged. Each note's History panel records the change as **Set source date** (dating the same note again does not add another entry), and the reply lists the previous value of each note: passing that back (or `null` for a note that had none) puts it back. It works on notes only, not on Knowledge pages.
 - **`sourceDateKind`** says what the date is: `published` (a paper or post), `presented` (a talk), `recorded` (the day minutes or an experiment were written down) or `other`. Pass it only when you know; without it the kind is simply unknown. Both tools take it; on `set_source_date`, leaving it out keeps the current kind and `null` removes it. Removing the date removes the kind too.
 - **`get_note`** shows the source date (and its kind) under the note's title when it has one.
+
+### Memos come along with the steps {#memos-with-the-steps}
+
+A procedure often leaves out what you only learned by doing it: "take it out of the furnace once it is below 200 °C", "press the powder the same day". If you wrote that as a memo on a step or on a [connection between two steps](/labels-and-provenance#memos-on-connections), the assistant now reads it together with the procedure.
+
+- **`get_note_steps`** puts each memo under the step it is attached to, and lists memos on connections after the steps as "from → to: text". Memos elsewhere in the note are only counted.
+- **`get_note`** lists every memo attached to the note, each with what it is attached to (a step, a block, a connection, or the note as a whole), before the body.
+
+So when you ask the assistant to plan the next run from earlier notes, what you noted along the way can go into the plan at the right step. A memo may be something to do every time, something that happened once, or a question you have not checked; the assistant is told to tell these apart from the wording, and each memo carries its date. Archived and trashed memos are not returned, and neither is the address of whoever wrote the memo. At most 100 memos per note are returned (the newest 100, in the order they were written; the number of older ones is given), each up to 1,000 characters.
 
 ### Keeping conversation records in one folder <Badge type="tip" text="Added in v0.110.0 (2026-11-02)" /> {#create-note-folder}
 
