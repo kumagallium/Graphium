@@ -1333,6 +1333,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
       setAddError("");
     },
     onOpenCopilotSettings: () => void openExternalUrl(COPILOT_SETTINGS_URL),
+    onOpenDesktopDownload: () => void openExternalUrl(MANUAL_DOWNLOAD_URL),
   };
 
   // copilot-subscription（default = CLI の既定モデル）を 1 件登録する。API キー不要。
@@ -2748,12 +2749,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                     ? { label: t("settings.aiStatus.copilotExpiredAction"), onClick: () => setReloginOpen(true), disabled: reloginOpen }
                     : chatgptExpiredShown
                     ? { label: t("settings.aiStatus.chatgptExpiredAction"), onClick: () => setChatgptReloginOpen(true), disabled: chatgptReloginOpen }
-                    : models.length > 0
-                    ? undefined
-                    : {
-                        label: t("settings.aiStatus.setupAction"),
-                        onClick: () => { setShowAddForm(true); setAddMode("new"); },
-                      }
+                    : // 未登録のときはボタンを出さない。すぐ下の「いま使っている AI はありますか？」が入口（入口を 1 つにする）
+                      undefined
                 }
               />
             )}
@@ -2810,7 +2807,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                 ) : (
                   <h3 className={SETTINGS_BLOCK_TITLE_TEXT_CLASS}>{t("settings.models.title")}</h3>
                 )}
-                {!showAddForm && (
+                {/* 未登録のあいだは、すぐ下に 1 問が出ているので「モデルを追加」は出さない（入口を 1 つにする） */}
+                {!showAddForm && models.length > 0 && (
                   <div className="flex items-center gap-2">
                     {/* 研究室で 1 人がつないだ接続を、ファイルにしてほかの人へ渡す */}
                     {exportGroups.length > 0 && !exportOpen && (
@@ -2832,7 +2830,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
               </div>
 
               {exportOpen && !showAddForm && (
-                <div className="mb-3">
+                <div className={`mb-3 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                   <ConnectionFileExport
                     groups={exportGroups}
                     defaultFrom={authorName}
@@ -2847,7 +2845,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                   <Loader2 size={14} className="animate-spin" /> {t("settings.models.loading")}
                 </div>
               ) : models.length === 0 && !showAddForm ? (
-                <div className="text-center">
+                // 中身は見出しの文字にそろえる（下の一覧と同じ字下げ）
+                <div className={`text-center ${SETTINGS_BLOCK_BODY_CLASS}`}>
                   {!isWebMode ? (
                     // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
                     <>
@@ -2869,6 +2868,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                       ) : (
                         <AiConnectFlow
                           {...aiConnectProps}
+                          simpleFirst
                           onConnectChatGpt={() => setChatgptFlowOpen(true)}
                           onConnectCopilot={() => setCopilotFlowOpen(true)}
                         />
@@ -2879,7 +2879,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                     </>
                   ) : (
                     <>
-                      <AiConnectFlow {...aiConnectProps} />
+                      <AiConnectFlow {...aiConnectProps} simpleFirst />
                     </>
                   )}
                 </div>
