@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.171.1](https://github.com/kumagallium/Graphium/compare/v0.171.0...v0.171.1) - 2026-11-25
+
+- [docs] Add the v0.171.0 badge and roadmap row for the inbox beside the note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1877
+- fix: keep the kind icon clear of the checkbox on inbox tiles, and add the manual figure by @kumagallium in https://github.com/kumagallium/Graphium/pull/1878
+
 ## [v0.171.0](https://github.com/kumagallium/Graphium/compare/v0.170.0...v0.171.0) - 2026-11-25
 
 - feat: return memos on steps and connections from get_note and get_note_steps by @kumagallium in https://github.com/kumagallium/Graphium/pull/1873
