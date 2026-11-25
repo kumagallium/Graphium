@@ -12,6 +12,8 @@ import type { BatchRunResult, LintPlanResult } from "../source-check/use-source-
 import type { MaintenanceListBinding } from "../knowledge-maintenance/MaintenanceRunList";
 import type { MaintenanceOperation, MaintenanceRun } from "../knowledge-maintenance/types";
 import type { AutoUpkeepProgress, AutoUpkeepResult } from "./auto-upkeep";
+import { useUpkeepJobs } from "./use-upkeep-jobs";
+import { ConfirmHost } from "../../ui/confirm-dialog";
 import "../../app.css";
 
 const meta: Meta = {
@@ -617,4 +619,66 @@ export const ThingGroupsOpen: Story = {
     }
     return <Opened />;
   },
+};
+
+// 設定の「ナレッジ管理」から移した一括処理を、おまかせの下（「1 つずつ実行する」の小見出しのあと）に並べた状態。
+// 本物の useUpkeepJobs に、少し待って終わる偽の処理を渡している（AI・保存は呼ばない。トーストは console に出す）
+function UpkeepJobsDemo() {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const [sourcesLeft, setSourcesLeft] = useState(4);
+  const upkeepJobs = useUpkeepJobs({
+    active: true,
+    toast: {
+      upsert: (item) => console.info("[story] toast", item.id, item.status, item.detail ?? item.result),
+      registerAbort: () => () => {},
+    },
+    sourceTopics: {
+      plan: async () => ({ sources: sourcesLeft, alreadySettled: 1 }),
+      run: async (onProgress, signal) => {
+        for (let i = 1; i <= sourcesLeft; i++) {
+          if (signal.aborted) break;
+          await wait(500);
+          onProgress({ done: i, total: sourcesLeft, topicsTouched: i * 2 });
+        }
+        const done = sourcesLeft;
+        setSourcesLeft(0);
+        return { done, total: done, topicsTouched: done * 2, created: done, noTopic: 0, unreadable: 0, failedSources: 0, aborted: signal.aborted, stoppedByFailures: false };
+      },
+    },
+    linkClaims: {
+      plan: async () => ({ calls: 6, claims: 48, alreadyJudged: 0 }),
+      run: async () => null,
+    },
+    topicTypes: { untypedCount: 23, run: async () => ({ assigned: 23, total: 23, calls: 1 }) },
+    regenerate: {
+      summaries: [
+        { id: "t1", title: "加水率", kind: "topic" },
+        { id: "t2", title: "オートリーズ", kind: "topic" },
+        { id: "c1", title: "加水を上げると気泡が粗くなる", kind: "claim" },
+      ],
+      run: async () => { await wait(400); return { ok: true }; },
+      models: [{ value: "model-a", label: "model-a" }, { value: "model-b", label: "model-b" }],
+      defaultModel: "model-a",
+    },
+  });
+  return (
+    <div style={{ height: "100%" }}>
+      <WikiLintView
+        report={null}
+        loading={false}
+        onRunLint={() => console.info("[story] run lint")}
+        onOpenWiki={(id) => console.info("[story] open wiki", id)}
+        onBack={() => console.info("[story] back")}
+        maintenance={demoMaintenance}
+        autoTidy={{ progress: null, result: null, reportIsLeftover: false, onRun: () => console.info("[story] auto tidy") }}
+        upkeepJobs={upkeepJobs}
+      />
+      <ConfirmHost />
+    </div>
+  );
+}
+
+export const UpkeepJobsBelowAutoTidy: Story = {
+  name: "手入れタブ — 補う・全体をやり直す（設定から移した一括処理）",
+  render: () => <UpkeepJobsDemo />,
 };

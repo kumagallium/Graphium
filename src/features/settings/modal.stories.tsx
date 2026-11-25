@@ -9,7 +9,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
-import { SettingsModal, type WikiSummaryForSettings } from "./modal";
+import { SettingsModal } from "./modal";
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 const SETTINGS_KEY = "graphium-settings";
@@ -19,13 +19,6 @@ const SAMPLE_MODELS = [
   { id: "m1", name: "Claude Sonnet 5", provider: "anthropic", modelId: "claude-sonnet-5", apiKey: "dummy", apiBase: null, rate: { input: 3, output: 15, currency: "usd" } },
   { id: "m2", name: "Claude Opus 5", provider: "anthropic", modelId: "claude-opus-5", apiKey: "dummy", apiBase: null, rate: { input: 15, output: 75, currency: "usd" } },
   { id: "m3", name: "ローカル LLM", provider: "openai-compatible", modelId: "gpt-oss-120b", apiKey: "dummy", apiBase: "http://127.0.0.1:9999/v1" },
-];
-
-const SAMPLE_WIKIS: WikiSummaryForSettings[] = [
-  { id: "w1", title: "析出強化のメカニズム", kind: "claim" },
-  { id: "w2", title: "時効処理の温度依存性", kind: "summary" },
-  { id: "w3", title: "転位と粒界の相互作用", kind: "atom" },
-  { id: "w4", title: "析出強化", kind: "topic" },
 ];
 
 /**
@@ -133,9 +126,7 @@ function SettingsModalHarness({
   seedMissingModel = false,
   seedUnsupportedEmbeddingModel = false,
   initialTab,
-  wikiSummaries,
   fakeTauri = false,
-  knowledgeJobs = false,
 }: {
   seedModels?: boolean;
   /** バックエンドに繋がっている見た目にする（既定は seedModels に従う）。
@@ -148,11 +139,8 @@ function SettingsModalHarness({
   /** 一覧にはあるが埋め込みに使えない種類（anthropic）のモデル名を embeddingModel に入れて開く */
   seedUnsupportedEmbeddingModel?: boolean;
   initialTab?: string;
-  wikiSummaries?: WikiSummaryForSettings[];
   /** デスクトップ版（Tauri）の見た目にする。保存先フォルダ欄などが出る。マニュアルのスクショ用 */
   fakeTauri?: boolean;
-  /** 整理・発見などのジョブのハンドラを渡し、Knowledge タブのカードを全部出す（マニュアルのスクショ用。実行しても何も呼ばない） */
-  knowledgeJobs?: boolean;
 }) {
   const [ready, setReady] = useState(false);
 
@@ -175,7 +163,7 @@ function SettingsModalHarness({
       localStorage.setItem(
         SETTINGS_KEY,
         JSON.stringify({
-          features: { insights: true, worldGrounding: true, ...(knowledgeJobs ? { claims: true } : {}) },
+          features: { insights: true, worldGrounding: true },
           ...(seedMissingModel ? { model: "Deleted model", chatModel: "Old chat model" } : {}),
           // Claude Sonnet 5 は anthropic — 埋め込み欄の選択肢（openai/openai-compatible）には出ない
           ...(seedUnsupportedEmbeddingModel ? { embeddingModel: "Claude Sonnet 5" } : {}),
@@ -209,7 +197,7 @@ function SettingsModalHarness({
       localStorage.removeItem(SETTINGS_KEY);
       restoreFetch?.();
     };
-  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel, fakeTauri, knowledgeJobs]);
+  }, [seedModels, stubApi, seedFeaturesOff, seedMissingModel, seedUnsupportedEmbeddingModel, fakeTauri]);
 
   // localStorage を整えてからマウントする（SettingsModal は初回描画で読むため）
   if (!ready) return null;
@@ -220,20 +208,8 @@ function SettingsModalHarness({
         isOpen
         onClose={() => {}}
         initialTab={initialTab}
-        wikiSummaries={wikiSummaries}
-        onRegenerateWiki={async () => ({ ok: true })}
+        knowledgePageCount={4}
         onReembedAllWikis={async (onProgress) => onProgress(3, 3)}
-        {...(knowledgeJobs
-          ? {
-              onOrganizeTopics: async () => ({ merged: 0, rebuilt: 0, failed: 0 }),
-              claimTopicLinkBackfill: {
-                plan: async () => ({ calls: 12, claims: 148, alreadyJudged: 3 }),
-                run: async () => ({ done: 12, total: 12, linkedClaims: 121, calls: 12, failedSources: 0, aborted: false, stoppedByFailures: false }),
-              },
-              onRunAtomizeDiscovery: async () => ({ ok: true, created: 0, iterations: 0 }),
-              onPlanAtomizeDiscovery: async () => ({ total: 6, runs: 1 }),
-            }
-          : {})}
       />
     </div>
   );
@@ -303,35 +279,6 @@ export const Usage: Story = {
 /** ストレージタブ。見出し → 説明文 → コントロールの縦リズムを確認する。 */
 export const Storage: Story = {
   args: { initialTab: "storage" },
-};
-
-/**
- * ナレッジ管理タブ。wikiSummaries があるときだけ出る Re-embed カードを含む
- * （i18n 化した文言の見た目はここでしか確認できない）。
- */
-export const Maintenance: Story = {
-  args: { seedModels: true, initialTab: "maintenance", wikiSummaries: SAMPLE_WIKIS },
-};
-
-/** マニュアル用の英語（パン作り）の Knowledge 一覧。 */
-const MANUAL_WIKIS: WikiSummaryForSettings[] = [
-  { id: "m1", title: "Sourdough hydration", kind: "topic" },
-  { id: "m2", title: "Autolyse", kind: "topic" },
-  { id: "m3", title: "Bulk fermentation", kind: "topic" },
-  { id: "m4", title: "Wetter dough gives a more open crumb", kind: "claim" },
-  { id: "m5", title: "A longer cold proof deepens flavour", kind: "claim" },
-  { id: "m6", title: "A longer cold proof lets you use less yeast", kind: "claim" },
-  { id: "m7", title: "Higher hydration needs a longer, gentler bulk", kind: "claim" },
-  { id: "m8", title: "Hydration and proofing time trade off", kind: "atom" },
-];
-
-/**
- * Manual (English, bread world) — Knowledge タブのカードの並び（マニュアルの settings-knowledge-tab.png 用）。
- * Organize topics / Discover Insights from Claims まで全部出す。ジョブは実行しても何も呼ばない。
- */
-export const ManualEnglishKnowledge: Story = {
-  name: "Manual (English, bread world) — Knowledge",
-  args: { seedModels: true, initialTab: "maintenance", wikiSummaries: MANUAL_WIKIS, knowledgeJobs: true },
 };
 
 /**

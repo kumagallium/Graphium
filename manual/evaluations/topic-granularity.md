@@ -61,7 +61,7 @@ The old rule created "material's property" titles in 2 of 9 runs (4 and 5 titles
 ## What I decided
 
 - **The new rule is used only when a source is ingested.** It names new topics after the thing itself.
-- **Tidying up existing topics keeps the old rule.** That covers "Organize topics" in Settings and the first step of "Tidy up for me" in Upkeep.
+- **Tidying up existing topics keeps the old rule.** That covers "Organize topics" in Settings and the first step of "Tidy up for me" in Upkeep. (Organize topics in Settings was retired afterwards; Tidy up for me took over.)
 - **Existing "X's Y" pages are not changed on their own.** To bring them together, use [Group pages by thing](/knowledge-layer#group-pages-by-thing) in Upkeep first. In these measurements, "X's Y" titles were less likely with either rule once the list had been grouped (measurements 3 and 4).
 
 ## Limits
