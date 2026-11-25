@@ -1180,6 +1180,8 @@ export const en: Record<string, string> = {
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
   "settings.health.unavailable": "Backend is not available. AI features require the desktop app.",
+  "settings.health.unavailableDesktop": "The app's built-in backend (which runs AI and search) is not responding. Press Restart backend.",
+  "settings.health.unavailableDesktopAiTab": "The app's built-in backend (which runs AI and search) is not responding. Press Restart backend on the About tab.",
   "settings.health.restart": "Restart backend",
   "settings.health.restarting": "Restarting...",
   "settings.health.restartFailed": "Restart failed",
