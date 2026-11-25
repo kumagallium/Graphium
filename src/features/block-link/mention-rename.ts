@@ -485,6 +485,7 @@ export type MentionRenameResult = {
  *   同居している場合、どの「@旧タイトル」がどちらを指すか run 単位では判別できないため、
  *   そのブロックには触らない（誤った付け替えより不追従を選ぶ）。
  * - 何も変わらなければ null（保存不要）。
+ * - doc.modifiedAt は変えない（利用者の編集ではないため）。
  */
 export function applyMentionRenameToDoc(
   doc: GraphiumDocument,
@@ -592,7 +593,9 @@ export function applyMentionRenameToDoc(
         { ...page, blocks: newBlocks, ...(tableMeta !== page.tableMeta ? { tableMeta } : {}) },
         ...doc.pages.slice(1),
       ],
-      modifiedAt: new Date().toISOString(),
+      // 更新日時は進めない。リンク先の題に追従させる機械的な書き換えで、利用者がこのノートを
+      // さわったわけではない（進めると、ホームの「更新」の行やノート一覧の更新順に、
+      // さわっていないノートが並ぶ）。索引の古さはファイルの更新時刻で見るので、追従は保たれる
     },
     changedBlockIds,
   };
