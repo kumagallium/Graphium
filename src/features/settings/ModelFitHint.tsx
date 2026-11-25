@@ -72,3 +72,28 @@ export function ModelFitHint({ slot, showNote = true }: ModelFitHintProps) {
     </div>
   );
 }
+
+/** 3 段の最後に 1 つだけ出す、目安の記号の意味と測った結果へのリンク（各段の注記を「くわしく」へ移したとき） */
+export function ModelFitSource() {
+  const { t, locale } = useLocale();
+  const url = modelFitEvaluationUrl(locale);
+  return (
+    <p className="text-[11px] text-muted-foreground">
+      {t("settings.assignTrim.fitSource")}{" "}
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => {
+          // デスクトップ版の WebView は target=_blank を開かないので、既定の外部リンクの開き方に任せる
+          e.preventDefault();
+          void openExternalUrl(url);
+        }}
+        className="inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground"
+      >
+        {t("settings.modelFit.link")}
+        <ExternalLink size={10} aria-hidden="true" />
+      </a>
+    </p>
+  );
+}

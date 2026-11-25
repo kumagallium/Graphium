@@ -990,7 +990,7 @@ export const ja: Record<string, string> = {
   "settings.assignOneModel.showTiers": "段ごとのくわしい設定とモデルの目安",
   "settings.assignOneModel.fitCaution": "標準と高度な処理は、各社の主力のクラウドモデルで測ったときに安定しました。研究室のサーバーや自分の PC のモデルでは、ノートに無いことが混ざったり、時間切れになったりすることがあります。",
   "settings.assignOneModel.fitLink": "測った結果",
-  "settings.assignTrim.uses.default": "チャット・点検・出典照合・題付け",
+  "settings.assignTrim.uses.default": "チャット・点検・出典照合・題付け・照合や判定",
   "settings.assignTrim.uses.standard": "ナレッジ化・トピックの整理・手順の抽出",
   "settings.assignTrim.uses.precise": "翻訳・計画・洞察・清書",
   "settings.assignTrim.fitSource": "モデルの目安（✓ 向く・− 条件つき・× 向かない）は、同じ作業を大きさの違うモデルで動かして測った結果から出しています。",

@@ -1,5 +1,5 @@
-// モデルの割り当て（案）: 登録したモデルが 1 つのときの短い表示のストーリー。アプリにはまだ組み込まない。
-// 合意を取るための見本で、今の 3 段（Molecules/ModelFitHint と同じ組み方）と並べて比べられるようにする。
+// モデルの割り当て: 登録したモデルが 1 つのときの短い表示と、説明を用途だけにした 3 段のストーリー。
+// 組み込む前の 3 段（CurrentThreeTiers・TwoOrMoreModels）と並べて比べられるようにしてある。
 // 短い表示にするのは「モデルが 1 つ」かつ「段ごとのモデルをまだ選んでいない」ときだけ。それ以外は今の 3 段のまま。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -14,7 +14,7 @@ import { modelFitEvaluationUrl } from "./model-fit";
 import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "./SettingsGroup";
 
 const meta: Meta = {
-  title: "Proposals/AssignmentOneModel",
+  title: "Molecules/AssignmentOneModel",
   parameters: { layout: "padded" },
 };
 export default meta;

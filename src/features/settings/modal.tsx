@@ -80,7 +80,9 @@ import { needsStdioConfirm } from "./mcp-command-confirm";
 import { formatShortcut } from "../../lib/shortcut-label";
 import { LexicalIndexCard } from "../lexical-search/LexicalIndexCard";
 import { SettingSection } from "./SettingSection";
-import { ModelFitHint } from "./ModelFitHint";
+import { ModelFitHint, ModelFitSource } from "./ModelFitHint";
+import { AssignmentOneModelView } from "./AssignmentOneModelView";
+import { singleModelForAssignment } from "./assignment-collapse";
 import { SharedFoldersSection } from "./SharedFoldersSection";
 import { DataPlacesSection } from "./DataPlacesSection";
 import { MeetingSettingsSection } from "../meeting-recorder/MeetingSettingsSection";
@@ -596,6 +598,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
   const embeddingModelMissing = !isLocalEmbeddingValue(embeddingModel) && isMissingModelName(embeddingModel, availableModelNames);
   const standardModelMissing = isMissingModelName(standardModel, availableModelNames);
   const preciseModelMissing = isMissingModelName(preciseModel, availableModelNames);
+  // モデルが 1 つで段ごとに選ぶものが無ければ、割り当てを「3 段とも ○○ を使います」の 1 行で出す
+  const singleAssignModel = singleModelForAssignment({ modelsLoaded, modelNames: models.map((m) => m.name), model, standardModel, preciseModel });
+  // 1 行の表示から「段ごとのくわしい設定」を開いたか（開いたら、その間は今の 3 段を出す）
+  const [assignTiersOpen, setAssignTiersOpen] = useState(false);
   const chatModelMissing = isMissingModelName(chatModel, availableModelNames);
   // 埋め込みの選択欄だけの追加状態: 一覧には実在するが、埋め込みに使えるプロバイダー
   // （OpenAI / OpenAI 互換）ではないモデル名（手で編集した設定など）。一覧が読めていない
@@ -3298,10 +3304,23 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
               title={t("settings.ai.sectionAssign")}
               summary={assignGroupSummary}
             >
+                {singleAssignModel && !assignTiersOpen ? (
+                  <AssignmentOneModelView
+                    modelName={singleAssignModel}
+                    standardOn={standardTierEnabled}
+                    preciseOn={preciseTierEnabled}
+                    onToggleStandard={() => { setStandardTierEnabled((v) => !v); setSaved(false); }}
+                    onTogglePrecise={() => { setPreciseTierEnabled((v) => !v); setSaved(false); }}
+                    onShowTiers={() => setAssignTiersOpen(true)}
+                  />
+                ) : (
+                <>
+                {/* 説明は用途だけ（空欄のときに何を使うかは選択欄の先頭に出ている）。目安の注記は「くわしく」の中へ、
+                    「測った結果」のリンクは 3 段の最後に 1 つ */}
                 <SettingSection
                   title={t("settings.model")}
-                  summary={t("settings.model.summary")}
-                  details={<p>{t("settings.modelHelp")}</p>}
+                  summary={t("settings.assignTrim.uses.default")}
+                  details={<><p>{t("settings.modelHelp")}</p><p className="mt-1">{t("settings.modelFit.note.default")}</p></>}
                 >
                   <div className="relative">
                     <select
@@ -3326,13 +3345,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {modelMissing && renderMissingModelHint(t("settings.modelDefault", { name: defaultModel }))}
-                  <ModelFitHint slot="default" />
+                  <ModelFitHint slot="default" showNote={false} />
                 </SettingSection>
 
                 <SettingSection
                   title={t("settings.standardModel")}
-                  summary={t("settings.standardModel.summary")}
-                  details={<p>{t("settings.standardModelHelp")}</p>}
+                  summary={t("settings.assignTrim.uses.standard")}
+                  details={<><p>{t("settings.standardModelHelp")}</p><p className="mt-1">{t("settings.modelFit.note.standard")}</p></>}
                   toggle={{
                     checked: standardTierEnabled,
                     onChange: () => { setStandardTierEnabled((v) => !v); setSaved(false); },
@@ -3363,13 +3382,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {standardModelMissing && renderMissingModelHint(t("settings.standardModelSameAsDefault"))}
-                  <ModelFitHint slot="standard" />
+                  <ModelFitHint slot="standard" showNote={false} />
                 </SettingSection>
 
                 <SettingSection
                   title={t("settings.preciseModel")}
-                  summary={t("settings.preciseModel.summary")}
-                  details={<p>{t("settings.preciseModelHelp")}</p>}
+                  summary={t("settings.assignTrim.uses.precise")}
+                  details={<><p>{t("settings.preciseModelHelp")}</p><p className="mt-1">{t("settings.modelFit.note.precise")}</p></>}
                   toggle={{
                     checked: preciseTierEnabled,
                     onChange: () => { setPreciseTierEnabled((v) => !v); setSaved(false); },
@@ -3400,8 +3419,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                     <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   </div>
                   {preciseModelMissing && renderMissingModelHint(t("settings.preciseModelSameAsStandard"))}
-                  <ModelFitHint slot="precise" />
+                  <ModelFitHint slot="precise" showNote={false} />
                 </SettingSection>
+                <ModelFitSource />
+                </>
+                )}
 
 
                 <SettingSection
