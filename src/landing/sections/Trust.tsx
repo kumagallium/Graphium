@@ -6,6 +6,7 @@ export function Trust() {
     { icon: "🤝", title: t("trust.ai.title"), body: t("trust.ai.body") },
     { icon: "💾", title: t("trust.storage.title"), body: t("trust.storage.body") },
     { icon: "🔓", title: t("trust.open.title"), body: t("trust.open.body") },
+    { icon: "⏱", title: t("trust.seal.title"), body: t("trust.seal.body") },
   ];
 
   return (
@@ -16,7 +17,7 @@ export function Trust() {
       </h2>
       <p className="lp-lead">{t("trust.sub")}</p>
 
-      <div className="lp-grid-3">
+      <div className="lp-grid-4">
         {cards.map((card) => (
           <article key={card.title} className="lp-card">
             <span className="lp-card-icon" aria-hidden="true">

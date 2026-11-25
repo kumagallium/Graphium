@@ -26,11 +26,9 @@ export const en = {
   "hero.eyebrow": "Graphium · Your records in one place, readable by you and by AI",
   "hero.title": "Wake your sleeping records. Readable by you, and by AI.",
   "hero.subtitle":
-    "Photos of paper documents, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to sleep. Everything up to here works without AI. Once you start using AI, it reads the same records as they are and answers with the source attached.",
-  "hero.tryOnline": "Try online",
-  "hero.seeSample": "See a sample notebook",
+    "Photos of lab notebook pages, recordings of meetings, papers and web pages you read, old data files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to sleep. Everything up to here works without AI. Once you start using AI, it reads the same records as they are and answers with the source attached.",
+  "hero.seeSample": "See a sample lab notebook",
   "hero.download": "Download desktop",
-  "hero.starOnGithub": "Star on GitHub",
   "hero.videoLabel": "One-minute demo: bring in records, watch the dots connect into topics, trace an answer to its origin",
   "hero.videoCaption":
     "A one-minute video, no sound. Bring in a folder of records, watch the dots connect into topics, and trace the AI's answer back to the note it came from.",
@@ -63,12 +61,12 @@ export const en = {
   "screens.trace.alt": "An insight page with its lineage panel showing the source claim and source notes",
 
   // For everyone
-  "everyone.heading": "For everyone who tinkers.",
+  "everyone.heading": "First, for researchers with years of lab records.",
   "everyone.sub":
-    "The vocabulary is generic: labs, kitchens, workshops, codebases, classrooms.",
+    "How each sample was made, the conditions of each measurement, the runs that didn't work. Keep what you tried in a form you can trace later. The same habits work in kitchens, workshops, codebases and classrooms.",
   "everyone.case.lab": "Researchers",
   "everyone.case.lab.body":
-    "Experiment logs with provenance — steps, materials, results, all linked.",
+    "Lab notes that keep steps, materials, conditions and results connected. Link runs with @ and trace what changed from one run to the next.",
   "everyone.case.maker": "Cooks & makers",
   "everyone.case.maker.body":
     "Recipes that remember why this loaf worked, and the four that didn't.",
@@ -91,6 +89,9 @@ export const en = {
   "trust.open.title": "Open source & open standards",
   "trust.open.body":
     "A personal open-source project under Apache 2.0. Provenance exports as W3C PROV-DM JSON-LD, so your data stays readable outside Graphium.",
+  "trust.seal.title": "\"When\" and \"what\", checkable by others",
+  "trust.seal.body":
+    "Seal a saved point as evidence, and only a 32-byte hash of its content goes to outside timestamp services. From the exported zip, anyone can check without Graphium that this content existed before that time. That is all it proves: it does not prove who wrote it. Timestamps are added in the desktop app.",
 
   // Get started
   "start.heading": "Get started.",
@@ -102,6 +103,10 @@ export const en = {
   "start.desktop.body":
     "Web clips, recordings turned into text, photos and voice memos from your phone, whole folders of old files, and searching across them: all of it works without AI. When you want AI, a GitHub Copilot subscription connects in one click with no API key. macOS (Apple Silicon) and Windows.",
   "start.desktop.cta": "Download",
+  "start.sample.title": "Sample lab notebook",
+  "start.sample.body":
+    "A made-up thermoelectric materials study: solid-state synthesis, XRD and Seebeck measurements, with the topics an AI built from them. Opens in your browser without connecting any AI, and nothing you add there mixes with your own notes.",
+  "start.sample.cta": "Open the sample",
 
   // FAQ
   "faq.heading": "FAQ",
@@ -189,11 +194,9 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.eyebrow": "Graphium · 記録を 1 か所に、人にも AI にも読める形で",
   "hero.title": "眠っている記録を、人にも AI にも読める形に。",
   "hero.subtitle":
-    "紙の資料の写真、会議の録音、Web で読んだページ、昔のファイル。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。",
-  "hero.tryOnline": "オンラインで試す",
-  "hero.seeSample": "見本のノートを見る",
+    "実験ノートの写真、打ち合わせの録音、読んだ論文や Web ページ、昔の測定データ。1 か所に入れると文字になって、あとで探せます。これから残す記録も同じ場所に入るので、眠らせずに済みます。ここまでは AI なしで動きます。AI を使い始めたら、同じ記録を AI がそのまま読んで、出どころつきで答えます。",
+  "hero.seeSample": "実験ノートの見本を見る",
   "hero.download": "デスクトップ版を入手",
-  "hero.starOnGithub": "GitHub でスター",
   "hero.videoLabel": "1 分の動画: 記録を入れると点と点がトピックに繋がり、答えの出どころまで辿れるまで",
   "hero.videoCaption":
     "1 分の動画（音声なし）。記録をフォルダごと入れると、点と点がトピックに繋がり、AI の答えから出どころのノートまで辿れます。",
@@ -223,11 +226,12 @@ export const ja: Record<keyof typeof en, string> = {
     "洞察を開くと、右のパネルに「来歴」が並びます。もとになった知見、その知見のもとのノートへと、いつでも遡れます。",
   "screens.trace.alt": "来歴パネル(洞察・知見・元ノート)を開いた洞察ページ",
 
-  "everyone.heading": "試行錯誤するすべての人へ。",
-  "everyone.sub": "実験室でも、台所でも、工房でも、コードベースでも、教室でも。",
+  "everyone.heading": "まず、実験の記録を溜めてきた研究者へ。",
+  "everyone.sub":
+    "試料をどう作ったか、どの条件で測ったか、うまくいかなかった回。試したことを、あとから辿れる形で残します。同じ使い方は、台所でも、工房でも、コードベースでも、教室でもできます。",
   "everyone.case.lab": "研究者",
   "everyone.case.lab.body":
-    "来歴付きの実験ログ。ステップ・材料・結果が繋がったまま残ります。",
+    "手順・材料・条件・結果がつながったまま残る実験ノート。条件を変えた回どうしを @ でつなぎ、前の回から何を変えたかを辿れます。",
   "everyone.case.maker": "料理人・つくる人",
   "everyone.case.maker.body":
     "今回のパンが上手くいった理由を覚えているレシピ。上手くいかなかった 4 回も一緒に。",
@@ -249,6 +253,9 @@ export const ja: Record<keyof typeof en, string> = {
   "trust.open.title": "オープンソース & オープン標準",
   "trust.open.body":
     "Apache 2.0 で公開している個人開発プロジェクトです。来歴は W3C PROV-DM 準拠の JSON-LD として書き出せるので、データは Graphium の外でも読めます。",
+  "trust.seal.title": "「いつ・何が」を、第三者が確かめられる",
+  "trust.seal.body":
+    "残した時点を「証拠として固定」すると、内容のハッシュ（32 バイト）だけを外部の時刻証明サービスに預けます。「この時刻より前に、この内容があった」ことを、書き出した zip から Graphium なしで確かめられます。証明するのはそこまでで、誰が書いたかは証明しません。時刻の証明はデスクトップ版で付きます。",
 
   "start.heading": "はじめる。",
   "start.online.title": "ブラウザでプレビュー",
@@ -259,6 +266,10 @@ export const ja: Record<keyof typeof en, string> = {
   "start.desktop.body":
     "Web のクリップ、録音の文字起こし、スマホの写真や声のメモ、昔のファイルのフォルダごとの取り込みと、その検索まで、AI なしで使えます。AI を使いたくなったら、GitHub Copilot のサブスクがあれば API キーなしの 1 クリックで動き出します。macOS (Apple Silicon) / Windows 対応。",
   "start.desktop.cta": "ダウンロード",
+  "start.sample.title": "実験ノートの見本",
+  "start.sample.body":
+    "架空の熱電材料の研究です。固相合成、XRD、ゼーベック係数の測定の記録と、そこから AI が作ったトピックが入っています。AI をつながずにブラウザで開けて、書き足しても自分のノートには混ざりません。",
+  "start.sample.cta": "見本を開く",
 
   "faq.heading": "よくある質問",
   "faq.ai.q": "AI は必須ですか?",

@@ -9,20 +9,20 @@
   <b>Wake your sleeping records. Readable by you, and by AI.</b>
 </p>
 <p align="center">
-  Photos of paper documents, recordings of meetings, pages you read on the web, old files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
+  Photos of lab notebook pages, recordings of meetings, papers and web pages you read, old data files. Put them in one place and they become text you can search later. What you record from now on goes into the same place, so it never has to fall asleep. Up to here, it works without AI. When you start using AI, it reads the same records as they are and answers with the source attached.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  <a href="https://kumagallium.github.io/Graphium/"><img alt="Try in browser" src="https://img.shields.io/badge/Try_in_browser-2ea44f?style=for-the-badge"></a>
-  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Download desktop" src="https://img.shields.io/badge/Download_desktop-24292f?style=for-the-badge"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Download desktop" src="https://img.shields.io/badge/Download_desktop-2ea44f?style=for-the-badge"></a>
+  <a href="https://kumagallium.github.io/Graphium/"><img alt="Try in browser" src="https://img.shields.io/badge/Try_in_browser-24292f?style=for-the-badge"></a>
 </p>
 
 <p align="center">
   Prefer to watch first? <a href="https://youtu.be/PtPY_OcCURU">One-minute video</a> (no sound): a folder of records goes in, topics come out, and the AI answers from your own notes.<br />
-  Or open the <a href="https://kumagallium.github.io/Graphium/app/?demo=bread-en">sample notebook</a> in your browser. Twelve bread-baking notes, the topics an AI built from them, and a recorded chat. No AI connection needed.
+  Or open the <a href="https://kumagallium.github.io/Graphium/app/?demo=thermo-en">sample lab notebook</a> in your browser: twelve notes from a made-up thermoelectric materials study, the topics an AI built from them, and a recorded chat. No AI connection needed. A <a href="https://kumagallium.github.io/Graphium/app/?demo=bread-en">bread-baking sample</a> is there too.
 </p>
 
 <p align="center">
@@ -57,14 +57,16 @@ When you start using AI, the same records are what the AI reads. Graphium's buil
 
 <p align="center"><img src="public/landing/screen-trace.png" alt="An insight page with its lineage panel showing the source claim and source notes" width="760" /></p>
 
-## For everyone who tinkers
+## First, for researchers with years of lab records
 
-The vocabulary is generic: labs, kitchens, workshops, codebases, classrooms.
+How each sample was made, the conditions of each measurement, the runs that didn't work. Keep what you tried in a form you can trace later. The same habits work in kitchens, workshops, codebases and classrooms.
 
-- **Researchers** — experiment logs with provenance: steps, materials, results, all linked.
+- **Researchers** — lab notes that keep steps, materials, conditions and results connected. Link runs with @ and trace what changed from one run to the next.
 - **Cooks & makers** — recipes that remember why this loaf worked, and the four that didn't.
 - **Engineers** — investigation notes that survive the next post-mortem.
 - **Students & writers** — a second brain that links courses, books, and conversations — and explains itself.
+
+**"When" and "what", checkable by others.** Seal a saved point as evidence, and only a 32-byte hash of its content goes to outside timestamp services. From the exported zip, anyone can check without Graphium that this content existed before that time. That is all it proves: it does not prove who wrote it. Timestamps are added in the desktop app. See [Using Graphium as a lab notebook](https://kumagallium.github.io/Graphium/manual/lab-notebook).
 
 ### Dig deeper (optional)
 
