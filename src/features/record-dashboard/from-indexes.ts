@@ -12,7 +12,7 @@ import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { isPlaceUrl } from "../linked-files/link-url";
 import type { CaptureEntry } from "../mobile-capture/capture-store";
 import type { NoteIndexEntry } from "../navigation/index-file";
-import { timeOf } from "./model";
+import { dayKeyOf, timeOf, UPDATED_ID_PREFIX } from "./model";
 import type { RecordItem, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
 export type RecordSources = {
@@ -157,6 +157,39 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
   };
 }
 
+/**
+ * 更新の行。自分のノートを、作った日とは別に、最後に更新した日（modifiedAt）にもう 1 行出す。
+ * 作成の行は作った日に残る。過去の日の中身は動かさず、更新した日に行を足すだけ。
+ * 出さないもの:
+ *   - AI のページ（知識の流れの処理が書き足すたびに更新日が進み、実データでは 1 日に数百件になる。
+ *     更新の行は「自分がさわったノート」を見つけるためのもの。書き足しはページの版の記録で分かる）
+ *   - 更新日時が読めない・作った日時が無い・作った日と同じ日の更新（同じ日に 2 行並べない）
+ *   - 作った日時より前の更新日時（時計のずれや引き継ぎで起きる。更新とは言えない）
+ * 索引には「誰が最後に更新したか」が無い。自分の保存先のノートなので自分と導く（素材・メモと同じ）。
+ * AI が書いたノート（自分と AI）も、その後にさわるのは自分なので自分
+ */
+export function noteUpdateToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<string>): RecordItem | null {
+  if (entry.source === "ai") return null;
+  const created = entry.createdAt;
+  const modified = entry.modifiedAt;
+  if (!created || !modified) return null;
+  const createdMs = timeOf(created);
+  const modifiedMs = timeOf(modified);
+  // timeOf は読めない日時を -Infinity にする
+  if (!Number.isFinite(createdMs) || !Number.isFinite(modifiedMs) || modifiedMs <= createdMs) return null;
+  if (dayKeyOf(created) === dayKeyOf(modified)) return null;
+  return {
+    id: `${UPDATED_ID_PREFIX}${entry.noteId}`,
+    kind: "note",
+    at: modified,
+    origin: deriveNoteOrigin(entry, webClipNoteIds),
+    who: { type: "self" },
+    title: entry.title,
+    update: { createdAt: created },
+    ...foldersOf(entry.noteContexts),
+  };
+}
+
 export function mediaToRecord(entry: MediaIndexEntry, recordingNoteIds?: ReadonlySet<string>): RecordItem {
   const used = countNotes(entry.usedIn);
   const detail = entry.urlMeta?.excerpt?.trim() || entry.urlMeta?.description?.trim();
@@ -193,7 +226,7 @@ export function memoToRecord(entry: CaptureEntry): RecordItem {
 }
 
 /**
- * 3 つの置き場の記録を 1 本にして、新しい順に並べる。
+ * 3 つの置き場の記録を 1 本にして、新しい順に並べる。自分のノートは、更新の行も足す（noteUpdateToRecord）。
  * 外すもの: ゴミ箱・アーカイブに入っているもの、スキル（プロンプトのひな形）、
  * メモを素材として見せるための一時エントリ（type が "memo"）。
  */
@@ -204,6 +237,8 @@ export function buildRecords(sources: RecordSources): RecordItem[] {
   for (const n of sources.notes) {
     if (n.deletedAt || n.archivedAt || n.source === "skill") continue;
     items.push(noteToRecord(n, webClipNoteIds));
+    const updated = noteUpdateToRecord(n, webClipNoteIds);
+    if (updated) items.push(updated);
   }
   for (const m of sources.media) {
     if (m.archivedAt || m.type === "memo") continue;

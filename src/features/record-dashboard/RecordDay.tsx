@@ -6,6 +6,7 @@ import { useLocale } from "../../i18n";
 import { type RecordCopy, useRecordCopy } from "./copy";
 import {
   BUNDLE_MIN,
+  bodyHitKey,
   bundleRuns,
   daysAgo,
   formatDate,
@@ -137,7 +138,16 @@ export function RecordDay({
     variant === "ledger" ? [...items] : bundleRuns(items, bundleMin, (it) => !!dimMisses && searching && isHit(it, query ?? "", bodyHits));
 
   const row = (item: RecordItem) => (
-    <RecordRow key={item.id} item={item} query={query} variant={variant} dim={isMiss(item)} active={activeId === item.id} onOpen={onOpen} />
+    // 更新の行も、同じノートを横で開いているあいだは印を付ける（作成の行と同じ記録だと示す）
+    <RecordRow
+      key={item.id}
+      item={item}
+      query={query}
+      variant={variant}
+      dim={isMiss(item)}
+      active={!!activeId && (activeId === item.id || activeId === bodyHitKey(item))}
+      onOpen={onOpen}
+    />
   );
 
   return (

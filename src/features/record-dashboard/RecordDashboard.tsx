@@ -24,6 +24,7 @@ import {
   matchesFolder,
   matchesOrigin,
   isHit,
+  isOwnRow,
   matchesQuery,
   type BodyHit,
   type BodyHits,
@@ -348,7 +349,8 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
     [items, who, origins, kind, folder],
   );
   // フォルダの並びと件数は、誰で絞ったあとの記録で数える（フォルダでは絞らない。選び直せるように）
-  const folders = useMemo(() => summarizeFolders(items.filter((it) => matchesWho(it, who))), [items, who]);
+  // 更新の行は同じ記録の 2 行目なので数えない
+  const folders = useMemo(() => summarizeFolders(items.filter((it) => isOwnRow(it) && matchesWho(it, who))), [items, who]);
   // フォルダに入っている記録が 1 つも無ければ、絞り込みは出さない
   const hasFolders = folders.some((f) => f.name !== null) || folder !== undefined;
   const newestDay = useMemo(
@@ -375,7 +377,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
   // 本文で当たった記録（全文の索引）。索引ができあがると findInBody が替わり、引き直される
   const bodyHits = useMemo(() => (query.trim() && findInBody ? findInBody(query) : NO_BODY_HITS), [findInBody, query]);
   const hits = useMemo(() => faceted.filter((it) => isHit(it, query, bodyHits)), [faceted, query, bodyHits]);
-  const originCounts = useMemo(() => countOrigins(items.filter((it) => matchesWho(it, who))), [items, who]);
+  const originCounts = useMemo(() => countOrigins(items.filter((it) => isOwnRow(it) && matchesWho(it, who))), [items, who]);
   const hasQuery = query.trim().length > 0;
 
   if (layout === "find") {
@@ -395,14 +397,15 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       rootRef.current?.querySelector(".rd-log")?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
     };
-    const found = [...hits].sort((a, b) => timeOf(b.at) - timeOf(a.at));
+    // 見つかった記録には、更新の行を入れない（同じノートが 2 回並ぶため。作成の行で出る）
+    const found = hits.filter(isOwnRow).sort((a, b) => timeOf(b.at) - timeOf(a.at));
     return (
       <div className="rd-root" data-layout="find" lang={locale} ref={rootRef}>
         <div className="rd-stage">
           <section className="rd-log">
             <header className="rd-log-head">
               <h2 className="rd-h">{copy.title}</h2>
-              <span className="rd-total">{copy.count(faceted.length)}</span>
+              <span className="rd-total">{copy.count(faceted.filter(isOwnRow).length)}</span>
             </header>
             <div className="rd-controls">
               <WhoSwitch value={who} onChange={changeWho} copy={copy} />
@@ -553,7 +556,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
        <div className="rd-ledger">
         <aside className="rd-facets">
           <h2 className="rd-h">{copy.title}</h2>
-          <p className="rd-total">{copy.count(hits.length)}</p>
+          <p className="rd-total">{copy.count(hits.filter(isOwnRow).length)}</p>
           <section>
             <h3>{copy.facetWho}</h3>
             <ul>
@@ -635,7 +638,7 @@ export function RecordDashboard({ items, now, layout, initialQuery = "", initial
         <div>
           <h2 className="rd-h">
             {copy.title}
-            <span className="rd-total">{copy.count(hits.length)}</span>
+            <span className="rd-total">{copy.count(hits.filter(isOwnRow).length)}</span>
           </h2>
           <p className="rd-lead">{copy.lead}</p>
         </div>

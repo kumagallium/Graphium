@@ -94,6 +94,12 @@ export type RecordItem = {
    * 数えた結果をそのまま出すだけで、割合や並べ替えには使わない
    */
   checks?: { checked: number; total: number };
+  /**
+   * 更新の行 — 自分のノート（AI のページは除く）を、作った日とは別に、最後に更新した日（note-index の modifiedAt）に
+   * もう 1 行出すときに付く。このとき at は更新日時、createdAt は作った日時。
+   * 作った行はそのまま作った日に残る（更新の行が足されるだけで、過去の日の中身は動かない）
+   */
+  update?: { createdAt: string };
 };
 
 /** 仮データ（Storybook）の言語。画面の表示言語は i18n の Locale を使う */

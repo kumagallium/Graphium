@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRecordCopy } from "./copy";
 import { OriginBadge, RecordRow, WhoLabel, WhoMark } from "./RecordRow";
-import { SAMPLE_QUERY, SAMPLE_RECORDS, SAMPLE_SHARED_RECORDS } from "./sample-records";
+import { SAMPLE_QUERY, SAMPLE_RECORDS, SAMPLE_SHARED_RECORDS, SAMPLE_UPDATED_RECORDS } from "./sample-records";
 import { StoryCaption, StoryFrame, StorySheet } from "./story-frame";
 import type { RecordItem, SampleLocale, RecordOrigin, RecordWho } from "./types";
 
@@ -171,3 +171,26 @@ export const SharedRowRecords: Story = {
 export const SharedRowRecordsEnglish: Story = { ...SharedRowRecords, args: { locale: "en" } };
 export const SharedRowRecordsNarrow: Story = { ...SharedRowRecords, args: { width: 375 } };
 export const SharedRowRecordsLedger: Story = { ...SharedRowRecords, args: { variant: "ledger" } };
+
+// 更新の行。作った行は作った日に残したまま、最後に更新した日に「更新」の行を足す
+export const UpdatedRows: Story = {
+  render: (args) => {
+    const created = pick(args.locale, ["r02"]);
+    return (
+      <StoryFrame width={args.width} locale={args.locale}>
+        <StoryCaption>
+          {args.locale === "ja"
+            ? "更新の行（上の 3 件）。出どころの札の位置に「更新」を置き、題の下に作った日を添えます。見出しや来歴は作った行に任せ、更新の行は題だけ。比べるために、いちばん下にふつうの作った行を置いています。"
+            : "Updated rows (the top three). An Updated badge takes the place of the origin badge, and the day it was created goes under the title. Headings and traces stay on the created row; an updated row shows the title only. The last row is an ordinary created row, for comparison."}
+        </StoryCaption>
+        <StorySheet maxWidth={args.variant === "ledger" ? 960 : 720}>
+          <Rows items={[...SAMPLE_UPDATED_RECORDS[args.locale], ...created]} {...args} />
+        </StorySheet>
+      </StoryFrame>
+    );
+  },
+};
+
+export const UpdatedRowsEnglish: Story = { ...UpdatedRows, args: { locale: "en" } };
+export const UpdatedRowsNarrow: Story = { ...UpdatedRows, args: { width: 375 } };
+export const UpdatedRowsLedger: Story = { ...UpdatedRows, args: { variant: "ledger" } };

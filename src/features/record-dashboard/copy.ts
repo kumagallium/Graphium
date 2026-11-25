@@ -22,6 +22,10 @@ export type RecordCopy = {
   sources: (n: number) => string;
   /** 計画の題が分からないときに、行の名前の前に置く言葉 */
   planRowFallback: string;
+  /** 更新の行の札 */
+  updated: string;
+  /** 更新の行の題の下に添える、作った日（"11月10日" を受け取る） */
+  createdOn: (date: string) => string;
   /** チェックの件数の読み上げ・ツールチップ */
   checksHint: (checked: number, total: number) => string;
   pages: (n: number) => string;
@@ -108,6 +112,8 @@ export function buildRecordCopy(t: Translate): RecordCopy {
     usedIn: counted("records.usedIn"),
     sources: counted("records.sources"),
     planRowFallback: t("records.planRowFallback"),
+    updated: t("records.updated"),
+    createdOn: (date) => t("records.createdOn", { date }),
     checksHint: (checked, total) => t("planRecords.checksHint", { checked: String(checked), total: String(total) }),
     pages: counted("records.pages"),
     searchPlaceholder: t("records.searchPlaceholder"),

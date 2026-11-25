@@ -74,7 +74,23 @@ export function tidyBodyHit(hit: BodyHit): BodyHit {
  */
 export function isHit(item: RecordItem, query: string, bodyHits?: BodyHits): boolean {
   if (matchesQuery(item, query)) return true;
-  return query.trim().length > 0 && !!bodyHits?.has(item.id);
+  return query.trim().length > 0 && !!bodyHits?.has(bodyHitKey(item));
+}
+
+/** 更新の行の id の前置き（"note-updated:<ノートの ID>"）。開く先は作成の行と同じノート */
+export const UPDATED_ID_PREFIX = "note-updated:";
+
+/** 本文の当たり（全文の索引）を引く鍵。更新の行は、作成の行（"note:<ID>"）と同じ本文を見る */
+export function bodyHitKey(item: RecordItem): string {
+  return item.update && item.id.startsWith(UPDATED_ID_PREFIX) ? `note:${item.id.slice(UPDATED_ID_PREFIX.length)}` : item.id;
+}
+
+/**
+ * 記録そのもの（作成の行）か。更新の行は同じ記録の 2 行目なので、記録の数・フォルダの数・
+ * 出どころの数・見つかった記録の一覧には入れない（同じノートを 2 回数えない）
+ */
+export function isOwnRow(item: RecordItem): boolean {
+  return !item.update;
 }
 
 /** 計画の行の記録の「計画の題 › 行の名前」。計画の行の記録でなければ空文字 */
@@ -215,7 +231,8 @@ export function bundleRuns(
       out.push(item);
       continue;
     }
-    const key = `${item.kind}|${item.origin}|${item.who.type}|${item.who.type === "other" ? item.who.name : ""}`;
+    // 更新の行は、作成の行とは別にまとめる
+    const key = `${item.update ? "updated" : "created"}|${item.kind}|${item.origin}|${item.who.type}|${item.who.type === "other" ? item.who.name : ""}`;
     if (key !== runKey) {
       flush();
       runKey = key;
