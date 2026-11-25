@@ -988,6 +988,8 @@ export const en: Record<string, string> = {
   "settings.assignOneModel.preciseUses": "Translation, plans, insights, clean-up",
   "settings.assignOneModel.off": "Not in use (what you made stays)",
   "settings.assignOneModel.showTiers": "Per-tier settings and model guide",
+  "settings.assignOneModel.fitCaution": "Standard and advanced work held up when measured with the major cloud models. With a model on a lab server or your own computer, things not in your notes can creep in, or work can time out.",
+  "settings.assignOneModel.fitLink": "What we measured",
   "settings.insightTest.sectionTitle": "Insight test",
   "settings.insightTest.sectionSummary": "Insights run on the advanced work model ({name}). Try that model on the bundled claims",
   "settings.insightTest.sectionHelp": "Insight discovery uses the advanced work model under Model assignment. To try a different model, choose it there. The test input and results are not saved.",

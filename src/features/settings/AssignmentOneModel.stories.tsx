@@ -1,5 +1,6 @@
 // モデルの割り当て（案）: 登録したモデルが 1 つのときの短い表示のストーリー。アプリにはまだ組み込まない。
 // 合意を取るための見本で、今の 3 段（Molecules/ModelFitHint と同じ組み方）と並べて比べられるようにする。
+// 短い表示にするのは「モデルが 1 つ」かつ「段ごとのモデルをまだ選んでいない」ときだけ。それ以外は今の 3 段のまま。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChevronDown } from "lucide-react";
@@ -63,7 +64,7 @@ const TIERS: Row[] = [
 ];
 
 /** 今の 3 段（モデルが 1 つのとき。どの欄も選べるのは同じ 1 つ） */
-function Current() {
+function Current({ extra = [] }: { extra?: string[] }) {
   return (
     <>
       {TIERS.map((r) => (
@@ -76,6 +77,7 @@ function Current() {
             >
               <option value="">{r.empty}</option>
               <option>{MODEL}</option>
+              {extra.map((m) => <option key={m}>{m}</option>)}
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -91,6 +93,15 @@ export const OneModel: StoryObj = { render: () => <Proposal /> };
 
 /** 案: 高度な処理を止めたところ（手元のモデルで重い仕事が難しいとき） */
 export const OneModelPreciseOff: StoryObj = { render: () => <Proposal precise={false} /> };
+
+/** モデルが 2 つ以上のとき: 段ごとに選ぶものがあるので、案でも今の 3 段のまま出す */
+export const TwoOrMoreModels: StoryObj = {
+  render: () => (
+    <Frame>
+      <Current extra={["claude-opus-5"]} />
+    </Frame>
+  ),
+};
 
 /** 比べる用: 今の 3 段（モデルが 1 つのとき） */
 export const CurrentThreeTiers: StoryObj = {

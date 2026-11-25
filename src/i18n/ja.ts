@@ -988,6 +988,8 @@ export const ja: Record<string, string> = {
   "settings.assignOneModel.preciseUses": "翻訳・計画・洞察・清書",
   "settings.assignOneModel.off": "使っていません（作ったものは残ります）",
   "settings.assignOneModel.showTiers": "段ごとのくわしい設定とモデルの目安",
+  "settings.assignOneModel.fitCaution": "標準と高度な処理は、各社の主力のクラウドモデルで測ったときに安定しました。研究室のサーバーや自分の PC のモデルでは、ノートに無いことが混ざったり、時間切れになったりすることがあります。",
+  "settings.assignOneModel.fitLink": "測った結果",
   "settings.insightTest.sectionTitle": "洞察のテスト",
   "settings.insightTest.sectionSummary": "洞察は高度な処理のモデル（{name}）で動きます。同梱の知見で、そのモデルを試せます",
   "settings.insightTest.sectionHelp": "洞察の発見は、モデルの割り当ての「高度な処理のモデル」を使います。別のモデルで試したいときは、そこで選び直してください。テストの入力も結果も保存しません。",

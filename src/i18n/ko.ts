@@ -959,6 +959,8 @@ export const ko: Record<string, string> = {
   "settings.assignOneModel.preciseUses": "번역·계획·통찰·정서",
   "settings.assignOneModel.off": "사용하지 않음 (만든 것은 남습니다)",
   "settings.assignOneModel.showTiers": "단계별 자세한 설정과 모델 기준",
+  "settings.assignOneModel.fitCaution": "표준·고급 처리는 각 회사의 주력 클라우드 모델로 측정했을 때 안정적이었습니다. 연구실 서버나 내 PC의 모델에서는 노트에 없는 내용이 섞이거나 시간 초과가 날 수 있습니다.",
+  "settings.assignOneModel.fitLink": "측정 결과",
   "settings.insightTest.sectionTitle": "인사이트 테스트",
   "settings.insightTest.sectionSummary": "인사이트는 고급 작업 모델({name})로 동작합니다. 함께 들어 있는 지견으로 그 모델을 시험할 수 있습니다",
   "settings.insightTest.sectionHelp": "인사이트 발견은 모델 지정의 '고급 작업 모델'을 씁니다. 다른 모델로 시험하려면 거기서 다시 고르세요. 테스트 입력도 결과도 저장하지 않습니다.",

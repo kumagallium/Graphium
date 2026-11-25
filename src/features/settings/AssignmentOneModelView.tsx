@@ -8,10 +8,16 @@
 //   最小限で使いたい人がモデルを選べなくなった。その反省で、選ぶものがあるときは今の 3 段を出す）
 // - 段のスイッチは残す。モデルが 1 つでも、手元のモデルで重い仕事が難しいときに止める意味がある
 // - 「段ごとのくわしい設定」で今の 3 段（目安つき）へ 1 押しで行ける
+// - モデルの目安の注意は消さない。どの大きさのモデルかはアプリに分からないので、
+//   「このモデルだと」とは言わず、測った結果（model-fit.ts）のとおりの一般の注意を 1 行出す
+//   （標準・高度の段は上位のクラウドだけが「向く」。オープンな大型は条件つき、ローカルは条件つきか向かない）
 //
 // 見た目だけの部品。状態は持たない。
 
+import { AlertTriangle } from "lucide-react";
 import { useLocale } from "../../i18n";
+import { openExternalUrl } from "../../lib/external-link";
+import { modelFitEvaluationUrl } from "./model-fit";
 import { SETTINGS_CARD_CLASS } from "./SettingsGroup";
 import { SwitchButton } from "./SettingToggle";
 
@@ -34,7 +40,8 @@ export function AssignmentOneModelView({
   onTogglePrecise,
   onShowTiers,
 }: AssignmentOneModelViewProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const fitUrl = modelFitEvaluationUrl(locale);
   const rows = [
     { key: "standard", on: standardOn, onChange: onToggleStandard, label: t("settings.tier.useStandard"), uses: t("settings.assignOneModel.standardUses") },
     { key: "precise", on: preciseOn, onChange: onTogglePrecise, label: t("settings.tier.usePrecise"), uses: t("settings.assignOneModel.preciseUses") },
@@ -62,6 +69,29 @@ export function AssignmentOneModelView({
           </li>
         ))}
       </ul>
+
+      {/* 重い段を使うときだけ出す（両方止めていれば、気をつけることが無い） */}
+      {(standardOn || preciseOn) && (
+        <p className="flex items-start gap-1 text-xs text-warning">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            {t("settings.assignOneModel.fitCaution")}{" "}
+            <a
+              href={fitUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => {
+                // デスクトップ版の WebView は target=_blank を開かないので、既定の外部リンクの開き方に任せる
+                e.preventDefault();
+                void openExternalUrl(fitUrl);
+              }}
+              className="underline underline-offset-2"
+            >
+              {t("settings.assignOneModel.fitLink")}
+            </a>
+          </span>
+        </p>
+      )}
 
       <button type="button" onClick={onShowTiers} className="text-xs text-primary underline-offset-2 hover:underline">
         {t("settings.assignOneModel.showTiers")} →
