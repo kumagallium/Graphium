@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.172.1](https://github.com/kumagallium/Graphium/compare/v0.172.0...v0.172.1) - 2026-11-25
+
+- [fix] Drop the title heading from the built-in templates by @kumagallium in https://github.com/kumagallium/Graphium/pull/1884
+
 ## [v0.172.0](https://github.com/kumagallium/Graphium/compare/v0.171.2...v0.172.0) - 2026-11-25
 
 - fix: stop the MCP server once the app has replaced it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1882
