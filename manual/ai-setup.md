@@ -173,6 +173,8 @@ Click **Edit** on a registered model to set its **Pricing** — input and output
 
 **Model assignment** sits right below **Registered Models** and starts open (press the heading to close it; it then shows the current model of each tier on one line). It decides which registered model handles which job. Only the light work model matters at first — leave the others empty and every AI feature uses the light work model; the rest are optional refinements. The slots are arranged by the nature of the work, not by feature (light = checking and judging, standard = summarizing your notes, advanced = writing at length without adding what the source does not say).
 
+With **only one model registered** and no per-tier model chosen yet, the three tiers are replaced by one line, **All three tiers use "(model name)"**, because there is nothing to choose per tier. Below it are the **Use standard work** and **Use advanced work** switches and a caution that heavy work may not go well, depending on the model. **Per-tier settings and model guide** opens the three tiers below. With two or more models, or once a tier has its own model, the three tiers show from the start.
+
 Once you have registered a model, **Registered Models** collapses to a one-line list of names so the assignments stay near the top. Click the heading to open the list again to edit or delete a model.
 
 Assignments remember a model by its display name. Rename a model and the assignments that chose it follow the new name (unless another model already has that name — then the field shows "(not found)" so you can choose again). When you delete a model, the delete confirmation lists the assignments that use it, and deleting it sets them back to empty (the default). If a name that no longer matches any model is left over, its field shows "(not found)"; choose again, or save as is to set it back to empty (the default). If you don't reopen Settings before that name goes stale, AI actions don't quietly switch to a different model — they're refused with a message telling you to pick a model again.
@@ -202,7 +204,7 @@ Assignments remember a model by its display name. Rename a model and the assignm
 - The **Chat model** field shows even when advanced work is off (only the **Research before answering** switch disappears then).
 - The [Graphium MCP](/mcp-server) tools that create claims and insights are not affected: the connected assistant makes them with its own model.
 
-Under each tier, a **Model guide** shows which kinds of model fit that job (good fit, conditional, or poor fit), with a link to [what we measured](/evaluations/model-tiers-by-feature).
+Under each tier, a **Model guide** shows which kinds of model fit that job (good fit ✓, conditional −, or poor fit ×). The finer differences between tasks are under each tier's **Details**, and a single link at the end of the three tiers leads to [what we measured](/evaluations/model-tiers-by-feature).
 
 ![The light, standard and advanced tiers, each with its model guide](/screenshots/settings-model-guide.png)
 
