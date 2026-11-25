@@ -43,6 +43,7 @@
     "test:migration": "tsx bench/migration.ts",
     "csp:check": "node scripts/check-csp.mjs",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
+    "lint:dead": "fallow dead-code",
     "bundle:mcp": "node scripts/bundle-mcp.mjs",
     "test:e2e:mcp": "tsx e2e/mcp-smoke.mjs"
   },
@@ -139,6 +140,7 @@
     "dependency-cruiser": "^17.4.3",
     "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
+    "fallow": "3.41.0",
     "jsdom": "^29.1.1",
     "playwright": "^1.58.2",
     "shadcn": "^4.23.0",

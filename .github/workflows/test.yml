@@ -62,6 +62,13 @@ jobs:
       - name: Dependency boundaries
         run: pnpm run lint:deps
 
+      # 使われていない export・ファイル・依存（fallow）。規則はすべて warn なので、見つかっても
+      # CI は止まらない（設定の誤りなど、fallow 自体が動かないときだけ落ちる）。結果は
+      # ジョブのサマリーに出す。行ごとの注釈にしないのは、既存の候補が PR のたびに並ぶため。
+      # 規則と入口は .fallowrc.jsonc。
+      - name: Unused code (report only)
+        run: pnpm exec fallow dead-code --format github-summary >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run tests
         run: pnpm test -- --run
 
