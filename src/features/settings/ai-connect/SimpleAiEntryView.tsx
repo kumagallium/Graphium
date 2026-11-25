@@ -6,20 +6,20 @@
 // 押すボタンを 1 つに絞る。
 //
 // 守ること:
-// - 機能は消さない。どの答えからも「すべてのつなぎ方を見る」で今の画面全体へ行ける
-// - 「どれも無い」に特定の接続先をおすすめしない（おすすめを外した判断と揃える）。今の比較へ渡す
+// - 機能は消さない。4 つ目の「その他のつなぎ方」で今の画面全体へ行ける（入口はここ 1 つにする）
+// - 「その他」に特定の接続先をおすすめしない（おすすめを外した判断と揃える）。選ぶとそのまま今の画面へ移る
 // - Web 版では ChatGPT のプランと GitHub Copilot はつなげないので、デスクトップ版への案内にする
 //
 // 見た目だけの部品。選んだ答えの状態だけをここで持つ。
 
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "../../../i18n";
 import { SETTINGS_CARD_CLASS } from "../SettingsGroup";
 
-export type SimpleAiAnswer = "chatgpt" | "copilot" | "lab" | "none";
+export type SimpleAiAnswer = "chatgpt" | "copilot" | "lab";
 
-const ANSWERS: SimpleAiAnswer[] = ["chatgpt", "copilot", "lab", "none"];
+const ANSWERS: SimpleAiAnswer[] = ["chatgpt", "copilot", "lab"];
 
 export type SimpleAiEntryViewProps = {
   /** ChatGPT のプランでつなぐ（デスクトップのみ。無ければデスクトップ版への案内を出す） */
@@ -79,8 +79,6 @@ export function SimpleAiEntryView({
               secondary: { label: t("settings.simpleAiEntry.lab.button"), onClick: onPickCustom },
             }
           : { body: t("settings.simpleAiEntry.lab.body"), label: t("settings.simpleAiEntry.lab.button"), onClick: onPickCustom };
-      case "none":
-        return { body: t("settings.simpleAiEntry.none.body"), label: t("settings.simpleAiEntry.none.button"), onClick: onShowAll };
       default:
         return null;
     }
@@ -119,6 +117,15 @@ export function SimpleAiEntryView({
             </button>
           );
         })}
+        {/* その他: 選んでからもう一度押させず、そのまま今の画面全体へ移る（入口を 2 つにしない） */}
+        <button
+          type="button"
+          onClick={onShowAll}
+          className={`${SETTINGS_CARD_CLASS} flex items-center justify-between gap-2 border border-transparent p-3 text-left text-xs text-foreground transition-colors hover:bg-accent/40`}
+        >
+          <span className="min-w-0">{t("settings.simpleAiEntry.answer.other")}</span>
+          <ChevronRight size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+        </button>
       </div>
 
       {next && (
@@ -148,10 +155,6 @@ export function SimpleAiEntryView({
         </div>
       )}
 
-      {/* どの答えからでも今の画面全体へ行ける（機能は消さない） */}
-      <button type="button" onClick={onShowAll} className={linkButton}>
-        {t("settings.simpleAiEntry.showAll")} →
-      </button>
     </div>
   );
 }

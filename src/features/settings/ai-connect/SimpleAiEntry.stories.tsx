@@ -1,5 +1,5 @@
 // AI のつなぎ方の簡易表示のストーリー。まだ何もつないでいないときの最初の 1 枚。
-// 今の画面（ConnectChooserView・「すべてのつなぎ方を見る」の先）と並べて比べられるようにする。
+// 今の画面（ConnectChooserView・「その他のつなぎ方」の先）と並べて比べられるようにする。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { CLOUD_PROVIDERS } from "../free-providers/catalog";
@@ -49,9 +49,6 @@ export const CopilotDesktop: StoryObj = { render: () => <SimpleAiEntryView {...d
 
 /** 研究室・機関の接続先を選んだところ: 配られたファイルを先に。URL だけ渡された人は今のフォームへ */
 export const LabConnection: StoryObj = { render: () => <SimpleAiEntryView {...desktop} initialAnswer="lab" /> };
-
-/** どれも無い・分からない: 特定の接続先はおすすめせず、今の比較へ渡す */
-export const NoneYet: StoryObj = { render: () => <SimpleAiEntryView {...desktop} initialAnswer="none" /> };
 
 /** Web 版で ChatGPT の有料プランを選んだところ: デスクトップ版への案内 */
 export const ChatGptWeb: StoryObj = { render: () => <SimpleAiEntryView {...web} initialAnswer="chatgpt" /> };

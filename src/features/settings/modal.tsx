@@ -2981,7 +2981,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
               </div>
 
               {exportOpen && !showAddForm && (
-                <div className="mb-3">
+                <div className={`mb-3 ${SETTINGS_BLOCK_BODY_CLASS}`}>
                   <ConnectionFileExport
                     groups={exportGroups}
                     defaultFrom={authorName}
@@ -2996,7 +2996,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, wik
                   <Loader2 size={14} className="animate-spin" /> {t("settings.models.loading")}
                 </div>
               ) : models.length === 0 && !showAddForm ? (
-                <div className="text-center">
+                // 中身は見出しの文字にそろえる（下の一覧と同じ字下げ）
+                <div className={`text-center ${SETTINGS_BLOCK_BODY_CLASS}`}>
                   {!isWebMode ? (
                     // デスクトップ: 「GitHub アカウントで使う」「API キーやサーバーを指定して使う」の 2 行
                     <>

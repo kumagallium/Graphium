@@ -78,18 +78,12 @@ describe("簡易表示（simpleFirst）", () => {
     expect(props.onPickCustom).not.toHaveBeenCalled();
   });
 
-  it("「すべてのつなぎ方を見る」で今の選択画面へ移り、戻ることもできる", () => {
+  it("「その他のつなぎ方」で今の選択画面へそのまま移り、戻ることもできる。特定の接続先はすすめない", () => {
     setup();
-    fireEvent.click(screen.getByText(/すべてのつなぎ方を見る/));
+    expect(screen.queryByText(/すべてのつなぎ方を見る/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /その他のつなぎ方/ }));
     expect(screen.getByText("API キーでつなぐ（クラウドのサービス）")).toBeTruthy();
     fireEvent.click(screen.getByText(/1 問の画面に戻る/));
     expect(screen.getByText("いま使っている AI はありますか？")).toBeTruthy();
-  });
-
-  it("どれも無いを選ぶと、特定の接続先をすすめずに今の比較へ移る", () => {
-    setup();
-    choose("どれも無い・分からない");
-    fireEvent.click(screen.getByRole("button", { name: "つなぎ方を比べる" }));
-    expect(screen.getByText("API キーでつなぐ（クラウドのサービス）")).toBeTruthy();
   });
 });

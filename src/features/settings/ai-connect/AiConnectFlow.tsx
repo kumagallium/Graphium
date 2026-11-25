@@ -68,7 +68,7 @@ export type AiConnectFlowProps = {
   existingModels?: ExistingModel[];
   /**
    * 最初に「いま使っている AI」を 1 問だけ聞く簡易表示を出す（まだ何もつないでいないとき）。
-   * 「すべてのつなぎ方を見る」で今の選択画面へ移る
+   * 「その他のつなぎ方」で今の選択画面へ移る
    */
   simpleFirst?: boolean;
   /** デスクトップ版の入手先を開く（簡易表示の Web 版で ChatGPT・Copilot を選んだとき） */
