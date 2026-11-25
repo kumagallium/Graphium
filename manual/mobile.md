@@ -131,7 +131,7 @@ The pipeline, end to end:
 
 Photos are read for text by themselves after the import (OCR). Audio (such as .m4a, .weba and .wav) is transcribed by itself too, in the desktop app only: it needs the transcription model, which Graphium downloads when audio arrives (see [Voice notes](/voice-notes#settings)), and it works through the files one at a time, up to 2 hours each. While the model downloads you see **Downloading the transcription model (about 574 MB, N%)**; to stop it, press **Cancel** under **Voice notes** in Settings. If some files could not be transcribed, a message says so; it also says when a file is over 2 hours long, or when the transcription model is not available yet. The audio stays in your materials in every case. You can open it and press **Transcribe** later.
 
-### Put arrivals into the note you have open {#inbox-beside-the-note}
+### Put arrivals into the note you have open <Badge type="tip" text="Added in v0.171.0 (2026-11-25)" /> {#inbox-beside-the-note}
 
 When you come back from the lab and want the photos in your note right away, you do not have to open the inbox first. With an inbox folder connected, a **Mobile** icon appears in the column of icons at the right edge of the note. It carries a dot when something is waiting.
 

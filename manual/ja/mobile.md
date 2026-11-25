@@ -172,7 +172,7 @@ Graphium はインストール可能な Web アプリ（PWA）です。スマホ
 
 ![デスクトップの Mobile 受信画面。写真のサムネイル、スターターのメモ、Sourdough Hydration, Explained の URL、動画の 4 件が並び、Import selected (0) と Import all ボタンがある。](/screenshots/mobile-inbox.png)
 
-### ノートを開いたまま、届いたものを入れる {#inbox-beside-the-note}
+### ノートを開いたまま、届いたものを入れる <Badge type="tip" text="v0.171.0 (2026-11-25) で追加" /> {#inbox-beside-the-note}
 
 実験室で撮った写真を、席に戻ってすぐノートに並べたいときは、受信箱を開き直す必要はありません。受信フォルダを接続していると、ノートの右端のアイコンの列に **モバイル** が出ます。届いているものがあるときは、アイコンに点が付きます。
 
