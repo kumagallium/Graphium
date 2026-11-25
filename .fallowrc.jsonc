@@ -1,0 +1,78 @@
+{
+  // fallow（https://github.com/fallow-rs/fallow）の設定。使うのは未使用コードの検出だけ
+  // （`pnpm lint:dead` = `fallow dead-code`）。重複コード・複雑度・fix・agent install は使わない。
+  // 循環依存と層の境界は dependency-cruiser（`pnpm lint:deps`）が受け持つので、ここでは見ない。
+  "$schema": "./node_modules/fallow/schema.json",
+  "minimumVersion": "3.41.0",
+
+  // Vite・Vitest・Storybook のプラグインが拾えない、本番の入口
+  "entry": [
+    // 同梱の MCP（scripts/bundle-mcp.mjs が esbuild で組む）
+    "src/mcp/index.ts",
+    // MCP の会話の中に出す画面（scripts/build-mcp-app-html.mjs が組む）
+    "src/mcp/apps/*.ts",
+    "src/mcp/apps/graph-app/*.{ts,tsx}",
+    // splash.html が <script src> で読む
+    "public/splash.js"
+  ],
+
+  // 手で実行する道具・ベンチ・E2E・マニュアル。本番ではないが、ここから使われるものは未使用にしない
+  "supportEntry": [
+    "scripts/**/*.{js,mjs,cjs,ts}",
+    "bench/**/*.ts",
+    "e2e/**/*.{js,mjs,ts}",
+    "tests/benchmark/**/*.ts",
+    "manual/.vitepress/**/*.{ts,mts,vue,css}"
+  ],
+
+  "ignoreDependencies": [
+    // vite.config.ts が文字列から組み立てたパスで resolve する（OCR の言語データ）
+    "@tesseract.js-data/*",
+    "tesseract.js-core",
+    // package.json の dev スクリプトの bash -c の中で使う
+    "concurrently",
+    // JS からは import しないが、Rust 側の tauri-plugin-shell と対で入れている
+    "@tauri-apps/plugin-shell",
+    // 手で実行する CLI（UI 部品の取り込み）
+    "shadcn",
+    // マニュアルの .vue 部品が import する。vitepress が持ってくる
+    "vue"
+  ],
+
+  "ignoreUnresolvedImports": [
+    // pnpm build の先頭（scripts/fetch-fonts.mjs）が取ってくる日本語フォント。git には入れない
+    "/fonts/jp/*",
+    "./fonts/jp/*",
+    // 撮影スクリプトがブラウザの中で dev サーバーの URL から import する
+    "/Graphium/**"
+  ],
+
+  // js-yaml は間接依存の脆弱性対応で版を上げている（Dependabot の指摘）
+  "ignoreDependencyOverrides": [{ "package": "js-yaml" }],
+
+  // features/*/index.ts などの窓口ファイルは、まとめて外に見せるための再 export。実際は窓口を通さず
+  // 直接 import している所が多く、窓口側の未使用は消してもよいが急がない
+  "ignoreExports": [{ "file": "src/**/index.ts", "exports": ["*"] }],
+  // 同じファイルの中で使っている export は、export を外し忘れただけ。害が無いので数えない
+  "ignoreExportsUsedInFile": true,
+
+  "rules": {
+    // 最初は警告だけ（CI を止めない）。誤検出が無くなったら error に上げるかを決める
+    "unused-files": "warn",
+    "unused-exports": "warn",
+    "unused-types": "warn",
+    "unused-dependencies": "warn",
+    "unused-dev-dependencies": "warn",
+    "unlisted-dependencies": "warn",
+    "unresolved-imports": "warn",
+    // ストレージのプロバイダは StorageProvider のインターフェース越しに呼ばれ、型を見ない解析では
+    // 未使用に見える
+    "unused-class-members": "off",
+    // MCP 側（src/mcp/*）は本体を同じ名前で包む作り。意図した重複
+    "duplicate-exports": "off",
+    // 画面は Vite が 1 本に束ねるので、dependencies と devDependencies の区別に意味がない
+    "dev-dependencies-in-production": "off",
+    // 循環依存は dependency-cruiser（pnpm lint:deps）が見る。二重に出さない
+    "circular-dependencies": "off"
+  }
+}
