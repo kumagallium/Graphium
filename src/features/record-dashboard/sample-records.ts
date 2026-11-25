@@ -328,6 +328,15 @@ export const SAMPLE_SHARED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       who: { type: "other", name: "みなと" },
       title: "オーブンの予熱の目安",
     },
+    {
+      id: "note-updated:2026-11-16:u1",
+      kind: "note",
+      at: "2026-11-16T21:20:00",
+      origin: "written",
+      who: { type: "self" },
+      title: "食パンの試作 3 回目",
+      update: { createdAt: "2026-11-10T09:15:00" },
+    },
   ],
   en: [
     {
@@ -498,15 +507,16 @@ export function manyFolderRecords(locale: SampleLocale): RecordItem[] {
 }
 
 /**
- * 更新の行（作った日とは別に、最後に更新した日に出る行）。
- * 上から: 1 週間前に作ったノートを今日さわった / 2 週間前のノートを今日さわった / 昨日 AI と作ったノートを今日さわった
+ * 更新の行（作った日とは別に、書き換えた日ごとに出る行）。
+ * 上から: 1 週間前に作ったノートを今日さわった / 2 週間前のノートを今日さわった / 昨日作ったノートを今日さわった /
+ * 1 つ目のノートは昨日もさわった（同じノートが書き換えた日ごとに出る）
  * （AI のページには更新の行を出さない）
  * （同じ日に作って更新したノートは、更新の行を出さない）
  */
 export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
   ja: [
     {
-      id: "note-updated:u1",
+      id: "note-updated:2026-11-17:u1",
       kind: "note",
       at: "2026-11-17T16:40:00",
       origin: "written",
@@ -515,7 +525,7 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       update: { createdAt: "2026-11-10T09:15:00" },
     },
     {
-      id: "note-updated:u2",
+      id: "note-updated:2026-11-17:u2",
       kind: "note",
       at: "2026-11-17T15:10:00",
       origin: "written",
@@ -524,7 +534,7 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       update: { createdAt: "2026-11-02T20:30:00" },
     },
     {
-      id: "note-updated:u3",
+      id: "note-updated:2026-11-17:u3",
       kind: "note",
       at: "2026-11-17T08:50:00",
       origin: "written",
@@ -535,7 +545,7 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
   ],
   en: [
     {
-      id: "note-updated:u1",
+      id: "note-updated:2026-11-17:u1",
       kind: "note",
       at: "2026-11-17T16:40:00",
       origin: "written",
@@ -544,7 +554,7 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       update: { createdAt: "2026-11-10T09:15:00" },
     },
     {
-      id: "note-updated:u2",
+      id: "note-updated:2026-11-17:u2",
       kind: "note",
       at: "2026-11-17T15:10:00",
       origin: "written",
@@ -553,13 +563,22 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       update: { createdAt: "2026-11-02T20:30:00" },
     },
     {
-      id: "note-updated:u3",
+      id: "note-updated:2026-11-17:u3",
       kind: "note",
       at: "2026-11-17T08:50:00",
       origin: "written",
       who: { type: "self" },
       title: "Oven temperature log",
       update: { createdAt: "2026-11-16T16:05:00" },
+    },
+    {
+      id: "note-updated:2026-11-16:u1",
+      kind: "note",
+      at: "2026-11-16T21:20:00",
+      origin: "written",
+      who: { type: "self" },
+      title: "Sandwich loaf, trial 3",
+      update: { createdAt: "2026-11-10T09:15:00" },
     },
   ],
 };

@@ -97,7 +97,7 @@ export const BFindSharedAuthorsByName: Story = { args: { layout: "find", shared:
 // 「すべて」には、共有フォルダの記録は出ない
 export const BFindSharedNotInAll: Story = { args: { layout: "find", shared: true, who: "all" } };
 
-// 更新の行: 自分のノートを、作った日とは別に、最後に更新した日にもう 1 行出す（題は細く、作った日を添える）。
+// 更新の行: 自分のノートを、作った日とは別に、書き換えた日ごとに 1 行ずつ出す（題は細く、作った日を添える）。
 // 記録の数と、見つかった記録には入れない
 export const BFindUpdated: Story = { args: { layout: "find", updated: true } };
 export const BFindUpdatedEnglish: Story = { args: { layout: "find", updated: true, locale: "en" } };

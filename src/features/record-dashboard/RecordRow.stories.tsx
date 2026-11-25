@@ -172,7 +172,7 @@ export const SharedRowRecordsEnglish: Story = { ...SharedRowRecords, args: { loc
 export const SharedRowRecordsNarrow: Story = { ...SharedRowRecords, args: { width: 375 } };
 export const SharedRowRecordsLedger: Story = { ...SharedRowRecords, args: { variant: "ledger" } };
 
-// 更新の行。作った行は作った日に残したまま、最後に更新した日に「更新」の行を足す
+// 更新の行。作った行は作った日に残したまま、書き換えた日ごとに「更新」の行を足す（ここでは今日の 3 件）
 export const UpdatedRows: Story = {
   render: (args) => {
     const created = pick(args.locale, ["r02"]);
@@ -184,7 +184,7 @@ export const UpdatedRows: Story = {
             : "Updated rows (the top three). An Updated badge takes the place of the origin badge, and the day it was created goes under the title. Headings and traces stay on the created row; an updated row shows the title only. The last row is an ordinary created row, for comparison."}
         </StoryCaption>
         <StorySheet maxWidth={args.variant === "ledger" ? 960 : 720}>
-          <Rows items={[...SAMPLE_UPDATED_RECORDS[args.locale], ...created]} {...args} />
+          <Rows items={[...SAMPLE_UPDATED_RECORDS[args.locale].slice(0, 3), ...created]} {...args} />
         </StorySheet>
       </StoryFrame>
     );

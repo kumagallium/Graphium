@@ -80,9 +80,17 @@ export function isHit(item: RecordItem, query: string, bodyHits?: BodyHits): boo
 /** 更新の行の id の前置き（"note-updated:<ノートの ID>"）。開く先は作成の行と同じノート */
 export const UPDATED_ID_PREFIX = "note-updated:";
 
+/** 更新の行の ID。同じノートでも書き換えた日ごとに 1 行なので、日を挟む: "note-updated:<YYYY-MM-DD>:<ノートの ID>" */
+export function updatedRowId(noteId: string, dayKey: string): string {
+  return `${UPDATED_ID_PREFIX}${dayKey}:${noteId}`;
+}
+
+const UPDATED_DAY_PART = /^\d{4}-\d{2}-\d{2}:/;
+
 /** 本文の当たり（全文の索引）を引く鍵。更新の行は、作成の行（"note:<ID>"）と同じ本文を見る */
 export function bodyHitKey(item: RecordItem): string {
-  return item.update && item.id.startsWith(UPDATED_ID_PREFIX) ? `note:${item.id.slice(UPDATED_ID_PREFIX.length)}` : item.id;
+  if (!item.update || !item.id.startsWith(UPDATED_ID_PREFIX)) return item.id;
+  return `note:${item.id.slice(UPDATED_ID_PREFIX.length).replace(UPDATED_DAY_PART, "")}`;
 }
 
 /**
