@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.171.0](https://github.com/kumagallium/Graphium/compare/v0.170.0...v0.171.0) - 2026-11-25
+
+- feat: return memos on steps and connections from get_note and get_note_steps by @kumagallium in https://github.com/kumagallium/Graphium/pull/1873
+- feat: put phone captures into the open note from the right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1875
+
 ## [v0.170.0](https://github.com/kumagallium/Graphium/compare/v0.169.0...v0.170.0) - 2026-11-25
 
 - feat: rename by title for URLs (page title) and Excel files by @kumagallium in https://github.com/kumagallium/Graphium/pull/1872
