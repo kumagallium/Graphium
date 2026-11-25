@@ -142,6 +142,8 @@ Click it and the items you have not imported yet are listed as thumbnails, newes
 - **Several at once.** Tick the box at the top left of a tile, or ⌘-click (Ctrl-click on Windows), to select more than one. Drag the selection, or press **Put N selected in note** at the bottom; they are placed top to bottom in the order you captured them.
 - A single click only selects. It does not change the note.
 
+![A note titled Country loaf, trial 3 on the left, and on the right the Mobile panel showing 6 pending captures as tiles: a bookmark, a memo, a video and photos. Two photos are ticked, and a Put 2 selected in note button is at the bottom.](/screenshots/mobile-inbox-panel.png)
+
 Photos, videos, audio and files go in as material blocks, written captures as [quotes that stay linked to their memo](#quoted-memos), and URLs as bookmark cards. What you put in leaves the inbox and stays in your materials or memos.
 
 New captures show up by themselves when you return to the window, and about every 20 seconds while it is open. The count in the sidebar and the full-screen inbox update the same way.
