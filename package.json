@@ -5,6 +5,13 @@
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "10.28.2",
+      "onFail": "download"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/kumagallium/Graphium.git"
