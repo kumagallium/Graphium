@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.169.0](https://github.com/kumagallium/Graphium/compare/v0.168.0...v0.169.0) - 2026-11-25
+
+- [chore] Remove unused docx import module, echarts check script, and cytoscape-edgehandles by @kumagallium in https://github.com/kumagallium/Graphium/pull/1865
+- [chore] Add fallow to report unused code (warnings only) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1869
+- feat: show an Updated row on Home on the day a note was last changed by @kumagallium in https://github.com/kumagallium/Graphium/pull/1870
+
 ## [v0.168.0](https://github.com/kumagallium/Graphium/compare/v0.167.0...v0.168.0) - 2026-11-25
 
 - [feat] Show model assignment as one line when only one model is registered, and shorten the tiers by @kumagallium in https://github.com/kumagallium/Graphium/pull/1867
