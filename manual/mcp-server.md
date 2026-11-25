@@ -254,7 +254,7 @@ A note made today from a 2012 paper is still about something from 2012. Graphium
 - **`sourceDateKind`** says what the date is: `published` (a paper or post), `presented` (a talk), `recorded` (the day minutes or an experiment were written down) or `other`. Pass it only when you know; without it the kind is simply unknown. Both tools take it; on `set_source_date`, leaving it out keeps the current kind and `null` removes it. Removing the date removes the kind too.
 - **`get_note`** shows the source date (and its kind) under the note's title when it has one.
 
-### Memos come along with the steps {#memos-with-the-steps}
+### Memos come along with the steps <Badge type="tip" text="Added in v0.171.0 (2026-11-25)" /> {#memos-with-the-steps}
 
 A procedure often leaves out what you only learned by doing it: "take it out of the furnace once it is below 200 °C", "press the powder the same day". If you wrote that as a memo on a step or on a [connection between two steps](/labels-and-provenance#memos-on-connections), the assistant now reads it together with the procedure.
 
