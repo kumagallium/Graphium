@@ -9,6 +9,8 @@ import { AssignmentOneModelView } from "./AssignmentOneModelView";
 import { ModelFitHint } from "./ModelFitHint";
 import type { ModelSlot } from "./model-fit";
 import { SettingSection } from "./SettingSection";
+import { useLocale } from "../../i18n";
+import { modelFitEvaluationUrl } from "./model-fit";
 import { SETTINGS_BLOCK_BODY_CLASS, SETTINGS_BLOCK_TITLE_CLASS } from "./SettingsGroup";
 
 const meta: Meta = {
@@ -99,6 +101,64 @@ export const TwoOrMoreModels: StoryObj = {
   render: () => (
     <Frame>
       <Current extra={["claude-opus-5"]} />
+    </Frame>
+  ),
+};
+
+/** 案: 説明は用途だけ（「空欄なら〜」は選ぶ欄に出ているので消す）。目安の注記は「くわしく」の中へ。
+ *  札（✓ − ×）は残し、「測った結果」のリンクは最後に 1 つだけ */
+function Trimmed({ extra = [] }: { extra?: string[] }) {
+  const { t, locale } = useLocale();
+  const url = modelFitEvaluationUrl(locale);
+  const rows: { slot: ModelSlot; title: string; uses: string; help: string; empty: string }[] = [
+    { slot: "default", title: t("settings.model"), uses: t("settings.assignTrim.uses.default"), help: t("settings.modelHelp"), empty: `サーバーデフォルト (${MODEL})` },
+    { slot: "standard", title: t("settings.standardModel"), uses: t("settings.assignTrim.uses.standard"), help: t("settings.standardModelHelp"), empty: t("settings.standardModelSameAsDefault") },
+    { slot: "precise", title: t("settings.preciseModel"), uses: t("settings.assignTrim.uses.precise"), help: t("settings.preciseModelHelp"), empty: t("settings.preciseModelSameAsStandard") },
+  ];
+  return (
+    <>
+      {rows.map((r) => (
+        <SettingSection
+          key={r.slot}
+          title={r.title}
+          summary={r.uses}
+          details={
+            <>
+              <p>{r.help}</p>
+              <p className="mt-1">{t(`settings.modelFit.note.${r.slot}`)}</p>
+            </>
+          }
+        >
+          <div className="relative">
+            <select
+              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground"
+              defaultValue=""
+              aria-label={r.title}
+            >
+              <option value="">{r.empty}</option>
+              <option>{MODEL}</option>
+              {extra.map((m) => <option key={m}>{m}</option>)}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          </div>
+          <ModelFitHint slot={r.slot} showNote={false} />
+        </SettingSection>
+      ))}
+      <p className="text-[11px] text-muted-foreground">
+        {t("settings.assignTrim.fitSource")}{" "}
+        <a href={url} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
+          {t("settings.modelFit.link")}
+        </a>
+      </p>
+    </>
+  );
+}
+
+/** 案: モデルが 2 つ以上のとき。説明を用途だけにし、注記を「くわしく」へ移した 3 段 */
+export const TwoOrMoreModelsTrimmed: StoryObj = {
+  render: () => (
+    <Frame>
+      <Trimmed extra={["claude-opus-5"]} />
     </Frame>
   ),
 };

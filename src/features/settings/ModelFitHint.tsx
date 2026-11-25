@@ -21,9 +21,11 @@ const LEVEL_ICON = { good: Check, partial: Minus, poor: X } as const;
 
 export type ModelFitHintProps = {
   slot: ModelSlot;
+  /** 札の下の注記とリンクを出すか（既定は出す）。出さないときは注記を「くわしく」の中へ移す */
+  showNote?: boolean;
 };
 
-export function ModelFitHint({ slot }: ModelFitHintProps) {
+export function ModelFitHint({ slot, showNote = true }: ModelFitHintProps) {
   const { t, locale } = useLocale();
   const fit = MODEL_FIT[slot];
   const url = modelFitEvaluationUrl(locale);
@@ -48,6 +50,7 @@ export function ModelFitHint({ slot }: ModelFitHintProps) {
           );
         })}
       </div>
+      {showNote && (
       <p className="text-[11px] text-muted-foreground">
         {t(`settings.modelFit.note.${slot}`)}{" "}
         <a
@@ -65,6 +68,7 @@ export function ModelFitHint({ slot }: ModelFitHintProps) {
           <ExternalLink size={10} aria-hidden="true" />
         </a>
       </p>
+      )}
     </div>
   );
 }
