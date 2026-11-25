@@ -43,7 +43,7 @@ Under **Documents**, PDF, Word and PowerPoint files show how many pages they hav
 
 PDFs use their real page count, PowerPoint files their number of slides, and Word files the page count saved in the file. A `.docx` written by something other than Word may not carry one; those, Excel files and the older `.doc` / `.ppt` formats show **—**. Materials you already had are counted a few at a time in the background after the app starts, and the counts appear in the list in small batches. Hover **—** to see why there is no number: the kind is not counted, it has not been reached yet, or the file could not be read.
 
-### Renaming a material {#renaming-materials}
+### Renaming a material <Badge type="tip" text="Added in v0.167.0 (2026-11-25)" /> {#renaming-materials}
 
 Open a material and click its name at the top to rename it in place (Enter to confirm, Esc to cancel). This works the same in the side peek you open from a card or link inside a note, and for every kind of material — PDFs, images, URL bookmarks and so on.
 

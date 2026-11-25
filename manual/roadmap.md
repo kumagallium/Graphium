@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 34 more in November
+::: details 35 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -394,6 +394,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.160.0** | 2026-11-24 | [See the shared records for each row of a plan](/storage-and-sync#records-by-plan-row) — share a plan, and the notes people create from its rows and then share are listed by row, with who shared them and when (desktop app). Rows without a record say so. Only the match between a record and a row is kept; there are no due dates, owners or progress states <!--chip: Records by plan row--> |
 | **v0.163.0** | 2026-11-24 | [Bring in files you attach in a chat](/mcp-server#files-you-attach-in-a-chat) — ask ChatGPT (or Codex) to add a photo, PDF or spreadsheet you attached to your materials, and it waits in Graphium until you look at it and press **Bring in** (desktop app). It can also be added to the end of the note the assistant made. Nothing is added without your approval, and only files in the attachment folder, Desktop, Documents, Downloads or Pictures can be offered <!--chip: Chat attachments--> |
 | **v0.164.0** | 2026-11-24 | [See what other people shared, on Home](/storage-and-sync#shared-records-on-home) — switch the who switch on Home to **Shared authors**, and the notes other people put in the shared folders are listed by day, in the order they were shared (desktop app). Records for a plan row show the plan's title, the row's name and the checklist count at the time they were shared. Type a name in the search box to find one person's records <!--chip: Shared records on Home--> |
+| **v0.167.0** | 2026-11-25 | [Rename a material](/materials-and-citations#renaming-materials) — give a URL material a name in your own words, and the cards in your notes show it too. You can also rename from the material peek opened inside a note, and rename chats from the chat list; a chat name you give is never replaced by the AI's title <!--chip: Rename URLs and chats--> |
 
 :::
 
