@@ -328,15 +328,6 @@ export const SAMPLE_SHARED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       who: { type: "other", name: "みなと" },
       title: "オーブンの予熱の目安",
     },
-    {
-      id: "note-updated:2026-11-16:u1",
-      kind: "note",
-      at: "2026-11-16T21:20:00",
-      origin: "written",
-      who: { type: "self" },
-      title: "食パンの試作 3 回目",
-      update: { createdAt: "2026-11-10T09:15:00" },
-    },
   ],
   en: [
     {
@@ -541,6 +532,15 @@ export const SAMPLE_UPDATED_RECORDS: Record<SampleLocale, RecordItem[]> = {
       who: { type: "self" },
       title: "オーブンの温度の記録",
       update: { createdAt: "2026-11-16T16:05:00" },
+    },
+    {
+      id: "note-updated:2026-11-16:u1",
+      kind: "note",
+      at: "2026-11-16T21:20:00",
+      origin: "written",
+      who: { type: "self" },
+      title: "食パンの試作 3 回目",
+      update: { createdAt: "2026-11-10T09:15:00" },
     },
   ],
   en: [

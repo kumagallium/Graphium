@@ -159,10 +159,10 @@ export function noteToRecord(entry: NoteIndexEntry, webClipNoteIds: ReadonlySet<
 
 /**
  * 更新の行。自分のノートを、作った日とは別に、書き換えた日ごとに 1 行ずつ出す。
- * 書き換えた日は、索引の editedAt（人の操作で残った版の、日ごとの最後の保存時刻・v40）と、
- * 最後の更新日時（modifiedAt）を合わせたもの。同じ日は 1 行にまとめ、その日の最後の時刻に置く。
- * 作成の行は作った日に残る（動かない）。過去の日の更新の行も、あとで書き換えても動かない。
- * editedAt を持たない索引（v39 以前・版の記録が無い古いノート）では、最後の更新日の 1 行だけになる。
+ * 書き換えた日は、索引の editedAt（人の操作で残った版の、日ごとの最後の保存時刻・v40）。
+ * 同じ日は 1 行にまとめ、その日の最後の時刻に置く。版を残さない変更（題だけ・フォルダの付け替え）と
+ * AI の書き足しは日を足さない。作成の行は作った日に残る。過去の日の更新の行も、あとで書き換えても動かない。
+ * editedAt を持たない索引（v39 以前・版の記録が無い古いノート）では、最後の更新日（modifiedAt）の 1 行だけになる。
  * 出さないもの:
  *   - AI のページ（知識の流れの処理が書き足すたびに更新日が進み、実データでは 1 日に数百件になる。
  *     更新の行は「自分がさわったノート」を見つけるためのもの。書き足しはページの版の記録で分かる）
@@ -180,7 +180,11 @@ export function noteUpdatesToRecords(entry: NoteIndexEntry, webClipNoteIds: Read
   if (!Number.isFinite(createdMs)) return [];
   const createdDay = dayKeyOf(created);
   const lastByDay = new Map<string, { at: string; ms: number }>();
-  for (const at of [...(entry.editedAt ?? []), entry.modifiedAt]) {
+  // 版の記録があるノートは、人が書き換えた日（editedAt）だけを見る。modifiedAt は AI の書き足しや
+  // 資料の日付の付け替えでも進むので混ぜると、その日の行が次の書き換えで消える（過去の日が動く）。
+  // editedAt が無い（v39 以前の索引・版の記録が無い古いノート）ときだけ、最後の更新日で代える
+  const days = entry.editedAt?.length ? entry.editedAt : [entry.modifiedAt];
+  for (const at of days) {
     if (!at) continue;
     const ms = timeOf(at);
     if (!Number.isFinite(ms) || ms <= createdMs) continue;

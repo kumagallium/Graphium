@@ -78,22 +78,33 @@ describe("noteUpdatesToRecords", () => {
     const rows = noteUpdatesToRecords(
       note({
         editedAt: ["2026-11-10T12:20:00.000Z", "2026-11-12T12:00:00.000Z", "2026-11-17T11:00:00.000Z"],
-        modifiedAt: "2026-11-17T12:00:00.000Z",
+        modifiedAt: "2026-11-17T11:00:00.000Z",
       }),
       NONE,
     );
     expect(rows.map((r) => [r.id, r.at])).toEqual([
       [updatedRowId("n1", dayKeyOf("2026-11-12T12:00:00.000Z")), "2026-11-12T12:00:00.000Z"],
-      [ROW_17, "2026-11-17T12:00:00.000Z"],
+      [ROW_17, "2026-11-17T11:00:00.000Z"],
     ]);
     // どの行も作った日時を持ち、同じノートの本文を見る
     expect(rows.every((r) => r.update?.createdAt === "2026-11-10T12:00:00.000Z")).toBe(true);
     expect(rows.map(bodyHitKey)).toEqual(["note:n1", "note:n1"]);
   });
 
-  it("最後の更新日が人の書き換えの日でなくても（AI の書き足しなど）、その日の行は出す", () => {
+  it("人が書き換えた日を持つノートは、その日だけに出す（AI の書き足しで進んだ最後の更新日は足さない）", () => {
     const rows = noteUpdatesToRecords(note({ editedAt: ["2026-11-12T12:00:00.000Z"] }), NONE);
-    expect(rows.map((r) => r.at)).toEqual(["2026-11-12T12:00:00.000Z", "2026-11-17T12:00:00.000Z"]);
+    expect(rows.map((r) => r.at)).toEqual(["2026-11-12T12:00:00.000Z"]);
+  });
+
+  it("あとで書き換えても、前の日の行は消えない（過去の日は動かない）", () => {
+    const before = noteUpdatesToRecords(note({ editedAt: ["2026-11-12T12:00:00.000Z"], modifiedAt: "2026-11-14T12:00:00.000Z" }), NONE);
+    const after = noteUpdatesToRecords(
+      note({ editedAt: ["2026-11-12T12:00:00.000Z", "2026-11-16T12:00:00.000Z"], modifiedAt: "2026-11-16T12:00:00.000Z" }),
+      NONE,
+    );
+    const ids = (rows: typeof before) => rows.map((r) => r.id);
+    expect(ids(after)).toEqual(expect.arrayContaining(ids(before)));
+    expect(after).toHaveLength(2);
   });
 });
 
