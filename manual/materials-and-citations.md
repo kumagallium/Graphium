@@ -52,7 +52,7 @@ Open a material and click its name at the top to rename it in place (Enter to co
 
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 
-A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word, PowerPoint and Excel files, and for URLs: a URL is read again and its page title is used. That helps with a URL that was saved under its domain name because the page title could not be fetched at the time.
+A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word, PowerPoint and Excel files, and for URLs: a URL is read again and its page title is used. <Badge type="tip" text="Excel and URLs added in v0.170.0 (2026-11-25)" /> That helps with a URL that was saved under its domain name because the page title could not be fetched at the time.
 
 - **One at a time**: open the material and choose **Rename using the title inside the file** from the **⋯** menu at the top right. For a URL it is **Rename using the page title**. The title fills the name field; edit it if needed and press Enter (Esc cancels).
 - **Several at once**: select them and choose **Rename by title** under **More** in the bar. Each one is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
