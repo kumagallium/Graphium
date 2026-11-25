@@ -42,6 +42,7 @@ import {
 } from "./capture-file";
 import { buildInboxPeekEntry } from "./preview";
 import type { CaptureRef } from "./types";
+import { reconcileCaptureRefs, useAutoRescan } from "./use-inbox-pending";
 
 /**
  * 受信箱の読み取り面。FolderInbox が構造的に満たす（Tauri 依存はそちら側に閉じる）。
@@ -59,7 +60,7 @@ export type InboxSource = {
 const THUMBNAIL_MAX_BYTES = 20 * 1024 * 1024;
 
 /** 拡張子から推定した種別。メモ / URL 捕獲（.graphium.json）は専用種別、mime 不明なら "other"。 */
-function refKind(
+export function refKind(
   ref: CaptureRef,
 ): "image" | "video" | "audio" | "pdf" | "memo" | "url" | "other" {
   const captureKind = captureKindFromName(ref.name);
@@ -70,7 +71,7 @@ function refKind(
   return kindFromMime(mime) ?? "other";
 }
 
-function KindIcon({ kind, size = 16 }: { kind: ReturnType<typeof refKind>; size?: number }) {
+export function KindIcon({ kind, size = 16 }: { kind: ReturnType<typeof refKind>; size?: number }) {
   switch (kind) {
     case "image":
       return <ImageIcon size={size} className="text-muted-foreground" />;
@@ -95,7 +96,7 @@ function KindIcon({ kind, size = 16 }: { kind: ReturnType<typeof refKind>; size?
  * 読めない・形状不正は null（ファイル名表示にフォールバック — 取り込み時も
  * importer が同じ判定で「その他」素材に落とすので、見た目と挙動が一致する）。
  */
-function useCaptureRefPayload(
+export function useCaptureRefPayload(
   entryRef: CaptureRef | null,
   source: InboxSource | null,
 ): GraphiumCapturePayload | null {
@@ -168,6 +169,31 @@ function InboxThumbnail({
   source: InboxSource;
 }) {
   const kind = refKind(entryRef);
+  const { holderRef, url } = useInboxThumbnailUrl(entryRef, source);
+
+  return (
+    <div
+      ref={holderRef}
+      className="w-10 h-10 shrink-0 rounded border border-border bg-muted/40 flex items-center justify-center overflow-hidden"
+    >
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <KindIcon kind={kind} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * サムネイルの遅延読み込み（一覧の行と、右パネルのタイルで共用）。
+ * 返す holderRef を付けた要素が画面に入った時点で本体を読む。
+ */
+export function useInboxThumbnailUrl(
+  entryRef: CaptureRef,
+  source: InboxSource,
+): { holderRef: React.MutableRefObject<HTMLDivElement | null>; url: string | null } {
+  const kind = refKind(entryRef);
   const holderRef = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -217,18 +243,7 @@ function InboxThumbnail({
     };
   }, [thumbnailable, visible, source, entryRef]);
 
-  return (
-    <div
-      ref={holderRef}
-      className="w-10 h-10 shrink-0 rounded border border-border bg-muted/40 flex items-center justify-center overflow-hidden"
-    >
-      {url ? (
-        <img src={url} alt="" className="w-full h-full object-cover" />
-      ) : (
-        <KindIcon kind={kind} />
-      )}
-    </div>
-  );
+  return { holderRef, url };
 }
 
 /**
@@ -373,7 +388,9 @@ export function InboxView({
     return () => document.removeEventListener("mousedown", handler);
   }, [folderMenuOpen, folderMenuPanel]);
 
-  const scan = useCallback(async () => {
+  // quiet: 自動の見張りからの数え直し。読み込み中の表示を出さず、エラーも消さない
+  // （何も届いていないのに、更新ボタンが 20 秒ごとに回って見えるのを避ける）
+  const scan = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!source) {
       setItems([]);
       setSelected(new Set());
@@ -382,12 +399,16 @@ export function InboxView({
       return;
     }
     const seq = ++scanSeq.current;
-    setLoading(true);
-    setError(null);
+    if (!opts?.quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const listed = await source.listPending();
       if (seq !== scanSeq.current) return;
-      setItems(listed);
+      if (opts?.quiet) setError(null);
+      // 変わっていないアイテムは前の参照を保つ（サムネイルを読み直さない）
+      setItems((prev) => reconcileCaptureRefs(prev, listed));
       onPendingCount?.(listed.length);
       // 消えたファイルの選択は落とす（同期フォルダは外から書き換わる）。
       const names = new Set(listed.map((r) => r.name));
@@ -412,6 +433,13 @@ export function InboxView({
   useEffect(() => {
     void scan();
   }, [scan]);
+
+  // 届いたものを自動で並べる（ウィンドウに戻ったとき・表示中の一定間隔）。
+  // 取り込みの最中は数え直さない（取り込みが終わると runImport が数え直す）
+  const importingRef = useRef(false);
+  useAutoRescan(() => {
+    if (!importingRef.current) void scan({ quiet: true });
+  }, source != null);
 
   const allSelected = items.length > 0 && selected.size === items.length;
   const selectedRefs = useMemo(
@@ -440,10 +468,12 @@ export function InboxView({
     async (refs?: CaptureRef[]) => {
       if (importing) return;
       setImporting(true);
+      importingRef.current = true;
       try {
         await onImport(refs);
         setSelected(new Set());
       } finally {
+        importingRef.current = false;
         setImporting(false);
         await scan();
       }

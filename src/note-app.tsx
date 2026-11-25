@@ -5,7 +5,7 @@ import type { DropdownPosition } from "@/ui/dropdown";
 import { useFloatingPlacement } from "@/ui/floating-position";
 import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, ClipboardList, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, ClipboardList, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud, Smartphone } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { openExternalUrl } from "./lib/external-link";
 import { manualHomeUrl } from "./features/app-help/manual-url";
@@ -357,7 +357,11 @@ import {
 } from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
-import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
+import {
+  getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView,
+  MobileInboxPanel, INBOX_DRAG_MIME, useInboxPending, cursorInsertTarget, dropInsertTarget, insertInboxItems, readInboxDragNames,
+  type InboxInsertable, type InboxInsertTarget, type MobileInboxBinding, type InboxImportResult, type InboxCapturedPayload,
+} from "./features/mobile-capture/inbox";
 import { RecordsView } from "./features/record-dashboard/RecordsView";
 import { selectInboxOcrTargets } from "./features/mobile-capture/inbox/ocr-targets";
 import { selectInboxTranscribeTargets } from "./features/mobile-capture/inbox/transcribe-targets";
@@ -1601,6 +1605,8 @@ type NoteEditorProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** メモ挿入リクエスト（メモギャラリーから） */
   pendingMemoInsert?: { captureId: string; text: string } | null;
+  /** 右パネルの受信箱（デスクトップで同期フォルダを接続しているときだけ渡る） */
+  mobileInbox?: MobileInboxBinding | null;
   /** メモ挿入完了コールバック（メモ一覧の挿入。usedIn の記録は呼び出し側） */
   onMemoInserted?: () => void;
   /**
@@ -2222,6 +2228,7 @@ function NoteEditorInner({
   mediaIndex,
   onAddUrlBookmark,
   pendingMemoInsert,
+  mobileInbox,
   onMemoInserted,
   onRecordMemoUsage,
   captureIndex: captureIndexProp,
@@ -2604,12 +2611,12 @@ function NoteEditorInner({
     return () => { styleEl?.remove(); };
   }, [highlightBlockIds]);
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | "planRecords" | null>(null);
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | "mobile" | "comments" | "proposals" | "planRecords" | null>(null);
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
   const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
   const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
   // アイコンレールのトグル: 同じタブクリックで閉じる
-  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "comments" | "proposals" | "planRecords") => {
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos" | "mobile" | "comments" | "proposals" | "planRecords") => {
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
@@ -3749,6 +3756,44 @@ function NoteEditorInner({
 
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number; top?: number }; blockId: string } | null>(null);
+  // ── 右パネルの受信箱 → ノートの本文 ──
+  // 取り込み（Inbox → 素材・メモ）と本文への挿入を 1 操作で行う。入れる場所は押した時点で
+  // 決める（取り込みを待つ間にカーソルが動いても、押したときの場所に入れる）。
+  // target を渡すのはドラッグで落としたとき（落とした位置）。無ければカーソルの位置
+  const [inboxBusyNames, setInboxBusyNames] = useState<ReadonlySet<string>>(() => new Set());
+  const mobileInboxRef = useRef(mobileInbox);
+  mobileInboxRef.current = mobileInbox;
+  const inboxInsertCtxRef = useRef({ fileId, title, onRecordMemoUsage });
+  inboxInsertCtxRef.current = { fileId, title, onRecordMemoUsage };
+  const insertFromInbox = useCallback(async (refs: CaptureRef[], target?: InboxInsertTarget | null) => {
+    const inbox = mobileInboxRef.current;
+    const editor = editorRef.current;
+    if (!inbox || !editor || refs.length === 0) return;
+    const where = target ?? cursorInsertTarget(editor);
+    const names = refs.map((r) => r.name);
+    setInboxBusyNames((prev) => new Set([...prev, ...names]));
+    try {
+      const items: InboxInsertable[] = await inbox.importRefs(refs);
+      // 取り込みを待つ間に別のノートへ切り替わっていたら、本文には入れない
+      // （取り込み自体は済んでいるので、素材・メモとして残る）
+      const ed = editorRef.current;
+      if (!ed || ed !== editor) return;
+      const { memoIds } = insertInboxItems(ed, items, where, memoQuoteStore);
+      const ctx = inboxInsertCtxRef.current;
+      if (ctx.fileId) {
+        for (const id of memoIds) ctx.onRecordMemoUsage?.(id, ctx.fileId, ctx.title);
+      }
+    } finally {
+      setInboxBusyNames((prev) => {
+        const next = new Set(prev);
+        for (const n of names) next.delete(n);
+        return next;
+      });
+    }
+  }, [memoQuoteStore]);
+  const insertFromInboxRef = useRef(insertFromInbox);
+  insertFromInboxRef.current = insertFromInbox;
+
   // いま本文に付いている copy / paste / drop のリスナー（付けた要素ごと）。
   // handleEditorReady はストアが変わるたびに呼ばれ、本文の DOM ができる前にも来る。
   // DOM 待ち（rAF）の回が後から重なって付くと、同じ貼り付けを古いクロージャの
@@ -4138,6 +4183,24 @@ function NoteEditorInner({
     // 何もしないと BlockNote が汎用の file ブロック（添付）として貼り付けてしまい、
     // 中身が表にならないまま埋まる。それ以外のファイルは BlockNote に任せる。
     const dropListener = (e: DragEvent) => {
+      // 右パネルの受信箱から引いてきたもの: 落とした位置に、取り込んで入れる。
+      // 運ばれてくるのは Inbox のファイル名だけ。いま受信箱に並んでいるものとの
+      // 突き合わせで実体を引く（並んでいない名前は無視する）
+      if (e.dataTransfer?.types?.includes(INBOX_DRAG_MIME)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const names = new Set(readInboxDragNames(e.dataTransfer.getData(INBOX_DRAG_MIME)));
+        // 引いた順（撮った順）を保つため、運ばれてきた名前の順で並べる
+        const byName = new Map((mobileInboxRef.current?.items ?? []).map((r) => [r.name, r]));
+        const refs = [...names].map((n) => byName.get(n)).filter((r): r is CaptureRef => !!r);
+        if (refs.length === 0) return;
+        const target = dropInsertTarget(editor.domElement, e.clientX, e.clientY);
+        // ここで drop を止めるので、落とす位置の線（dropcursor）を消す合図が届かない。
+        // dragleave を流して線を片付ける（放っておくと数秒残る）
+        editor.domElement?.dispatchEvent(new DragEvent("dragleave"));
+        void insertFromInboxRef.current(refs, target);
+        return;
+      }
       const file = Array.from(e.dataTransfer?.files ?? []).find((f) =>
         isDelimitedDataFile(f.name)
       );
@@ -5172,6 +5235,12 @@ function NoteEditorInner({
   useEffect(() => {
     if (!provLabelsEnabled && rightTab === "prov") setRightTab(null);
   }, [provLabelsEnabled, rightTab]);
+  // 受信箱のタブは、同期フォルダを接続していて本文を書ける間だけ出す。
+  // 開いたまま条件が外れたら（フォルダの接続を外した・ゴミ箱へ移した）、空のパネルを残さず閉じる
+  const mobileTabAvailable = !!mobileInbox && !!fileId && !templateEditing && !archived && !trashed;
+  useEffect(() => {
+    if (!mobileTabAvailable && rightTab === "mobile") setRightTab(null);
+  }, [mobileTabAvailable, rightTab]);
 
   // ── PDF エクスポートハンドラー ──
   //
@@ -8779,6 +8848,7 @@ function NoteEditorInner({
                     : rightTab === "chat" ? t("panel.chat")
                     : rightTab === "history" ? t("panel.history")
                     : rightTab === "memos" ? t("panel.memos")
+                    : rightTab === "mobile" ? t("mobile.title")
                     : rightTab === "comments" ? t("panel.comments")
                     : rightTab === "proposals" ? t("panel.proposals")
                     : rightTab === "planRecords" ? t("panel.planRecords")
@@ -8940,6 +9010,18 @@ function NoteEditorInner({
                     }}
                   />
                 )}
+                {rightTab === "mobile" && mobileInbox && mobileTabAvailable && (
+                  <MobileInboxPanel
+                    source={mobileInbox.source}
+                    items={mobileInbox.items}
+                    loading={mobileInbox.loading}
+                    busyNames={inboxBusyNames}
+                    onRefresh={mobileInbox.refresh}
+                    // ダブルクリック・＋・まとめて入れる → カーソルの位置へ
+                    // （ドラッグで落とした場合は本文の drop リスナーが位置を決めて呼ぶ）
+                    onInsert={(refs) => { void insertFromInbox(refs); }}
+                  />
+                )}
                 {rightTab === "comments" && sharedRoot && sharedRefState && (
                   <NoteSharedCommentsPanel
                     targetId={sharedRefState.id}
@@ -9020,6 +9102,22 @@ function NoteEditorInner({
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: !templateEditing },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
+            // モバイル: スマホから届いた未取り込みのものを、ノートを開いたまま本文に入れる場所。
+            // 同期フォルダを接続している人にだけ出す（使わない人のレールを増やさない）。
+            // 届いているものがあるときは点を付ける（コメントの未読と同じ印）
+            {
+              tab: "mobile" as const,
+              icon: (
+                <span className="relative inline-flex items-center justify-center">
+                  <Smartphone size={18} />
+                  {(mobileInbox?.items.length ?? 0) > 0 && (
+                    <span data-test="mobileRailDot" className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary" />
+                  )}
+                </span>
+              ),
+              label: t("mobile.title"),
+              show: mobileTabAvailable,
+            },
             // Comments: 共有した記録に対する先生からの指摘を読む場所。共有していない
             // ノートには存在しない話なので、共有済み（sharedRefState あり）のときだけ出す
             {
@@ -9433,26 +9531,16 @@ export function NoteApp() {
     () => (isTauri() && inboxRoot ? new FolderInbox(inboxRoot) : null),
     [inboxRoot],
   );
-  // 起動時（および接続フォルダ変更時）に未処理件数を数える。
-  // 「受信箱ビューを開いたとき」「取り込み後」は InboxView の scan → onPendingCount が
-  // 更新するので、ここでは重ねて数えない（IPC の二重呼びを避ける）。
-  // 失敗は 0 扱いで握りつぶす（起動を妨げない）。
+  // 未取り込みのアイテムを見張る（起動時・接続フォルダ変更時・ウィンドウに戻ったとき・
+  // 表示中の一定間隔）。届いたものは、サイドバーの件数と、ノートの右パネルの受信箱に
+  // 操作なしで現れる。失敗は空扱い（起動を妨げない）。
+  // 全画面の受信箱（InboxView）は自分でも数え直して onPendingCount で件数を知らせてくる
+  // ので、件数は両方から同じ state に入れる（新しい方が勝つ）。
+  const inboxPending = useInboxPending(inboxSource);
+  const refreshInboxPending = inboxPending.refresh;
   useEffect(() => {
-    if (!inboxSource) {
-      setInboxPendingCount(0);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const pending = await inboxSource.listPending();
-        if (!cancelled) setInboxPendingCount(pending.length);
-      } catch {
-        if (!cancelled) setInboxPendingCount(0);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [inboxSource]);
+    setInboxPendingCount(inboxPending.items.length);
+  }, [inboxPending.items]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
   // 共有フォルダの画面で開くタブの依頼（左ナビの行から）。nonce は同じタブの再押下でも効かせる用。
@@ -15077,14 +15165,23 @@ export function NoteApp() {
   //             同一内容の二重取込を弾く（importer が isAlreadyImported を各件呼ぶ直前に判定）
   // importer は success を個別通知しないため、「未取り込み → これから取り込む」の
   // タイミング（isAlreadyImported が false を返す瞬間）で Set に add する。
-  const handleImportFromInbox = useCallback(async (refs?: CaptureRef[]) => {
-    if (!isTauri()) return;
+  //
+  // 戻り値は取り込みの結果（右パネルの受信箱が、取り込んだものを本文に入れるのに使う）。
+  // quiet: 成功の知らせを出さない（本文に入ったこと自体が結果なので、1 枚ごとにトーストを
+  // 出さない）。失敗があったときは quiet でも知らせる。
+  const handleImportFromInbox = useCallback(async (
+    refs?: CaptureRef[],
+    opts?: { quiet?: boolean },
+  ): Promise<{ result: InboxImportResult; captured: Map<string, InboxCapturedPayload> } | null> => {
+    if (!isTauri()) return null;
     // root 未設定ならフォルダ選択を促す。選ばれなければ何もしない。
     let root = getInboxRoot();
     if (!root) {
       root = await handlePickInboxRoot();
-      if (!root) return;
+      if (!root) return null;
     }
+    // 取り込んだメモ・URL の中身（着地先の ID → 中身）。本文にブロックとして入れるときに使う
+    const captured = new Map<string, InboxCapturedPayload>();
     // dedup 用チェックサム集合（run 間スナップショット + run 内成長）。
     const seen = new Set<string>();
     for (const m of fm.mediaIndex?.media ?? []) {
@@ -15132,6 +15229,7 @@ export function NoteApp() {
               payload.createdAt,
               payload.folder,
             );
+            captured.set(id, { kind: "memo", text: payload.text, createdAt: payload.createdAt });
             return { fileId: id };
           },
           // URL → URL ブックマーク素材（media-index の url エントリ）。メタは
@@ -15142,6 +15240,13 @@ export function NoteApp() {
           url: async (payload, { meta }) => {
             const domain = extractDomain(payload.url);
             const fileId = generateUrlBookmarkId();
+            captured.set(fileId, {
+              kind: "url",
+              url: payload.url,
+              title: payload.title?.trim() || domain,
+              description: payload.description ?? "",
+              domain,
+            });
             fm.handleAddUrlBookmark({
               fileId,
               name: payload.title?.trim() || domain,
@@ -15216,19 +15321,73 @@ export function NoteApp() {
         (id) => mediaForTranscribe?.find((m) => m.fileId === id)?.mimeType,
       );
       const failed = res.failed.length;
-      pushResultToast(
-        failed > 0 ? "error" : "success",
-        tStatic("mobile.importSummary", {
-          imported: String(res.imported.length),
-          skipped: String(res.skipped.length),
-          failed: String(failed),
-        }),
-      );
+      if (failed > 0 || !opts?.quiet) {
+        pushResultToast(
+          failed > 0 ? "error" : "success",
+          tStatic("mobile.importSummary", {
+            imported: String(res.imported.length),
+            skipped: String(res.skipped.length),
+            failed: String(failed),
+          }),
+        );
+      }
+      return { result: res, captured };
     } catch (e) {
       console.error("[inbox] import failed", e);
       pushResultToast("error", e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      // 取り込んだものは Inbox から消えている。件数と右パネルの受信箱を合わせる
+      void refreshInboxPending();
     }
-  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot, intakeOcr.enqueue]);
+  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot, intakeOcr.enqueue, refreshInboxPending]);
+
+  // 右パネルの受信箱とのつなぎ。取り込んで、本文に入れられる形にして返す
+  const importInboxForNote = useCallback(async (refs: CaptureRef[]): Promise<InboxInsertable[]> => {
+    const out = await handleImportFromInbox(refs, { quiet: true });
+    if (!out) return [];
+    const media = getLatestMediaIndex()?.media ?? [];
+    const done = new Map<string, InboxInsertable>();
+    for (const it of out.result.imported) {
+      const payload = out.captured.get(it.fileId);
+      if (payload?.kind === "memo") {
+        done.set(it.name, { kind: "memo", name: it.name, captureId: it.fileId, text: payload.text, createdAt: payload.createdAt });
+      } else if (payload?.kind === "url") {
+        done.set(it.name, { kind: "url", name: it.name, url: payload.url, title: payload.title, description: payload.description, domain: payload.domain });
+      } else {
+        const entry = media.find((m) => m.fileId === it.fileId);
+        if (entry) done.set(it.name, { kind: "material", name: it.name, entry });
+      }
+    }
+    // 同じ中身をすでに取り込んでいた（重複で飛ばした）ものは、前に取り込んだ素材を本文に入れる。
+    // 利用者から見れば「入れた」のに何も起きない、を避ける
+    for (const it of out.result.skipped) {
+      const entry = media.find((m) => m.capture?.checksum === it.checksum);
+      if (!entry) continue;
+      if (entry.type === "url") {
+        done.set(it.name, {
+          kind: "url", name: it.name, url: entry.url, title: entry.name,
+          description: entry.urlMeta?.description ?? "", domain: entry.urlMeta?.domain ?? extractDomain(entry.url),
+        });
+      } else {
+        done.set(it.name, { kind: "material", name: it.name, entry });
+      }
+    }
+    return refs.map((r) => done.get(r.name)).filter((x): x is InboxInsertable => !!x);
+  }, [handleImportFromInbox]);
+  const mobileInboxBinding = useMemo<MobileInboxBinding | null>(
+    () =>
+      inboxSource
+        ? {
+            source: inboxSource,
+            items: inboxPending.items,
+            loading: inboxPending.loading,
+            refresh: () => { void refreshInboxPending(); },
+            importRefs: importInboxForNote,
+          }
+        : null,
+    [inboxSource, inboxPending.items, inboxPending.loading, refreshInboxPending, importInboxForNote],
+  );
 
   // ── Web クリップ（ブラウザ拡張機能 → sidecar の受け取り待ち → メモ・URL 素材・ノート） ──
   // 設計: docs/internal/web-clip-design.md。書き込みはすべて既存のハンドラ経由。
@@ -18537,7 +18696,7 @@ export function NoteApp() {
             onPickRoot={async () => { await handlePickInboxRoot(); }}
             keepArchive={inboxKeepArchive}
             onKeepArchiveChange={handleInboxKeepArchiveChange}
-            onImport={handleImportFromInbox}
+            onImport={async (refs) => { await handleImportFromInbox(refs); }}
             onPendingCount={setInboxPendingCount}
             onBack={() => setShowMobile(false)}
           />
@@ -19361,6 +19520,7 @@ export function NoteApp() {
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             pendingMemoInsert={pendingMemoInsert}
+            mobileInbox={mobileInboxBinding}
             onRecordMemoUsage={capture.handleRecordUsage}
             onMemoInserted={() => {
               if (!pendingMemoInsert) return;

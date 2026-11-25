@@ -131,6 +131,21 @@ The pipeline, end to end:
 
 Photos are read for text by themselves after the import (OCR). Audio (such as .m4a, .weba and .wav) is transcribed by itself too, in the desktop app only: it needs the transcription model, which Graphium downloads when audio arrives (see [Voice notes](/voice-notes#settings)), and it works through the files one at a time, up to 2 hours each. While the model downloads you see **Downloading the transcription model (about 574 MB, N%)**; to stop it, press **Cancel** under **Voice notes** in Settings. If some files could not be transcribed, a message says so; it also says when a file is over 2 hours long, or when the transcription model is not available yet. The audio stays in your materials in every case. You can open it and press **Transcribe** later.
 
+### Put arrivals into the note you have open {#inbox-beside-the-note}
+
+When you come back from the lab and want the photos in your note right away, you do not have to open the inbox first. With an inbox folder connected, a **Mobile** icon appears in the column of icons at the right edge of the note. It carries a dot when something is waiting.
+
+Click it and the items you have not imported yet are listed as thumbnails, newest first. Putting one into the note imports it at the same time.
+
+- **Drag it into the note.** It lands where you drop it.
+- **Double-click it.** It goes below the block your cursor is in. The **+** at the top right of the tile (**Put in note**) does the same.
+- **Several at once.** Tick the box at the top left of a tile, or ⌘-click (Ctrl-click on Windows), to select more than one. Drag the selection, or press **Put N selected in note** at the bottom; they are placed top to bottom in the order you captured them.
+- A single click only selects. It does not change the note.
+
+Photos, videos, audio and files go in as material blocks, written captures as [quotes that stay linked to their memo](#quoted-memos), and URLs as bookmark cards. What you put in leaves the inbox and stays in your materials or memos.
+
+New captures show up by themselves when you return to the window, and about every 20 seconds while it is open. The count in the sidebar and the full-screen inbox update the same way.
+
 By default, imported files are deleted from the inbox — their content is already in your library. Check **Keep processed files in _imported/** (in the inbox's folder settings, or in Settings → Storage → Send from your phone or browser → Send from your phone) if you prefer an archive.
 
 ![The Send from your phone section in Settings → Storage, with the QR code that opens Graphium on your phone](/screenshots/mobile-upload-settings.png)
