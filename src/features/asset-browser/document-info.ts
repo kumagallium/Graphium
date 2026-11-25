@@ -1,4 +1,4 @@
-// ドキュメント素材（PDF / Word .docx / PowerPoint .pptx）の中身から読む付加情報
+// ドキュメント素材（PDF / Word .docx / PowerPoint .pptx / Excel .xlsx）の中身から読む付加情報
 //
 //   - ページ数: 一覧に出して並び替えられるようにする（巨大な資料をナレッジ化に回す前に気づくため）
 //   - タイトル: ファイル名の代わりに、文書自身が名乗っているタイトルで名前を付け直すため
@@ -16,6 +16,7 @@ import {
   documentKindOf,
   isWordDocxEntry,
   isPptxEntry,
+  isXlsxEntry,
   MEDIA_INDEX_CHANGED_EVENT,
   type MediaIndexEntry,
   type SourceInfo,
@@ -43,9 +44,14 @@ export function canCountPages(entry: EntryLike): boolean {
   return documentKindOf(entry) === "pdf" || isWordDocxEntry(entry) || isPptxEntry(entry);
 }
 
-/** ファイル内のタイトルを読める素材か（ページ数と同じ対象） */
+/**
+ * タイトルを読める素材か。
+ *   - PDF・.docx・.pptx（ページ数と同じ対象）: 文書のメタデータ → 本文の順
+ *   - .xlsx: 文書のプロパティ（core.xml の題）だけ。シートの中身からは拾わない
+ *   - URL: ページの題（読み取りは material-title.ts。ここでは判定だけ）
+ */
 export function canExtractTitle(entry: EntryLike): boolean {
-  return canCountPages(entry);
+  return entry.type === "url" || canCountPages(entry) || isXlsxEntry(entry);
 }
 
 // ---------- 共通: zip / XML ----------
@@ -100,7 +106,7 @@ function isWordToken(token: string): boolean {
 }
 
 /** 使える値なら整えて（空白の正規化・上限で切る）返し、使えなければ undefined */
-function finalizeTitle(raw: string | null | undefined): string | undefined {
+export function finalizeTitle(raw: string | null | undefined): string | undefined {
   if (!isUsableTitle(raw)) return undefined;
   const t = normalizeTitleText(raw as string);
   return Array.from(t).slice(0, MAX_TITLE_LENGTH).join("");
@@ -438,6 +444,8 @@ export async function extractDocumentTitle(
     if (documentKindOf(entry) === "pdf") return await extractPdfTitle(bytes);
     if (isWordDocxEntry(entry)) return extractDocxTitle(bytes);
     if (isPptxEntry(entry)) return extractPptxTitle(bytes);
+    // Excel はシートの中身に「題」に当たる場所が無いので、文書のプロパティの題だけを使う
+    if (isXlsxEntry(entry)) return readCoreTitle(unzipSome(bytes, (n) => n === "docProps/core.xml"));
   } catch (err) {
     console.warn("ファイル内のタイトルを読めませんでした:", err);
   }
@@ -446,7 +454,7 @@ export async function extractDocumentTitle(
 
 // ---------- 名前の組み立て ----------
 
-const NAME_EXT_RE = /\.(pdf|docx?|pptx?)$/i;
+const NAME_EXT_RE = /\.(pdf|docx?|pptx?|xlsx?)$/i;
 
 /**
  * タイトルに元の名前の拡張子（.pdf / .docx など）を付けた新しい名前を返す。

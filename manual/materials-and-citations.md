@@ -52,12 +52,12 @@ Open a material and click its name at the top to rename it in place (Enter to co
 
 ### Using the title inside the file as the name <Badge type="tip" text="Added in v0.89.0 (2026-10-14)" /> {#rename-from-title}
 
-A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word and PowerPoint files.
+A document still called `scan_0012.pdf` or `Document1.docx` can be renamed from the title written inside it. This works for PDF, Word, PowerPoint and Excel files, and for URLs: a URL is read again and its page title is used. That helps with a URL that was saved under its domain name because the page title could not be fetched at the time.
 
-- **One at a time**: open the material and choose **Rename using the title inside the file** from the **⋯** menu at the top right. The title fills the name field; edit it if needed and press Enter (Esc cancels).
-- **Several at once**: select them and choose **Rename by title** under **More** in the bar. Each file is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
+- **One at a time**: open the material and choose **Rename using the title inside the file** from the **⋯** menu at the top right. For a URL it is **Rename using the page title**. The title fills the name field; edit it if needed and press Enter (Esc cancels).
+- **Several at once**: select them and choose **Rename by title** under **More** in the bar. Each one is listed as "current name → new name"; keep the rows you want checked, edit any new name in place, and click **Rename N**.
 
-The title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
+For Excel, only the file's properties (Title) are used, never the sheet contents. A URL that points to a PDF, or a page that could not be read, keeps its name. For PDF, Word and PowerPoint, the title comes from the file's properties first. When that is empty or meaningless (such as "Microsoft Word - ….docx"), it is taken from the body instead: the largest line on the first page of a PDF, the Title or Heading 1 paragraph of a Word file, or the title of the first slide in PowerPoint. The original extension is kept. A title taken from the body can occasionally pick up something like a journal name, so take a look before you confirm.
 
 ### The date of a material <Badge type="tip" text="Added in v0.156.0 (2026-11-23)" /> {#material-source-date}
 

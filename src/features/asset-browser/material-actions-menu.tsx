@@ -30,8 +30,8 @@ import { notifySharedLibraryChanged, needsSharedFolderChoice, resolveShareTarget
 import { getActiveProvider } from "../../lib/storage/registry";
 import { canExpandOffice, hasExpandedOffice, isFilelessMediaEntry, isPptxEntry, isWordDocxEntry } from "./media-index";
 import { assetFolderValues, type NoteFolderLookup } from "./asset-folders";
-import { canExtractTitle, extractDocumentTitle, isSameName, titleToName } from "./document-info";
-import { readEntryBytes } from "./read-entry-bytes";
+import { canExtractTitle, isSameName, titleToName } from "./document-info";
+import { readMaterialTitle } from "./material-title";
 import { canOpenInApp, openInApp, openInAppFailureKey } from "./open-in-app";
 import { buildAssetLink } from "../block-link/graphium-link";
 import { MENTIONABLE_ASSET_TYPES } from "../block-link/mention-menu";
@@ -152,8 +152,7 @@ export function MaterialActionsMenu({
     setReadingTitle(true);
     setTitleError(null);
     try {
-      const bytes = await readEntryBytes(entry);
-      const title = await extractDocumentTitle(bytes, entry);
+      const title = await readMaterialTitle(entry);
       if (!title) {
         setTitleError(t("asset.titleNotFound"));
       } else {
@@ -439,10 +438,10 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 disabled={readingTitle}
                 onClick={() => { void handleTitleRename(); }}
-                data-tooltip={t("asset.titleRenameHelp")}
+                data-tooltip={t(entry.type === "url" ? "asset.titleRenameUrlHelp" : "asset.titleRenameHelp")}
               >
                 {readingTitle ? <Loader2 size={14} className="animate-spin" /> : <Type size={14} />}
-                {readingTitle ? t("asset.titleReading") : t("asset.titleRename")}
+                {readingTitle ? t("asset.titleReading") : t(entry.type === "url" ? "asset.titleRenameUrl" : "asset.titleRename")}
               </button>
             </>
           )}

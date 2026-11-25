@@ -1,4 +1,4 @@
-// 選んだドキュメントを、ファイル内のタイトルで一括して名前を付け直すダイアログ
+// 選んだ素材を、中のタイトル（URL はページの題）で一括して名前を付け直すダイアログ
 //
 // 開くと 1 件ずつ中身を読み、「いまの名前 → 新しい名前」を並べる。
 // 見つからない・変更なしの行はチェックできない（理由を薄く出す）。
@@ -9,8 +9,8 @@ import { Loader2 } from "lucide-react";
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
-import { extractDocumentTitle, isSameName, titleToName } from "./document-info";
-import { readEntryBytes } from "./read-entry-bytes";
+import { isSameName, titleToName } from "./document-info";
+import { readMaterialTitle } from "./material-title";
 
 type RowState =
   | { status: "pending" }
@@ -44,8 +44,7 @@ export function BulkTitleRenameDialog({
         if (cancelled) return;
         let next: RowState;
         try {
-          const bytes = await readEntryBytes(entry);
-          const title = await extractDocumentTitle(bytes, entry);
+          const title = await readMaterialTitle(entry);
           if (!title) {
             next = { status: "notFound" };
           } else {
