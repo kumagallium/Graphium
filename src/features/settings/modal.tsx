@@ -22,6 +22,7 @@ import { ChevronLeft,
   Download,
   Smartphone,
   Scissors,
+  Share2,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -41,6 +42,10 @@ import { ChatGptPlanRow } from "./chatgpt-plan/ChatGptPlanRow";
 import type { ChatGptModel } from "./chatgpt-plan/state";
 import { AssistantConnect } from "./assistant-connect/AssistantConnect";
 import { AiConnectFlow, KEYLESS_PLACEHOLDER } from "./ai-connect/AiConnectFlow";
+import { ConnectionFileExport, type ExportableGroup } from "./ai-connection-file/ConnectionFileExport";
+import type { ImportModelSpec } from "./ai-connection-file/ConnectionFileImport";
+import { isDistributableProvider } from "./ai-connection-file/format";
+import { downloadBlob } from "@/lib/download-file";
 import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import {
   runInsightModelTest, getInsightTestClaims, getInsightTestReference,
@@ -1234,7 +1239,70 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
     [isWebMode, models, refreshModels, t],
   );
 
+  // 配られた接続のファイルを読み込む: まとめて登録し、最後に一覧を 1 度だけ読み直す。
+  // 重複と名前の衝突は ConnectionFileImport 側（planImport）で避けてある
+  const connectImportModels = useCallback(
+    async (specs: ImportModelSpec[]) => {
+      let added = 0;
+      try {
+      for (const spec of specs) {
+        if (isWebMode) {
+          addLLMModel({ name: spec.name, provider: spec.provider, modelId: spec.modelId, apiKey: spec.apiKey, apiBase: spec.apiBase || null });
+        } else {
+          const res = await fetch(`${apiBase()}/models`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model_name: spec.name,
+              provider: spec.provider,
+              model_id: spec.modelId,
+              api_key: spec.apiKey,
+              api_base: spec.apiBase || undefined,
+            }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.code === "DUPLICATE_MODEL_NAME" ? t("settings.addModel.duplicateName") : data.error || `Error ${res.status}`);
+          }
+        }
+        added++;
+      }
+      } catch (e) {
+        // 途中で止まったら、何件入ったかを伝える（もう一度読み込めば、入った分はとばして続きを足す）
+        const reason = e instanceof Error ? (e.message === DUPLICATE_MODEL_NAME_ERROR ? t("settings.addModel.duplicateName") : e.message) : String(e);
+        throw new Error(added > 0 ? t("settings.connectionFile.import.partial", { n: String(added), error: reason }) : reason);
+      } finally {
+        // 成否にかかわらず一覧を読み直す（古い一覧のまま再試行すると、入った分を重複として断られる）
+        refreshModels();
+      }
+      setShowAddForm(false);
+      setLegacyForm(false);
+    },
+    [isWebMode, refreshModels, t],
+  );
+
+  // 接続を配る: キーで呼ぶ接続を、種類と送り先でまとめる（GitHub Copilot・ChatGPT のプランは本人のサインインなので除く）
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportGroups: ExportableGroup[] = (() => {
+    const byKey = new Map<string, ExportableGroup>();
+    for (const m of models) {
+      if (!isDistributableProvider(m.provider)) continue;
+      const key = `${m.provider}::${m.api_base ?? ""}`;
+      let g = byKey.get(key);
+      if (!g) {
+        const providerName = PROVIDERS.find((p) => p.id === m.provider)?.name ?? m.provider;
+        g = { id: key, label: m.api_base ? `${providerName} (${m.api_base})` : providerName, provider: m.provider, apiBase: m.api_base || null, models: [] };
+        byKey.set(key, g);
+      }
+      // 同じモデルを別の名前で 2 度登録していることがある。ファイルには 1 度だけ入れる
+      if (!g.models.some((x) => x.modelId === m.model_id)) g.models.push({ name: m.name, modelId: m.model_id });
+    }
+    return Array.from(byKey.values());
+  })();
+
   const aiConnectProps = {
+    importModels: connectImportModels,
+    existingModels: models.map((m) => ({ name: m.name, provider: m.provider, apiBase: m.api_base || null, modelId: m.model_id })),
     onPickCustom: () => {
       setShowAddForm(true);
       setAddMode("new" as const);
@@ -2743,17 +2811,36 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
                   <h3 className={SETTINGS_BLOCK_TITLE_TEXT_CLASS}>{t("settings.models.title")}</h3>
                 )}
                 {!showAddForm && (
-                  // 帯の右端の文字リンクだと見落とされたので、ボタンの形にする
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 bg-background"
-                    onClick={() => { setShowAddForm(true); setAddMode("new"); setLegacyForm(false); }}
-                  >
-                    <Plus size={14} /> {t("settings.models.add")}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {/* 研究室で 1 人がつないだ接続を、ファイルにしてほかの人へ渡す */}
+                    {exportGroups.length > 0 && !exportOpen && (
+                      <Button size="sm" variant="outline" className="h-7 bg-background" onClick={() => setExportOpen(true)}>
+                        <Share2 size={14} /> {t("settings.connectionFile.export.button")}
+                      </Button>
+                    )}
+                    {/* 帯の右端の文字リンクだと見落とされたので、ボタンの形にする */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 bg-background"
+                      onClick={() => { setShowAddForm(true); setAddMode("new"); setLegacyForm(false); setExportOpen(false); }}
+                    >
+                      <Plus size={14} /> {t("settings.models.add")}
+                    </Button>
+                  </div>
                 )}
               </div>
+
+              {exportOpen && !showAddForm && (
+                <div className="mb-3">
+                  <ConnectionFileExport
+                    groups={exportGroups}
+                    defaultFrom={authorName}
+                    save={(blob, filename) => downloadBlob(blob, filename)}
+                    onClose={() => setExportOpen(false)}
+                  />
+                </div>
+              )}
 
               {modelsLoading ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
