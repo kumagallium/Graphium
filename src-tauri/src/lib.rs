@@ -252,14 +252,20 @@ fn start_native_sidecar(
     //   - macOS / Linux: src-tauri/sidecar/node
     // を配置している前提。tauri.conf.json の resources に "sidecar/node*"
     // を入れているので、bundle に同梱されている。
+    //
+    // Windows ではリソースのパスが `\\?\C:\...` の形で返る。Node.js はこの形の
+    // エントリスクリプトを解決できず（realpath が `C:` を lstat して EISDIR）、
+    // sidecar が起動直後に exit code 1 で落ちる。node に渡す前に `\\?\` を外す
     let node_filename = if cfg!(windows) { "sidecar/node.exe" } else { "sidecar/node" };
     let node_path = app
         .path()
         .resolve(node_filename, tauri::path::BaseDirectory::Resource)
+        .map(place_os_path)
         .map_err(|e| format!("resolve {node_filename} failed: {e}"))?;
     let server_script = app
         .path()
         .resolve("sidecar/server.mjs", tauri::path::BaseDirectory::Resource)
+        .map(place_os_path)
         .map_err(|e| format!("resolve sidecar/server.mjs failed: {e}"))?;
 
     emit_log(
