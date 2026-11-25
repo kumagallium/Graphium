@@ -4645,6 +4645,15 @@ editing the notes themselves.
   it points elsewhere. The POST accepts only `application/json`, like the
   other state-changing sidecar routes
 - Transport: stdio — the client spawns the process
+- Lifetime (`src/mcp/exit-when-replaced.ts`): a client keeps one process per
+  open session, so after an app update the open sessions would keep running
+  the old version. The process records the stat (mtime, size, inode) of its
+  own script (`process.argv[1]`) at start and exits once it changes (or the
+  file is gone) — checked after each response it sends and every 60 seconds
+  while idle, and only when no request is in flight, so it never cuts a
+  reply short. The client spawns the new version on its next tool call. It
+  also exits when stdin ends, so it does not outlive its client. Before
+  exiting it flushes stdout (pipe writes are asynchronous on macOS)
 - Storage: **the vault files directly**, not a `StorageProvider`. It resolves
   the root from `GRAPHIUM_ROOT`, then the desktop app's `config.json`, then
   `~/Documents/Graphium` — the same order as the Claude Code skill in

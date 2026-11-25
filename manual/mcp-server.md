@@ -140,7 +140,7 @@ By default the server reads `~/Documents/Graphium`. If you changed the Graphium 
 
 ### Updating to a newer version
 
-If you registered from the desktop app, there is nothing to do: the server updates with the app. A server you built yourself keeps running the Graphium version you built it from — the desktop app's auto-update does not touch it. After updating the source, rebuild and restart your app:
+If you registered from the desktop app, there is nothing to do: the server updates with the app. The old server stops on its own once the app is updated, even in conversations that were already open. In Claude Desktop and Claude Code, the new one starts the next time the assistant uses a Graphium tool. If another assistant reports that the Graphium server is not responding, restart it. A server you built yourself keeps running the Graphium version you built it from — the desktop app's auto-update does not touch it. After updating the source, rebuild and restart your app:
 
 ```bash
 cd Graphium
