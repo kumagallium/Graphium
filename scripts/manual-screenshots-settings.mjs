@@ -197,9 +197,10 @@ const SHOTS = [
           (e) => e.children.length === 0 && (e.textContent || "").trim() === "Light work model",
         );
         const l = label.getBoundingClientRect();
-        // 3 つ目の「What we measured」リンクの下端まで（Advanced work model の Model guide の行の末尾）
+        // 3 段の最後にある「What we measured」リンク（目安の記号の意味の行）の下端まで。
+        // 各段の注記は「くわしく」へ移したので、リンクは 3 段の最後の 1 つだけ
         const links = Array.from(root.querySelectorAll("a")).filter((a) => /What we measured/i.test(a.textContent));
-        const b = links[2].getBoundingClientRect();
+        const b = links[0].getBoundingClientRect();
         return { x: Math.max(0, l.left - 24), y: Math.max(0, l.top - 14), width: 728, height: b.bottom - l.top + 28 };
       });
     },
@@ -283,8 +284,9 @@ async function clickByText(page, text, scopeSelector = null) {
     ([t, s]) => {
       const root = s ? document.querySelector(s) : document;
       if (!root) return false;
+      // 文字のボタンのほか、アイコンだけのボタン（左下の Settings など）も aria-label で探す
       const btn = Array.from(root.querySelectorAll("button")).find(
-        (b) => (b.textContent || "").trim() === t,
+        (b) => (b.textContent || "").trim() === t || b.getAttribute("aria-label") === t,
       );
       if (!btn) return false;
       btn.click();
@@ -318,7 +320,9 @@ async function openSettings(viewport, models = null) {
   }
   // 描画が終わるまで待つ（ウェルカムが出ない 2 回目以降は読み込み前に押しに行って空振りする）
   await page.waitForFunction(() =>
-    Array.from(document.querySelectorAll("button")).some((b) => (b.textContent || "").trim() === "Settings"),
+    Array.from(document.querySelectorAll("button")).some(
+      (b) => (b.textContent || "").trim() === "Settings" || b.getAttribute("aria-label") === "Settings",
+    ),
   );
   await clickByText(page, "Settings");
   await page.waitForTimeout(1500);

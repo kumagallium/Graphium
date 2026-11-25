@@ -21,9 +21,11 @@ const LEVEL_ICON = { good: Check, partial: Minus, poor: X } as const;
 
 export type ModelFitHintProps = {
   slot: ModelSlot;
+  /** 札の下の注記とリンクを出すか（既定は出す）。出さないときは注記を「くわしく」の中へ移す */
+  showNote?: boolean;
 };
 
-export function ModelFitHint({ slot }: ModelFitHintProps) {
+export function ModelFitHint({ slot, showNote = true }: ModelFitHintProps) {
   const { t, locale } = useLocale();
   const fit = MODEL_FIT[slot];
   const url = modelFitEvaluationUrl(locale);
@@ -48,6 +50,7 @@ export function ModelFitHint({ slot }: ModelFitHintProps) {
           );
         })}
       </div>
+      {showNote && (
       <p className="text-[11px] text-muted-foreground">
         {t(`settings.modelFit.note.${slot}`)}{" "}
         <a
@@ -65,6 +68,32 @@ export function ModelFitHint({ slot }: ModelFitHintProps) {
           <ExternalLink size={10} aria-hidden="true" />
         </a>
       </p>
+      )}
     </div>
+  );
+}
+
+/** 3 段の最後に 1 つだけ出す、目安の記号の意味と測った結果へのリンク（各段の注記を「くわしく」へ移したとき） */
+export function ModelFitSource() {
+  const { t, locale } = useLocale();
+  const url = modelFitEvaluationUrl(locale);
+  return (
+    <p className="text-[11px] text-muted-foreground">
+      {t("settings.assignTrim.fitSource")}{" "}
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => {
+          // デスクトップ版の WebView は target=_blank を開かないので、既定の外部リンクの開き方に任せる
+          e.preventDefault();
+          void openExternalUrl(url);
+        }}
+        className="inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground"
+      >
+        {t("settings.modelFit.link")}
+        <ExternalLink size={10} aria-hidden="true" />
+      </a>
+    </p>
   );
 }
