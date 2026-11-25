@@ -13,7 +13,7 @@ import "./record-dashboard.css";
 import { useRecordCopy } from "./copy";
 import { buildRecords, collectRecordingNoteIds, spreadRecordingHits } from "./from-indexes";
 import { buildSharedRecords, sharedIdOfRecord } from "./from-shared";
-import { tidyBodyHit, timeOf, type BodyHit } from "./model";
+import { bodyHitKey, tidyBodyHit, timeOf, type BodyHit } from "./model";
 import { RecordDashboard } from "./RecordDashboard";
 import type { RecordItem, WhoFilter } from "./types";
 
@@ -60,9 +60,10 @@ export type RecordsViewProps = {
   sharedLibrary?: Pick<SharedLibrarySnapshot, "entries" | "derived">;
 };
 
-/** "note:abc" → "abc"（from-indexes.ts が付けた種類の前置きを外す） */
+/** "note:abc" → "abc"（from-indexes.ts が付けた種類の前置きを外す）。更新の行は作成の行の ID に読み替えてから外す */
 function sourceIdOf(item: RecordItem): string {
-  return item.id.slice(item.id.indexOf(":") + 1);
+  const id = bodyHitKey(item);
+  return id.slice(id.indexOf(":") + 1);
 }
 
 /**

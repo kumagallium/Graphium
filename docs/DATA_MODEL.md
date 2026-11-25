@@ -3764,6 +3764,11 @@ type NoteIndexEntry = {
   fileModifiedAt?: string; // the storage file's modified time when the entry was built (v30);
                            // staleness check only — never shown or sorted. Absent → modifiedAt
   createdAt: string;    // the note's own createdAt (v29), else the file's created time
+  // v40: for each local calendar day a person changed the note, the last save time
+  // that day (oldest first). Read from documentProvenance: revisions whose activity
+  // is a human one (isHumanActivityType). Absent for knowledge pages (source "ai")
+  // and for notes with no human revision.
+  editedAt?: string[];
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
   steps?: { blockId: string; text: string }[];   // step container titles (v23)
@@ -3948,6 +3953,7 @@ Bumping rules:
 | **37** | Added `kind` (`"plan"` / `"note"`) on `NoteIndexEntry`, mirrored from `GraphiumDocument.kind` (or, for a note without one, read from the former reserved "計画" / "plan" folder). Whether a note is a plan moved from its folder to the note itself, so the operations flow, the plan PROV export and MCP `export_prov` tell plans apart without opening notes. Knowledge and skill pages keep `kind: undefined`; `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **38** | Added `sourceDate` and `sourceDateKind` on `NoteIndexEntry`, mirrored from `GraphiumDocument.sourceDate` (the date of the source the note records, kept apart from `createdAt`) when it is in the stored form `YYYY` / `YYYY-MM` / `YYYY-MM-DD`. Feeds the note list's "Source date" column and sort. Note JSON is not rewritten; a v37 index is rebuilt on launch and picks the field up. |
 | **39** | Added `sharedEntryId` on `NoteIndexEntry`, mirrored from `GraphiumDocument.sharedRef.id` while a note or knowledge page is shared to a shared folder (not for a note shared as a proposal). Feeds the shared mark in the note and knowledge lists and the shared count on sidebar folders. Note JSON is not rewritten; a v38 index is rebuilt on launch and picks the field up. |
+| **40** | Added `editedAt` on `NoteIndexEntry` — for each local calendar day a person changed the note, the last save time that day, oldest first. Collected in `buildIndexEntry` from `documentProvenance`: only revisions whose activity is a human one (`isHumanActivityType`) count, so AI additions, default syncs and source-date changes do not add a day. Day boundaries follow the time zone of the device that built the entry. Knowledge pages (`source: "ai"`) and notes with no human revision do not carry it. Home uses it to show an Updated row on each day a person changed the note's content, instead of only on `modifiedAt`'s day; when a note carries `editedAt`, Home does not add `modifiedAt`'s day (it also moves on saves that are not human revisions, such as a source-date change from MCP, and a row from it would vanish on the next edit), and falls back to `modifiedAt` only when `editedAt` is absent. A title-only rename or a folder move records no revision, so it adds no day. Days follow the time zone of the device that built the entry; a device in another time zone reads the same instants, so a day can split or merge there. Note JSON is not rewritten; a v39 index is rebuilt on launch and picks the field up. |
 
 `INDEX_SCHEMA_VERSION` does NOT bump for the retirement of `summary`
 generation (PR3, 2026-09). Unlike the meta-atom withdrawal at v19, this
