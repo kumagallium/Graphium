@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.171.2](https://github.com/kumagallium/Graphium/compare/v0.171.1...v0.171.2) - 2026-11-25
+
+- fix(windows): start the backend with plain paths, not \\?\ paths by @kumagallium in https://github.com/kumagallium/Graphium/pull/1879
+
 ## [v0.171.1](https://github.com/kumagallium/Graphium/compare/v0.171.0...v0.171.1) - 2026-11-25
 
 - [docs] Add the v0.171.0 badge and roadmap row for the inbox beside the note by @kumagallium in https://github.com/kumagallium/Graphium/pull/1877
