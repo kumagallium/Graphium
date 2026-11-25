@@ -3504,7 +3504,13 @@ later, since the open editor still holds the old label. Only when no open
 editor is found (or the open editor could not locate the mentioned block,
 e.g. its content has not finished loading) does `propagateMentionRename`
 fall back to writing the file, after waiting for any save already in
-flight for that note.
+flight for that note. That direct write keeps the referring note's
+`modifiedAt`: following a rename is not the user's edit, so it does not
+move the note up in "last updated" order or put an Updated row for it on
+Home. The note index still picks up the new label, because staleness is
+judged by the file's own modification time. A referring note that is open
+is rewritten in its editor and saved by the regular autosave, which sets
+`modifiedAt` as for any edit.
 
 If the referring note's editor has only just mounted and is not ready yet
 (the editor instance itself, and the note's links restored into its link

@@ -189,7 +189,8 @@ describe("applyMentionRenameToDoc", () => {
     const blocks = result!.doc.pages[0].blocks;
     expect(blocks[0].content[0].text).toBe("@新B");
     expect(blocks[1].content[0].text).toBe("@旧B");
-    expect(result!.doc.modifiedAt).not.toBe(doc.modifiedAt);
+    // 機械的な追従なので、更新日時は進めない（ホームの更新の行・ノート一覧の更新順に出さない）
+    expect(result!.doc.modifiedAt).toBe(doc.modifiedAt);
   });
 
   it("includeWikiLabels 指定で wiki の装飾付きメンションも書き換える", () => {

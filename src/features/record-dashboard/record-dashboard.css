@@ -282,6 +282,13 @@
   line-break: strict;
 }
 
+/* 更新の行は、作成の行より一段控えめに（新しく作ったものが埋もれないように）。
+   題を太字にせず、色も一段薄くする */
+[data-event="updated"] .rd-title {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
 .rd-detail {
   margin-top: 2px;
   font-size: 14px;

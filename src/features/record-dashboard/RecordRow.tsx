@@ -5,6 +5,7 @@ import {
   ClipboardList,
   File,
   FileDown,
+  FilePenLine,
   FileText,
   Film,
   Globe,
@@ -26,7 +27,8 @@ import {
 } from "lucide-react";
 import "./record-dashboard.css";
 import { type RecordCopy, useRecordCopy } from "./copy";
-import { formatTime } from "./model";
+import { useLocale } from "../../i18n";
+import { dayKeyOf, formatDate, formatTime } from "./model";
 import type { RecordItem, RecordMediaType, RecordOrigin, RecordWho } from "./types";
 
 /** 出どころごとのアイコンと色の系統。色は 3 系統＋無彩色に抑える */
@@ -85,6 +87,34 @@ export function OriginBadge({ origin, copy }: { origin: RecordOrigin; copy: Reco
   );
 }
 
+/** 更新の行の札。出どころの札の位置に置く（更新の行の「どこで」は、そのノート自身） */
+export function UpdateBadge({ copy }: { copy: RecordCopy }) {
+  return (
+    <span className="rd-origin rd-origin-update" data-tone="plain">
+      <FilePenLine size={13} aria-hidden="true" />
+      {copy.updated}
+    </span>
+  );
+}
+
+/** 出どころの札。更新の行は「更新」の札に置き換える */
+function WhereBadge({ item, copy }: { item: RecordItem; copy: RecordCopy }) {
+  return item.update ? <UpdateBadge copy={copy} /> : <OriginBadge origin={item.origin} copy={copy} />;
+}
+
+/** 更新の行の題の下に、作った日を添える（古いノートを今日さわったことが分かるように） */
+function CreatedOnLine({ item, copy }: { item: RecordItem; copy: RecordCopy }) {
+  const { locale } = useLocale();
+  if (!item.update) return null;
+  const day = dayKeyOf(item.update.createdAt);
+  if (!day) return null;
+  return (
+    <p className="rd-trace rd-created-on">
+      <time dateTime={item.update.createdAt}>{copy.createdOn(formatDate(day, locale))}</time>
+    </p>
+  );
+}
+
 /** 残した人の印（線の上の点、凡例、絞り込みで同じ形を使う） */
 export function WhoMark({ type }: { type: RecordWho["type"] }) {
   return <span className="rd-who-mark" data-who={type} aria-hidden="true" />;
@@ -130,7 +160,7 @@ function What({ item, query, copy }: { item: RecordItem; query?: string; copy: R
         <p className="rd-title">
           <Marked text={item.title ?? ""} query={query} />
         </p>
-        {(item.domain || item.detail || item.pageCount !== undefined) && (
+        {!item.update && (item.domain || item.detail || item.pageCount !== undefined) && (
           <p className="rd-detail">
             {item.domain && <span className="rd-domain">{item.domain}</span>}
             {item.detail && (
@@ -147,7 +177,7 @@ function What({ item, query, copy }: { item: RecordItem; query?: string; copy: R
 }
 
 function Trace({ item, copy }: { item: RecordItem; copy: RecordCopy }) {
-  if (!item.trace) return null;
+  if (!item.trace || item.update) return null;
   return (
     <p className="rd-trace">
       <Waypoints size={12} aria-hidden="true" />
@@ -233,6 +263,7 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
         className="rd-lrow"
         data-record-id={item.id}
         data-kind={item.kind}
+        data-event={item.update ? "updated" : undefined}
         data-dim={dim ? "true" : undefined}
         data-active={active ? "true" : undefined}
         tabIndex={0}
@@ -240,7 +271,7 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
       >
         {time}
         <span className="rd-lcell rd-lcell-where">
-          <OriginBadge origin={item.origin} copy={copy} />
+          <WhereBadge item={item} copy={copy} />
         </span>
         <span className="rd-lcell rd-lcell-who">
           <WhoMark type={item.who.type} />
@@ -250,6 +281,7 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
           <What item={item} query={query} copy={copy} />
           <PlanRowLine item={item} query={query} copy={copy} />
           <Trace item={item} copy={copy} />
+          <CreatedOnLine item={item} copy={copy} />
         </div>
         <span className="rd-kind">{copy.kind[item.kind]}</span>
       </li>
@@ -261,6 +293,7 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
       className="rd-row"
       data-record-id={item.id}
       data-kind={item.kind}
+      data-event={item.update ? "updated" : undefined}
       data-dim={dim ? "true" : undefined}
       data-active={active ? "true" : undefined}
       tabIndex={0}
@@ -272,13 +305,14 @@ export function RecordRow({ item, query, variant = "rail", dim, dateLabel, activ
       </span>
       <div className="rd-body">
         <p className="rd-meta">
-          <OriginBadge origin={item.origin} copy={copy} />
+          <WhereBadge item={item} copy={copy} />
           <WhoLabel who={item.who} copy={copy} query={query} />
           <span className="rd-kind">{copy.kind[item.kind]}</span>
         </p>
         <What item={item} query={query} copy={copy} />
         <PlanRowLine item={item} query={query} copy={copy} />
         <Trace item={item} copy={copy} />
+        <CreatedOnLine item={item} copy={copy} />
       </div>
     </li>
   );

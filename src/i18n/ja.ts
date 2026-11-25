@@ -4888,6 +4888,8 @@ export const ja: Record<string, string> = {
   "records.origin.memo": "メモ",
   "records.origin.shared": "共有ライブラリ",
   "records.planRowFallback": "計画",
+  "records.updated": "更新",
+  "records.createdOn": "{date}に作成",
   "records.who.self": "自分",
   "records.who.ai": "AI",
   "records.who.selfWithAi": "自分と AI",

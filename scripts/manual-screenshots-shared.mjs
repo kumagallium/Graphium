@@ -141,6 +141,13 @@ const SHOTS = [
     viewport: { width: 1180, height: 640 },
   },
   {
+    // ホームの更新の行（作った日とは別に、最後に更新した日に出る行。題は細く、作った日を添える）
+    id: "record-dashboard-3-dashboard--b-find-updated-english",
+    name: "home-updated-rows",
+    clip: "view",
+    viewport: { width: 1180, height: 640 },
+  },
+  {
     id: "sharing-sharedcitationcard--manual-english-statuses",
     name: "shared-citation-cards",
     clip: "root",
