@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.172.2](https://github.com/kumagallium/Graphium/compare/v0.172.1...v0.172.2) - 2026-11-26
+
+- fix(windows): wait for Graphium to exit before the installer's running-app check by @kumagallium in https://github.com/kumagallium/Graphium/pull/1886
+
 ## [v0.172.1](https://github.com/kumagallium/Graphium/compare/v0.172.0...v0.172.1) - 2026-11-25
 
 - [fix] Drop the title heading from the built-in templates by @kumagallium in https://github.com/kumagallium/Graphium/pull/1884
