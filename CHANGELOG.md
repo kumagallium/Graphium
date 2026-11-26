@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.172.3](https://github.com/kumagallium/Graphium/compare/v0.172.2...v0.172.3) - 2026-11-26
+
+- [fix] Skip garbled and default titles when renaming by title by @kumagallium in https://github.com/kumagallium/Graphium/pull/1888
+
 ## [v0.172.2](https://github.com/kumagallium/Graphium/compare/v0.172.1...v0.172.2) - 2026-11-26
 
 - fix(windows): wait for Graphium to exit before the installer's running-app check by @kumagallium in https://github.com/kumagallium/Graphium/pull/1886
