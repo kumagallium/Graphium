@@ -50,3 +50,32 @@ describe("createLlmFetch", () => {
     expect(LLM_HTTP_TIMEOUT_MS).toBeGreaterThan(300_000);
   });
 });
+
+describe("createLlmFetch の記録", () => {
+  it("成功した呼び出しの所要時間とホストを 1 行残す（パスやクエリは残さない）", { timeout: 15_000 }, async () => {
+    const lines: string[] = [];
+    const f = createLlmFetch(10_000, { log: (l) => lines.push(l) });
+    await f(`${url}v1/chat?key=secret`, { method: "POST", body: "{}" });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^\[llm-http\] 200 headers after \d+\.\ds host=127\.0\.0\.1:\d+$/);
+    expect(lines[0]).not.toContain("secret");
+  });
+
+  it("待ちが長いと「まだ待っている」を残し、時間切れは failed として残す", { timeout: 15_000 }, async () => {
+    const lines: string[] = [];
+    const f = createLlmFetch(1_000, { log: (l) => lines.push(l), slowNoticeMs: 300 });
+    await expect(f(url)).rejects.toThrow();
+    expect(lines.some((l) => l.startsWith("[llm-http] still waiting "))).toBe(true);
+    expect(lines[lines.length - 1]).toMatch(/^\[llm-http\] failed after \d+\.\ds host=\S+ reason=\S+$/);
+  });
+
+  it("中断は aborted として残す", async () => {
+    const lines: string[] = [];
+    const f = createLlmFetch(10_000, { log: (l) => lines.push(l) });
+    const ac = new AbortController();
+    const p = f(url, { signal: ac.signal });
+    ac.abort();
+    await expect(p).rejects.toThrow();
+    expect(lines[lines.length - 1]).toMatch(/^\[llm-http\] aborted after /);
+  });
+});

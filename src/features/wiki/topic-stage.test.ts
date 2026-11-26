@@ -711,8 +711,9 @@ describe("runSourceTopicStage", () => {
     await runSourceTopicStage(sources, { ...deps, signal: controller.signal });
 
     expect(signals.map((s) => s.url.split("/").pop())).toEqual(["route-topics", "revise-topic"]);
-    // 振り分けは渡したシグナルそのもの
-    expect(signals[0].signal).toBe(controller.signal);
+    // 振り分けも、呼び出し 1 回ごとの上限時間を重ねた派生シグナル（routeTopicsForSource）。
+    // 外のシグナルの中継は wiki-service.routing-timeout.test.ts で確かめている
+    expect(signals[0].signal).toBeInstanceOf(AbortSignal);
     expect(reviseRelayed).toBe(true);
   });
 
