@@ -22,6 +22,7 @@ import type {
   RegenerateWikiHandler,
   SourceTopicBackfillHandlers,
   SourceTopicBackfillOutcome,
+  SourceTopicBackfillProgressView,
   SourceTopicBackfillSummary,
   UpkeepWikiSummary,
 } from "./upkeep-job-types";
@@ -123,7 +124,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
   // ── 資料からトピックを作る ──
   const [stPlan, setStPlan] = useState<SourceTopicBackfillSummary | null>(null);
   const [stRunning, setStRunning] = useState(false);
-  const [stProgress, setStProgress] = useState<{ done: number; total: number; topicsTouched: number } | null>(null);
+  const [stProgress, setStProgress] = useState<SourceTopicBackfillProgressView | null>(null);
   const [stOutcome, setStOutcome] = useState<SourceTopicBackfillOutcome | null>(null);
   const [stError, setStError] = useState<string | null>(null);
   const stAbortRef = useRef<AbortController | null>(null);
@@ -211,12 +212,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
     stAbortRef.current = controller;
     const unregister = startToastJob(controller);
     beginToastRun("sourceTopics");
-    const runningText = (p: { done: number; total: number; topicsTouched: number }) =>
-      t("settings.maintenance.sourceTopics.running", {
-        done: String(p.done),
-        total: String(p.total),
-        topics: String(p.topicsTouched),
-      });
+    const runningText = (p: SourceTopicBackfillProgressView) => sourceTopicsRunningText(t, p);
     const first = { done: 0, total: plan.sources, topicsTouched: 0 };
     setStRunning(true);
     setStOutcome(null);
@@ -472,11 +468,7 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
       status: stRunning
         ? {
             kind: "running",
-            text: t("settings.maintenance.sourceTopics.running", {
-              done: String(stProgress?.done ?? 0),
-              total: String(stProgress?.total ?? plan?.sources ?? 0),
-              topics: String(stProgress?.topicsTouched ?? 0),
-            }),
+            text: sourceTopicsRunningText(t, stProgress ?? { done: 0, total: plan?.sources ?? 0, topicsTouched: 0 }),
             done: stProgress?.done ?? 0,
             total: stProgress?.total ?? plan?.sources ?? 0,
           }
@@ -630,6 +622,36 @@ export function useUpkeepJobs(opts: UseUpkeepJobsOptions): UpkeepJobsView {
 }
 
 type TFn = (key: string, params?: Record<string, string>) => string;
+
+/** 資料の題は長いことがあるので、進み具合の 1 行に収まるよう縮める */
+const SOURCE_TOPICS_TITLE_MAX = 24;
+
+/**
+ * 「資料からトピックを作る」の実行中の 1 行。資料の境目でしか進まない数（資料 3/353）に、
+ * いま手を付けている資料の中の進み具合（読んでいる・トピック 5/12 を書いている・知見を結んでいる）を足す。
+ * 1 本の資料から十数枚のトピックを書くこともあり、数だけだと止まって見えるため
+ */
+export function sourceTopicsRunningText(t: TFn, p: SourceTopicBackfillProgressView): string {
+  const base = t("settings.maintenance.sourceTopics.running", {
+    done: String(p.done),
+    total: String(p.total),
+    topics: String(p.topicsTouched),
+  });
+  const c = p.current;
+  if (!c) return base;
+  const chars = [...c.title.trim()];
+  const title = chars.length > SOURCE_TOPICS_TITLE_MAX ? `${chars.slice(0, SOURCE_TOPICS_TITLE_MAX).join("")}…` : chars.join("");
+  const params = { index: String(c.index), title, written: String(c.written), planned: String(c.planned) };
+  const detail = c.phase === "writing" && c.planned > 0
+    ? t("settings.maintenance.sourceTopics.currentWriting", params)
+    : c.phase === "linking"
+      ? t("settings.maintenance.sourceTopics.currentLinking", params)
+      : t("settings.maintenance.sourceTopics.currentReading", params);
+  const windowPart = c.windowTotal > 1 && c.phase !== "linking"
+    ? ` ${t("settings.maintenance.sourceTopics.currentWindow", { window: String(c.windowIndex + 1), windows: String(c.windowTotal) })}`
+    : "";
+  return `${base} · ${detail}${windowPart}`;
+}
 
 function sourceTopicsResultStatus(t: TFn, outcome: SourceTopicBackfillOutcome): UpkeepJobStatus {
   const warn = outcome.failedSources > 0 || outcome.aborted;

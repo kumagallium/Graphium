@@ -50,7 +50,21 @@ export type SourceTopicBackfillOutcome = {
   /** 失敗の理由（画面に出せる文） */
   failureReason?: string;
 };
-export type SourceTopicBackfillProgressView = { done: number; total: number; topicsTouched: number };
+export type SourceTopicBackfillProgressView = {
+  done: number;
+  total: number;
+  topicsTouched: number;
+  /** いま手を付けている資料の中の進み具合（何本目・題・読んでいる／何枚中何枚書いた） */
+  current?: {
+    index: number;
+    title: string;
+    phase: "reading" | "writing" | "linking";
+    written: number;
+    planned: number;
+    windowIndex: number;
+    windowTotal: number;
+  };
+};
 export type SourceTopicBackfillHandlers = {
   plan: () => Promise<SourceTopicBackfillSummary>;
   /** AI が未設定などで始められないときは null */
