@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.173.3](https://github.com/kumagallium/Graphium/compare/v0.173.2...v0.173.3) - 2026-11-26
+
+- [fix] Choose the model right after connecting with a ChatGPT plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/1900
+- [fix] Keep topic revisions returned as Markdown, and keep the ingest toast open on errors by @kumagallium in https://github.com/kumagallium/Graphium/pull/1901
+
 ## [v0.173.2](https://github.com/kumagallium/Graphium/compare/v0.173.1...v0.173.2) - 2026-11-26
 
 - fix: wrap long upkeep progress text in the generation panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1898
