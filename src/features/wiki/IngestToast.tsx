@@ -209,7 +209,10 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
   useEffect(() => {
     if (items.length > 0) {
       setVisible(true);
-      if (allDone) {
+      // 失敗した項目があるときは自動で閉じない。5 秒で消えると、書き直せなかったトピックなどの
+      // 知らせが読まれないまま無くなる（閉じるのは利用者の × に任せる）
+      const hasError = items.some((i) => i.status === "error");
+      if (allDone && !hasError) {
         const timer = setTimeout(() => {
           setVisible(false);
           setTimeout(onDismiss, 300);

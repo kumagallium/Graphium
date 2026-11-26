@@ -100,3 +100,37 @@ describe("IngestToast の所要時間", () => {
     expect(stageElapsed[0].textContent).toMatch(/^[89]s$/);
   });
 });
+
+describe("IngestToast（終わったあと自動で閉じるか）", () => {
+  it("全部成功なら 5 秒後に閉じる", () => {
+    vi.useFakeTimers();
+    try {
+      const onDismiss = vi.fn();
+      renderToast(<IngestToast state={{ items: [{ id: "a", status: "success", noteTitle: "A" }] }} onDismiss={onDismiss} />);
+      vi.advanceTimersByTime(6000);
+      expect(onDismiss).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("失敗した項目があれば自動では閉じない", () => {
+    vi.useFakeTimers();
+    try {
+      const onDismiss = vi.fn();
+      renderToast(
+        <IngestToast
+          state={{ items: [
+            { id: "a", status: "success", noteTitle: "A" },
+            { id: "f", status: "error", noteTitle: "書き直せなかったトピック 7 件", result: "boom" },
+          ] }}
+          onDismiss={onDismiss}
+        />,
+      );
+      vi.advanceTimersByTime(60_000);
+      expect(onDismiss).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

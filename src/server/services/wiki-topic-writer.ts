@@ -444,9 +444,30 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
     if (!body) return undefined;
     return { body };
   } catch (err) {
+    // JSON で包まず、本文の Markdown をそのまま返すモデルがある（2026-11-26、Sonnet 5.5 で
+    // 18 件の取り込み中 7 回）。捨てると改訂が黙って消えるので、本文と分かる形なら受ける
+    const markdownBody = sourceTopicMarkdownBody(text);
+    if (markdownBody) {
+      console.warn("Source topic reviser: JSON ではなく Markdown の本文が返ったので、そのまま本文として受けた");
+      return { body: markdownBody };
+    }
     console.error("Source topic reviser 出力のパース失敗:", err);
     return undefined;
   }
+}
+
+/**
+ * JSON で包まれずに返った改訂の本文を取り出す。外側のコードフェンス（```markdown など）は外す。
+ * 本文と見なすのは「見出しで始まり、出典 [[source:...]] を 1 つ以上含む」ときだけ —
+ * 説明文や壊れた JSON を本文として保存しないため。
+ */
+function sourceTopicMarkdownBody(text: string): string | undefined {
+  let md = text.trim();
+  const fenced = md.match(/^```[\w-]*\s*\n([\s\S]*?)\n?```$/);
+  if (fenced) md = fenced[1].trim();
+  if (!/^#{1,6}\s/.test(md)) return undefined;
+  if (!md.includes("[[source:")) return undefined;
+  return md;
 }
 
 // ── Source Survey（見取り図。資料の冒頭の窓 1 枚だけから作る）──
