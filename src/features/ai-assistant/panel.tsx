@@ -1030,7 +1030,7 @@ export function ChatBubble({
         <ToolStepsDetails steps={message.toolSteps} />
       )}
       {!isUser && message.editProposals && message.editProposals.length > 0 && (
-        <EditProposalList proposals={message.editProposals} />
+        <EditProposalList proposals={message.editProposals} onOpenNote={sourceLinks?.onOpenNote} />
       )}
       {isUser && !editing && onEditResend && (
         <div className="mt-1 flex gap-0.5">

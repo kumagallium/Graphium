@@ -4,6 +4,8 @@
 // - 書き換えないもの: AI が作ったナレッジ（wiki）・同梱のシステムスキル・ゴミ箱のノート
 //   （共有フォルダの他人のノートは手元の索引に無いので、そもそも見つからない）
 // - 保存: ノートは来歴に AI の編集（ai_generation）として版を刻む。スキルは通常の保存（版は付かない）
+// - サイドピーク・別ウィンドウで開いているノート: 読む前と書く前に未保存を書き出させ、書いた後にそのエディタへ流し込む
+//   （MCP からの書き込みと同じ流れ。peek-save-queue の flushPeekSaves / applyLiveExternalDocDetailed）
 
 import type { GraphiumDocument } from "../../../lib/document-types";
 import { recordRevision } from "../../document-provenance/tracker";
@@ -20,8 +22,13 @@ export type EditFileHostDeps = {
   saveSkill(id: string, doc: GraphiumDocument): Promise<boolean>;
   openNote(id: string): void;
   openSkill(id: string): void;
-  /** このノートをサイドピーク・別ウィンドウのエディタが開いているか、保存が残っているか（ファイルに書くと巻き戻る） */
-  isOpenElsewhere(noteId: string): boolean;
+  /**
+   * このノートを開いているサイドピーク・別ウィンドウに未保存の編集を書き出させ、保存の列が空くまで待つ。
+   * 書き出し終えて未保存が残っていなければ true（読む・書く前に呼ぶ。人の編集を古さ判定に入れ、巻き戻しを防ぐ）
+   */
+  settleOpenEditors(noteId: string): Promise<boolean>;
+  /** 書いた doc を、このノートを開いているサイドピーク・別ウィンドウに流し込む */
+  pushToOpenEditors(noteId: string, doc: GraphiumDocument): void;
   /** 来歴に残す AI の名前（チャットのモデル名） */
   agentLabel(): string;
 };
@@ -108,13 +115,15 @@ export function createEditFileHost(deps: EditFileHostDeps): EditFileHost {
     },
 
     async readFile(target) {
+      if (target.kind === "note") await deps.settleOpenEditors(target.id);
       const doc = target.kind === "skill" ? await deps.loadSkill(target.id) : await deps.loadNote(target.id);
       const blocks = doc?.pages?.[0]?.blocks;
       return Array.isArray(blocks) ? blocks : null;
     },
 
     async writeFile(target, blocks) {
-      if (target.kind === "note" && deps.isOpenElsewhere(target.id)) return "busy";
+      // ピーク・別ウィンドウの未保存を先に書き出させる。書き出せないまま残るなら書かない（後勝ちで巻き戻るため）
+      if (target.kind === "note" && !(await deps.settleOpenEditors(target.id))) return "busy";
       const doc = target.kind === "skill" ? await deps.loadSkill(target.id) : await deps.loadNote(target.id);
       const page = doc?.pages?.[0];
       if (!doc || !page) return false;
@@ -124,9 +133,10 @@ export function createEditFileHost(deps: EditFileHostDeps): EditFileHost {
         pages: [{ ...page, blocks }, ...doc.pages.slice(1)],
       };
       if (target.kind === "skill") return deps.saveSkill(target.id, next);
-      if (deps.isOpenElsewhere(target.id)) return "busy";
       const revised = await recordRevision(next, page, "ai_generation", { agentLabel: deps.agentLabel(), force: true });
-      return deps.saveNote(target.id, revised);
+      const ok = await deps.saveNote(target.id, revised);
+      if (ok) deps.pushToOpenEditors(target.id, revised);
+      return ok;
     },
 
     openTarget(target) {

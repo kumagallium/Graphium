@@ -6,7 +6,14 @@ import type { ChatEditProposal } from "../../../lib/document-types";
 import { applyProposal, canUndo, declineProposal, openEditTarget, undoProposal, useEditProposalStatuses } from "./controller";
 import { EditProposalCard } from "./EditProposalCard";
 
-export function EditProposalList({ proposals }: { proposals: ChatEditProposal[] }) {
+export function EditProposalList({
+  proposals,
+  onOpenNote,
+}: {
+  proposals: ChatEditProposal[];
+  /** ノートを開く（チャットの本文中のリンクと同じ開き方＝サイドピーク）。無ければ全画面で開く */
+  onOpenNote?: (noteId: string) => void;
+}) {
   const statuses = useEditProposalStatuses();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -34,7 +41,9 @@ export function EditProposalList({ proposals }: { proposals: ChatEditProposal[] 
             onApply={(ids) => void run(p.id, () => applyProposal(p, ids))}
             onDecline={(ids) => declineProposal(ids)}
             onUndo={appliedIds.length > 0 && canUndo(appliedIds) ? (ids) => void run(p.id, () => undoProposal(ids)) : undefined}
-            onOpenTarget={() => openEditTarget(p.target)}
+            onOpenTarget={() =>
+              p.target.kind === "note" && onOpenNote ? onOpenNote(p.target.id) : openEditTarget(p.target)
+            }
           />
         );
       })}

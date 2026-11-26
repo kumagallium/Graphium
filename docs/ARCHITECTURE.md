@@ -2434,9 +2434,12 @@ Notes:
   changed through that editor (only the changed blocks, keeping block ids
   so labels and memos stay attached, recorded as `ai_generation`); a
   closed one is rewritten in its file (`patchNoteDocument` with an
-  `ai_generation` revision, or `handleSaveSkillFile`). A note open only in
-  a side peek or another window is not written (that editor would save its
-  own copy over it); the card asks the user to close it and try again.
+  `ai_generation` revision, or `handleSaveSkillFile`). For a note open in
+  a side peek or another window, its unsaved edits are flushed before
+  reading and writing (`flushPeekSaves`), and the written doc is pushed
+  into those editors (`applyLiveExternalDocDetailed`), the same path MCP
+  writes use; if the edits cannot be flushed, nothing is written and the
+  card lets the user try again.
   Undo restores the earlier blocks within the same session, and only if
   no block's type, props or content changed after the apply. With only these tools the request keeps the chat's
   model (the agentic model override applies only when search tools are

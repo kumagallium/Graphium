@@ -1498,7 +1498,7 @@ export const ja: Record<string, string> = {
   "editProposal.statusDeclined": "やめました",
   "editProposal.statusStale": "案を出した後に本文が変わったため反映できません",
   "editProposal.statusFailed": "反映できませんでした",
-  "editProposal.statusBusy": "サイドピークか別のウィンドウで開いています。閉じてからもう一度押してください",
+  "editProposal.statusBusy": "開いているピークか別のウィンドウの編集を、まだ保存できていません。保存されてから、もう一度押してください",
   "settings.mcp.connect.title": "何をつなぎますか？",
   "settings.mcp.connect.pick": "設定する",
   "settings.mcp.connect.searchTitle": "公式の一覧から探す",

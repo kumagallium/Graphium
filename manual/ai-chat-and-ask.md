@@ -280,9 +280,8 @@ Ask in chat, for example "fix this condition to match the table" or "make the ci
 - Choose **Apply** or **Skip** for each change. With two or more, **Apply all** is there too
 - After applying, **Undo** brings the old text back, as long as nobody has edited the text since. Undo is not available after the app is reopened; use the version history then
 - If the text changed after the edit was suggested, the card says it can't be applied and nothing is written, so an old suggestion never overwrites what you wrote later
-- A note that is open changes in place. A note or skill that is not open is saved to its file. Either way, the history records it as an AI edit
-- A note that is open only in a side peek or another window is not changed. Close it, then press Apply again
-- Click the title on the card to open that note or skill
+- A note that is open changes in place, including one open in a side peek or another window. A note or skill that is not open is saved to its file. Either way, the history records it as an AI edit
+- Click the title on the card to open the note in a side peek, or the skill full screen
 
 What can be edited:
 

@@ -1498,7 +1498,7 @@ export const en: Record<string, string> = {
   "editProposal.statusDeclined": "Skipped",
   "editProposal.statusStale": "The text changed after this was suggested, so it can't be applied",
   "editProposal.statusFailed": "Couldn't apply",
-  "editProposal.statusBusy": "It's open in a side peek or another window. Close it, then try again",
+  "editProposal.statusBusy": "Edits in an open side peek or another window haven't been saved yet. Press Apply again once they are",
   "settings.mcp.connect.title": "What do you want to connect?",
   "settings.mcp.connect.pick": "Set up",
   "settings.mcp.connect.searchTitle": "Search the official list",

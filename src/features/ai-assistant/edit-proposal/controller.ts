@@ -27,7 +27,7 @@ export type EditFileHost = {
   readFile(target: EditTarget): Promise<any[] | null>;
   /**
    * 本文のブロックを差し替えて保存する（来歴に AI の編集として残す）。
-   * サイドピーク・別ウィンドウで開いている（後勝ちで巻き戻る）ときは書かずに "busy"
+   * サイドピーク・別ウィンドウの未保存の編集を書き出せない（書くと後勝ちで巻き戻る）ときは書かずに "busy"
    */
   writeFile(target: EditTarget, blocks: any[]): Promise<boolean | "busy">;
   /** 反映の直前に対象を確かめ直す（保存された案が書き換えてはいけないものを指していないか）。問題があれば理由 */
@@ -202,7 +202,7 @@ export async function applyProposal(proposal: ChatEditProposal, changeIds: strin
       ok = false;
     }
     if (ok === "busy") {
-      // 別の場所で開いている: 何も書いていないので、閉じてからもう一度押せるようにする
+      // ピーク・別ウィンドウの未保存を書き出せなかった: 何も書いていないので、もう一度押せるようにする
       setStatuses(applied, "busy");
       return;
     }

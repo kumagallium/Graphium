@@ -10,7 +10,7 @@ import { Check, FileText, Sparkles, Undo2, X } from "lucide-react";
 import { useT } from "../../../i18n";
 import type { ChatEditChange, ChatEditProposal } from "../../../lib/document-types";
 
-/** busy = 別の場所（サイドピーク・別ウィンドウ）で開いていて書かなかった。閉じればもう一度押せる */
+/** busy = サイドピーク・別ウィンドウの未保存の編集を書き出せず、書かなかった。もう一度押せる */
 export type EditProposalStatus = "pending" | "applied" | "declined" | "stale" | "failed" | "busy";
 
 /** 表示用: 変更に今の状態を添えたもの */

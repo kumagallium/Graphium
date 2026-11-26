@@ -44,12 +44,14 @@ function makeDoc(title: string, blocks: any[], extra: Partial<GraphiumDocument> 
 let files: Map<string, GraphiumDocument>;
 let saved: string[];
 let openElsewhere: Set<string>;
+let pushed: string[];
 
 beforeEach(() => {
   __resetEditProposalControllerForTest();
   appData.clear();
   saved = [];
   openElsewhere = new Set();
+  pushed = [];
   files = new Map([
     ["n1", makeDoc("パンの記録", [para("a", "一次発酵: 30℃"), para("b", "焼成: 200℃")])],
     ["skill:s1", makeDoc("記録の書き方", [
@@ -82,7 +84,11 @@ beforeEach(() => {
       openNote: () => {},
       openSkill: () => {},
       agentLabel: () => "test-model",
-      isOpenElsewhere: (id) => openElsewhere.has(id),
+      // openElsewhere = 書き出しても未保存が残るピーク
+      settleOpenEditors: async (id) => !openElsewhere.has(id),
+      pushToOpenEditors: (id) => {
+        pushed.push(id);
+      },
     }),
   );
 });
@@ -204,7 +210,13 @@ describe("反映・やめる・元に戻す", () => {
     expect(live[0].content[0].text).toBe("一次発酵: 28℃");
   });
 
-  it("サイドピーク・別ウィンドウで開いているノートには書かず busy にする（閉じればもう一度押せる）", async () => {
+  it("書いたノートは、開いているピーク・別ウィンドウに流し込む", async () => {
+    const p = await propose();
+    await applyProposal(p, [p.changes[0].id]);
+    expect(pushed).toEqual(["n1"]);
+  });
+
+  it("ピークの未保存を書き出せないときは書かず busy にする（もう一度押せる）", async () => {
     const p = await propose();
     openElsewhere.add("n1");
     await applyProposal(p, [p.changes[0].id]);

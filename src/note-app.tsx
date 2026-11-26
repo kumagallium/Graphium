@@ -277,7 +277,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { allLivePeekIds, applyLiveExternalDocDetailed, flushPeekSaves, hasPendingPeekEdits, pendingEditorWorkIds, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
+import { applyLiveExternalDocDetailed, flushPeekSaves, hasPendingPeekEdits, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
 import {
   isMaintenanceRecordFailed,
   isMaintenanceSaveBusy,
@@ -11673,8 +11673,15 @@ export function NoteApp() {
           live().handleOpenSkillFile(id);
         },
         agentLabel: () => getChatSynthesisModelName() || "ai",
-        // メインのエディタで開いていれば controller がエディタに書くので、ここに来るのはそれ以外の場所
-        isOpenElsewhere: (id) => allLivePeekIds().includes(id) || pendingEditorWorkIds().includes(id),
+        // メインのエディタで開いていれば controller がエディタに書くので、ここに来るのはサイドピーク・別ウィンドウ
+        settleOpenEditors: async (id) => {
+          await flushPeekSaves(id);
+          return !hasPendingPeekEdits(id);
+        },
+        pushToOpenEditors: (id, doc) => {
+          const { refused } = applyLiveExternalDocDetailed(id, doc);
+          if (refused > 0) console.warn("修正案: 開いているピークに反映できませんでした:", id);
+        },
       }),
     );
   }, []);

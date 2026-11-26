@@ -1469,7 +1469,7 @@ export const ko: Record<string, string> = {
   "editProposal.statusDeclined": "그만둠",
   "editProposal.statusStale": "제안 뒤에 본문이 바뀌어 반영할 수 없습니다",
   "editProposal.statusFailed": "반영하지 못했습니다",
-  "editProposal.statusBusy": "사이드 피크나 다른 창에서 열려 있습니다. 닫은 뒤 다시 눌러 주세요",
+  "editProposal.statusBusy": "열려 있는 사이드 피크나 다른 창의 편집이 아직 저장되지 않았습니다. 저장된 뒤 다시 눌러 주세요",
   "settings.mcp.connect.title": "무엇을 연결하시겠습니까?",
   "settings.mcp.connect.pick": "설정",
   "settings.mcp.connect.searchTitle": "공식 목록에서 찾기",
