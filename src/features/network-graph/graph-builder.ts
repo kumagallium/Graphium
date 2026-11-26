@@ -71,6 +71,17 @@ export type NoteEdge = {
 export type NoteGraphData = {
   nodes: NoteNode[];
   edges: NoteEdge[];
+  /**
+   * グラフに自分の点を持たないページ → 代わりに示す点（buildGlobalGraph だけが作る）。
+   * 全体グラフは要約などを載せず、素材にも `media:` の点が無いので、チャットで AI が
+   * それを読んだ・引用したとき、元のノートや出典の点で示すために使う。
+   * - 要約など載せない Knowledge（`<noteId>`）→ 派生元（derivedFromNotes のうち点のあるもの）
+   * - 素材（`media:<fileId>`）→ 同じファイルの外部ソースの点（pdf: / document: / conversation:）、
+   *   無ければ素材を使っているノート（usedIn のうち点のあるもの）
+   */
+  standIns?: ReadonlyMap<string, readonly string[]>;
+  /** standIns のキーを題名で引く（引用の題名から参照が引けないときのため。同名は先のもの） */
+  standInByTitle?: ReadonlyMap<string, string>;
 };
 
 /**
@@ -642,5 +653,51 @@ export function buildGlobalGraph(
     relation: e.relation,
   }));
 
-  return { nodes, edges };
+  const standIns = buildStandIns(index, mediaIndex, new Set(nodes.map((n) => n.id)));
+  return { nodes, edges, standIns, standInByTitle: standInTitles(index, mediaIndex, standIns) };
+}
+
+/** standIns のキー → 題名の逆引き（要約は索引の題名、素材は素材の名前） */
+function standInTitles(
+  index: GraphiumIndex,
+  mediaIndex: MediaIndex | null,
+  standIns: ReadonlyMap<string, readonly string[]>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const put = (title: string | undefined, id: string) => {
+    if (title && standIns.has(id) && !out.has(title)) out.set(title, id);
+  };
+  for (const e of index.notes) put(e.title, e.noteId);
+  for (const m of mediaIndex?.media ?? []) put(m.name, `media:${m.fileId}`);
+  return out;
+}
+
+/** 外部ソースの点のうち、素材のファイル ID をそのまま持つもの（素材の点の代わりに使える） */
+const MEDIA_EXTERNAL_PREFIXES = ["pdf:", "document:", "conversation:"] as const;
+
+/**
+ * グラフに点を持たないページ → 代わりに示す点（NoteGraphData.standIns）。
+ * 代わりの点が 1 つも無いページは入れない（呼び出し側は「グラフに無い」として数える）。
+ */
+export function buildStandIns(
+  index: GraphiumIndex,
+  mediaIndex: MediaIndex | null,
+  nodeIds: ReadonlySet<string>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const put = (id: string, targets: readonly string[]) => {
+    const uniq = [...new Set(targets.filter((t) => t !== id && nodeIds.has(t)))];
+    if (uniq.length > 0) out.set(id, uniq);
+  };
+  // 載せない Knowledge（要約など）。ゴミ箱・保管のものは読まれても示さない
+  for (const e of index.notes) {
+    if (nodeIds.has(e.noteId) || e.deletedAt || e.archivedAt) continue;
+    if (e.derivedFromNotes) put(e.noteId, e.derivedFromNotes);
+  }
+  // 素材。外部ソースの点があればそれ、無ければ使っているノート
+  for (const m of mediaIndex?.media ?? []) {
+    const own = MEDIA_EXTERNAL_PREFIXES.map((p) => `${p}${m.fileId}`).filter((id) => nodeIds.has(id));
+    put(`media:${m.fileId}`, own.length > 0 ? own : (m.usedIn ?? []).map((u) => u.noteId));
+  }
+  return out;
 }

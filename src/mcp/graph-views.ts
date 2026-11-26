@@ -243,7 +243,9 @@ export function buildKnowledgeAppPayload(
   const index = readNoteIndex(root);
   if (!index) return null;
   syncLocale("ja");
-  const data = buildGlobalGraph(index, readMediaIndexRaw(root));
+  // standIns / standInByTitle（チャットの横のグラフ用の Map）は JSON に載らないので渡さない
+  const { nodes, edges } = buildGlobalGraph(index, readMediaIndexRaw(root));
+  const data = { nodes, edges };
   const folder = normalizeFolderScope(options.folder);
   const scope = folder ? collectFolderScopeIds(allEntries(root), folder) : null;
   const flags = readFeatureFlags(root);

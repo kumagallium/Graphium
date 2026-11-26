@@ -2,6 +2,7 @@
 //
 // 見出し 1 行目: 題・AI が探せる範囲（内部参照 / 外部参照・探すフォルダ）・閉じる。
 // 見出し 2 行目: この答えで使ったページ・前の答え・Web の出典・範囲の外なのに使ったページの数。
+// グラフに点の無いページ（要約・素材）は、元の点で示した数と、示せなかった数も出す（黙って落とさない）。
 // グラフそのもの（GlobalGraphView の compact 表示）と、数・範囲は呼び出し側が渡す。
 // 光らせるのは答えが返ったときだけ（graph-firing の once）で、グラフ全体は動かさない。
 
@@ -37,6 +38,10 @@ export type ChatGraphCounts = {
   reading: boolean;
   /** じっくり調べるときに AI が来歴の道具でたどった線の数（無ければ 0） */
   walked?: number;
+  /** グラフに点の無いページ（要約・素材）を、元のノートや出典の点で示した数 */
+  standIn?: number;
+  /** AI が触れたのに、グラフでは示せなかったページの数（代わりの点も無い） */
+  unplotted?: number;
 };
 
 function Dot({ color, ring = false, dashed = false, fill }: { color: string; ring?: boolean; dashed?: boolean; fill?: string }) {
@@ -125,6 +130,16 @@ export function ChatGraphPane({
             <span className={item}>
               <span aria-hidden="true" className="inline-block w-3 h-[3px] rounded-full shrink-0" style={{ background: USED_DOT }} />
               {t("standaloneChat.graphWalked", { n: String(counts.walked) })}
+            </span>
+          )}
+          {(counts.standIn ?? 0) > 0 && (
+            <span className={item} data-tooltip={t("standaloneChat.graphStandInHint")}>
+              {t("standaloneChat.graphStandIn", { n: String(counts.standIn) })}
+            </span>
+          )}
+          {(counts.unplotted ?? 0) > 0 && (
+            <span className={item} data-tooltip={t("standaloneChat.graphUnplottedHint")}>
+              {t("standaloneChat.graphUnplotted", { n: String(counts.unplotted) })}
             </span>
           )}
           {counts.attached > 0 && (

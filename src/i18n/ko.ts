@@ -1608,6 +1608,10 @@ export const ko: Record<string, string> = {
   "standaloneChat.graphAttached": "@로 전달 {n}",
   "standaloneChat.graphOutOfScope": "범위 밖에서 사용 {n}",
   "standaloneChat.graphWalked": "따라간 선 {n}",
+  "standaloneChat.graphStandIn": "원래 페이지로 표시 {n}",
+  "standaloneChat.graphStandInHint": "요약이나 음성 등의 자료는 전체 그래프에 점이 없어서, 그 바탕이 된 노트나 출처의 점으로 보여 줍니다",
+  "standaloneChat.graphUnplotted": "그래프에 없음 {n}",
+  "standaloneChat.graphUnplottedHint": "AI가 읽거나 답에 썼지만, 전체 그래프에 점도 원래 페이지도 없어서 보여 주지 못합니다",
   // Which folder to search (a separate axis from grounding)
   "standaloneChat.folderScope.label": "검색할 폴더",
   "standaloneChat.folderScope.all": "모든 폴더",

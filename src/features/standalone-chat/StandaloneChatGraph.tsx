@@ -11,7 +11,15 @@ import type { GroundingScope } from "../../lib/grounding-scope";
 import { GlobalGraphView, type GraphUsageScope } from "../network-graph/global-graph-view";
 import type { NoteGraphData } from "../network-graph/graph-builder";
 import { ChatGraphPane, type ChatGraphCounts } from "./ChatGraphPane";
-import { chatReadPageIds, chatUsedPageWeights, latestWebSourceCount, outOfScopePageIds, usedPagesSignature } from "./used-pages";
+import {
+  chatReadPageIds,
+  chatUsedPageWeights,
+  citedTitles,
+  latestWebSourceCount,
+  outOfScopePageIds,
+  unplottedPages,
+  usedPagesSignature,
+} from "./used-pages";
 
 export function StandaloneChatGraph({
   data,
@@ -54,8 +62,8 @@ export function StandaloneChatGraph({
 }) {
   // 使ったページの重み（中身が同じなら同じ Map）
   const raw = useMemo(
-    () => chatUsedPageWeights(messages, data.nodes, titleToRef),
-    [messages, data.nodes, titleToRef],
+    () => chatUsedPageWeights(messages, data.nodes, titleToRef, data.standIns, data.standInByTitle),
+    [messages, data.nodes, titleToRef, data.standIns, data.standInByTitle],
   );
   const sig = usedPagesSignature(raw);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,17 +79,37 @@ export function StandaloneChatGraph({
 
   // 読んだページ: 会話全体（答えの readRefs）・いちばん新しい答え・読んでいる途中
   const readingKey = readingRefs.join("|");
+  const standIns = data.standIns;
   const reading = useMemo(
-    () => chatReadPageIds([], nodeIds, readingRefs),
+    () => chatReadPageIds([], nodeIds, readingRefs, standIns),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodeIds, readingKey],
+    [nodeIds, readingKey, standIns],
   );
-  const read = useMemo(() => chatReadPageIds(messages, nodeIds, readingRefs), [messages, nodeIds, readingKey]);
+  const read = useMemo(
+    () => chatReadPageIds(messages, nodeIds, readingRefs, standIns),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, nodeIds, readingKey, standIns],
+  );
   const isReading = reading.size > 0;
   const latestRead = useMemo(
-    () => (isReading ? reading : chatReadPageIds(lastAnswer ? [lastAnswer] : [], nodeIds)),
+    () => (isReading ? reading : chatReadPageIds(lastAnswer ? [lastAnswer] : [], nodeIds, [], standIns)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isReading, reading, lastAnswer, nodeIds],
+    [isReading, reading, lastAnswer, nodeIds, standIns],
+  );
+  // グラフに点の無いページ（要約・素材）: 元の点で示した数と、示せなかった数。
+  // 読んでいる途中はその場で読んでいるページ、答えのあとはいちばん新しい答えの読んだ・引用したページで数える
+  const unplotted = useMemo(
+    () =>
+      unplottedPages({
+        refs: isReading ? readingRefs : (lastAnswer?.readRefs ?? []),
+        citedTitles: isReading || !lastAnswer ? [] : citedTitles(lastAnswer.content),
+        nodes: data.nodes,
+        titleToRef,
+        standIns,
+        standInByTitle: data.standInByTitle,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isReading, readingKey, lastAnswer, data.nodes, titleToRef, standIns, data.standInByTitle],
   );
   // AI が来歴の道具でたどった線: 読んでいる途中はその場の分、答えのあとはいちばん新しい答えの分
   const walkedSrc = isReading || readingWalked.length > 0 ? readingWalked : (lastAnswer?.walkedEdges ?? []);
@@ -123,9 +151,20 @@ export function StandaloneChatGraph({
       attached: usageScope.attached,
     });
     const attached = attachedIds.filter((id) => nodeIds.has(id)).length;
-    return { latest, earlier, web, attached, outOfScope: outside.size, read: latestRead.size, reading: isReading, walked: walked.length };
+    return {
+      latest,
+      earlier,
+      web,
+      attached,
+      outOfScope: outside.size,
+      read: latestRead.size,
+      reading: isReading,
+      walked: walked.length,
+      standIn: unplotted.placed,
+      unplotted: unplotted.missing,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weights, web, answeredInScope, readInScope, usageScope, nodeIds, latestRead, isReading, walked]);
+  }, [weights, web, answeredInScope, readInScope, usageScope, nodeIds, latestRead, isReading, walked, unplotted]);
 
   return (
     <ChatGraphPane counts={counts} scope={scope} folder={folder} onClose={onClose}>

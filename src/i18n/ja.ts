@@ -1646,6 +1646,10 @@ export const ja: Record<string, string> = {
   "standaloneChat.graphAttached": "@ で渡した {n}",
   "standaloneChat.graphOutOfScope": "範囲の外で使った {n}",
   "standaloneChat.graphWalked": "たどった線 {n}",
+  "standaloneChat.graphStandIn": "元のページで表示 {n}",
+  "standaloneChat.graphStandInHint": "要約や音声などの素材は全体グラフに点が無いので、その元になったノートや出典の点で示しています",
+  "standaloneChat.graphUnplotted": "グラフに無い {n}",
+  "standaloneChat.graphUnplottedHint": "AI が読んだり答えに使ったりしましたが、全体グラフには点も元のページも無いので示せていません",
   // どのフォルダから探すか（渡す範囲とは別の軸）
   "standaloneChat.folderScope.label": "探すフォルダ",
   "standaloneChat.folderScope.all": "すべてのフォルダ",

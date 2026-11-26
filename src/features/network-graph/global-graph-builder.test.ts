@@ -367,3 +367,52 @@ describe("buildGlobalGraph — 本文の @ のつながり（索引 v33）", () 
     expect(rel("late", "kid")).toBe("derived");
   });
 });
+
+describe("buildGlobalGraph — 点の無いページの代わりの点（standIns）", () => {
+  const media = (items: { fileId: string; type: string; usedIn?: { noteId: string }[] }[]) =>
+    ({
+      version: 2,
+      updatedAt: "",
+      media: items.map((m) => ({ name: m.fileId, mimeType: "", url: "", thumbnailUrl: "", uploadedAt: "", usedIn: [], ...m })),
+    }) as unknown as MediaIndex;
+
+  it("載せない要約は、派生元のうち点のあるもの（ノート・外部ソース）に寄せる", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "note-1" }),
+        entry({ noteId: "claim-1", source: "ai", wikiKind: "claim", derivedFromNotes: ["url:https://example.com/a"] }),
+        entry({
+          noteId: "sum-1",
+          source: "ai",
+          wikiKind: "summary",
+          derivedFromNotes: ["note-1", "url:https://example.com/a", "url:https://example.com/no-node"],
+        }),
+        entry({ noteId: "sum-trashed", source: "ai", wikiKind: "summary", derivedFromNotes: ["note-1"], deletedAt: "x" }),
+      ]),
+    );
+    expect(g.nodes.some((n) => n.id === "sum-1")).toBe(false);
+    expect(g.standIns?.get("sum-1")).toEqual(["note-1", "url:https://example.com/a"]);
+    // ゴミ箱の要約は示さない
+    expect(g.standIns?.has("sum-trashed")).toBe(false);
+  });
+
+  it("素材は同じファイルの外部ソースの点、無ければ使っているノートに寄せる", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "voice-note" }),
+        entry({ noteId: "claim-1", source: "ai", wikiKind: "claim", derivedFromNotes: ["pdf:pdf-1"] }),
+      ]),
+      media([
+        { fileId: "pdf-1", type: "pdf", usedIn: [{ noteId: "voice-note" }] },
+        { fileId: "wav-1", type: "audio", usedIn: [{ noteId: "voice-note" }, { noteId: "gone" }] },
+        { fileId: "lonely", type: "audio" },
+      ]),
+    );
+    expect(g.standIns?.get("media:pdf-1")).toEqual(["pdf:pdf-1"]);
+    expect(g.standIns?.get("media:wav-1")).toEqual(["voice-note"]);
+    // 題名（素材の名前）からも引ける
+    expect(g.standInByTitle?.get("wav-1")).toBe("media:wav-1");
+    // 代わりの点も無い素材は入れない（呼び出し側が「グラフに無い」と数える）
+    expect(g.standIns?.has("media:lonely")).toBe(false);
+  });
+});
