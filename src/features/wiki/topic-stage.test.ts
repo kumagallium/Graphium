@@ -2224,3 +2224,50 @@ describe("collectSourceRefs の AI との会話", () => {
     expect(refs.map((r) => r.id)).toEqual(["conversation:conv-claude-code-s1"]);
   });
 });
+
+describe("runSourceTopicStage の進み具合", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("読んでいる → 書く枚数 → 1 枚ごとの書き進みを知らせる（失敗した 1 枚も数える）", async () => {
+    const progress: unknown[] = [];
+    const { deps, docs } = makeSourceDeps({
+      existingTopicRefs: [{ id: "topic-1", title: "既存トピック" }],
+      onStageProgress: (p) => progress.push(p),
+    });
+    docs.set("wiki:topic-1", makeSourceTopicDoc("既存トピック", "## 定義\n旧本文", ["note-0"]));
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/route-topics")) {
+        return { ok: true, json: async () => ({ update: ["topic-1"], create: ["新しい A", "新しい B"] }) };
+      }
+      if (String(url).includes("/revise-topic")) {
+        // 「新しい B」だけ失敗させる
+        if (String(init?.body ?? "").includes("新しい B")) return { ok: false, status: 500, json: async () => ({ error: "x" }) };
+        return { ok: true, json: async () => ({ body: "## 定義\n本文[[source:note-1]]" }) };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as any;
+
+    await runSourceTopicStage([{ id: "note-1", title: "資料1", text: "本文1" }], { ...deps, reviseConcurrency: 1 });
+
+    const base = { sourceId: "note-1", windowIndex: 0, windowTotal: 1 };
+    expect(progress).toEqual([
+      { ...base, phase: "reading", written: 0, planned: 0 },
+      { ...base, phase: "writing", written: 0, planned: 3 },
+      { ...base, phase: "writing", written: 1, planned: 3 },
+      { ...base, phase: "writing", written: 2, planned: 3 },
+      { ...base, phase: "writing", written: 3, planned: 3 },
+    ]);
+  });
+
+  it("書くものが無ければ「書いている」を出さない", async () => {
+    const progress: Array<{ phase: string }> = [];
+    const { deps } = makeSourceDeps({ onStageProgress: (p) => progress.push(p) });
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ update: [], create: [] }) })) as any;
+    await runSourceTopicStage([{ id: "note-1", title: "資料1", text: "本文1" }], deps);
+    expect(progress.map((p) => p.phase)).toEqual(["reading"]);
+  });
+});

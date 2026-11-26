@@ -10,7 +10,7 @@
 // するものは無い」と判断した資料）だけは控えに残し、次から飛ばす。
 // 知見は作り直さない（AI の呼び出しはトピックの段の分だけ）。
 
-import type { SourceTopicStageResult } from "./topic-stage";
+import type { SourceTopicStageProgress, SourceTopicStageResult } from "./topic-stage";
 
 /** 対象選びに使うナレッジページの要約（ゴミ箱・アーカイブは呼び出し側で外す） */
 export type SourceTopicBackfillEntry = {
@@ -106,11 +106,31 @@ export function planSourceTopicBackfill(
   return { sourceIds: picked.map((p) => p.id), alreadySettled };
 }
 
+/** いま手を付けている資料の中の進み具合（資料の境目でしか進まない数字だけだと、止まって見えるため） */
+export type SourceTopicBackfillCurrent = {
+  /** 何本目か（1 始まり） */
+  index: number;
+  title: string;
+  /** reading: 読んで何を書くか決めている／writing: トピックを書いている／linking: 知見をトピックに結んでいる */
+  phase: SourceTopicStageProgress["phase"] | "linking";
+  written: number;
+  planned: number;
+  windowIndex: number;
+  windowTotal: number;
+};
+
 export type SourceTopicBackfillProgress = {
   done: number;
   total: number;
-  /** 作った・改訂したトピックの数（延べ） */
+  /** 作った・改訂したトピックの数（延べ。終わった資料の分） */
   topicsTouched: number;
+  /** いま手を付けている資料。資料の合間・終わったあとは無い */
+  current?: SourceTopicBackfillCurrent;
+};
+
+/** トピックの段から届く、1 本の資料の中の進み具合（linking は段のあとに呼び出し側が知らせる） */
+export type SourceTopicBackfillStageProgress = Omit<SourceTopicStageProgress, "sourceId" | "phase"> & {
+  phase: SourceTopicBackfillCurrent["phase"];
 };
 
 export type SourceTopicBackfillResult = SourceTopicBackfillProgress & {
@@ -132,7 +152,11 @@ export type SourceTopicBackfillDeps = {
   /** 資料の題と本文。読めなければ undefined */
   resolveSource: (sourceId: string) => Promise<{ title: string; text: string } | undefined>;
   /** トピックの段を 1 本回す（取り込みと同じ段・同じ待ち行列） */
-  runTopicStage: (source: { id: string; title: string; text: string }, signal?: AbortSignal) => Promise<SourceTopicStageResult>;
+  runTopicStage: (
+    source: { id: string; title: string; text: string },
+    signal?: AbortSignal,
+    onStageProgress?: (progress: SourceTopicBackfillStageProgress) => void,
+  ) => Promise<SourceTopicStageResult>;
   /** 最新の控えを読む（取り込みの側も書くので、書く直前に読み直す） */
   readCheckpoint: () => Promise<SourceTopicBackfillCheckpoint>;
   saveCheckpoint: (checkpoint: SourceTopicBackfillCheckpoint) => Promise<void>;
@@ -209,8 +233,20 @@ export async function runSourceTopicBackfill(
       await settleSourceTopicBackfill(sourceId, { claims: deps.claimsOf(sourceId), reason: "unreadable" }, deps);
     } else {
       let stage: SourceTopicStageResult;
+      const index = result.done + 1;
+      const title = source.title;
+      const report = (p: SourceTopicBackfillStageProgress) => {
+        deps.onProgress?.({
+          done: result.done,
+          total: result.total,
+          topicsTouched: result.topicsTouched,
+          current: { index, title, phase: p.phase, written: p.written, planned: p.planned, windowIndex: p.windowIndex, windowTotal: p.windowTotal },
+        });
+      };
+      // 段の待ち行列に入った時点で「読んでいる」を出す（段の最初の知らせが届くまで空白にしない）
+      report({ phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 });
       try {
-        stage = await deps.runTopicStage({ id: sourceId, ...source }, deps.signal);
+        stage = await deps.runTopicStage({ id: sourceId, ...source }, deps.signal, report);
       } catch (err) {
         if (deps.signal?.aborted || isAbortError(err)) {
           result.aborted = true;

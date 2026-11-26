@@ -82,7 +82,7 @@ export {
 } from "./topic-stage";
 export type {
   ExistingTopicForMerge, ConsolidateExistingTopicsResult, ConsolidateExistingTopicsDeps,
-  SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps,
+  SourceTopicStageInput, SourceTopicStageResult, SourceTopicStageDeps, SourceTopicStageProgress,
   RebuildTopicFromSourcesResult, RebuildTopicFromSourcesDeps,
   TopicRebuildTarget, TopicRebuildPlan, TopicRebuildPlanItem,
 } from "./topic-stage";
@@ -100,7 +100,7 @@ export {
   countClaimsBySource, SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE,
 } from "./source-topic-backfill";
 export type {
-  SourceTopicBackfillEntry, SourceTopicBackfillPlan, SourceTopicBackfillProgress, SourceTopicBackfillResult,
+  SourceTopicBackfillEntry, SourceTopicBackfillPlan, SourceTopicBackfillProgress, SourceTopicBackfillResult, SourceTopicBackfillCurrent, SourceTopicBackfillStageProgress,
 } from "./source-topic-backfill";
 export { mergeAtomsExplicit } from "./atom-merge";
 export type { MergeAtomsDeps, MergeAtomsResult } from "./atom-merge";

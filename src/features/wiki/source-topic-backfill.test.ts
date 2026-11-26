@@ -99,10 +99,11 @@ describe("runSourceTopicBackfill", () => {
     const progress: number[] = [];
     const result = await runSourceTopicBackfill(
       { sourceIds: ["conversation:a", "conversation:b"], alreadySettled: 0 },
-      { ...deps, onProgress: (p) => progress.push(p.done) },
+      // 資料の境目の知らせ（current 無し）だけを拾う
+      { ...deps, onProgress: (p) => { if (!p.current) progress.push(p.done); } },
     );
     expect(runTopicStage).toHaveBeenCalledTimes(2);
-    expect(runTopicStage.mock.calls[0]).toEqual([{ id: "conversation:a", title: "題 conversation:a", text: "本文 conversation:a" }, undefined]);
+    expect(runTopicStage.mock.calls[0]).toEqual([{ id: "conversation:a", title: "題 conversation:a", text: "本文 conversation:a" }, undefined, expect.any(Function)]);
     expect(result).toMatchObject({ done: 2, total: 2, topicsTouched: 4, created: 2, noTopic: 0, failedSources: 0, aborted: false });
     expect(progress).toEqual([1, 2]);
     // トピックができた資料は控えに残さない（次の計画ではトピックがあるので選ばれない）
@@ -168,5 +169,24 @@ describe("runSourceTopicBackfill", () => {
     expect(runTopicStage).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ aborted: true, done: 0, noTopic: 0 });
     expect(deps.saved).toEqual([]);
+  });
+  it("いま手を付けている資料の何本目・題・資料の中の書き進みを知らせる", async () => {
+    const seen: unknown[] = [];
+    const deps = makeDeps({
+      runTopicStage: async (_source, _signal, onStageProgress) => {
+        onStageProgress?.({ phase: "writing", written: 1, planned: 4, windowIndex: 0, windowTotal: 2 });
+        return stage({ created: 1, touchedTopicIds: ["t"] });
+      },
+      onProgress: (p) => seen.push(p),
+    });
+    await runSourceTopicBackfill({ sourceIds: ["a", "b"], alreadySettled: 0 }, deps);
+    expect(seen).toEqual([
+      { done: 0, total: 2, topicsTouched: 0, current: { index: 1, title: "題 a", phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 } },
+      { done: 0, total: 2, topicsTouched: 0, current: { index: 1, title: "題 a", phase: "writing", written: 1, planned: 4, windowIndex: 0, windowTotal: 2 } },
+      { done: 1, total: 2, topicsTouched: 1 },
+      { done: 1, total: 2, topicsTouched: 1, current: { index: 2, title: "題 b", phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 } },
+      { done: 1, total: 2, topicsTouched: 1, current: { index: 2, title: "題 b", phase: "writing", written: 1, planned: 4, windowIndex: 0, windowTotal: 2 } },
+      { done: 2, total: 2, topicsTouched: 2 },
+    ]);
   });
 });

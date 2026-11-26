@@ -194,7 +194,7 @@ When **Tidy up for me** is available, the **Upkeep** tab goes in this order: **T
 - **Assign topic types** — Topics with no [type](#topic-types). The titles and one-line definitions go to the AI, 50 per call, and a type is written back without touching the page body.
 - **Discover Insights from Claims** — scans your Claims cluster by cluster (see [Discovering insights from claims](#discovering-insights-from-claims)).
 
-These bulk jobs keep going when you leave the Upkeep screen. While one runs, the import toast at the bottom right shows its progress on one line, and when it ends the line turns into the result. **Stop** on the toast stops it too. **Build Topics from Sources** and **Link Claims to Topics** remember how far they got, so the next run continues from what is not done yet.
+These bulk jobs keep going when you leave the Upkeep screen. While one runs, the import toast at the bottom right shows its progress on one line, and when it ends the line turns into the result. **Stop** on the toast stops it too. One source can produce a dozen Topics and take several minutes, so for **Build Topics from Sources** the line also shows which source it is on and how many of that source's Topics are written (for example, *writing Topics for source 4, "…" (5/12)*). **Build Topics from Sources** and **Link Claims to Topics** remember how far they got, so the next run continues from what is not done yet.
 
 ## Upkeep operations can be undone <Badge type="tip" text="Added in v0.87.0 (2026-10-07)" /> {#undo-maintenance}
 

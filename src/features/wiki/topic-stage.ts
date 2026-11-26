@@ -630,6 +630,11 @@ export type SourceTopicStageDeps = {
   /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ぶ） */
   onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
   /**
+   * 1 本の資料の中の進み具合（読んでいる・トピックを何枚中何枚書いたか）。
+   * 1 本の資料から十数枚のトピックを書くこともあり、資料の境目でしか進まない表示だと止まって見えるため
+   */
+  onStageProgress?: (p: SourceTopicStageProgress) => void;
+  /**
    * 1 つの窓（窓 1 枚の資料なら全文）が触る話題の改訂・新規作成を、同時に何本まで走らせるか。
    * 未指定なら TOPIC_REVISE_CONCURRENCY。1 にすると従来どおり 1 本ずつ。
    */
@@ -647,6 +652,40 @@ export type SourceTopicStageDeps = {
  * 1 本ずつしか処理しないので上げても速くならない）。設定にはしない。
  */
 export const TOPIC_REVISE_CONCURRENCY = 4;
+
+/** 1 本の資料の中の進み具合 */
+export type SourceTopicStageProgress = {
+  sourceId: string;
+  /** reading: 見取り図・振り分け（何を書くか決めている）／writing: トピックを書いている */
+  phase: "reading" | "writing";
+  /** この窓で書き終えたトピックの数（失敗・停止も 1 枚と数える） */
+  written: number;
+  /** この窓で書くトピックの数（reading の間は 0） */
+  planned: number;
+  windowIndex: number;
+  windowTotal: number;
+};
+
+/**
+ * 窓ごとの書き進みを数える。書く数を知らせてから、1 枚終わるごとに知らせる。
+ * 返す wrap で mapWithConcurrency の 1 件ぶんの処理を包む（成功・失敗・早期 return のどれでも 1 と数える）
+ */
+function writingProgress(
+  deps: Pick<SourceTopicStageDeps, "onStageProgress">,
+  base: { sourceId: string; windowIndex: number; windowTotal: number },
+  planned: number,
+): <T>(fn: (item: T) => Promise<void>) => (item: T) => Promise<void> {
+  let written = 0;
+  if (planned > 0) deps.onStageProgress?.({ ...base, phase: "writing", written, planned });
+  return (fn) => async (item) => {
+    try {
+      await fn(item);
+    } finally {
+      written++;
+      deps.onStageProgress?.({ ...base, phase: "writing", written, planned });
+    }
+  };
+}
 
 /**
  * 資料 id の列から TopicSourceRef（id + title）を集める。knownSource と一致する id は
@@ -750,6 +789,7 @@ export async function runSourceTopicStage(
     const generatedByModel = source.generatedByModel ?? deps.model ?? null;
 
     if (windows.length === 1) {
+      deps.onStageProgress?.({ sourceId: source.id, phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 });
       // 窓 1 枚（資料が窓 1 枚に収まる）: 従来通り全文で振り分け 1 回・改訂 1 回。
       // 中断シグナルは複数窓と同じく振り分け・改訂の fetch に渡す。以前は窓 1 枚の資料
       // （短い Word・ノートの大半）にだけ渡っておらず、停止を押しても振り分け・改訂が最後まで走った。
@@ -790,11 +830,16 @@ export async function runSourceTopicStage(
         existingTopicRefs.filter((t) => t.sourceIds?.includes(source.id)).map((t) => t.id),
       );
       const updateIds = [...new Set([...route.update, ...previouslyCitedIds])];
+      const counted = writingProgress(
+        deps,
+        { sourceId: source.id, windowIndex: 0, windowTotal: 1 },
+        updateIds.length + new Set(route.create).size,
+      );
 
       // 改訂は話題ごとに別のページを読んで別の本文を書くので、同じ資料の中では互いに
       // 依存しない。reviseConcurrency 本まで同時に走らせる（停止は各話題の入口で見る —
       // 走り出した改訂は fetch に渡した signal で止まる）。
-      await mapWithConcurrency(updateIds, reviseConcurrency, async (topicId) => {
+      await mapWithConcurrency(updateIds, reviseConcurrency, counted(async (topicId: string) => {
         if (deps.signal?.aborted) return;
         try {
           const topicDoc = deps.getCachedDoc(`wiki:${topicId}`) ?? (await deps.loadDoc(`wiki:${topicId}`));
@@ -884,11 +929,11 @@ export async function runSourceTopicStage(
           noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
-      });
+      }));
 
       // 新規作成も名前ごとに独立（同じ名前が振り分けに重複して返っても 1 件にする —
       // 同時に走らせると同名のページが 2 枚できるため）。
-      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, async (name) => {
+      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, counted(async (name: string) => {
         if (deps.signal?.aborted) return;
         try {
           const revisedBody = await reviseTopicFromSource(
@@ -932,12 +977,13 @@ export async function runSourceTopicStage(
           noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
-      });
+      }));
       continue;
     }
 
     // 窓が複数: 見取り図を 1 回作る（先頭の窓だけ）→ 窓ごとに振り分け・改訂（in-memory）
     // → すべての窓が終わったら（中断された場合も含め）触れたトピックごとに 1 回だけ保存する。
+    deps.onStageProgress?.({ sourceId: source.id, phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: windows.length });
     let survey: string | null = null;
     if (deps.surveySource) {
       try {
@@ -975,6 +1021,7 @@ export async function runSourceTopicStage(
     for (const win of windows) {
       if (deps.signal?.aborted) break;
       deps.onWindowProgress?.({ sourceId: source.id, windowIndex: win.index, windowTotal: windows.length });
+      deps.onStageProgress?.({ sourceId: source.id, phase: "reading", written: 0, planned: 0, windowIndex: win.index, windowTotal: windows.length });
 
       const windowText = survey
         ? buildWindowTextWithSurvey(survey, win.index, windows.length, win.text, deps.locale)
@@ -1017,10 +1064,15 @@ export async function runSourceTopicStage(
       if (win.index === 0) {
         for (const id of previouslyCitedIds) updateIds.add(id);
       }
+      const counted = writingProgress(
+        deps,
+        { sourceId: source.id, windowIndex: win.index, windowTotal: windows.length },
+        [...updateIds].filter((id) => !migratedIds.has(id)).length + new Set(route.create).size,
+      );
 
       // 同じ窓が触る話題の改訂は互いに依存しない（話題ごとに別の本文を in-memory に持つ）ので
       // reviseConcurrency 本まで同時に走らせる。窓どうしは前の窓の本文を受け取るので直列のまま。
-      await mapWithConcurrency([...updateIds], reviseConcurrency, async (topicId) => {
+      await mapWithConcurrency([...updateIds], reviseConcurrency, counted(async (topicId: string) => {
         if (migratedIds.has(topicId)) return;
         if (deps.signal?.aborted) return;
         try {
@@ -1107,11 +1159,11 @@ export async function runSourceTopicStage(
           noteFailure(err);
           log("話題の改訂に失敗:", topicId, err);
         }
-      });
+      }));
 
       // 新規作成も名前ごとに独立。同じ名前が振り分けに重複して返っても 1 件にする
       // （同時に走らせると createdNames に載る前に 2 枚目が作られるため）。
-      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, async (name) => {
+      await mapWithConcurrency([...new Set(route.create)], reviseConcurrency, counted(async (name: string) => {
         if (deps.signal?.aborted) return;
         try {
           const existingId = createdNames.get(name);
@@ -1183,7 +1235,7 @@ export async function runSourceTopicStage(
           noteFailure(err);
           log("話題の新規作成に失敗:", name, err);
         }
-      });
+      }));
     }
 
     // すべての窓（または中断まで）が終わったら、本文が変化したトピックだけ 1 回保存する

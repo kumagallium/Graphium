@@ -10,7 +10,8 @@ import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import { LocaleProvider } from "../../i18n";
 import { __setConfirmResponderForTest } from "../../ui/confirm-dialog";
 import type { IngestToastItem } from "./IngestToast";
-import { useUpkeepJobs, type UseUpkeepJobsOptions, type UpkeepToastSink } from "./use-upkeep-jobs";
+import { useUpkeepJobs, sourceTopicsRunningText, type UseUpkeepJobsOptions, type UpkeepToastSink } from "./use-upkeep-jobs";
+import { en } from "../../i18n/en";
 import type { SourceTopicBackfillHandlers } from "./upkeep-job-types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -221,5 +222,37 @@ describe("useUpkeepJobs", () => {
     expect(run).toHaveBeenCalledWith("t1", expect.objectContaining({ model: "model-a", signal: expect.any(AbortSignal) }));
     expect(regen().progress).toMatchObject({ done: 1, total: 1, failed: 0 });
     expect(toast.last("regenerate")).toMatchObject({ status: "success" });
+  });
+});
+
+describe("sourceTopicsRunningText", () => {
+  const t = (key: string, params?: Record<string, string>) =>
+    (en[key] ?? key).replace(/\{(\w+)\}/g, (_, k: string) => params?.[k] ?? `{${k}}`);
+  const base = { done: 3, total: 353, topicsTouched: 26 };
+
+  it("資料の中の進み具合が無ければ、これまでどおり数だけ", () => {
+    expect(sourceTopicsRunningText(t, base)).toBe("Building… source 3/353 · 26 Topic(s) created or updated");
+  });
+
+  it("何本目・題・書いた枚数を足し、窓が複数なら窓も出す", () => {
+    const text = sourceTopicsRunningText(t, {
+      ...base,
+      current: { index: 4, title: "Al6Ge5", phase: "writing", written: 5, planned: 12, windowIndex: 1, windowTotal: 3 },
+    });
+    expect(text).toBe('Building… source 3/353 · 26 Topic(s) created or updated · writing Topics for source 4, "Al6Ge5" (5/12) (window 2/3)');
+  });
+
+  it("長い題は縮め、読んでいる・結んでいるも出す", () => {
+    const long = "あ".repeat(40);
+    const reading = sourceTopicsRunningText(t, {
+      ...base,
+      current: { index: 4, title: long, phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 },
+    });
+    expect(reading).toContain(`reading source 4, "${"あ".repeat(24)}…"`);
+    const linking = sourceTopicsRunningText(t, {
+      ...base,
+      current: { index: 4, title: "X", phase: "linking", written: 0, planned: 0, windowIndex: 0, windowTotal: 3 },
+    });
+    expect(linking).toMatch(/linking Claims to Topics for source 4, "X"$/);
   });
 });

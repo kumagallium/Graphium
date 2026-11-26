@@ -537,7 +537,7 @@ import {
   CLAIM_TOPIC_LINK_CHECKPOINT_KEY, CLAIM_TOPIC_LINK_CHECKPOINT_FILE,
   planSourceTopicBackfill, runSourceTopicBackfill, settleSourceTopicBackfill, parseSourceTopicBackfillCheckpoint,
   countClaimsBySource, SOURCE_TOPIC_BACKFILL_CHECKPOINT_KEY, SOURCE_TOPIC_BACKFILL_CHECKPOINT_FILE,
-  type SourceTopicBackfillEntry,
+  type SourceTopicBackfillEntry, type SourceTopicBackfillStageProgress,
   rebuildTopicFromSources,
   planTopicRebuild, type TopicRebuildTarget,
   isIngestInsufficient,
@@ -13271,6 +13271,11 @@ export function NoteApp() {
         signal?: AbortSignal;
         /** 窓ごとの進捗通知（資料が複数窓に分かれたときだけ呼ばれる） */
         onWindowProgress?: (p: { sourceId: string; windowIndex: number; windowTotal: number }) => void;
+        /**
+         * 資料の中の進み具合（読んでいる・トピックを何枚中何枚書いた・知見を結んでいる）。
+         * 段のあとの「知見をトピックに結ぶ」も AI を呼ぶので linking として知らせる
+         */
+        onStageProgress?: (p: SourceTopicBackfillStageProgress) => void;
         /** キューの順番が来て、この呼び出しのトピック段が動き始めたときに呼ばれる */
         onStart?: () => void;
         /**
@@ -13360,9 +13365,13 @@ export function NoteApp() {
           surveySource: (source, locale, model, signal) => surveySourceForWindows(source, locale, model, signal),
           signal: options?.signal,
           onWindowProgress: options?.onWindowProgress,
+          onStageProgress: options?.onStageProgress,
           log: (...args: unknown[]) => console.warn(...args),
         });
         for (const r of result.createdTopics) knownTopicRefsRef.current.set(r.id, r.title);
+        if (stageSources.length > 0) {
+          options?.onStageProgress?.({ phase: "linking", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 });
+        }
         // トピックの段のあとに、その資料の知見をトピックへ結ぶ（同じ列の中で 1 件ずつ）。
         // 失敗しても取り込みは失敗にしない（linkClaimsToTopicsForSource は例外を投げない）
         for (const source of stageSources) {
@@ -14784,7 +14793,8 @@ export function NoteApp() {
       const { resolveSource } = buildTopicSourceResolvers();
       const result = await runSourceTopicBackfill(plan, {
         resolveSource,
-        runTopicStage: (source, stageSignal) => runSourceTopicStageForNoteApp([source], { signal: stageSignal }),
+        runTopicStage: (source, stageSignal, onStageProgress) =>
+          runSourceTopicStageForNoteApp([source], { signal: stageSignal, onStageProgress }),
         ...sourceTopicCheckpointIo,
         claimsOf: (sourceId) => claimsBySource.get(sourceId) ?? 0,
         onProgress,
