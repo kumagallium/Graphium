@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.0](https://github.com/kumagallium/Graphium/compare/v0.172.5...v0.173.0) - 2026-11-26
+
+- [feat] Let AI chat suggest edits to notes and skills as apply-able cards by @kumagallium in https://github.com/kumagallium/Graphium/pull/1894
+
 ## [v0.172.5](https://github.com/kumagallium/Graphium/compare/v0.172.4...v0.172.5) - 2026-11-26
 
 - [fix] Show per-source progress in Build Topics from Sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1891
