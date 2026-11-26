@@ -1911,7 +1911,27 @@ Notes:
   fired, and otherwise reports `AI_CALL_TIMEOUT` and skips that window like
   any other failed revision. This exists because one hung provider request
   was observed to stall a Rebuild for 26 minutes — the outbound HTTP layer
-  alone waits 30 minutes before giving up. On this single-window path the
+  alone waits 30 minutes before giving up. The per-window `route-topics`
+  call and the `survey-source` call that precedes a multi-window source
+  carry the same guard (`TOPIC_ROUTING_CALL_TIMEOUT_MS`, 5 minutes, one
+  retry via `callWithStallGuard`): a timed-out routing call throws
+  `AI_CALL_TIMEOUT`, so that window is counted as failed and skipped, while
+  a timed-out survey returns `null` and the source is read without it.
+  Before this, a 353-source "Build Topics from Sources" run sat silent for
+  22–92 minutes five times, which fits one unguarded call waiting out the
+  30-minute HTTP limit across the SDK's three attempts. The Topic-writer
+  parsers (`parseSourceTopicReviserOutput` and its siblings) read the model's
+  JSON through `parseJsonLenient` (`services/llm-json.ts`): when
+  `JSON.parse` fails it re-escapes, inside string literals only, backslashes
+  that are not JSON escapes (`\alpha` in a formula) and raw control
+  characters (a literal newline), then parses again. On that repair path
+  it also keeps formula commands that happen to look like JSON escapes
+  (`\beta`, `\frac`, `\rho`, and a fixed list after `\n` / `\t` such as
+  `\nu`, `\tau`, `\times`, `\text`) as a backslash rather than a control
+  character; valid JSON never goes through the repair. It never closes
+  brackets or completes a truncated string, so a body cut off mid-way still
+  fails and the page is left unchanged instead of being overwritten with a
+  shorter body. On this single-window path the
   legacy-Topic migration (`rebuildTopicFromSources`) is not given the signal
   and is left to finish, because stopping it midway would save a body rebuilt
   from only some of its sources; the multi-window path still passes the signal
@@ -6024,7 +6044,7 @@ uses the app icon; the manual selects light or dark logos for its theme.
 | Package manager | pnpm (npm/yarn are not used) |
 | State management | React Context + feature-local stores; no global state library |
 | Server runtime | Node ≥ 20 via `@hono/node-server` |
-| Outbound LLM HTTP | `undici` (MIT, the HTTP client inside Node) as a direct dependency only for its `Agent`: `services/llm-fetch.ts` hands the AI SDK providers a `fetch` that waits up to 30 minutes for response headers and between body chunks. Node's default gives up on headers after 300 s, and non-streaming generation on a slow or local model can take longer. Other outbound requests keep Node's defaults |
+| Outbound LLM HTTP | `undici` (MIT, the HTTP client inside Node) as a direct dependency only for its `Agent`: `services/llm-fetch.ts` hands the AI SDK providers a `fetch` that waits up to 30 minutes for response headers and between body chunks. Node's default gives up on headers after 300 s, and non-streaming generation on a slow or local model can take longer. The same `fetch` writes one line per call to the sidecar log — `[llm-http] <status> headers after <seconds>s host=<host>`, `still waiting` every 5 minutes, and `failed` / `aborted` with the elapsed time — carrying the host only (no path, query or key), so a long silent run can be told apart afterwards as a stalled call, a slow one, or a retry. For a streaming response (chat) the time is until the first byte only; a stream that stops mid-way is not recorded. Other outbound requests keep Node's defaults |
 | Timestamp proofs (seal) | `pkijs` 3.4.0 and `asn1js` 3.0.10 (both BSD-3-Clause, exact versions pinned) build and verify RFC 3161 requests and replies. OpenTimestamps is implemented in `features/version-seal/opentimestamps.ts` (binary proof format, calendar submit / upgrade, Bitcoin header check); the official `opentimestamps` JS library is LGPL-3.0 and is not used |
 | Native shell | Tauri v2 (Rust) for desktop |
 | Meeting audio capture (desktop) | `pinray` (MIT; ScreenCaptureKit on macOS, WASAPI loopback on Windows) for the system mix, `cpal` (Apache-2.0) for the microphone, `hound` for streaming 16 kHz / 16-bit WAV. `rubato` (MIT) resamples non-integer rates such as 44.1 kHz; downmix and the integer-ratio FIR low-pass / decimation are a few dozen lines of Rust in `meeting_audio.rs` |

@@ -3381,6 +3381,52 @@ export function rebuildSourceTopicDocument(
 }
 
 /**
+ * 資料の振り分け（route-topics）と見取り図（survey-source）1 回あたりの待ち時間の上限。
+ * サーバー側の LLM HTTP タイムアウトは 30 分で、SDK がさらに 2 回やり直すため、応答が 1 本
+ * 止まると最長 90 分そこで待つ。revise-topic には同じ守りを先に入れていたが、窓ごとに 1 回
+ * 呼ぶ振り分けには無く、資料 353 件の手入れで 22〜92 分の無音の待ちが 5 回起きた
+ * （2026-11-26）。振り分けは既存トピックの一覧を毎回渡すので revise より入力が長い —
+ * 上限は revise と同じ 5 分に置く。
+ */
+export const TOPIC_ROUTING_CALL_TIMEOUT_MS = 5 * 60_000;
+/** 時間切れのときだけやり直す回数。無限に待たせないため 1 回だけ */
+export const TOPIC_ROUTING_RETRIES = 1;
+
+/**
+ * 1 回の呼び出しを待ち時間の上限つきで実行し、自分のタイマーで切れたときだけやり直す。
+ * 外の signal の中断はそのまま中断として投げる。最後まで時間切れなら AI_CALL_TIMEOUT を投げる。
+ */
+async function callWithStallGuard<T>(
+  label: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+  retries: number,
+  run: (reqSignal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const onOuterAbort = () => ctrl.abort();
+    if (signal?.aborted) ctrl.abort();
+    else signal?.addEventListener("abort", onOuterAbort);
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+    try {
+      return await run(ctrl.signal);
+    } catch (err) {
+      if (!(timedOut && !signal?.aborted)) throw err;
+      if (attempt < retries) {
+        console.warn(`${label}: timed out, retrying`, { attempt: attempt + 1, timeoutMs });
+        continue;
+      }
+      throw new CodedError(`${label} timed out`, "AI_CALL_TIMEOUT");
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onOuterAbort);
+    }
+  }
+}
+
+/**
  * 資料の冒頭の窓 1 枚だけをサーバー（/api/wiki/survey-source）へ渡し、見取り図（短い要約）を
  * 作らせる。窓分割で読む資料（複数窓）のときだけ、窓ごとの振り分け・改訂の前に 1 回呼ぶ。
  * 失敗時（パース不能・LLM/ネットワークエラー）は null を返す — 呼び出し側は
@@ -3392,23 +3438,27 @@ export async function surveySourceForWindows(
   /** 使うモデルの表示名。未指定なら設定の既定モデル（wikiBodyModel） */
   model?: string,
   signal?: AbortSignal,
+  /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
+  timeoutMs: number = TOPIC_ROUTING_CALL_TIMEOUT_MS,
 ): Promise<string | null> {
   try {
     const { headers, body: modelBody } = wikiModelRequest("standard", model);
-    const res = await fetch(`${API_BASE}/survey-source`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        title: source.title, text: source.text, language,
-        ...modelBody,
-      }),
-      ...(signal ? { signal } : {}),
+    // 本文を読み終えるまでを 1 回として守る（振り分けと同じ）
+    const data = await callWithStallGuard("survey-source", signal, timeoutMs, TOPIC_ROUTING_RETRIES, async (reqSignal) => {
+      const res = await fetch(`${API_BASE}/survey-source`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          title: source.title, text: source.text, language,
+          ...modelBody,
+        }),
+        signal: reqSignal,
+      });
+      if (!res.ok) {
+        throw await aiErrorFromResponse(res, `survey-source failed (${res.status})`);
+      }
+      return await res.json() as { survey?: string };
     });
-    if (!res.ok) {
-      console.warn("surveySourceForWindows failed:", await aiErrorFromResponse(res, `survey-source failed (${res.status})`));
-      return null;
-    }
-    const data = await res.json() as { survey?: string };
     return typeof data.survey === "string" && data.survey.trim() ? data.survey : null;
   } catch (err) {
     console.warn("surveySourceForWindows failed:", err);
@@ -3514,19 +3564,25 @@ export async function routeTopicsForSource(
   model?: string,
   signal?: AbortSignal,
   knowledgeSchema?: string,
+  /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
+  timeoutMs: number = TOPIC_ROUTING_CALL_TIMEOUT_MS,
 ): Promise<TopicRouteResult> {
   // トピックの振り分けは軽い処理の段（2026-11-14 に標準から移した。10B 級でも基準点の 9 割以上）
   const { headers, body: modelBody } = wikiModelRequest("light", model);
-  const res = await fetch(`${API_BASE}/route-topics`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ language, source, existingTopics, ...modelBody, ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
-    ...(signal ? { signal } : {}),
+  type RouteAnswer = { update?: string[]; create?: string[]; createTypes?: Record<string, unknown>; types?: Record<string, unknown> };
+  // 本文を読み終えるまでを 1 回として守る（ヘッダーだけ返って本文が止まる場合も切る）
+  const data = await callWithStallGuard("route-topics", signal, timeoutMs, TOPIC_ROUTING_RETRIES, async (reqSignal) => {
+    const res = await fetch(`${API_BASE}/route-topics`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ language, source, existingTopics, ...modelBody, ...(knowledgeSchema ? { knowledgeSchema } : {}) }),
+      signal: reqSignal,
+    });
+    if (!res.ok) {
+      throw await aiErrorFromResponse(res, `route-topics failed (${res.status})`);
+    }
+    return await res.json() as RouteAnswer;
   });
-  if (!res.ok) {
-    throw await aiErrorFromResponse(res, `route-topics failed (${res.status})`);
-  }
-  const data = await res.json() as { update?: string[]; create?: string[]; createTypes?: Record<string, unknown>; types?: Record<string, unknown> };
   const existingIds = new Set(existingTopics.map((t) => t.id));
   const update = (data.update ?? []).filter((id) => existingIds.has(id));
   const create = data.create ?? [];

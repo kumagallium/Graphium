@@ -9,6 +9,8 @@
 
 import { isTopicType, type TopicType } from "../../lib/document-types";
 import { generationLanguageName } from "../../lib/language.js";
+import { parseJsonLenient } from "./llm-json.js";
+
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
 // 有無・試料×測定のような細かすぎる名前を同一概念にまとめられない。取り込み（ingest）の
@@ -110,7 +112,7 @@ export function parseTopicConsolidatorOutput(text: string): Record<string, strin
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     if (
       !parsed ||
       typeof parsed !== "object" ||
@@ -244,7 +246,7 @@ export function parseTopicRouterOutput(text: string): TopicRouterOutput | undefi
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     if (!parsed || typeof parsed !== "object") return undefined;
 
     const toStringArray = (v: unknown): string[] =>
@@ -437,7 +439,7 @@ export function parseSourceTopicReviserOutput(text: string): { body: string } | 
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     if (!body) return undefined;
     return { body };
@@ -508,7 +510,7 @@ export function parseSourceSurveyOutput(text: string): { survey: string } | unde
     if (jsonMatch) {
       jsonText = jsonMatch[1].trim();
     }
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const survey = typeof parsed.survey === "string" ? parsed.survey.trim() : "";
     if (!survey) return undefined;
     return { survey };
@@ -622,7 +624,7 @@ export function parseTopicMergerOutput(text: string): { body: string } | undefin
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     if (!body) return undefined;
     return { body };
@@ -746,7 +748,7 @@ export function parseAnswerRewriterOutput(text: string): { title: string; body: 
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     if (!body) return undefined;
     const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
@@ -880,7 +882,7 @@ export function parseSourceSummaryOutput(text: string): { body: string } | undef
     if (jsonMatch) {
       jsonText = jsonMatch[1].trim();
     }
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     if (!body) return undefined;
     return { body };
@@ -924,7 +926,7 @@ export function parseTopicTyperOutput(text: string, knownIds: Iterable<string>):
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (jsonMatch) jsonText = jsonMatch[1].trim();
-    const parsed = JSON.parse(jsonText);
+    const parsed = parseJsonLenient(jsonText) as any;
     const raw = parsed && typeof parsed === "object" ? (parsed as any).types : undefined;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
     const known = new Set(knownIds);
