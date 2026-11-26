@@ -2412,6 +2412,38 @@ Notes:
   are coalesced to at most one per 250 ms, and the app shell subscribes to
   the rebuild generation only, so indexing thousands of sources does not
   re-render the whole app per source.
+- **Suggested edits from AI chat.** Both chats (beside a note and
+  standalone, but not the How-to help) always hand the model two more
+  browser tools, independent of the agentic-search setting below:
+  `read_for_edit` (a note's or skill's blocks with short handles `b1`,
+  `b2` …, marking blocks that hold links, mentions, math or other
+  non-text content — tables, images — as read-only: they cannot be
+  rewritten or deleted, only added after) and `propose_edit`
+  (replace / insert after / delete by handle). Neither writes anything:
+  the proposals are attached to the reply (`ChatMessage.editProposals`,
+  DATA_MODEL §2.5) and shown as before/after cards, and a change is saved
+  only when the user presses Apply
+  (`src/features/ai-assistant/edit-proposal/`). Targets are the user's
+  own notes and skills; AI-made knowledge pages and built-in skills are
+  refused, other people's shared notes are not in the local index, and in
+  a standalone chat limited to a folder only that folder's notes can be
+  read. The target is checked again just before applying, so a saved or
+  imported chat cannot point a card at a page that may not be edited.
+  Applying re-reads the target and refuses a change whose block text no
+  longer matches what the model saw. A note or skill open in an editor is
+  changed through that editor (only the changed blocks, keeping block ids
+  so labels and memos stay attached, recorded as `ai_generation`); a
+  closed one is rewritten in its file (`patchNoteDocument` with an
+  `ai_generation` revision, or `handleSaveSkillFile`). For a note open in
+  a side peek or another window, its unsaved edits are flushed before
+  reading and writing (`flushPeekSaves`), and the written doc is pushed
+  into those editors (`applyLiveExternalDocDetailed`), the same path MCP
+  writes use; if the edits cannot be flushed, nothing is written and the
+  card lets the user try again.
+  Undo restores the earlier blocks within the same session, and only if
+  no block's type, props or content changed after the apply. With only these tools the request keeps the chat's
+  model (the agentic model override applies only when search tools are
+  present).
 - **Agentic search in AI chat (experimental, off by default).** The
   retrieval above runs once, before the model starts. With
   `experimental.agenticSearch` on, Internal / External chats and the
