@@ -182,6 +182,21 @@ describe("parseSourceTopicReviserOutput", () => {
     expect(parseSourceTopicReviserOutput(JSON.stringify({ body: "" }))).toBeUndefined();
     expect(parseSourceTopicReviserOutput("{not json")).toBeUndefined();
   });
+
+  it("JSON で包まれていない Markdown の本文も受ける（出典付きの見出し始まり）", () => {
+    const md = "## 要点\n\n- 頑固さは独自性を高める。[[source:n1|頑固さが独自性や専門性を高める]]";
+    expect(parseSourceTopicReviserOutput(md)).toEqual({ body: md });
+  });
+
+  it("```markdown のフェンスで包まれた本文も外して受ける", () => {
+    const md = "## 定義\n柔軟性は答えに近づく。[[source:n2|柔軟性がより良い答えに向かう]]";
+    expect(parseSourceTopicReviserOutput("```markdown\n" + md + "\n```")).toEqual({ body: md });
+  });
+
+  it("出典の無い文や見出しで始まらない文は本文として受けない", () => {
+    expect(parseSourceTopicReviserOutput("## 要点\n- 出典の無い文。")).toBeUndefined();
+    expect(parseSourceTopicReviserOutput("はい、改訂しました。[[source:n1|一節]]")).toBeUndefined();
+  });
 });
 
 describe("buildSourceTopicReviserUserMessage", () => {
