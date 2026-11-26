@@ -4793,6 +4793,7 @@ export const ja: Record<string, string> = {
   "asset.bulkTitleReading": "読み取り中 {done} / {total}",
   "asset.bulkTitleNotFound": "タイトルが見つかりません",
   "asset.bulkTitleUnchanged": "変更なし",
+  "asset.bulkTitleDuplicate": "ほかの素材と同じ名前になるので、チェックを外しています",
   "asset.bulkTitleReadFailed": "読めませんでした",
   "asset.bulkTitleApply": "{count} 件の名前を変更",
   "asset.bulkTitleApplying": "変更しています…",

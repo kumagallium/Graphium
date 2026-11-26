@@ -6,6 +6,9 @@ import { zipSync, strToU8 } from "fflate";
 import {
   isUsableTitle,
   normalizeTitleText,
+  repairMojibake,
+  looksGarbled,
+  finalizeTitle,
   pickTitleFromPdfItems,
   titleToName,
   isSameName,
@@ -86,6 +89,52 @@ describe("isUsableTitle", () => {
   it("null / undefined は使えない", () => {
     expect(isUsableTitle(null)).toBe(false);
     expect(isUsableTitle(undefined)).toBe(false);
+  });
+});
+
+describe("文字化けの修復と判定", () => {
+  it("UTF-8 を Windows-1252 で読んだ題を戻す", () => {
+    expect(repairMojibake("Conventional sintering of LASâ€“SiC nanocomposites")).toBe(
+      "Conventional sintering of LAS–SiC nanocomposites",
+    );
+    expect(repairMojibake("Nanovoids in thermoelectric Î²-Zn4Sb3")).toBe("Nanovoids in thermoelectric β-Zn4Sb3");
+    expect(repairMojibake("Modeling of Youngâ€™s modulus")).toBe("Modeling of Young’s modulus");
+  });
+
+  it("Shift_JIS を PDFDocEncoding で読んだ題を戻す", () => {
+    expect(repairMojibake("X-ray”è‘⁄1")).toBe("X-ray手順1");
+  });
+
+  it("正しい題はそのまま", () => {
+    for (const s of [
+      "Zeitschrift für Naturforschung",
+      "São Paulo café résumé",
+      "β-Zn4Sb3 の熱電特性と Ca1−xSrxRuO3",
+      "Thermoelectric properties of Fe2V1+xAl1−x alloys",
+      "Ca1−xSrxRuO3 and Fe1−xCox thin films",
+    ]) {
+      expect(repairMojibake(s)).toBe(s);
+      expect(looksGarbled(s)).toBe(false);
+    }
+  });
+
+  it("対応表の無い日本語 PDF の本文（ばらばらの文字体系）は化けとみなす", () => {
+    expect(looksGarbled("㋕㍑Ꮏ႐ᑄᾲ⊒㔚↪㜞ᕈ⢻")).toBe(true);
+    expect(finalizeTitle("㋕㍑Ꮏ႐ᑄᾲ⊒㔚")).toBeUndefined();
+  });
+
+  it("制御文字・置換文字・組版ツールの変換エラーを含む題は使わない", () => {
+    expect(finalizeTitle("Thermoelectric properties of\u0001-Zn")).toBeUndefined();
+    expect(finalizeTitle("Thermoelectric properties of �-Zn")).toBeUndefined();
+    expect(finalizeTitle("Fabrication of n(VARIABLE ERROR - unrecognised syntax)-BaSi2 junction")).toBeUndefined();
+  });
+
+  it("アプリの既定の題（日本語版）は使わない", () => {
+    expect(isUsableTitle("PowerPoint プレゼンテーション")).toBe(false);
+    expect(isUsableTitle("Microsoft PowerPoint プレゼンテーション")).toBe(false);
+    expect(isUsableTitle("PowerPoint Presentation")).toBe(false);
+    expect(isUsableTitle("プレゼンテーション 1")).toBe(false);
+    expect(isUsableTitle("熱電プレゼンテーションの要点")).toBe(true);
   });
 });
 

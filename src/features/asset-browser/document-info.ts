@@ -72,20 +72,135 @@ export function normalizeTitleText(raw: string): string {
 
 // ---------- タイトルが「使える値か」 ----------
 
-const TITLE_FILE_EXT_RE = /\.(pdf|docx?|pptx?|xlsx?|tex|dvi|txt|rtf|odt|odp|ps|indd|key|pages)$/i;
+const TITLE_FILE_EXT_RE = /\.(pdf|docx?|pptx?|xlsx?|tex|dvi|txt|rtf|odt|odp|ps|eps|ai|indd|qxp|qxd|key|pages)$/i;
 const TITLE_APP_PREFIX_RE =
   /^(microsoft\s+(word|powerpoint|excel)|ms\s*word|powerpoint|word)\s*[-–—:]\s*/i;
+// アプリが新規作成時に入れる既定の題（日本語版の「PowerPoint プレゼンテーション」など）。
+// 中身と関係なく同じ値になるので、題として使わない
 const TITLE_GENERIC_RE =
-  /^(untitled|title|document|presentation|powerpoint presentation|new document|slide|無題|無題のドキュメント|名称未設定|タイトル|新しいドキュメント|タイトルなし)\s*\d*$/i;
+  /^(untitled|title|document|presentation|(microsoft\s+)?powerpoint\s+presentation|new document|slide|無題|無題のドキュメント|名称未設定|タイトル|新しいドキュメント|タイトルなし|(microsoft\s*)?powerpoint\s*プレゼンテーション|プレゼンテーション|スライド|文書|ドキュメント|(microsoft\s*)?word\s*文書)\s*\d*$/i;
+
+// ---------- 文字化けの修復と判定 ----------
+
+/** Windows-1252 の 0x80〜0x9F（それ以外の 0xA0〜0xFF は Latin-1 と同じ） */
+const CP1252_HIGH = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ";
+/** PDFDocEncoding の 0x18〜0x1F と 0x80〜0xA0（pdf.js が BOM の無い文字列に使う表） */
+const PDFDOC_LOW = "˘ˇˆ˙˝˛˚˜";
+const PDFDOC_HIGH = "•†‡…—–ƒ⁄‹›−‰„“”‘’‚™ﬁﬂŁŒŠŸŽıłœšž\u009F€";
+
+function buildByteTable(entries: [string, number][]): Map<string, number> {
+  return new Map(entries);
+}
+const CP1252_BYTES = buildByteTable(Array.from(CP1252_HIGH, (ch, i) => [ch, 0x80 + i]));
+const PDFDOC_BYTES = buildByteTable([
+  ...Array.from(PDFDOC_LOW, (ch, i): [string, number] => [ch, 0x18 + i]),
+  ...Array.from(PDFDOC_HIGH, (ch, i): [string, number] => [ch, 0x80 + i]),
+]);
+
+/** 1 文字 = 1 バイトの文字コードとして読まれた文字列を、元のバイト列に戻す（戻せない文字があれば undefined） */
+function toSingleBytes(s: string, table: Map<string, number>): Uint8Array | undefined {
+  const out: number[] = [];
+  for (const ch of s) {
+    const mapped = table.get(ch);
+    if (mapped !== undefined) out.push(mapped);
+    else {
+      const code = ch.codePointAt(0)!;
+      if (code > 0xff) return undefined;
+      out.push(code);
+    }
+  }
+  return Uint8Array.from(out);
+}
+
+function decodeStrict(bytes: Uint8Array, encoding: string): string | undefined {
+  try {
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+const JAPANESE_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/**
+ * Shift_JIS として読み直した結果を採ってよいか。英文の題の「1−x」（0x8A 0x78）も 1 字の漢字に
+ * 読めてしまうので、日本語が 2 字以上あり、ラテン文字の半分以上を占めるときだけにする。
+ */
+function isMostlyJapanese(s: string): boolean {
+  const jp = s.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length ?? 0;
+  const latin = s.match(/\p{Script=Latin}/gu)?.length ?? 0;
+  return jp >= 2 && jp * 2 >= latin;
+}
+
+/**
+ * よくある 2 つの文字化けを元に戻す。戻せなければそのまま返す。
+ *   - UTF-8 を Windows-1252 で読んだもの（「LASâ€“SiC」「Î²-Zn」）: 作成ツールが中のタイトルに入れたまま配られている
+ *   - Shift_JIS を PDFDocEncoding で読んだもの（「…v…›…Y」）: 古い日本語の PDF で、BOM の無いタイトル
+ */
+export function repairMojibake(raw: string): string {
+  if (!/[\u0080-￿]/.test(raw)) return raw;
+  // UTF-8 → Windows-1252: 2 バイト目以降に当たる文字（0x80〜0xBF）が並ぶときだけ試す
+  if (/[Â-ô][\u0080-¿€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/.test(raw)) {
+    const bytes = toSingleBytes(raw, CP1252_BYTES);
+    const fixed = bytes && decodeStrict(bytes, "utf-8");
+    if (fixed && fixed !== raw && !looksGarbled(normalizeTitleText(fixed))) return fixed;
+  }
+  // Shift_JIS → PDFDocEncoding: 戻した結果に日本語が入り、化けた形跡が無いときだけ採る
+  if (!JAPANESE_RE.test(raw)) {
+    const bytes = toSingleBytes(raw, PDFDOC_BYTES);
+    const fixed = bytes && decodeStrict(bytes, "shift_jis");
+    if (fixed && fixed !== raw && isMostlyJapanese(fixed) && !looksGarbled(normalizeTitleText(fixed))) return fixed;
+  }
+  return raw;
+}
+
+/** 文字体系をまとめた単位（日本語の漢字・かなは 1 つに数える） */
+const SCRIPT_GROUPS: [string, RegExp][] = [
+  ["latin", /\p{Script=Latin}/u],
+  ["greek", /\p{Script=Greek}/u],
+  ["cyrillic", /\p{Script=Cyrillic}/u],
+  ["cjk", /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}]/u],
+  ["hangul", /\p{Script=Hangul}/u],
+  ["arabic", /\p{Script=Arabic}/u],
+  ["hebrew", /\p{Script=Hebrew}/u],
+  ["thai", /\p{Script=Thai}/u],
+  ["devanagari", /\p{Script=Devanagari}/u],
+];
+
+/**
+ * 文字化けした文字列か。
+ *   - 制御文字・置換文字（U+FFFD）・私用領域の文字を含む（PDF のフォントに文字の対応表が無いとき）
+ *   - 文字の体系が 4 つ以上混ざる（対応表の無い日本語 PDF の本文は、ばらばらの体系の字になる）
+ *   - 組版ツールの変換エラーの印（「VARIABLE ERROR - unrecognised syntax」）が入っている
+ */
+export function looksGarbled(s: string): boolean {
+  if (/[\p{Cc}\p{Co}�]/u.test(s)) return true;
+  if (/VARIABLE ERROR/i.test(s)) return true;
+  const groups = new Set<string>();
+  for (const ch of s) {
+    if (!/\p{L}/u.test(ch)) continue;
+    const g = SCRIPT_GROUPS.find(([, re]) => re.test(ch));
+    groups.add(g ? g[0] : `other:${scriptKeyOf(ch)}`);
+    if (groups.size >= 4) return true;
+  }
+  return false;
+}
+
+/** 上の表に無い文字の体系を、だいたいの区画（256 文字ごと）で見分ける */
+function scriptKeyOf(ch: string): number {
+  return ch.codePointAt(0)! >> 8;
+}
 
 /**
  * メタデータ等のタイトルが「文書の題として使える値」か。
- * 空・ファイル名っぽい・アプリ名の接頭辞付き・汎用語・2 文字以下・数字や記号だけは使えない。
+ * 空・ファイル名っぽい・アプリ名の接頭辞付き・汎用語・2 文字以下・数字や記号だけ・文字化けは使えない。
+ * 修復できる文字化けは finalizeTitle が先に直す。
  */
 export function isUsableTitle(raw: string | null | undefined): boolean {
   if (!raw) return false;
   const t = normalizeTitleText(raw);
   if (Array.from(t).length <= 2) return false;
+  if (looksGarbled(t)) return false;
   if (TITLE_FILE_EXT_RE.test(t)) return false;
   if (TITLE_APP_PREFIX_RE.test(t)) return false;
   if (TITLE_GENERIC_RE.test(t)) return false;
@@ -107,8 +222,9 @@ function isWordToken(token: string): boolean {
 
 /** 使える値なら整えて（空白の正規化・上限で切る）返し、使えなければ undefined */
 export function finalizeTitle(raw: string | null | undefined): string | undefined {
-  if (!isUsableTitle(raw)) return undefined;
-  const t = normalizeTitleText(raw as string);
+  const repaired = raw ? repairMojibake(raw) : raw;
+  if (!isUsableTitle(repaired)) return undefined;
+  const t = normalizeTitleText(repaired as string);
   return Array.from(t).slice(0, MAX_TITLE_LENGTH).join("");
 }
 

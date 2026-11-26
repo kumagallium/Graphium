@@ -4723,6 +4723,7 @@ export const ko: Record<string, string> = {
   "asset.bulkTitleReading": "읽는 중 {done} / {total}",
   "asset.bulkTitleNotFound": "제목 없음",
   "asset.bulkTitleUnchanged": "변경 없음",
+  "asset.bulkTitleDuplicate": "다른 자료와 같은 이름이 되어 체크를 해제했습니다",
   "asset.bulkTitleReadFailed": "읽지 못했습니다",
   "asset.bulkTitleApply": "{count}개 이름 바꾸기",
   "asset.bulkTitleApplying": "이름을 바꾸는 중…",
