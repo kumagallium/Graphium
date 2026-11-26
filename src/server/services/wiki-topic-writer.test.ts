@@ -98,6 +98,20 @@ describe("buildTopicConsolidatorSystemPrompt", () => {
 });
 
 describe("parseTopicRouterOutput", () => {
+  it("前に説明文が付いても、文中の JSON を拾う", () => {
+    const text = 'The source discusses stubbornness. Here is the routing:\n{"update": ["t1"], "create": [{"name": "柔軟性", "type": "concept"}]}';
+    expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1"], create: ["柔軟性"], createTypes: { 柔軟性: "concept" }, types: {} });
+  });
+
+  it("文中の括弧や文字列の中の } に惑わされない（update / create を持つオブジェクトを採る）", () => {
+    const text = 'Note {this} is prose. {"update": [], "create": ["a } b"]} Done.';
+    expect(parseTopicRouterOutput(text)?.create).toEqual(["a } b"]);
+  });
+
+  it("説明文だけで JSON が無ければ undefined", () => {
+    expect(parseTopicRouterOutput("The source does not relate to any topic.")).toBeUndefined();
+  });
+
   it("update / create の配列を取り出す", () => {
     const text = JSON.stringify({ update: ["t1", "t2"], create: ["新トピック"] });
     expect(parseTopicRouterOutput(text)).toEqual({ update: ["t1", "t2"], create: ["新トピック"], createTypes: {}, types: {} });

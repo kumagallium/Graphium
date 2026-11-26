@@ -9,7 +9,7 @@
 
 import { isTopicType, type TopicType } from "../../lib/document-types";
 import { generationLanguageName } from "../../lib/language.js";
-import { parseJsonLenient } from "./llm-json.js";
+import { extractJsonObjectFromProse, parseJsonLenient } from "./llm-json.js";
 
 // ── Topic Consolidator（既存話題どうしの統合）──
 // 表記ゆれの機械的な名寄せ（正規化タイトル一致）だけでは、語順違い・助詞の
@@ -238,6 +238,24 @@ export type TopicRouterOutput = {
   types: Record<string, TopicType>;
 };
 
+/**
+ * 振り分けの JSON を読む。JSON だけを返す指示に反して説明文が前後に付いたとき
+ * （2026-11-27、Sonnet 5.5 が "The source ..." で始めた）、文中の update / create を持つ
+ * オブジェクトを拾う。拾えなければ元の例外を投げる（呼び出し側の「パース失敗」に回る）。
+ */
+function parseRouterJson(jsonText: string): unknown {
+  try {
+    return parseJsonLenient(jsonText);
+  } catch (err) {
+    const found = extractJsonObjectFromProse(jsonText, (v) => "update" in v || "create" in v);
+    if (found) {
+      console.warn("Topic router: 説明文の中の JSON を拾って読んだ");
+      return found;
+    }
+    throw err;
+  }
+}
+
 export function parseTopicRouterOutput(text: string): TopicRouterOutput | undefined {
   try {
     let jsonText = text.trim();
@@ -246,7 +264,7 @@ export function parseTopicRouterOutput(text: string): TopicRouterOutput | undefi
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = parseJsonLenient(jsonText) as any;
+    const parsed = parseRouterJson(jsonText) as any;
     if (!parsed || typeof parsed !== "object") return undefined;
 
     const toStringArray = (v: unknown): string[] =>
