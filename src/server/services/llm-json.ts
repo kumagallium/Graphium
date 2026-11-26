@@ -112,3 +112,51 @@ export function parseJsonLenient(jsonText: string): unknown {
     }
   }
 }
+
+/**
+ * 説明文の中に埋まった JSON オブジェクトを取り出す（「The source ... Here is the routing: {...}」
+ * のように、JSON だけを返す指示に反して前後に文章が付いた出力向け）。
+ * 文字列の中の括弧は数えずに、対応の取れた一番外側の `{...}` を後ろから順に試し、
+ * 読めて accept を満たした最初のもの（＝最後に書かれたもの）を返す。無ければ undefined。
+ * 途中で切れたものは直さない（parseJsonLenient と同じ方針）。
+ */
+export function extractJsonObjectFromProse(
+  text: string,
+  accept: (value: Record<string, unknown>) => boolean,
+): Record<string, unknown> | undefined {
+  const spans: Array<[number, number]> = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      // 外側の文章に出る引用符は数えない（オブジェクトの中だけ文字列として扱う）
+      if (depth > 0) inString = true;
+    } else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0) spans.push([start, i + 1]);
+    }
+  }
+  for (const [s, e] of spans.reverse()) {
+    try {
+      const value = parseJsonLenient(text.slice(s, e));
+      if (value && typeof value === "object" && !Array.isArray(value) && accept(value as Record<string, unknown>)) {
+        return value as Record<string, unknown>;
+      }
+    } catch {
+      // 次の候補へ
+    }
+  }
+  return undefined;
+}
