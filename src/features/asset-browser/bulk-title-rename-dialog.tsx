@@ -3,6 +3,8 @@
 // 開くと 1 件ずつ中身を読み、「いまの名前 → 新しい名前」を並べる。
 // 見つからない・変更なしの行はチェックできない（理由を薄く出す）。
 // 確定は、チェックした行だけを onApply へ渡す（実際の改名は呼び出し側の onRenameMedia）。
+// 同じ新しい名前が複数の行に出たら、どれもチェックを外して印を出す（テンプレートの既定の題など、
+// 中身と関係の無い題で全部が同じ名前になるのを防ぐ）。
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -12,9 +14,9 @@ import type { MediaIndexEntry } from "./media-index";
 import { isSameName, titleToName } from "./document-info";
 import { readMaterialTitle } from "./material-title";
 
-type RowState =
+export type RowState =
   | { status: "pending" }
-  | { status: "ready"; newName: string; checked: boolean }
+  | { status: "ready"; newName: string; checked: boolean; duplicate?: boolean }
   | { status: "notFound" }
   | { status: "unchanged" }
   | { status: "error" };
@@ -57,7 +59,7 @@ export function BulkTitleRenameDialog({
           next = { status: "error" };
         }
         if (cancelled) return;
-        setRows((prev) => ({ ...prev, [entry.fileId]: next }));
+        setRows((prev) => markDuplicates({ ...prev, [entry.fileId]: next }, entry.fileId));
         setDone((d) => d + 1);
       }
     })();
@@ -141,6 +143,7 @@ export function BulkTitleRenameDialog({
                     {entry.name}
                   </p>
                   {r?.status === "ready" ? (
+                    <>
                     <input
                       type="text"
                       value={r.newName}
@@ -148,6 +151,12 @@ export function BulkTitleRenameDialog({
                       onChange={(e) => patchReady(entry.fileId, { newName: e.target.value })}
                       className="mt-1 w-full text-xs px-2 py-1 rounded border border-border bg-background text-foreground outline-none focus:border-primary transition-colors"
                     />
+                    {r.duplicate && (
+                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                        {t("asset.bulkTitleDuplicate")}
+                      </p>
+                    )}
+                    </>
                   ) : (
                     <p className="text-[11px] text-muted-foreground/60 mt-0.5">{reason}</p>
                   )}
@@ -177,4 +186,25 @@ export function BulkTitleRenameDialog({
       </div>
     </div>
   );
+}
+
+/**
+ * いま入った行（addedId）の新しい名前が、ほかの行と同じなら、両方のチェックを外して duplicate の印を付ける。
+ * 一度付けた印は、利用者が名前を直しても外さない（チェックは自分で入れ直せる）。
+ */
+export function markDuplicates(
+  rows: Record<string, RowState>,
+  addedId: string,
+): Record<string, RowState> {
+  const added = rows[addedId];
+  if (added?.status !== "ready") return rows;
+  const same = Object.entries(rows).filter(
+    ([id, r]) => id !== addedId && r.status === "ready" && isSameName(r.newName, added.newName),
+  );
+  if (same.length === 0) return rows;
+  const next = { ...rows };
+  for (const [id, r] of [[addedId, added] as const, ...same]) {
+    if (r.status === "ready") next[id] = { ...r, checked: false, duplicate: true };
+  }
+  return next;
 }

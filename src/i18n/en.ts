@@ -4790,6 +4790,7 @@ export const en: Record<string, string> = {
   "asset.bulkTitleReading": "Reading {done} / {total}",
   "asset.bulkTitleNotFound": "No title found",
   "asset.bulkTitleUnchanged": "No change",
+  "asset.bulkTitleDuplicate": "Unchecked because another item would get the same name",
   "asset.bulkTitleReadFailed": "Could not read it",
   "asset.bulkTitleApply": "Rename {count}",
   "asset.bulkTitleApplying": "Renaming...",
