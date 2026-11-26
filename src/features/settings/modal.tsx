@@ -1333,6 +1333,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, initialSection, kno
       setAddMode("existing" as const);
       setLegacyForm(false);
       setSourceModelId(id);
+      // 選んだ接続先のプロバイダーに揃える（揃えないと初期値の anthropic のまま登録しに行き、
+      // キーの無い ChatGPT・Copilot は「Required fields are missing」で断られる）
+      const picked = providerGroups.find((g) => g.representativeId === id);
+      if (picked) setAddProvider(picked.provider);
       setAvailableModels([]);
       setSelectedModelId("");
       setCustomModelId("");
