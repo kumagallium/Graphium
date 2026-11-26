@@ -274,7 +274,7 @@ The section opens with what was compared and the conclusion, one sentence each (
 
 Check the first two before you run the experiment. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
 
-## Asking the chat to edit a note or skill {#asking-the-chat-to-edit}
+## Asking the chat to edit a note or skill <Badge type="tip" text="Added in v0.173.0 (2026-11-26)" /> {#asking-the-chat-to-edit}
 
 Ask in chat, for example "fix this condition to match the table" or "make the citation style in this skill consistent", and the AI suggests edits. It works in the chat beside a note and in the chat without a note open.
 

@@ -356,7 +356,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.122.0** | 2026-11-06 | [From papers to the next experiment's plan](/ai-chat-and-ask#making-an-experiment-plan) — bring in several paper PDFs and extract their steps, and the same operation, material or instrument gets the same name across papers ([name alignment](/materials-and-citations#aligning-extracted-names)). Ask the chat what to try next and press **Make an experiment plan** under the answer: a plan note with a table of varied conditions, and one run note per row <!--chip: From papers to an experiment plan--> |
 | **v0.127.0** | 2026-11-09 | [Seal a saved point as evidence](/notes-and-editor#seal-as-evidence) — a saved point in a note's history can be sealed: its content and media are hashed into a seal file, and two outside timestamp proofs are attached (FreeTSA with RFC 3161, and OpenTimestamps anchored in Bitcoin). No account or API key is needed, and only a hash leaves your computer. **Export evidence** writes a zip that anyone can check with `openssl` and `ots` without Graphium. |
 
-::: details 38 more in November
+::: details 39 more in November
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -398,6 +398,7 @@ From papers to a plan, to the record, to a saved point sealed as evidence: tools
 | **v0.168.0** | 2026-11-25 | [A shorter model assignment](/ai-setup#model-assignment) — with only one model registered, the assignment is one line, **All three tiers use "(model name)"**, with the switches for standard and advanced work and a caution about heavy work. With two or more models, each tier's description is just its uses, the fit notes are under **Details**, and one link at the end leads to what we measured <!--chip: One-line model assignment--> |
 | **v0.169.0** | 2026-11-25 | [See the notes you went back to, on Home](/notes-and-editor#the-notes-list) — a note you change on a later day also appears on that day as an **Updated** row, with the day it was created under it. The note itself stays on the day you made it, so past days keep what happened on them. Only your own notes get one; AI pages, which the knowledge pipeline adds to often, do not. Renaming a note no longer marks the notes that mention it as updated <!--chip: Updated rows on Home--> |
 | **v0.171.0** | 2026-11-25 | [Put phone captures into the note you have open](/mobile#inbox-beside-the-note) — with an inbox folder connected, a **Mobile** icon at the right edge of the note lists what has arrived from your phone and has not been imported yet. Drag an item into the note and it lands where you drop it; double-click and it goes at the cursor. Importing happens at the same time, and several selected items go in in the order you captured them. New captures show up by themselves, without pressing Refresh <!--chip: Phone captures beside the note--> |
+| **v0.173.0** | 2026-11-26 | [Ask the chat to edit a note or skill](/ai-chat-and-ask#asking-the-chat-to-edit) — ask something like "fix this condition", and the AI puts a card under its reply with each change as old and new, block by block. Nothing changes until you press **Apply**, and the history records it as an AI edit. If the text changed after the suggestion, it is not applied, so what you wrote later is never overwritten <!--chip: Suggested edits from chat--> |
 
 :::
 
