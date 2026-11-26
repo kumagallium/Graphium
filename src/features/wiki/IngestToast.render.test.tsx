@@ -41,6 +41,24 @@ describe("IngestToast（件数に数えない項目だけ）", () => {
     expect(container.querySelector("svg.text-emerald-600")).toBeNull();
   });
 
+  it("長い進み具合の文は、題の行とは別の折り返す行に出る（横にはみ出させない）", () => {
+    const progress = "作っています… 資料 1/337 · 作成・更新したトピック 3 件 · 2 本目「とても長い資料の題」のトピックを書いています（5/12）（窓 2/9）";
+    renderToast(<IngestToast state={{ items: [{ ...base, progress }] }} onDismiss={() => {}} />);
+    const line = screen.getByTestId("ingest-progress");
+    expect(line.textContent).toBe(progress);
+    expect(line.className).toContain("whitespace-normal");
+    expect(line.className).toContain("break-words");
+    // 題の行（縮まない detail が並ぶ flex）の中には入れない
+    expect(line.parentElement?.querySelector(".flex")?.contains(line)).toBe(false);
+  });
+
+  it("終わった項目には進み具合の行を出さない", () => {
+    renderToast(
+      <IngestToast state={{ items: [{ ...base, status: "success", progress: "古い進み具合", result: "done" }] }} onDismiss={() => {}} />,
+    );
+    expect(screen.queryByTestId("ingest-progress")).toBeNull();
+  });
+
   it("success の action ボタンを押せる", () => {
     const onClick = vi.fn();
     renderToast(

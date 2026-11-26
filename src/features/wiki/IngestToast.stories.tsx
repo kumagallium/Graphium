@@ -257,6 +257,28 @@ export const UncountedOnlyActive: Story = {
   ),
 };
 
+/** 手入れの長い進み具合 — 題の下の行に折り返して全文を出す（横にはみ出さない） */
+export const UncountedLongProgress: Story = {
+  name: "手入れ（長い進み具合）",
+  render: () => (
+    <ToastPlayground
+      initial={{
+        items: [
+          {
+            id: "st",
+            status: "generating",
+            noteTitle: "資料からトピックを作る",
+            progress:
+              "作っています… 資料 1/337 · 作成・更新したトピック 3 件 · 2 本目「全粒粉の加水率と発酵時間の関係を調べた記録…」のトピックを書いています（5/12）（窓 2/9）",
+            excludeFromCount: true,
+          },
+          { id: "l1", status: "error", noteTitle: "⚠ 加水率の不一致", result: "どちらの値がより信頼できるかを確認し、記述を整理してください。" },
+        ],
+      }}
+    />
+  ),
+};
+
 /** 補完が失敗で終わった — 赤系の配色とエラーアイコン（最小化ピルも同じ） */
 export const UncountedOnlyError: Story = {
   name: "補完のみ（エラー）",

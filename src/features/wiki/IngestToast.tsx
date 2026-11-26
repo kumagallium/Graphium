@@ -29,6 +29,12 @@ export type IngestToastItem = {
   noteTitle: string;
   /** 現在のステップの詳細 */
   detail?: string;
+  /**
+   * 走っている間、題の下に独立行で出す進み具合の文（例: 手入れの「資料 3/353 · … を書いています」）。
+   * detail は題の横に縮まずに並ぶので、長い文を入れるとパネルが横にはみ出して読めなくなる。
+   * 長くなりうる文はこちらに入れて、折り返して全文を見せる。
+   */
+  progress?: string;
   /** 結果メッセージ */
   result?: string;
   /** generating / saving になった時刻（ms）。stampIngestTimings が付ける。所要時間の表示に使う */
@@ -384,6 +390,15 @@ export function IngestToast({ state, onDismiss, onStop }: Props) {
                 </span>
               )}
             </div>
+            {/* 走っている間の進み具合の文。長いので独立行に出して折り返す */}
+            {item.progress && (item.status === "generating" || item.status === "saving") && (
+              <div
+                className="pl-5 pr-1 text-[11px] text-muted-foreground break-words whitespace-normal"
+                data-testid="ingest-progress"
+              >
+                {item.progress}
+              </div>
+            )}
             {/* エラーは長文になりやすいので独立行に出す。break-words で折り返す */}
             {item.result && item.status === "error" && (
               <div
