@@ -108,7 +108,11 @@ describe("useUpkeepJobs", () => {
     // トーストは実行中から出て、終わると結果に変わる。見出しの件数には数えない
     expect(toast.history[0]).toMatchObject({ status: "generating", excludeFromCount: true });
     expect(toast.history[0].id.startsWith("upkeep:sourceTopics:")).toBe(true);
+    // 進み具合の文は長いので、題の横（detail）ではなく折り返す行（progress）に入れる
+    expect(toast.history[0].detail).toBeUndefined();
+    expect(toast.history[0].progress).toBeTruthy();
     expect(toast.last("sourceTopics")).toMatchObject({ status: "success" });
+    expect(toast.last("sourceTopics")?.progress).toBeUndefined();
     // 終わったら停止の集合から外れる
     expect(toast.controllers.size).toBe(0);
   });

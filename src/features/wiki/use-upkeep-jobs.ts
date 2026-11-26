@@ -75,13 +75,15 @@ function toToastItem(id: string, title: string, status: UpkeepJobStatus, aborted
   if (status.kind === "idle") return null;
   if (status.kind === "running") {
     // 2 回目の実行で前回の結果文が残らないよう、result を明示的に空にする（upsert は上書きで合成する）
-    return { id, status: "generating", noteTitle: title, detail: status.text, result: undefined, excludeFromCount: true };
+    // 進み具合の文は長い（資料の題・窓・何枚目）ので、題の横の detail ではなく折り返す独立行（progress）に出す
+    return { id, status: "generating", noteTitle: title, detail: undefined, progress: status.text, result: undefined, excludeFromCount: true };
   }
   return {
     id,
     status: aborted ? "aborted" : status.tone === "error" ? "error" : "success",
     noteTitle: title,
     detail: undefined,
+    progress: undefined,
     result: status.text,
     excludeFromCount: true,
   };
