@@ -1416,6 +1416,8 @@ export const ja: Record<string, string> = {
   "settings.chatgptPlan.denied": "サインインは完了しませんでした。いつでも、もう一度お試しいただけます。",
   "settings.chatgptPlan.notEligible": "ChatGPT が、このアカウントでのサインインを完了させませんでした。この方法は個人の ChatGPT Plus / Pro 向けで、無料プランや、会社・学校・プログラムのワークスペースでは使えないことがあります。別のアカウントを試すか、API キーなど別の方法でつないでください。",
   "settings.chatgptPlan.checkFailed": "接続を確かめられませんでした。",
+  "settings.chatgptPlan.chooseModel": "ChatGPT につながりました。使うモデルを選んでください。",
+  "settings.chatgptPlan.chooseModelHint": "あとから「モデルを追加」で、ほかのモデルも足せます。",
   "settings.chatgptPlan.row.signedOut": "ChatGPT からサインアウトしています。このモデルを使うには、もう一度サインインしてください。",
   "settings.chatgptPlan.revokeHint": "ChatGPT の設定からも接続を切れます。",
   "settings.models.edit": "編集",

@@ -108,3 +108,53 @@ describe("chatgpt-plan reducer", () => {
     expect(needsPolling({ kind: "verifying", welcomed: true })).toBe(false);
   });
 });
+
+describe("chatgpt-plan reducer: モデルを選ぶ", () => {
+  const ok = { ok: true as const, models: [{ id: "m1", name: "Model One" }, { id: "m2", name: "" }] };
+
+  it("choose: 先頭を選んだ状態で選ぶ画面を出し、選び直して追加できる", () => {
+    const choose = reducer({ kind: "verifying", welcomed: true }, { type: "models", result: ok, choose: true });
+    expect(choose).toEqual({
+      kind: "choose",
+      models: [{ id: "m1", name: "Model One" }, { id: "m2", name: "m2" }],
+      selected: "m1",
+      welcomed: true,
+    });
+    const picked = reducer(choose, { type: "select", id: "m2" });
+    expect(reducer(picked, { type: "pick" })).toEqual({ kind: "connected", model: { id: "m2", name: "m2" } });
+  });
+
+  it("choose: 一覧に無い ID は選べない。初回は選んだあとに案内を挟む", () => {
+    const choose = reducer({ kind: "verifying", welcomed: false }, { type: "models", result: ok, choose: true });
+    expect(reducer(choose, { type: "select", id: "nope" })).toBe(choose);
+    const welcome = reducer(choose, { type: "pick" });
+    expect(welcome).toEqual({ kind: "welcome", model: { id: "m1", name: "Model One" } });
+    expect(reducer(welcome, { type: "welcomeDone" })).toEqual({ kind: "connected", model: { id: "m1", name: "Model One" } });
+  });
+
+  it("select・pick は選ぶ画面以外では何もしない", () => {
+    const idle: Phase = { kind: "idle" };
+    expect(reducer(idle, { type: "select", id: "m1" })).toBe(idle);
+    expect(reducer(idle, { type: "pick" })).toBe(idle);
+  });
+
+  it("init の resume: サインイン済みでプランも使えるなら、サインインを飛ばして確認へ", () => {
+    const account = { email: null, planUsage: true, welcomed: true };
+    expect(reducer({ kind: "loading" }, { type: "init", status: st({ account }), resume: true })).toEqual({
+      kind: "verifying",
+      welcomed: true,
+    });
+    // resume でない（サインインし直し）・許可が無い・未サインインはこれまでどおり idle
+    expect(reducer({ kind: "loading" }, { type: "init", status: st({ account }) })).toEqual({ kind: "idle" });
+    expect(
+      reducer({ kind: "loading" }, { type: "init", status: st({ account: { ...account, planUsage: false } }), resume: true }),
+    ).toEqual({ kind: "idle" });
+    expect(reducer({ kind: "loading" }, { type: "init", status: base, resume: true })).toEqual({ kind: "idle" });
+  });
+
+  it("サインインが切れていた（CHATGPT_NOT_SIGNED_IN）ら、サインインの入口に戻す", () => {
+    expect(
+      reducer({ kind: "verifying", welcomed: true }, { type: "models", result: { ok: false, code: "CHATGPT_NOT_SIGNED_IN" } }),
+    ).toEqual({ kind: "idle" });
+  });
+});

@@ -23,6 +23,10 @@ export type ChatGptPlanConnectViewProps = {
   /** 「Continue with ChatGPT」 */
   onStart: () => void;
   onCancelSignIn: () => void;
+  /** 選ぶ画面でモデルを変えた */
+  onSelectModel?: (id: string) => void;
+  /** 選ぶ画面の「追加する」 */
+  onPickModel?: () => void;
   /** 初回の案内の「Got it」 */
   onWelcomeDone: () => void;
   /** 「Manage usage」: ChatGPT の使用量の設定を開く */
@@ -39,6 +43,8 @@ export function ChatGptPlanConnectView({
   phase,
   mode = "embedded",
   onStart,
+  onSelectModel,
+  onPickModel,
   onCancelSignIn,
   onWelcomeDone,
   onOpenUsage,
@@ -108,6 +114,32 @@ export function ChatGptPlanConnectView({
             <div className="flex items-center justify-center gap-2">
               <button type="button" className={subBtn} onClick={onCancelSignIn}>
                 {t("settings.chatgptPlan.cancel")}
+              </button>
+            </div>
+          </div>
+        );
+
+      case "choose":
+        // つながった。使うモデルを選んでから登録する（先頭を選んでおくので、そのまま追加してもよい）
+        return (
+          <div className="space-y-2">
+            <p className="text-xs text-foreground">{t("settings.chatgptPlan.chooseModel")}</p>
+            <select
+              aria-label={t("settings.aiConnect.form.model")}
+              value={phase.selected}
+              onChange={(e) => onSelectModel?.(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {phase.models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name === m.id ? m.id : `${m.name} (${m.id})`}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">{t("settings.chatgptPlan.chooseModelHint")}</p>
+            <div className="flex items-center justify-center">
+              <button type="button" className={primaryBtn} onClick={onPickModel}>
+                {t("settings.aiConnect.form.add")}
               </button>
             </div>
           </div>
