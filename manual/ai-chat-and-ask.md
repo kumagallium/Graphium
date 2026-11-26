@@ -272,6 +272,29 @@ The section opens with what was compared and the conclusion, one sentence each (
 
 Check the first two before you run the experiment. If the check fails, the plan is left as it is. How well it catches mistakes is recorded in [Checking where a plan comes from](/evaluations/plan-grounding-check).
 
+## Asking the chat to edit a note or skill {#asking-the-chat-to-edit}
+
+Ask in chat, for example "fix this condition to match the table" or "make the citation style in this skill consistent", and the AI suggests edits. It works in the chat beside a note and in the chat without a note open.
+
+- The AI does not change anything on its own. Under its reply, a card lists each change as **Old** and **New**, block by block
+- Choose **Apply** or **Skip** for each change. With two or more, **Apply all** is there too
+- After applying, **Undo** brings the old text back, as long as nobody has edited the text since. Undo is not available after the app is reopened; use the version history then
+- If the text changed after the edit was suggested, the card says it can't be applied and nothing is written, so an old suggestion never overwrites what you wrote later
+- A note that is open changes in place. A note or skill that is not open is saved to its file. Either way, the history records it as an AI edit
+- A note that is open only in a side peek or another window is not changed. Close it, then press Apply again
+- Click the title on the card to open that note or skill
+
+What can be edited:
+
+| Target | Editable |
+|---|---|
+| Your notes ("this note" in the chat beside a note, otherwise by title) | Yes. In a chat limited to a folder, only that folder's notes |
+| Skills you made ("skill: title") | Yes |
+| AI-made knowledge (topics, answers, summaries) | No |
+| Built-in skills (such as the knowledge schema) | No |
+| Other people's notes in a shared folder | No |
+| Blocks with links, @ mentions, math, and the like; tables and images | Can't be rewritten or deleted; you can add after them |
+
 ## The Composer (⌘K / Ctrl+K) {#the-composer-k}
 
 Press `⌘K` (`Ctrl+K` on Windows/Linux) to open the Composer — one input for both "find a note" and "ask the AI". The AI half needs a registered AI model; the search half does not. `Esc` closes it. The **Search** button at the top of the left nav opens the same Composer.

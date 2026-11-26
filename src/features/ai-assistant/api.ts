@@ -244,7 +244,8 @@ export async function runAgent(
   // 「じっくり調べてから答える」（道具をブラウザで実行する）ときは、チャットのモデルを選んでいれば
   // それ、空なら精密な処理の段のモデルで答える。ふつうのチャットは呼び出し元が req.options.model に
   // 入れた名前（チャットのモデル → デフォルトモデル）のまま
-  const agentic = !!clientTools && clientTools.names.length > 0;
+  // 書き換えの道具（read_for_edit / propose_edit）だけのときは「じっくり調べる」ではない（モデルも経路も変えない）
+  const agentic = !!clientTools && clientTools.names.includes("search_my_knowledge");
   const agenticModel = agentic ? getAgenticSearchModelName() : "";
   const runReq: AgentRunRequest = agentic && agenticModel
     ? { ...req, options: { ...req.options, model: agenticModel } }

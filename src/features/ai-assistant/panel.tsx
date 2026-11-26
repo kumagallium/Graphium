@@ -12,6 +12,7 @@ import { Textarea } from "@ui/form-field";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useAiAssistant } from "./store";
 import { ThinkingIndicator, ToolStepsDetails } from "./agent-progress";
+import { EditProposalList } from "./edit-proposal/EditProposalList";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getSourceTitleToRefMap } from "../wiki/retriever";
 // 共有エントリの引用は Library で開く。開き先はアプリ単位のコールバックなので props は増やさない
@@ -1027,6 +1028,9 @@ export function ChatBubble({
       )}
       {!isUser && message.toolSteps && message.toolSteps.length > 0 && (
         <ToolStepsDetails steps={message.toolSteps} />
+      )}
+      {!isUser && message.editProposals && message.editProposals.length > 0 && (
+        <EditProposalList proposals={message.editProposals} />
       )}
       {isUser && !editing && onEditResend && (
         <div className="mt-1 flex gap-0.5">

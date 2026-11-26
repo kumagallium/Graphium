@@ -1075,6 +1075,35 @@ export type ChatMessage = {
    * チャットの横の全体グラフで「たどった線」を描くのに使う。optional な plain JSON なので旧ビルドの読み込みを壊さない。
    */
   walkedEdges?: { from: string; to: string }[];
+  /**
+   * AI が出した修正案（assistant メッセージのみ）。チャットからはその場で書き換えず、回答の下に
+   * ブロックごとの差分のカードとして出し、利用者が「反映」を押したときだけ保存する。
+   * 反映した・やめたの状態はここには持たない（appData の edit-proposal-status。edit-proposal/controller.ts）。
+   * optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  editProposals?: ChatEditProposal[];
+};
+
+/** チャットの修正案 1 件（1 つのノート・スキルへの変更のまとまり。ChatMessage.editProposals） */
+export type ChatEditProposal = {
+  id: string;
+  target: { kind: "note" | "skill"; id: string; title: string };
+  /** AI が書いた変更の理由（1〜2 文） */
+  reason?: string;
+  changes: ChatEditChange[];
+};
+
+/** 修正案の中の 1 件の変更 */
+export type ChatEditChange = {
+  id: string;
+  /** replace = 書き換え / insert = 後ろに足す / delete = 消す */
+  op: "replace" | "insert" | "delete";
+  /** 対象のブロック ID（insert は直前のブロック） */
+  blockId: string;
+  /** 案を出したときの対象のブロックの本文（反映の前に今の本文と比べる） */
+  before: string;
+  /** replace・insert の新しい本文（Markdown） */
+  after?: string;
 };
 
 /** AI が呼んだ道具 1 回分の記録（ChatMessage.toolSteps） */

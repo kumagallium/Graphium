@@ -277,7 +277,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { applyLiveExternalDocDetailed, flushPeekSaves, hasPendingPeekEdits, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
+import { allLivePeekIds, applyLiveExternalDocDetailed, flushPeekSaves, hasPendingPeekEdits, pendingEditorWorkIds, pendingPeekSave, queuePeekSave, registerLivePeek } from "./lib/peek-save-queue";
 import {
   isMaintenanceRecordFailed,
   isMaintenanceSaveBusy,
@@ -322,6 +322,10 @@ import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, g
 import { useStorage, type StorageInitFailure } from "./lib/storage/use-storage";
 import { setServerStorageToken } from "./lib/storage/providers/server-fs";
 import { getActiveProvider } from "./lib/storage/registry";
+import { migrateToLatest } from "./lib/document-migration";
+import { registerEditFileHost, registerLiveEditor } from "./features/ai-assistant/edit-proposal/controller";
+import { diffBlocksToOps } from "./features/ai-assistant/edit-proposal/edit-ops";
+import { createEditFileHost } from "./features/ai-assistant/edit-proposal/file-host";
 import { createAppUsageRecorder } from "./features/ai-usage/app-recorder";
 import { refsFromCitedTitles } from "./features/ai-usage/usage-log";
 import { contextTitles } from "./features/standalone-chat/used-pages";
@@ -5722,11 +5726,16 @@ function NoteEditorInner({
                     onStep: (steps) => setAgentProgress(chatId, steps),
                   })
                 : null;
+              // 書き換えの道具（修正案を回答の下のカードで出す）は設定やスコープによらず渡す。
+              // 「このノート」はこのチャットが付いているノート（スキル・ナレッジは保存先のキーで判定）
+              const editProposalModule = await import("./features/ai-assistant/edit-proposal/edit-tools");
+              const editTools = editProposalModule.createEditToolSession({ currentNoteId: chatStorageId });
               const response = await runAgent(
                 req,
                 signal,
-                agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
+                { clientTools: editProposalModule.combineClientTools(agentic, editTools) },
               );
+              const editProposals = editTools.proposals();
               // 引用の正規化は、最初に貼った文脈と道具が返した結果の両方の番号を見る
               const citationContext = [wikiContext, agentic?.collectedContext()].filter(Boolean).join("\n\n") || undefined;
               // Wiki コンテキストが使われた場合、引用情報を処理する。
@@ -5783,6 +5792,7 @@ function NoteEditorInner({
                   content: cleanMessage,
                   timestamp: new Date().toISOString(),
                   ...(toolSteps.length > 0 ? { toolSteps } : {}),
+                  ...(editProposals.length > 0 ? { editProposals } : {}),
                 },
                 sessionId: response.session_id,
               };
@@ -6539,6 +6549,41 @@ function NoteEditorInner({
     },
     [markDirty, aiAssistant, removeBlockMetadata, applyExtractedLabels, applySourceRefs, wikiTitleToNoteId, addSourceRefLinks],
   );
+
+  // チャットの修正案を、このエディタで開いているノート・スキルに当てる口（edit-proposal/controller.ts）。
+  // 開いている対象はエディタが正なので、ファイルに書くと次の自動保存で巻き戻る。ここで変わったブロックだけを当て、
+  // 来歴は AI の編集（lastAiInsertRef → ai_generation）として残す
+  const editWriterDepsRef = useRef({ markDirty, removeBlockMetadata });
+  editWriterDepsRef.current = { markDirty, removeBlockMetadata };
+  useEffect(() => {
+    const key = docKey ?? fileId;
+    if (!key || !mainEditor) return;
+    const current = () => liveEditor(liveEditorRef.current) ?? liveEditor(editorRef.current);
+    return registerLiveEditor(key, {
+      read: () => structuredClone(current()?.document ?? []),
+      write: (blocks) => {
+        const editor = current();
+        if (!editor) throw new Error("editor is not available");
+        const ops = diffBlocksToOps(editor.document, blocks);
+        for (const op of ops) {
+          if (op.kind === "remove") {
+            editWriterDepsRef.current.removeBlockMetadata(op.ids);
+            editor.removeBlocks(op.ids);
+          } else if (op.kind === "update") {
+            editor.updateBlock(op.id, op.block);
+          } else if (op.kind === "setChildren") {
+            editor.updateBlock(op.parentId, { children: op.children });
+          } else {
+            const doc = editor.document;
+            const ref = op.refId || doc[doc.length - 1]?.id;
+            if (ref) editor.insertBlocks(op.blocks, ref, op.placement);
+          }
+        }
+        lastAiInsertRef.current = true;
+        editWriterDepsRef.current.markDirty();
+      },
+    });
+  }, [docKey, fileId, mainEditor]);
 
   // ── 初期データの復元 ──
   const initializedRef = useRef(false);
@@ -10490,11 +10535,17 @@ export function NoteApp() {
           agenticContext = () => agentic.collectedContext();
           agenticWalked = () => agentic.walkedEdges();
         }
+        // 書き換えの道具（修正案を回答の下のカードで出す）。使い方の案内（helpMode）では渡さない
+        const editProposalModule = await import("./features/ai-assistant/edit-proposal/edit-tools");
+        // フォルダで絞った会話では、直せるノートもその範囲に閉じる（検索の道具と同じ柵）
+        const editTools = helpMode ? null : editProposalModule.createEditToolSession({ onlyIds });
+        const clientTools = editProposalModule.combineClientTools(agentic, editTools);
         const response = await runAgent(
           req,
           controller.signal,
-          agentic ? { clientTools: { names: agentic.toolNames, execute: agentic.execute } } : undefined,
+          clientTools.names.length > 0 ? { clientTools } : undefined,
         );
+        const editProposals = editTools?.proposals() ?? [];
         let assistantMessage = response.message;
         // 使い方: AI に渡した節の番号（[M1] など）が答えに漏れていたら消す（出典は節へのリンクで示す）
         if (helpMode) {
@@ -10541,6 +10592,7 @@ export function NoteApp() {
               ...(citationContext && readRefsOf(citationContext).length > 0 ? { readRefs: readRefsOf(citationContext) } : {}),
               // 来歴の道具がたどった線（じっくり調べたときだけ）
               ...((agentic?.walkedEdges().length ?? 0) > 0 ? { walkedEdges: agentic!.walkedEdges() } : {}),
+              ...(editProposals.length > 0 ? { editProposals } : {}),
             },
           ],
           modifiedAt: assistantAt,
@@ -11597,6 +11649,35 @@ export function NoteApp() {
   const navigateToNoteRef = useRef(navigateToNote);
   navigateToNoteRef.current = navigateToNote;
   useEffect(() => onOpenInMainRequest((id) => navigateToNoteRef.current(id)), []);
+
+  // チャットの修正案の書き込み先（閉じているノート・スキル）。開いているものは各エディタが自分で受ける
+  // （NoteEditorInner の registerLiveEditor）。fm は毎回変わるので ref から最新を読む
+  const editHostFmRef = useRef(fm);
+  editHostFmRef.current = fm;
+  const closeAllViewsRef = useRef(closeAllViews);
+  closeAllViewsRef.current = closeAllViews;
+  useEffect(() => {
+    const live = () => editHostFmRef.current;
+    return registerEditFileHost(
+      createEditFileHost({
+        notes: () => (live().noteIndex?.notes ?? []).filter((n) => !n.deletedAt),
+        skills: () =>
+          [...live().skillMetas.entries()].map(([id, m]) => ({ id, title: m.title, system: !!m.systemSkillId })),
+        loadNote: (id) => live().loadDoc(id),
+        loadSkill: async (id) => live().getCachedDoc(`skill:${id}`) ?? (await getActiveProvider().loadSkillFile?.(id).then((d) => migrateToLatest(d, id))) ?? null,
+        saveNote: (id, doc) => live().patchNoteDocument(id, () => doc),
+        saveSkill: (id, doc) => live().handleSaveSkillFile(id, doc),
+        openNote: (id) => navigateToNoteRef.current(id),
+        openSkill: (id) => {
+          closeAllViewsRef.current();
+          live().handleOpenSkillFile(id);
+        },
+        agentLabel: () => getChatSynthesisModelName() || "ai",
+        // メインのエディタで開いていれば controller がエディタに書くので、ここに来るのはそれ以外の場所
+        isOpenElsewhere: (id) => allLivePeekIds().includes(id) || pendingEditorWorkIds().includes(id),
+      }),
+    );
+  }, []);
 
   // 別ウィンドウで編集しているノートを、このウィンドウの保存の列と保存後の処理につなぐ
   // （features/viewer-window/main-bridge.ts）。別ウィンドウの保存は、一覧のピークの保存と同じ

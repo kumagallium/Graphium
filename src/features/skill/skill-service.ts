@@ -450,7 +450,7 @@ function parseInlineMarkdown(line: string): { type: "text"; text: string; styles
  * 抽出側（inlineContentToMarkdown）は平文を書き換えずに通すので、既定にこれらを書いても
  * 書いたとおりの文字列が AI に渡り、未編集判定の往復（computeSystemSkillDefaultHash）も崩れない。
  */
-function parseMarkdownToBlocks(text: string): any[] {
+export function parseMarkdownToBlocks(text: string): any[] {
   const blocks: any[] = [];
   const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
 
@@ -592,7 +592,7 @@ function decodeUriSafely(uri: string): string {
  * 空 paragraph は空行として扱う（`""` を返す）。
  * 未対応のブロック種別は null を返してスキップする。
  */
-function blockToMarkdown(block: any): string | null {
+export function blockToMarkdown(block: any): string | null {
   if (!block) return null;
   const text = inlineContentToMarkdown(block.content);
 

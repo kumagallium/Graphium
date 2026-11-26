@@ -1431,6 +1431,27 @@ type ScopeChat = {
     // same link counted once whichever way it was walked. The graph beside
     // the chat draws these as thick dark green lines.
     walkedEdges?: { from: string; to: string }[];
+    // Assistant messages only: edits the AI suggested with `propose_edit`
+    // (one entry per note or skill). Nothing is changed when they are
+    // made; they are shown under the reply as before/after cards and saved
+    // only when the user presses Apply. `before` is the block's own text
+    // when the edit was suggested; applying compares it with the current
+    // text and refuses on a mismatch (marked "stale"), so a suggestion
+    // never overwrites a later edit. Applied / skipped states are not kept
+    // here but in the app-data entry `edit-proposal-status`
+    // (`{ [changeId]: "applied" | "declined" | "stale" | "failed" }`).
+    editProposals?: {
+      id: string;
+      target: { kind: "note" | "skill"; id: string; title: string };
+      reason?: string;
+      changes: {
+        id: string;
+        op: "replace" | "insert" | "delete"; // insert = after blockId
+        blockId: string;
+        before: string;
+        after?: string;                      // Markdown; replace / insert
+      }[];
+    }[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent

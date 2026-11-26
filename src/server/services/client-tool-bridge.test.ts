@@ -3,6 +3,7 @@ import {
   createClientToolBridge,
   resolveToolResult,
   normalizeClientTools,
+  clientToolsPrompt,
   pendingRunCountForTest,
   MAX_TOOL_OUTPUT_CHARS,
   TIMEOUT_RESULT,
@@ -132,5 +133,20 @@ describe("clientToolsPrompt（段 2 の来歴の道具）", () => {
     expect(p).toContain("`find_notes_using`, `get_note_steps`, `trace_lineage`, `list_entities`");
     expect(p).toContain("find_notes_using (or search_my_knowledge) → get_note_steps");
     expect(p).toContain("about 5 calls");
+  });
+});
+
+describe("書き換えの道具", () => {
+  it("書き換えの道具だけなら、書き換えの節だけを足す（検索の節は出さない）", () => {
+    expect(normalizeClientTools(["read_for_edit", "propose_edit"])).toEqual(["read_for_edit", "propose_edit"]);
+    const prompt = clientToolsPrompt(["read_for_edit", "propose_edit"]);
+    expect(prompt).toContain("## Editing the user's notes and skills");
+    expect(prompt).not.toContain("search_my_knowledge");
+  });
+
+  it("検索の道具と一緒なら両方の節を足す", () => {
+    const prompt = clientToolsPrompt(["search_my_knowledge", "read_my_page", "read_for_edit", "propose_edit"]);
+    expect(prompt).toContain("## Searching the user's Graphium");
+    expect(prompt).toContain("## Editing the user's notes and skills");
   });
 });

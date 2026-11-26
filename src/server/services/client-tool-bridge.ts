@@ -95,7 +95,65 @@ export const CLIENT_TOOL_DEFS: Record<string, { description: string; inputSchema
       additionalProperties: false,
     },
   },
+  // ── 書き換え: その場では書き換えず、修正案として出す（利用者が回答の下のカードで反映する） ──
+  read_for_edit: {
+    description:
+      "Read one of the user's own notes or skills for editing. Returns its blocks in order, each with a handle like [b3], " +
+      "its type, and its text. Blocks marked read-only cannot be rewritten or deleted (add a block after them instead). " +
+      "Call this before propose_edit, and again if you need fresh handles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: {
+          type: "string",
+          minLength: 1,
+          maxLength: 300,
+          description:
+            "\"this note\" for the note the chat is attached to, a note's exact title, or \"skill: <exact skill title>\" for a skill",
+        },
+      },
+      required: ["target"],
+      additionalProperties: false,
+    },
+  },
+  propose_edit: {
+    description:
+      "Suggest edits to a note or skill you read with read_for_edit. This does NOT change anything: the user sees each change " +
+      "as a before/after card under your answer and applies or skips it. Keep each change to the blocks that need it; " +
+      "do not rewrite blocks that stay the same.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", minLength: 1, maxLength: 300, description: "Same target string you passed to read_for_edit" },
+        reason: { type: "string", maxLength: 300, description: "One or two sentences on why, in the user's language" },
+        changes: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              op: { type: "string", enum: ["replace", "insert_after", "delete"] },
+              block: { type: "string", description: "Block handle from read_for_edit, e.g. b3" },
+              text: {
+                type: "string",
+                description:
+                  "New Markdown for replace / insert_after (headings ##, lists -, 1., quotes >, **bold**, `code`; one block per line)",
+              },
+            },
+            required: ["op", "block"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["target", "changes"],
+      additionalProperties: false,
+    },
+  },
 };
+
+/** 書き換えの道具（検索の節とは別の節で使い方を書く） */
+const EDIT_TOOLS = ["read_for_edit", "propose_edit"];
 
 /** 既知の道具名だけを残す（重複も除く） */
 export function normalizeClientTools(names: unknown): string[] {
@@ -109,6 +167,26 @@ export function normalizeClientTools(names: unknown): string[] {
 
 /** system prompt に足す道具の使い方の節 */
 export function clientToolsPrompt(names: string[]): string {
+  const sections: string[] = [];
+  if (names.some((n) => !EDIT_TOOLS.includes(n))) sections.push(searchToolsPrompt(names));
+  if (EDIT_TOOLS.every((n) => names.includes(n))) sections.push(EDIT_TOOLS_PROMPT);
+  return sections.join("\n\n");
+}
+
+/** 書き換えの道具の使い方の節 */
+export const EDIT_TOOLS_PROMPT = [
+  "## Editing the user's notes and skills",
+  "You cannot change the user's notes or skills directly. When the user asks you to fix, rewrite, add to, or tidy a note or skill, " +
+    "suggest the edit with the tools: read_for_edit, then propose_edit.",
+  "- Do not say you cannot edit. Do not tell the user to edit it by hand when the tools can suggest the change.",
+  "- \"This note\" means the note the chat is attached to. For a skill, pass \"skill: <title>\".",
+  "- Change only the blocks that need it, and keep the user's wording elsewhere.",
+  "- After proposing, say briefly in your answer what you suggested and why. Say that the user can apply it from the card below; " +
+    "never say the change has been made.",
+  "- Only use these tools when the user asks for a change. Do not suggest edits on your own while answering a question.",
+].join("\n");
+
+function searchToolsPrompt(names: string[]): string {
   const has = (n: string) => names.includes(n);
   const structural = ["find_notes_using", "get_note_steps", "trace_lineage", "list_entities"].filter(has);
   const lines = [
