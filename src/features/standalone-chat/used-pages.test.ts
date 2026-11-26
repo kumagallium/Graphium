@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { chatReadPageIds, chatUsedPageWeights, citedTitles, contextTitles, EARLIER_WEIGHT, latestWebSourceCount, outOfScopePageIds, usedPagesSignature } from "./used-pages";
+import {
+  chatReadPageIds,
+  chatUsedPageWeights,
+  citedTitles,
+  contextTitles,
+  EARLIER_WEIGHT,
+  latestWebSourceCount,
+  outOfScopePageIds,
+  unplottedPages,
+  usedPagesSignature,
+} from "./used-pages";
 
 const nodes = [
   { id: "w1", title: "発酵の温度" },
@@ -121,5 +131,61 @@ describe("outOfScopePageIds", () => {
       attached: new Set(["p"]),
     });
     expect([...ids].sort()).toEqual(["x", "y"]);
+  });
+});
+
+describe("点の無いページ（要約・素材）", () => {
+  const graphNodes = [
+    { id: "note-1", title: "来歴の理由" },
+    { id: "topic-1", title: "PROV-DM" },
+    { id: "voice", title: "音声ノート" },
+  ];
+  const standIns = new Map<string, string[]>([
+    ["sum-1", ["note-1"]],
+    ["media:wav-1", ["voice"]],
+  ]);
+  const titleToRef = new Map([
+    ["会議.wav", "asset:wav-1"],
+    ["PROV-DM", "wiki:topic-1"],
+    ["孤立した素材.wav", "asset:lonely"],
+  ]);
+
+  it("引用した素材は、代わりの点（使っているノート）を灯す", () => {
+    const w = chatUsedPageWeights([msg("assistant", '[Source: "PROV-DM"] [Source: "会議.wav"]')], graphNodes, titleToRef, standIns);
+    expect([...w]).toEqual([
+      ["topic-1", 1],
+      ["voice", 1],
+    ]);
+  });
+
+  it("読んだ要約・素材は、代わりの点を読んだことにする", () => {
+    const ids = chatReadPageIds(
+      [{ role: "assistant", readRefs: ["wiki:sum-1", "asset:wav-1", "wiki:topic-1", "asset:lonely"] }],
+      new Set(graphNodes.map((n) => n.id)),
+      [],
+      standIns,
+    );
+    expect([...ids].sort()).toEqual(["note-1", "topic-1", "voice"]);
+  });
+
+  it("参照が引けない引用でも、点の無いページの題名なら代わりの点を灯し、示せたものとして数える", () => {
+    const byTitle = new Map([["会議.wav", "media:wav-1"]]);
+    const w = chatUsedPageWeights([msg("assistant", '[Source: "会議.wav"]')], graphNodes, undefined, standIns, byTitle);
+    expect([...w]).toEqual([["voice", 1]]);
+    expect(
+      unplottedPages({ refs: ["asset:wav-1"], citedTitles: ["会議.wav"], nodes: graphNodes, standIns, standInByTitle: byTitle }),
+    ).toEqual({ placed: 1, missing: 0 });
+  });
+
+  it("元の点で示した数と、示せなかった数を分けて数える（読んで引用したページは 1 つ）", () => {
+    expect(
+      unplottedPages({
+        refs: ["wiki:sum-1", "asset:wav-1", "wiki:topic-1", "asset:lonely"],
+        citedTitles: ["会議.wav", "PROV-DM", "どこにも無い題名"],
+        nodes: graphNodes,
+        titleToRef,
+        standIns,
+      }),
+    ).toEqual({ placed: 2, missing: 2 });
   });
 });

@@ -156,6 +156,8 @@ On a wide window the chat screen shows your [Global Graph](/labels-and-provenanc
 
 While you wait for an answer, each page lights up once as the AI reads it, and the header counts them ("Reading 8"). When the answer arrives, a line between two pages the AI touched — both read or cited — turns green and stays, so you can see how the sources connect (for example a claim and the record it came from). Sparks run once along those green lines, starting from the cited pages, then stop; nothing lights up elsewhere. The links are easiest to see when you zoom in around the lit pages. The header then shows **Pages read** and **Used in this answer**, plus **Web sources** for an External answer.
 
+Summaries and materials such as audio have no point of their own on the graph. When the AI reads or cites one, the graph shows it on the note or source it came from, and the header counts these as **Shown via source**. Anything with no such page is counted as **Not on graph**.
+
 The graph also shows the scope you set. The header names it (for example *Internal · Folder "Spring batch"*), and when a **Folder to search** is chosen, pages outside it fade. Pages you attached with `@` get a purple ring. If the latest answer ever read or cited a page outside the folder it was asked in, that page gets a red dashed ring and the header counts it — this should not happen, so it tells you the scope was not kept. The colours stay when you reopen the conversation, because each answer keeps the list of pages it read. Clicking a page opens it in the side peek without leaving the chat.
 
 | | Note chat panel | Chat without a note |

@@ -8,10 +8,28 @@
 // 重み: いちばん新しい答えで使ったページは 1（ここだけ火花が走る。graph-firing の once）、
 // それより前の答えで使ったページは EARLIER_WEIGHT（薄く灯るだけ）。
 // 保存形式は変えない（会話の本文から毎回読み直す）。
+//
+// 全体グラフに点の無いページ（要約・素材）は、グラフの standIns で元のノートや出典の点に寄せる。
+// 寄せる先も無いページは灯せないので、「グラフに無い」として数だけ見出しに出す（unplottedPages）。
 
 import type { ChatMessage } from "../../lib/document-types";
 import { toUsageRef } from "../ai-usage/usage-log";
 import { usageRefToGraphId } from "../ai-usage/usage-activity";
+
+/** グラフに点の無いページ → 代わりに示す点（NoteGraphData.standIns） */
+export type StandIns = ReadonlyMap<string, readonly string[]>;
+
+/** グラフの ID を、点のある ID に直す。点が無ければ代わりの点、それも無ければ空 */
+export function toPlottedIds(id: string, nodeIds: ReadonlySet<string>, standIns?: StandIns): readonly string[] {
+  if (nodeIds.has(id)) return [id];
+  return standIns?.get(id) ?? [];
+}
+
+/** 参照（`wiki:` / `note:` / `asset:`）を、点のある ID に直す */
+function refToPlottedIds(ref: string, nodeIds: ReadonlySet<string>, standIns?: StandIns): readonly string[] {
+  const id = usageRefToGraphId(ref);
+  return id ? toPlottedIds(id, nodeIds, standIns) : [];
+}
 
 /** 前の答えで使ったページの重み（中くらいの緑で残すだけ。読んだだけのページより濃く） */
 export const EARLIER_WEIGHT = 0.5;
@@ -32,12 +50,16 @@ export function citedTitles(content: string): string[] {
  * 会話から、グラフのノード ID → 重み（0〜1）を作る。
  * - titleToRef: retriever の題名 → 参照（未指定なら題名だけで引く）
  * - nodes: いま全体グラフにあるノード（ID と題名）。ここに無いノードは返さない
+ * - standIns: 点の無いページ（要約・素材）→ 代わりの点。引用されたら代わりの点を灯す
+ * - standInByTitle: 参照が引けない引用の題名から standIns のキーを引く
  * 返す Map は「いちばん新しい答えのページ」が先に並ぶ（once の発火順）。
  */
 export function chatUsedPageWeights(
   messages: readonly Pick<ChatMessage, "role" | "content">[],
   nodes: readonly { id: string; title: string }[],
   titleToRef?: ReadonlyMap<string, string>,
+  standIns?: StandIns,
+  standInByTitle?: ReadonlyMap<string, string>,
 ): Map<string, number> {
   const nodeIds = new Set<string>();
   const idByTitle = new Map<string, string>();
@@ -46,14 +68,18 @@ export function chatUsedPageWeights(
     // 同じ題名が複数あるときは先のもの（グラフの並びの先＝知見が先に来る）を使う
     if (n.title && !idByTitle.has(n.title)) idByTitle.set(n.title, n.id);
   }
-  const resolve = (title: string): string | null => {
+  const resolve = (title: string): readonly string[] => {
     const raw = titleToRef?.get(title);
     if (raw) {
       const ref = toUsageRef(raw);
-      const id = ref ? usageRefToGraphId(ref) : null;
-      if (id && nodeIds.has(id)) return id;
+      const ids = ref ? refToPlottedIds(ref, nodeIds, standIns) : [];
+      if (ids.length > 0) return ids;
     }
-    return idByTitle.get(title) ?? null;
+    const byTitle = idByTitle.get(title);
+    if (byTitle) return [byTitle];
+    // 点の無いページ（要約・素材）の題名なら、代わりの点
+    const standIn = standInByTitle?.get(title);
+    return standIn ? (standIns?.get(standIn) ?? []) : [];
   };
 
   const answers = messages.filter((m) => m.role === "assistant");
@@ -62,8 +88,7 @@ export function chatUsedPageWeights(
   for (let i = answers.length - 1; i >= 0; i--) {
     const weight = i === answers.length - 1 ? 1 : EARLIER_WEIGHT;
     for (const title of citedTitles(answers[i].content)) {
-      const id = resolve(title);
-      if (id && !out.has(id)) out.set(id, weight);
+      for (const id of resolve(title)) if (!out.has(id)) out.set(id, weight);
     }
   }
   return out;
@@ -106,17 +131,18 @@ export function contextTitles(context: string): string[] {
 
 /**
  * 会話で AI が読んだページ（グラフのノード ID）。答えに記録した readRefs と、
- * 答えを待っているあいだに読んでいるページ（liveRefs）を合わせる。グラフに無いものは落とす。
+ * 答えを待っているあいだに読んでいるページ（liveRefs）を合わせる。点の無いページは
+ * 代わりの点（standIns）に寄せ、それも無いものは落とす（数は unplottedPages で出す）。
  */
 export function chatReadPageIds(
   messages: readonly Pick<ChatMessage, "role" | "readRefs">[],
   nodeIds: ReadonlySet<string>,
   liveRefs: readonly string[] = [],
+  standIns?: StandIns,
 ): Set<string> {
   const out = new Set<string>();
   const add = (ref: string) => {
-    const id = usageRefToGraphId(ref);
-    if (id && nodeIds.has(id)) out.add(id);
+    for (const id of refToPlottedIds(ref, nodeIds, standIns)) out.add(id);
   };
   for (const m of messages) if (m.role === "assistant") for (const r of m.readRefs ?? []) add(r);
   for (const r of liveRefs) add(r);
@@ -143,4 +169,46 @@ export function outOfScopePageIds(opts: {
   for (const [id, w] of weights) if (w >= 0.999 && outside(usedScope, id)) out.add(id);
   for (const id of readIds) if (outside(readScope, id)) out.add(id);
   return out;
+}
+
+/**
+ * いちばん新しい答え（または読んでいる途中）で AI が触れたページのうち、グラフに無いもの。
+ * - placed: 点の無いページを、元のノートや出典の点で示した数（要約・素材）
+ * - missing: 代わりの点も無く、グラフでは示せなかった数
+ * 読んだページ（refs）と引用した題名（citedTitles）を合わせ、同じページは 1 つに数える。
+ */
+export function unplottedPages(opts: {
+  refs: readonly string[];
+  citedTitles: readonly string[];
+  nodes: readonly { id: string; title: string }[];
+  titleToRef?: ReadonlyMap<string, string>;
+  standIns?: StandIns;
+  standInByTitle?: ReadonlyMap<string, string>;
+}): { placed: number; missing: number } {
+  const { refs, citedTitles: titles, nodes, titleToRef, standIns, standInByTitle } = opts;
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const nodeTitles = new Set(nodes.map((n) => n.title));
+  // キーはグラフの ID（引けない題名は題名そのもの）。同じページを読んで引用しても 1 つ
+  const placed = new Set<string>();
+  const missing = new Set<string>();
+  const judge = (graphId: string) => {
+    if (nodeIds.has(graphId)) return;
+    if ((standIns?.get(graphId)?.length ?? 0) > 0) placed.add(graphId);
+    else missing.add(graphId);
+  };
+  for (const ref of refs) {
+    const id = usageRefToGraphId(ref);
+    if (id) judge(id);
+  }
+  for (const title of titles) {
+    const raw = titleToRef?.get(title);
+    const ref = raw ? toUsageRef(raw) : null;
+    const id = ref ? usageRefToGraphId(ref) : null;
+    const standIn = id ? null : standInByTitle?.get(title);
+    if (id) judge(id);
+    else if (standIn) judge(standIn);
+    // 参照が引けず、題名でもグラフに見つからない引用は、示せなかったものとして数える
+    else if (!nodeTitles.has(title)) missing.add(`title:${title}`);
+  }
+  return { placed: placed.size, missing: missing.size };
 }

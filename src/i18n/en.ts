@@ -1646,6 +1646,10 @@ export const en: Record<string, string> = {
   "standaloneChat.graphAttached": "Passed with @ {n}",
   "standaloneChat.graphOutOfScope": "Used outside the scope {n}",
   "standaloneChat.graphWalked": "Links followed {n}",
+  "standaloneChat.graphStandIn": "Shown via source {n}",
+  "standaloneChat.graphStandInHint": "Summaries and materials such as audio have no point of their own on the graph, so they are shown on the note or source they came from",
+  "standaloneChat.graphUnplotted": "Not on graph {n}",
+  "standaloneChat.graphUnplottedHint": "The AI read or used these, but they have no point on the graph and no source page to show instead",
   // Which folder to search (a separate axis from grounding)
   "standaloneChat.folderScope.label": "Folder to search",
   "standaloneChat.folderScope.all": "All folders",
