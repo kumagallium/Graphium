@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.2](https://github.com/kumagallium/Graphium/compare/v0.173.1...v0.173.2) - 2026-11-26
+
+- fix: wrap long upkeep progress text in the generation panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/1898
+
 ## [v0.173.1](https://github.com/kumagallium/Graphium/compare/v0.173.0...v0.173.1) - 2026-11-26
 
 - [fix] Stop long stalls and discarded output in Build Topics from Sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1897
