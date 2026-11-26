@@ -48,6 +48,24 @@ export const Success: Story = {
   args: { phase: { kind: "connected", model: { id: "gpt-5", name: "GPT-5" } } },
 };
 
+/** つながった直後: 使うモデルを選んでから追加する（先頭を選んでおく） */
+export const ChooseModel: Story = {
+  args: {
+    phase: {
+      kind: "choose",
+      models: [
+        { id: "gpt-5.5", name: "GPT-5.5" },
+        { id: "gpt-5.5-mini", name: "GPT-5.5 mini" },
+        { id: "gpt-5.5-codex", name: "gpt-5.5-codex" },
+      ],
+      selected: "gpt-5.5",
+      welcomed: true,
+    },
+    onSelectModel: () => {},
+    onPickModel: () => {},
+  },
+};
+
 /** 初回だけの案内（閉じたらモデルを登録する） */
 export const Welcome: Story = {
   args: { phase: { kind: "welcome", model: { id: "gpt-5", name: "GPT-5" } } },

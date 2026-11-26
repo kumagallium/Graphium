@@ -40,11 +40,14 @@ export function ChatGptPlanConnect({
     let cancelled = false;
     api
       .getStatus()
-      .then((status) => !cancelled && dispatch({ type: "init", status }))
+      // 選択画面から始めた接続（モデルを足す）なら、サインイン済みのときはサインインを飛ばす
+      .then((status) => !cancelled && dispatch({ type: "init", status, resume: mode === "embedded" }))
       .catch(() => !cancelled && dispatch({ type: "init", status: null }));
     return () => {
       cancelled = true;
     };
+    // mode は開いたときの値だけを使う
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // autoStart: 最初の idle で一度だけ流れを始める（失敗やキャンセルで idle に戻っても繰り返さない）
@@ -124,12 +127,13 @@ export function ChatGptPlanConnect({
     let cancelled = false;
     api
       .getModels()
-      .then((result) => !cancelled && dispatch({ type: "models", result }))
+      // 選択画面から始めた接続ではモデルを選んでもらう。サインインし直しは登録しないので選ばせない
+      .then((result) => !cancelled && dispatch({ type: "models", result, choose: mode === "embedded" }))
       .catch((err) => !cancelled && dispatch({ type: "error", ...errInfo(err) }));
     return () => {
       cancelled = true;
     };
-  }, [phase.kind]);
+  }, [phase.kind, mode]);
 
   // 確認が済んだら登録を親に任せる（失敗しても親が表示するので、ここは最初の画面に戻す）
   const connectedModel = phase.kind === "connected" ? phase.model : null;
@@ -151,6 +155,8 @@ export function ChatGptPlanConnect({
       phase={phase}
       mode={mode}
       onStart={() => dispatch({ type: "click" })}
+      onSelectModel={(id) => dispatch({ type: "select", id })}
+      onPickModel={() => dispatch({ type: "pick" })}
       onCancelSignIn={() => {
         void api.cancelSignIn().catch(() => {});
         dispatch({ type: "reset" });

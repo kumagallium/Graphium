@@ -323,6 +323,9 @@ app.post("/", async (c) => {
     if (!source) {
       return c.json({ error: "Source model not found" }, 404);
     }
+    // 認証情報を借りるのだから、プロバイダーも借り元に揃える（画面の取り違えで別のプロバイダー名の
+    // モデルができたり、キーの無いサブスク型が「キーが無い」で断られたりしないように）
+    body.provider = source.provider;
     if (wouldSendStoredKeyElsewhere(source, apiBase)) {
       // 別の接続先へは保存済みキーを引き継がない。要求のキーがあればそれを使う
       if (!body.api_key) return keyReentryRequired(c);

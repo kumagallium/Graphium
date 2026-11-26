@@ -1416,6 +1416,8 @@ export const en: Record<string, string> = {
   "settings.chatgptPlan.denied": "Sign-in was not completed. You can try again whenever you like.",
   "settings.chatgptPlan.notEligible": "ChatGPT did not complete the sign-in for this account. This way of connecting is for personal ChatGPT Plus / Pro plans, and may not work with the free plan or with a company, school, or program workspace. Try another account, or connect another way such as an API key.",
   "settings.chatgptPlan.checkFailed": "Could not check the connection.",
+  "settings.chatgptPlan.chooseModel": "Connected to ChatGPT. Choose the model to use.",
+  "settings.chatgptPlan.chooseModelHint": "You can add other models later from Add model.",
   "settings.chatgptPlan.row.signedOut": "Signed out of ChatGPT. Sign in again to use this model.",
   "settings.chatgptPlan.revokeHint": "You can also disconnect from ChatGPT settings.",
   "settings.models.edit": "Edit",

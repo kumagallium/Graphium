@@ -95,14 +95,14 @@ What you give the AI — notes, materials, chats — is sent to GitHub Copilot. 
 ::: info The Claude subscription provider was removed
 ### Connect with your ChatGPT plan {#chatgpt-plan}
 
-If you have a personal ChatGPT Plus or Pro subscription, click **Continue with ChatGPT** under **Use your ChatGPT plan**. ChatGPT opens in your browser; sign in and allow Graphium to use your plan. When you are done, the Graphium screen updates and one model is registered. No API key is needed. Graphium itself stays free, and AI use counts toward your ChatGPT plan's allowance.
+If you have a personal ChatGPT Plus or Pro subscription, click **Continue with ChatGPT** under **Use your ChatGPT plan**. ChatGPT opens in your browser; sign in and allow Graphium to use your plan. When you are done, the Graphium screen updates and lists the models your plan offers. Choose one and click **Add** to register it. No API key is needed. Graphium itself stays free, and AI use counts toward your ChatGPT plan's allowance.
 
 This uses "Sign in with ChatGPT", which OpenAI offers to open-source apps that run on the user's own computer. Graphium receives only the permission to call AI on your plan; it cannot see your ChatGPT conversations or API keys. The permission is stored in Graphium's data folder on this computer, readable only by you.
 
 - **See or adjust usage:** **Manage usage** on the registered model's row opens Usage in ChatGPT settings. Graphium tells you when a limit is reached, but it cannot see how much is left or when it resets — check ChatGPT settings for that.
 - **Sign out:** click **Sign out** on the model's row. The model stays registered, so signing in again makes it work as before. You can also disconnect Graphium from ChatGPT settings.
 - **If you have been signed out:** the top of **Settings → AI** shows "You have been signed out of ChatGPT" — click **Sign in again**.
-- **Add another model:** under **Add another model from a service you already use**, pick ChatGPT and choose from the models your plan offers.
+- **Add another model:** in **Add model**, click **Continue with ChatGPT** again. If you are still signed in, the model list appears without opening the browser. You can also pick ChatGPT under **Add another model from a service you already use** and choose from the same list.
 - **It works with personal Plus / Pro plans:** the free plan, and workspaces provided by an organization — a company, a school, or a researcher program — may not work. On 2026-11-13, sign-in could not be completed with a personal account on the free plan, nor with an academic researcher workspace (with plan use allowed by its administrator). OpenAI's own sample code gave the same result. It can look like one of three things. In every case, sign in with a personal Plus / Pro account or connect another way.
   - The browser shows an authentication error saying that your organization restricts access to this open-source app. The organization's settings have it turned off. Graphium is told nothing, so click **Cancel** in Graphium. An organization's administrator can allow it in the external access settings of OpenAI's admin console.
   - The permission screen says that a required permission is unavailable and you can't continue with this workspace and plan, and **Continue** cannot be clicked. Click **Cancel** in Graphium.

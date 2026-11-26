@@ -260,3 +260,16 @@ describe.skipIf(process.platform === "win32")("models.json は本人だけが読
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });
+
+describe("既存の接続先からモデルを足す（source_model_id）", () => {
+  it("プロバイダーは借り元に揃える: キーの無い chatgpt-plan も、画面が別の provider を送っても登録できる", async () => {
+    const src = await post({ model_name: "GPT A", provider: "chatgpt-plan", model_id: "gpt-a", api_key: "" });
+    expect(src.status).toBe(201);
+    // 画面の取り違え（初期値の anthropic のまま）を再現する
+    const r = await post({ model_name: "GPT B", provider: "anthropic", model_id: "gpt-b", source_model_id: String(src.body.id) });
+    expect(r.status).toBe(201);
+    const list = await app.request("/");
+    const body = (await list.json()) as { models: { name: string; provider: string }[] };
+    expect(body.models.find((m) => m.name === "GPT B")?.provider).toBe("chatgpt-plan");
+  });
+});

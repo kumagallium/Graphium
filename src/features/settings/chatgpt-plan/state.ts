@@ -16,6 +16,8 @@ export type Phase =
   | { kind: "waiting" }
   /** モデル一覧で接続とプラン利用の許可を確かめている。welcomed: 初回の案内を済ませているか */
   | { kind: "verifying"; welcomed: boolean }
+  /** 使えるモデルから 1 つ選んでもらう（つなぎ先の選択画面から始めた接続だけ）。selected は先頭を選んでおく */
+  | { kind: "choose"; models: ChatGptModel[]; selected: string; welcomed: boolean }
   /** 初回だけの案内（閉じたら登録に進む） */
   | { kind: "welcome"; model: ChatGptModel }
   /** 確認が済み、モデルを登録している */
@@ -32,14 +34,20 @@ export type Phase =
   | { kind: "checkFailed"; message: string | null };
 
 export type Action =
-  | { type: "init"; status: ChatGptStatus | null }
+  /** resume: すでにサインイン済みなら、サインインを飛ばしてモデルの確認から始める（モデルを足すとき） */
+  | { type: "init"; status: ChatGptStatus | null; resume?: boolean }
   | { type: "click" }
   /** サインインを始められた（ブラウザを開いた） */
   | { type: "started" }
   /** 別の流れがすでに進行中だった（409） */
   | { type: "alreadySigningIn" }
   | { type: "status"; status: ChatGptStatus }
-  | { type: "models"; result: ChatGptModelsResult }
+  /** choose: 登録するモデルを利用者に選んでもらう（false なら先頭で進める。サインインし直しは登録しないため） */
+  | { type: "models"; result: ChatGptModelsResult; choose?: boolean }
+  /** 選ぶ画面でモデルを変えた */
+  | { type: "select"; id: string }
+  /** 選ぶ画面で「追加する」 */
+  | { type: "pick" }
   | { type: "error"; code: string | null; message: string | null }
   | { type: "welcomeDone" }
   | { type: "reset" };
@@ -47,6 +55,9 @@ export type Action =
 /** サーバーのエラーコードから失敗の画面を決める */
 export function failurePhase(code: string | null, message: string | null): Phase {
   switch (code) {
+    // サインインが切れていた（サインインを飛ばして始めたとき）: サインインの入口に戻す
+    case "CHATGPT_NOT_SIGNED_IN":
+      return { kind: "idle" };
     case "CHATGPT_PORT_IN_USE":
       return { kind: "portInUse" };
     case "CHATGPT_ACCESS_DENIED":
@@ -61,16 +72,23 @@ export function failurePhase(code: string | null, message: string | null): Phase
 }
 
 /** 最初の status から開く画面を決める（承認待ちが裏で続いていれば復元する） */
-function fromInit(status: ChatGptStatus | null): Phase {
+function fromInit(status: ChatGptStatus | null, resume: boolean): Phase {
   if (!status || !status.available) return { kind: "unavailable" };
   if (status.signIn.state === "waiting") return { kind: "waiting" };
+  // サインイン済みでプランの利用も許可されている: もう一度サインインさせず、モデルの確認へ
+  if (resume && status.account?.planUsage) return { kind: "verifying", welcomed: status.account.welcomed };
   return { kind: "idle" };
+}
+
+/** モデルが決まったあと: 初回なら案内を挟み、済んでいれば登録へ */
+function afterPick(model: ChatGptModel, welcomed: boolean): Phase {
+  return welcomed ? { kind: "connected", model } : { kind: "welcome", model };
 }
 
 export function reducer(phase: Phase, action: Action): Phase {
   switch (action.type) {
     case "init":
-      return phase.kind === "loading" ? fromInit(action.status) : phase;
+      return phase.kind === "loading" ? fromInit(action.status, action.resume ?? false) : phase;
     case "click":
       return { kind: "starting" };
     case "reset":
@@ -95,10 +113,20 @@ export function reducer(phase: Phase, action: Action): Phase {
       if (phase.kind !== "verifying") return phase;
       const r = action.result;
       if (!r.ok) return failurePhase(r.code, r.message ?? null);
-      const first = r.models[0];
+      const models = r.models.map((m) => ({ id: m.id, name: m.name || m.id }));
+      const first = models[0];
       if (!first) return { kind: "checkFailed", message: null };
-      const model = { id: first.id, name: first.name || first.id };
-      return phase.welcomed ? { kind: "connected", model } : { kind: "welcome", model };
+      if (action.choose) return { kind: "choose", models, selected: first.id, welcomed: phase.welcomed };
+      return afterPick(first, phase.welcomed);
+    }
+    case "select":
+      return phase.kind === "choose" && phase.models.some((m) => m.id === action.id)
+        ? { ...phase, selected: action.id }
+        : phase;
+    case "pick": {
+      if (phase.kind !== "choose") return phase;
+      const model = phase.models.find((m) => m.id === phase.selected) ?? phase.models[0];
+      return model ? afterPick(model, phase.welcomed) : phase;
     }
     case "welcomeDone":
       return phase.kind === "welcome" ? { kind: "connected", model: phase.model } : phase;
