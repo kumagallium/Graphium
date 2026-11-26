@@ -248,6 +248,50 @@ jobs:
       - name: Build Tauri app (Windows)
         run: pnpm exec tauri build --target x86_64-pc-windows-msvc
 
+      # 自動更新の経路を実地で通す: 入れる → 起動 → 起動中のまま、updater と同じ引数
+      # （/P /UPDATE /R）でインストーラを走らせる。v0.172 で、自動更新のたびに
+      # "Failed to kill Graphium" で止まる利用者がいた。どの CI もインストーラを
+      # 起動中のアプリに対して走らせていなかったので、ここで確かめる。
+      - name: Smoke test in-app update over a running Graphium
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe' | Select-Object -First 1).FullName
+          $installDir = Join-Path $env:LOCALAPPDATA 'Graphium'
+          $exe = Join-Path $installDir 'Graphium.exe'
+
+          # 1. 初回インストール（何も動いていない状態）
+          $p = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru -Wait
+          Write-Host "first install: exit=$($p.ExitCode)"
+          if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) { throw 'first install failed' }
+
+          # 2. 起動して sidecar まで立ち上がるのを待つ
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "Graphium exited early: exit=$($app.ExitCode)" }
+          Get-Process -Name Graphium, node -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, Path -AutoSize
+
+          # 3. 診断の表示を確かめる。-TimeoutSec 0 なら止めずにすぐ一覧を出す。
+          #    起動中なので「開いているプロセス」に Graphium の PID が出るはず
+          $diag = & powershell -NoProfile -ExecutionPolicy Bypass -File 'src-tauri/windows/wait-app-exit.ps1' -InstallDir $installDir -TimeoutSec 0
+          $diag | ForEach-Object { Write-Host $_ }
+          if (-not ($diag -match "PID $($app.Id)")) { throw 'wait-app-exit.ps1 did not list the running Graphium' }
+          if ($app.HasExited) { throw 'wait-app-exit.ps1 with -TimeoutSec 0 must not stop the app' }
+
+          # 4. 自動更新と同じ引数で、起動中のアプリの上からインストールする
+          $u = Start-Process -FilePath $setup -ArgumentList '/P', '/UPDATE', '/R' -PassThru
+          if (-not $u.WaitForExit(180000)) {
+            $u.Kill()
+            throw 'update install did not finish within 180s (stuck on an error page?)'
+          }
+          Write-Host "update install: exit=$($u.ExitCode)"
+          if ($u.ExitCode -ne 0) { throw "update install failed: exit=$($u.ExitCode)" }
+
+          # 5. 片付け（/R で立ち上がり直したアプリも止める）
+          Start-Sleep -Seconds 5
+          Get-Process -Name Graphium -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$installDir\sidecar\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
       - name: Collect artifacts
         shell: pwsh
         run: |
