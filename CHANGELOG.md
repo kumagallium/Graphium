@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.172.5](https://github.com/kumagallium/Graphium/compare/v0.172.4...v0.172.5) - 2026-11-26
+
+- [fix] Show per-source progress in Build Topics from Sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1891
+
 ## [v0.172.4](https://github.com/kumagallium/Graphium/compare/v0.172.3...v0.172.4) - 2026-11-26
 
 - [fix] Show summaries and materials the chat AI touched on the graph beside it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1889
