@@ -48,7 +48,6 @@ export const Success: Story = {
   args: { phase: { kind: "connected", model: { id: "gpt-5", name: "GPT-5" } } },
 };
 
-/** 初回だけの案内（閉じたらモデルを登録する） */
 /** つながった直後: 使うモデルを選んでから追加する（先頭を選んでおく） */
 export const ChooseModel: Story = {
   args: {
@@ -67,6 +66,7 @@ export const ChooseModel: Story = {
   },
 };
 
+/** 初回だけの案内（閉じたらモデルを登録する） */
 export const Welcome: Story = {
   args: { phase: { kind: "welcome", model: { id: "gpt-5", name: "GPT-5" } } },
 };
