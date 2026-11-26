@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.1](https://github.com/kumagallium/Graphium/compare/v0.173.0...v0.173.1) - 2026-11-26
+
+- [fix] Stop long stalls and discarded output in Build Topics from Sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1897
+
 ## [v0.173.0](https://github.com/kumagallium/Graphium/compare/v0.172.5...v0.173.0) - 2026-11-26
 
 - [feat] Let AI chat suggest edits to notes and skills as apply-able cards by @kumagallium in https://github.com/kumagallium/Graphium/pull/1894
