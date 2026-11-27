@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type SetStateAction } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, ListChecks, Bot, History, FileText, FileType, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin, MoveHorizontal, RectangleVertical, ClipboardList, LayoutTemplate, GitPullRequestArrow, Sparkles, FolderInput, UploadCloud, Smartphone } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { isUnknownModelTopic, runUnknownModelBackfill, type UsageEventLite } from "./features/wiki/unknown-model-backfill";
 import { openExternalUrl } from "./lib/external-link";
 import { manualHomeUrl } from "./features/app-help/manual-url";
 import { notifyViewerCapturesChanged, onOpenInMainRequest } from "./lib/viewer-window";
@@ -15156,6 +15157,56 @@ export function NoteApp() {
       setWikiTopicMembers(new Map());
     }
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+
+  // モデル名が "unknown" で保存されたトピックに、書いたモデルを利用量の記録から書き戻す（起動時に 1 回）。
+  // v0.156.4〜v0.173.3 の「資料からトピックを作る」が記録用のモデル名を渡していなかった（#1906 で修正）。
+  // 利用量の記録は端末ごと（サーバーのデータ置き場）なので、照らし合わせて決まらなかったページは
+  // この端末で覚えて次から飛ばす（全体の「済み」の印にすると、作った端末で直せなくなる）。
+  const unknownModelBackfillDoneRef = useRef(false);
+  useEffect(() => {
+    if (unknownModelBackfillDoneRef.current) return;
+    if (fm.wikiMetas.size === 0 || !fm.noteIndex) return;
+    unknownModelBackfillDoneRef.current = true;
+    const SKIP_KEY = "graphium.unknownModelBackfill.unresolved.v1";
+    let skip = new Set<string>();
+    try {
+      const raw = localStorage.getItem(SKIP_KEY);
+      if (raw) skip = new Set(JSON.parse(raw) as string[]);
+    } catch { /* 読めなければ全件を見る */ }
+    const candidateIds: string[] = [];
+    for (const [id, meta] of fm.wikiMetas) {
+      if (meta.model !== "unknown" || skip.has(id)) continue;
+      // 本文はキャッシュ済み（メタより先に積まれる）。資料から書いたトピックだけを対象にする
+      if (isUnknownModelTopic(fm.getCachedDoc(`wiki:${id}`))) candidateIds.push(id);
+    }
+    if (candidateIds.length === 0) return;
+    void (async () => {
+      try {
+        const res = await fetch(`${apiBase()}/usage`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { raw?: UsageEventLite[]; mode?: string };
+        // 記録を持たない動き方（vercel）は何もしない
+        if (data.mode === "vercel" || !Array.isArray(data.raw)) return;
+        const unresolvedIds: string[] = [];
+        const result = await runUnknownModelBackfill({
+          candidateIds,
+          events: data.raw,
+          loadDoc: async (id) => fmRef.current.getCachedDoc(`wiki:${id}`) ?? (await fmRef.current.loadDoc(`wiki:${id}`)),
+          // activityType なし = 来歴上の編集にしない（モデル名だけを書き戻す。modifiedAt も進めない）
+          saveDoc: (id, doc) => fmRef.current.handleSaveWikiFile(id, doc),
+          onUnresolved: (id) => unresolvedIds.push(id),
+        });
+        if (unresolvedIds.length > 0) {
+          try {
+            localStorage.setItem(SKIP_KEY, JSON.stringify([...skip, ...unresolvedIds]));
+          } catch { /* 覚えられなくても次の起動で同じ判定をするだけ */ }
+        }
+        console.info("[unknown-model-backfill]", { candidates: candidateIds.length, ...result });
+      } catch (err) {
+        console.warn("[unknown-model-backfill] failed:", err);
+      }
+    })();
+  }, [fm.wikiMetas, fm.noteIndex, fm.getCachedDoc]);
 
   // 定期 Lint: アプリ起動時に前回 Lint から 24h 以上経過していれば自動実行
   const startupLintDoneRef = useRef(false);
