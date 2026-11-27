@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.10](https://github.com/kumagallium/Graphium/compare/v0.173.9...v0.173.10) - 2026-11-27
+
+- Stop a sidecar whose event loop is blocked by @kumagallium in https://github.com/kumagallium/Graphium/pull/1919
+
 ## [v0.173.9](https://github.com/kumagallium/Graphium/compare/v0.173.8...v0.173.9) - 2026-11-27
 
 - Show knowledge page citations as numbers, and link titles with brackets by @kumagallium in https://github.com/kumagallium/Graphium/pull/1916
