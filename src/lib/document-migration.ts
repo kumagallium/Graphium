@@ -23,6 +23,7 @@
 import type { GraphiumDocument } from "./document-types";
 import { normalizeLabel, classifyLabel } from "../features/context-label/labels";
 import { resolveNoteKind } from "../features/note-context/reserved-folders";
+import { repairRawTitleCitations } from "../features/wiki/repair-raw-citations";
 
 export const LATEST_DOCUMENT_VERSION = 6;
 
@@ -91,6 +92,11 @@ export function migrateToLatest(doc: GraphiumDocument, selfId?: string): Graphiu
   // （version 非依存、毎回 idempotent）。詳細は stripBookmarkOgImage を参照。
   // 上の掃除とは対象が別（links / bookmark props）なので順序に依存しない。
   stripBookmarkOgImage(doc);
+
+  // ナレッジページの本文に生のまま残った引用 `[[題]]`（題に [ ] を含む資料で、
+  // v0.173.8 までの読み取りが拾えなかったもの）を @リンクに戻す（version 非依存、毎回 idempotent）。
+  // 直したあとは生の文字が残らないので、2 度目以降は何もしない
+  repairRawTitleCitations(doc);
 
   // ノートの種類（kind）を埋める（version 非依存、毎回 idempotent）。
   // kind を持たない旧ノートは旧予約フォルダ「計画」に入っているかで読み替え、その値を
