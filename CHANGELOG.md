@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.173.9](https://github.com/kumagallium/Graphium/compare/v0.173.8...v0.173.9) - 2026-11-27
+
+- Show knowledge page citations as numbers, and link titles with brackets by @kumagallium in https://github.com/kumagallium/Graphium/pull/1916
+- Read model rates once when recalculating usage costs by @kumagallium in https://github.com/kumagallium/Graphium/pull/1917
+- [fix] Renew the phone's Google Drive connection in the same tap as saving by @kumagallium in https://github.com/kumagallium/Graphium/pull/1920
+
 ## [v0.173.8](https://github.com/kumagallium/Graphium/compare/v0.173.7...v0.173.8) - 2026-11-27
 
 - fix: open notes the editor cannot load instead of crashing the whole app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1914
