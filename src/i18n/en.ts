@@ -75,6 +75,7 @@ export const en: Record<string, string> = {
   "crash.copy": "Copy details",
   "crash.copied": "Copied",
   "crash.details": "Error details",
+  "editor.repairedContent": "{count} part(s) of this note couldn’t be shown as they were. They’re shown as plain text, and the note is open read-only.",
   "startup.initFailedPermission": "Graphium could not open your notes folder — macOS is withholding access.",
   "startup.initFailedTimeout": "Reading your notes folder is taking longer than usual. Reloading usually clears it.",
   "startup.initFailedMissing": "Graphium could not find your notes folder. If you keep it on an external drive or a synced folder, check that it is available.",
