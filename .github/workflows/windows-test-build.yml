@@ -287,8 +287,36 @@ jobs:
           Write-Host "update install: exit=$($u.ExitCode)"
           if ($u.ExitCode -ne 0) { throw "update install failed: exit=$($u.ExitCode)" }
 
-          # 5. 片付け（/R で立ち上がり直したアプリも止める）
+          # 5. 他のソフトが Graphium.exe を掴んだままの状態を作る（v0.172.2 で McAfee
+          #    Framework Host が掴んで毎回止まった利用者の再現）。アプリは止め、別の
+          #    PowerShell に Graphium.exe を開かせたままにする
           Start-Sleep -Seconds 5
+          Get-Process -Name Graphium -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          $holderCmd = "`$f = [IO.File]::Open('$exe', 'Open', 'Read', 'ReadWrite, Delete'); Start-Sleep -Seconds 600"
+          $holder = Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-Command', $holderCmd -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          $diag2 = & powershell -NoProfile -ExecutionPolicy Bypass -File 'src-tauri/windows/wait-app-exit.ps1' -InstallDir $installDir -TimeoutSec 5
+          $diagExit = $LASTEXITCODE
+          $diag2 | ForEach-Object { Write-Host $_ }
+          Write-Host "wait-app-exit.ps1 with another holder: exit=$diagExit"
+          if ($diagExit -ne 2) { throw 'expected exit 2 (only other programs hold Graphium.exe)' }
+
+          # 6. その状態で、自動更新と同じ引数でインストールする。旧 Graphium.exe を退避して
+          #    先へ進むので、掴んでいるプロセスはテンプレートに止められず生き残るはず
+          $u2 = Start-Process -FilePath $setup -ArgumentList '/P', '/UPDATE' -PassThru
+          if (-not $u2.WaitForExit(180000)) {
+            $u2.Kill()
+            throw 'update install with another holder did not finish within 180s'
+          }
+          Write-Host "update install with another holder: exit=$($u2.ExitCode)"
+          Get-ChildItem -LiteralPath $installDir -Filter 'Graphium.exe*' | Format-Table Name, Length -AutoSize
+          if ($u2.ExitCode -ne 0) { throw "update install with another holder failed: exit=$($u2.ExitCode)" }
+          if (-not (Test-Path -LiteralPath $exe)) { throw 'Graphium.exe missing after update' }
+          if ($holder.HasExited) { throw 'the holder was shut down: the old Graphium.exe was not moved aside' }
+          $holder.Kill()
+
+          # 7. 片付け（/R で立ち上がり直したアプリも止める）
           Get-Process -Name Graphium -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$installDir\sidecar\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 

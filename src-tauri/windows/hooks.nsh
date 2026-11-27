@@ -18,7 +18,23 @@
 ; （生成された installer.nsi）のフォルダになるので、読み込んだ時点で固定しておく
 !define GRAPHIUM_HOOKS_DIR "${__FILEDIR__}"
 
+!include LogicLib.nsh
+
+; 他のソフトに掴まれた旧 Graphium.exe を退避した先（退避していなければ空）
+Var GraphiumMovedExe
+
+; 退避したあとでインストールが失敗したら、Graphium.exe が無いまま終わらないよう戻す
+Function .onInstFailed
+  ${If} $GraphiumMovedExe != ""
+  ${AndIfNot} ${FileExists} "$INSTDIR\Graphium.exe"
+    Rename "$GraphiumMovedExe" "$INSTDIR\Graphium.exe"
+  ${EndIf}
+FunctionEnd
+
 !macro NSIS_HOOK_PREINSTALL
+  StrCpy $GraphiumMovedExe ""
+  ; 前回までに退避した旧 Graphium.exe を消す（まだ掴まれていれば残るが、害は無い）
+  Delete "$INSTDIR\Graphium.exe.*.old"
   DetailPrint "Stopping Graphium processes..."
   ; 1. 本体をプロセスツリーごと終了（/T で子の node.exe も同時に死ぬ）。
   ;    インストーラ自身はイメージ名が異なるため巻き込まれない。
@@ -36,6 +52,30 @@
   File "/oname=$PLUGINSDIR\wait-app-exit.ps1" "${GRAPHIUM_HOOKS_DIR}\wait-app-exit.ps1"
   nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\wait-app-exit.ps1" -InstallDir "$INSTDIR"`
   Pop $0
-  ; 4. OS がファイルハンドルを解放するまで少し待つ
+  ; 4. 掴んでいるのが Graphium 以外（ウイルス対策ソフトなど）だけなら、旧 Graphium.exe
+  ;    の名前を変えて退ける。テンプレートの判定は $INSTDIR\Graphium.exe を見るので、
+  ;    ファイルが無ければ先へ進み、新しい Graphium.exe が置かれる。v0.172.2 で、
+  ;    McAfee Framework Host（権限不足で閉じられない）が掴んだまま毎回止まる利用者がいた。
+  ;    名前の変更まで拒まれたら何もせず、テンプレートの判定に任せる（今までどおり中断）
+  ${If} $0 == 2
+    System::Call 'kernel32::GetTickCount() i .r1'
+    StrCpy $GraphiumMovedExe "$INSTDIR\Graphium.exe.$1.old"
+    ClearErrors
+    Rename "$INSTDIR\Graphium.exe" "$GraphiumMovedExe"
+    ${If} ${Errors}
+      DetailPrint "Could not move the old Graphium.exe aside (another program blocks renaming it)"
+      StrCpy $GraphiumMovedExe ""
+    ${Else}
+      DetailPrint "Moved the old Graphium.exe aside to $GraphiumMovedExe"
+    ${EndIf}
+  ${EndIf}
+  ; 5. OS がファイルハンドルを解放するまで少し待つ
   Sleep 1000
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  ; 退避した旧 Graphium.exe を消す。まだ掴まれていて消せなければ、次の更新で消す
+  ${If} $GraphiumMovedExe != ""
+    Delete "$GraphiumMovedExe"
+  ${EndIf}
 !macroend
