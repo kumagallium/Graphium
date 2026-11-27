@@ -247,6 +247,16 @@ fn start_native_sidecar(
         }
     }
 
+    // 応答しないまま port を握っている古い sidecar を落とす（HTTP の応答で見つける
+    // フロント側の入れ替えでは拾えない相手。詳細は kill_stale_sidecars_on_port）
+    #[cfg(unix)]
+    for stale in kill_stale_sidecars_on_port(port) {
+        emit_log(
+            &app,
+            format!("[native] killed unresponsive sidecar on port {port} pid={stale}"),
+        );
+    }
+
     // node 実行ファイルを resolve。fetch-node.mjs が
     //   - Windows: src-tauri/sidecar/node.exe
     //   - macOS / Linux: src-tauri/sidecar/node
@@ -726,7 +736,105 @@ fn kill_pid_sync(pid: u32) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
+    #[cfg(unix)]
+    spawn_kill_escalation(pid);
     Ok(())
+}
+
+/// SIGTERM のあとも残っている sidecar を SIGKILL で落とす後追い（Unix）。
+///
+/// sidecar の SIGTERM は JS のハンドラが受けて `process.exit` する（process-lifecycle.ts）。
+/// 重い同期処理でイベントループが塞がっているとハンドラが走らず、SIGTERM では止まらない。
+/// アプリ終了後も port 3001 を握ったまま残り、次の起動でバックエンドが立ち上がらなくなる
+/// （v0.173.8 でコスト再計算が何時間も塞いだときに踏んだ）。
+///
+/// 後追いは別プロセス（sh）に任せる。直後に本体が終了する経路（⌘Q）でも生き残るようにするため。
+/// 正常な sidecar は SIGTERM から数 ms で消えるので、その場合は何もしない。
+/// PID の使い回しに備えて、落とす直前にもう一度 sidecar のコマンドラインか確かめる。
+#[cfg(unix)]
+fn spawn_kill_escalation(pid: u32) {
+    const SCRIPT: &str = r#"sleep 3; /bin/ps -p "$0" -o command= | /usr/bin/grep -qi 'sidecar/server\.mjs' && /bin/kill -KILL "$0""#;
+    let spawned = std::process::Command::new("/bin/sh")
+        .args(["-c", SCRIPT, &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = spawned {
+        // 本体が生きている間はゾンビを残さない
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
+}
+
+/// `lsof -t` の出力（1 行 1 PID）を PID の一覧にする。
+#[cfg(unix)]
+fn parse_lsof_pids(stdout: &str) -> Vec<u32> {
+    let mut pids: Vec<u32> = stdout
+        .lines()
+        .filter_map(|l| l.trim().parse::<u32>().ok())
+        .filter(|pid| *pid > 0)
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+/// 指定 port で待ち受けているプロセスの PID を OS から引く（Unix）。lsof が無ければ空。
+#[cfg(unix)]
+fn listener_pids_on_port(port: u16) -> Vec<u32> {
+    for lsof in ["/usr/sbin/lsof", "/usr/bin/lsof"] {
+        if !std::path::Path::new(lsof).exists() {
+            continue;
+        }
+        let Ok(output) = std::process::Command::new(lsof)
+            .args(["-nP", "-t", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
+            .output()
+        else {
+            continue;
+        };
+        // 該当なしは exit 1・出力なし。どちらでも出力だけを見ればよい
+        return parse_lsof_pids(&String::from_utf8_lossy(&output.stdout));
+    }
+    Vec::new()
+}
+
+/// port を握ったまま残っている Graphium sidecar を SIGKILL で落とす（Unix）。落とした PID を返す。
+///
+/// 起動時の入れ替えは HTTP の応答で相手を見つける（sidecar.ts）ので、イベントループが
+/// 塞がって応答しない sidecar は「誰もいない」に見え、止められないまま新しい sidecar が
+/// EADDRINUSE で起動に失敗する。ここでは応答に頼らず、port の持ち主を OS から引く。
+///
+/// 呼ぶのは新しい sidecar を spawn する直前だけ。その時点で port に残っている sidecar は、
+/// 応答しなかったか、SIGTERM を送っても消えなかった相手なので、SIGKILL でよい。
+/// 落とすのは `is_graphium_sidecar_process` を通った相手だけ（ほかのプログラムには触らない）。
+#[cfg(unix)]
+fn kill_stale_sidecars_on_port(port: u16) -> Vec<u32> {
+    let own = std::process::id();
+    let killed: Vec<u32> = listener_pids_on_port(port)
+        .into_iter()
+        .filter(|pid| *pid != own && is_graphium_sidecar_process(*pid))
+        .filter(|pid| {
+            // SAFETY: PID とシグナル番号を渡すだけ。対象は直前に sidecar と確かめた
+            unsafe { libc::kill(*pid as libc::pid_t, libc::SIGKILL) == 0 }
+        })
+        .collect();
+    if killed.is_empty() {
+        return killed;
+    }
+    // port が空くまで待つ（最大 2 秒）。SIGKILL は即時だが、回収まで数 ms かかる
+    for _ in 0..40 {
+        // SAFETY: シグナル 0 は存在確認のみ
+        let any_alive = killed
+            .iter()
+            .any(|pid| unsafe { libc::kill(*pid as libc::pid_t, 0) == 0 });
+        if !any_alive {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    killed
 }
 
 /// Graphium sidecar プロセスを kill する Tauri command。
@@ -6597,6 +6705,120 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// lsof -t の出力: 空行・数字でない行・重複は捨てる
+    #[cfg(unix)]
+    #[test]
+    fn lsof_pid_list_is_parsed() {
+        assert_eq!(parse_lsof_pids("49639\n"), vec![49639]);
+        assert_eq!(parse_lsof_pids("200\n100\n200\n\n"), vec![100, 200]);
+        assert_eq!(parse_lsof_pids(""), Vec::<u32>::new());
+        assert_eq!(parse_lsof_pids("lsof: no such file\n0\n"), Vec::<u32>::new());
+    }
+
+    /// port の持ち主は応答に頼らず OS から引ける。sidecar でない持ち主（このテスト自身）は落とさない
+    #[cfg(unix)]
+    #[test]
+    fn stale_sidecar_sweep_finds_the_listener_and_spares_other_programs() {
+        if !["/usr/sbin/lsof", "/usr/bin/lsof"].iter().any(|p| std::path::Path::new(p).exists()) {
+            return; // lsof の無い環境では確かめられない
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_eq!(listener_pids_on_port(port), vec![std::process::id()]);
+        assert!(kill_stale_sidecars_on_port(port).is_empty());
+        drop(listener);
+        assert!(listener_pids_on_port(port).is_empty());
+    }
+
+    /// port を握ったままイベントループを塞ぐ偽の sidecar を起こす（SIGTERM のハンドラ付き =
+    /// 本物と同じく SIGTERM では止まらない）。node が無い環境では None。
+    #[cfg(unix)]
+    fn spawn_blocked_fake_sidecar(dir: &std::path::Path) -> Option<(std::process::Child, u16)> {
+        use std::io::BufRead;
+        let entry = dir.join("sidecar").join("server.mjs");
+        std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+        std::fs::write(
+            &entry,
+            r#"import http from "node:http";
+process.on("SIGTERM", () => process.exit(0));
+const server = http.createServer(() => {});
+server.listen(0, "127.0.0.1", () => {
+  console.log(server.address().port);
+  setTimeout(() => { while (true) {} }, 200);
+});
+"#,
+        )
+        .unwrap();
+        let mut child = std::process::Command::new("node")
+            .arg(&entry)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .ok()?;
+        let port = line.trim().parse::<u16>().ok()?;
+        // イベントループが塞がるのを待つ
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        Some((child, port))
+    }
+
+    /// 子プロセスが期限までに終わったか
+    #[cfg(unix)]
+    fn exits_within(child: &mut std::process::Child, limit: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + limit;
+        while std::time::Instant::now() < until {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    /// イベントループが塞がった sidecar は SIGTERM では止まらない。後追いの SIGKILL で止まる
+    #[cfg(unix)]
+    #[test]
+    fn blocked_sidecar_is_killed_after_sigterm_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let Some((mut child, _port)) = spawn_blocked_fake_sidecar(dir.path()) else {
+            return; // node の無い環境では確かめられない
+        };
+        kill_pid_sync(child.id()).unwrap();
+        // SIGTERM だけでは残っている（これが今回の不具合の形）
+        assert!(!exits_within(&mut child, std::time::Duration::from_millis(1500)));
+        // 後追い（3 秒後）で止まる
+        let stopped = exits_within(&mut child, std::time::Duration::from_secs(6));
+        if !stopped {
+            let _ = child.kill();
+        }
+        assert!(stopped);
+    }
+
+    /// 応答しないまま port を握っている sidecar を、port の持ち主から見つけて止める
+    #[cfg(unix)]
+    #[test]
+    fn blocked_sidecar_holding_the_port_is_swept() {
+        if !["/usr/sbin/lsof", "/usr/bin/lsof"].iter().any(|p| std::path::Path::new(p).exists()) {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let Some((mut child, port)) = spawn_blocked_fake_sidecar(dir.path()) else {
+            return;
+        };
+        let killed = kill_stale_sidecars_on_port(port);
+        let stopped = exits_within(&mut child, std::time::Duration::from_secs(2));
+        if !stopped {
+            let _ = child.kill();
+        }
+        assert_eq!(killed, vec![child.id()]);
+        assert!(stopped);
+        assert!(listener_pids_on_port(port).is_empty());
+    }
 
     /// 別ウィンドウの行き先 ID: 空・長すぎ・制御文字入りは受け取らない
     #[test]

@@ -12,6 +12,7 @@ import { setUsageDataDir, retentionSweep } from "./services/llm-usage.js";
 import { setSidecarIdentity } from "./routes/health.js";
 import { createApp } from "./app.js";
 import { installProcessLifecycleHandlers } from "./process-lifecycle.js";
+import { startHardParentWatchdog } from "./parent-watchdog-worker.js";
 import { captureDesktopAuthToken, getAuthToken } from "./auth-token.js";
 
 // 起動段階を stderr に同期書きで残す（Tauri sidecar の Windows 経路で
@@ -60,6 +61,11 @@ function startParentWatchdog(): void {
   const parentPid = raw ? Number(raw) : Number.NaN;
   if (!Number.isInteger(parentPid) || parentPid <= 0) return;
   bootLog(`parent watchdog armed: parentPid=${parentPid}`);
+  // 保険: このタイマーはイベントループが塞がると回らない。塞がっていても効く見張りを
+  // worker に持たせる（詳細は parent-watchdog-worker.ts）
+  if (!startHardParentWatchdog({ parentPid })) {
+    bootLog("hard parent watchdog (worker) failed to start — continuing with the timer only");
+  }
   const timer = setInterval(() => {
     try {
       process.kill(parentPid, 0);
