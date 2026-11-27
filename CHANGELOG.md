@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.6](https://github.com/kumagallium/Graphium/compare/v0.173.5...v0.173.6) - 2026-11-27
+
+- [fix] Fill in the model of Topics saved as "unknown" from the AI usage log by @kumagallium in https://github.com/kumagallium/Graphium/pull/1907
+
 ## [v0.173.5](https://github.com/kumagallium/Graphium/compare/v0.173.4...v0.173.5) - 2026-11-27
 
 - fix(windows): move the old Graphium.exe aside when only another program holds it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1905
