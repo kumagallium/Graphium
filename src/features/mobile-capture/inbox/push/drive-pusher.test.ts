@@ -66,6 +66,8 @@ function makeFile(bytes: number, name = "photo.jpg", type = "image/jpeg"): File 
 
 beforeEach(() => {
   localStorage.clear();
+  // 既定は hourly に固定する（同梱の設定値に左右されないように）。stay の describe が上書きする。
+  __setStayDefaultsForTest({ clientId: "", brokerUrl: "" });
   authMock.getValidAccessToken.mockReset().mockReturnValue("tok-1");
   authMock.invalidateAccessToken.mockReset();
   authMock.prepareGoogleAuth.mockReset().mockResolvedValue(undefined);
@@ -74,6 +76,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __setStayDefaultsForTest(null);
   vi.unstubAllGlobals();
 });
 
@@ -100,6 +103,8 @@ describe("設定と接続状態", () => {
     vi.resetModules();
     vi.doMock("./config", async (importOriginal) => {
       const actual = await importOriginal<typeof import("./config")>();
+      // 再ロードした config は別インスタンスなので、こちらでも hourly に固定する
+      actual.__setStayDefaultsForTest({ clientId: "", brokerUrl: "" });
       return { ...actual, getGoogleClientId: () => null };
     });
     try {

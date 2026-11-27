@@ -54,7 +54,8 @@ export const DEFAULT_GOOGLE_STAY_CLIENT_ID: string =
  * 宛先の差し替え口（localStorage 上書き等）は意図的に作らない — XSS で宛先を
  * 奪われると code / refresh token が外へ出るため、ビルド定数に固定する。
  */
-export const DEFAULT_TOKEN_BROKER_URL: string = "";
+export const DEFAULT_TOKEN_BROKER_URL: string =
+  "https://graphium-token-broker.kumagallium.workers.dev";
 
 /** 認可の方式。stay = つないだまま（broker 経由の refresh token）、hourly = 約 1 時間ごとにつなぎ直し。 */
 export type PushAuthMode = "stay" | "hourly";
