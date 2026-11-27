@@ -2749,6 +2749,8 @@ function SidePeekInner({
                 editable={!archived && !trashed && !noteId.startsWith("snapshot:")}
                 // 外部メディアの読み込み同意の単位（メインエディタと同じ考え方）
                 remoteContentScope={remoteScope}
+                // ナレッジページは本文の引用を References の番号で見せる
+                numberedCitations={!!effectiveDoc?.wikiMeta}
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}

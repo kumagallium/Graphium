@@ -89,6 +89,7 @@ import { mediaBodyDragExtension } from "./media-body-drag";
 import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
+import { citationNumberExtension } from "@/features/wiki/citation-number-plugin";
 import { collapsibleHeadingExtension } from "@/features/collapsible-heading/collapse-plugin";
 import { t, useLocaleSubscription } from "../i18n";
 import { getBlockNoteDictionary } from "./blocknote-dictionary";
@@ -169,6 +170,11 @@ type SandboxEditorProps = {
    * scope が空になり、外部 URL のメディアは常にブロック側に倒れる。
    */
   remoteContentScope?: string;
+  /**
+   * ナレッジページ（AI が書いた出典つきのページ）か。true のとき、本文の引用「@題」を
+   * References の番号（[1]）で見せる（features/wiki/citation-number-plugin.ts）。
+   */
+  numberedCitations?: boolean;
 };
 
 // サンドボックス共通エディタ
@@ -813,6 +819,7 @@ function SandboxEditorInner({
   getMentionSuggestions,
   editable: editableProp = true,
   remoteContentScope,
+  numberedCitations = false,
 }: SandboxEditorProps & { repairContent?: boolean; onRepaired?: (replaced: number) => void }) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
@@ -1088,6 +1095,8 @@ function SandboxEditorInner({
       keepTextDeleteBesideColumnListExtension,
       mergeColumnAtEdgeExtension,
       documentSearchExtension,
+      // ナレッジページの引用を番号で見せる（見た目は入れ物の data-numbered-citations で切り替え）
+      citationNumberExtension,
       // 見出しの折りたたみ。ラベルは getter で遅らせる（拡張はエディタ生成時に
       // 1 度しか作られないので、即時評価すると言語切り替えに追従しない）。
       collapsibleHeadingExtension({
@@ -1397,6 +1406,8 @@ function SandboxEditorInner({
       editor={editor as any}
       theme="light"
       editable={editable}
+      // 引用の番号表示の切り替え（app.css の [data-numbered-citations] .gm-cite-num）
+      data-numbered-citations={numberedCitations ? "" : undefined}
       // 同梱の shadcn Button は React 19 前提で ref を受け取れず、
       // テーブルハンドル / ドラッグハンドルのメニューが base-ui の anchor を
       // 掴めないまま「未配置」で描画される（blocknote-shadcn-overrides.tsx 参照）。
