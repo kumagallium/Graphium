@@ -128,6 +128,7 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
   return {
     ready: true,
     configured: true,
+    linkedBefore: false,
     connected: true,
     connecting: false,
     connectError: null,
@@ -138,6 +139,7 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     enqueueForSend: vi.fn(async () => true),
     drainNow: vi.fn(),
     connectAndDrain: vi.fn(),
+    renewOnGesture: vi.fn(),
     removeItem: vi.fn(),
     retryFailed: vi.fn(),
     getItemFile: vi.fn(async () => null),

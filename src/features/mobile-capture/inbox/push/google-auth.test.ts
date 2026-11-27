@@ -235,3 +235,70 @@ describe("トークンの期限管理", () => {
     }
   });
 });
+
+describe("以前つないだことがある印と残り時間", () => {
+  const LINKED_KEY = "graphium-push-google-linked";
+
+  async function connectOnce(auth: Awaited<ReturnType<typeof freshAuth>>, expiresIn = 3600) {
+    installGsi();
+    await auth.prepareGoogleAuth("client-1");
+    const p = auth.connectInteractive();
+    capturedCallback!({ access_token: "tok", expires_in: expiresIn });
+    await p;
+  }
+
+  it("is not linked on a fresh device", async () => {
+    const auth = await freshAuth();
+    expect(auth.hasLinkedBefore()).toBe(false);
+  });
+
+  it("sets the mark when a token arrives, and keeps it through invalidate", async () => {
+    const auth = await freshAuth();
+    await connectOnce(auth);
+    expect(localStorage.getItem(LINKED_KEY)).toBe("1");
+    auth.invalidateAccessToken();
+    expect(auth.getValidAccessToken()).toBeNull();
+    expect(auth.hasLinkedBefore()).toBe(true);
+  });
+
+  it("keeps the mark when an expired token is discarded", async () => {
+    const auth = await freshAuth();
+    await connectOnce(auth, 3600);
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ accessToken: "tok", expiresAt: Date.now() - 1000 }));
+    expect(auth.getValidAccessToken()).toBeNull();
+    expect(auth.hasLinkedBefore()).toBe(true);
+  });
+
+  it("clears the mark on disconnect", async () => {
+    const auth = await freshAuth();
+    await connectOnce(auth);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null)));
+    auth.disconnectGoogleAuth();
+    vi.unstubAllGlobals();
+    expect(localStorage.getItem(LINKED_KEY)).toBeNull();
+    expect(auth.hasLinkedBefore()).toBe(false);
+  });
+
+  it("treats an existing Drive folder cache as linked (migration for earlier users)", async () => {
+    localStorage.setItem(
+      "graphium-push-drive-folders",
+      JSON.stringify({ rootId: "r", inboxId: "i" }),
+    );
+    const auth = await freshAuth();
+    expect(localStorage.getItem(LINKED_KEY)).toBeNull();
+    expect(auth.hasLinkedBefore()).toBe(true);
+  });
+
+  it("reports remaining ms without discarding an expired token", async () => {
+    const auth = await freshAuth();
+    expect(auth.getAccessTokenRemainingMs()).toBeNull();
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ accessToken: "t", expiresAt: Date.now() + 120_000 }));
+    const remaining = auth.getAccessTokenRemainingMs()!;
+    expect(remaining).toBeGreaterThan(100_000);
+    expect(remaining).toBeLessThanOrEqual(120_000);
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ accessToken: "t", expiresAt: Date.now() - 5000 }));
+    expect(auth.getAccessTokenRemainingMs()!).toBeLessThan(0);
+    // 純粋な読み取り: 保存は消えていない
+    expect(localStorage.getItem(TOKEN_KEY)).not.toBeNull();
+  });
+});

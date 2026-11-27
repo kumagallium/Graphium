@@ -27,7 +27,10 @@ import {
 import {
   connectInteractive,
   disconnectGoogleAuth,
+  getAccessTokenRemainingMs,
   getValidAccessToken,
+  hasLinkedBefore,
+  isAuthPrepared,
   invalidateAccessToken,
   prepareGoogleAuth,
 } from "./google-auth";
@@ -48,6 +51,9 @@ const INBOX_FOLDER_NAME = "Inbox";
 const MULTIPART_LIMIT_BYTES = 5 * 1024 * 1024;
 /** resumable のチャンクサイズ。Drive の要件で 256KiB の倍数（8MiB = 32 × 256KiB）。 */
 const CHUNK_BYTES = 32 * 256 * 1024;
+
+/** 残りがこれ未満なら、次のタップで取り直す対象にする。 */
+export const RENEWAL_THRESHOLD_MS = 10 * 60 * 1000;
 
 /** キャッシュしていた親フォルダが消えた/権限を失ったことを示す内部シグナル。 */
 class FolderGoneError extends Error {
@@ -88,6 +94,21 @@ export class GoogleDrivePusher implements InboxPusher {
 
   isConnected(): boolean {
     return getValidAccessToken() !== null;
+  }
+
+  isPrepared(): boolean {
+    return isAuthPrepared();
+  }
+
+  hasLinkedBefore(): boolean {
+    return hasLinkedBefore();
+  }
+
+  needsRenewal(): boolean {
+    if (!this.isConfigured()) return false;
+    if (!hasLinkedBefore()) return false;
+    const remaining = getAccessTokenRemainingMs();
+    return remaining === null || remaining < RENEWAL_THRESHOLD_MS;
   }
 
   connect(): Promise<void> {

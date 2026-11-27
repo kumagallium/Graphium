@@ -27,6 +27,8 @@ export type PushQueueUi = {
   ready: boolean;
   /** client_id が解決できるか（同梱 or 自前上書き）。 */
   configured: boolean;
+  /** 以前この端末でつないだことがあるか（履歴欄の主ボタンの出し分け用）。 */
+  linkedBefore: boolean;
   /** 有効期限内のトークンがあるか。 */
   connected: boolean;
   /** connect() のポップアップ進行中か。 */
@@ -53,6 +55,12 @@ export type PushQueueUi = {
    * **click ハンドラから同期的に呼ぶこと**（内部で await を挟まず connect() に到達する）。
    */
   connectAndDrain: () => void;
+  /**
+   * 保存・登録などの**同期タップ**に相乗りして、期限が近い/切れた接続を静かに取り直す。
+   * ハンドラの最初（await より前）から呼ぶこと。条件に合わなければ何もしない。
+   * こけても connectError は出さない（本来の操作を邪魔しない）。
+   */
+  renewOnGesture: () => void;
   /** アイテムを 1 件取り下げる。 */
   removeItem: (id: string) => void;
   /** failed を pending に戻し、接続が生きていれば再送する。 */
@@ -75,10 +83,15 @@ export function usePushQueue(): PushQueueUi {
   const moduleRef = useRef<Promise<PushModule> | null>(null);
   const pusherRef = useRef<InboxPusher | null>(null);
   const snapshotRef = useRef<PushQueueSnapshot | null>(null);
+  /** connecting の最新値（renewOnGesture を安定した参照のまま二重起動から守る）。 */
+  const connectingRef = useRef(false);
+  /** このセッションで静かな取り直しが一度こけたら、もう窓を出さない。 */
+  const renewFailedRef = useRef(false);
 
   const [ready, setReady] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [linkedBefore, setLinkedBefore] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PushQueueSnapshot | null>(null);
@@ -102,6 +115,7 @@ export function usePushQueue(): PushQueueUi {
     const isConfigured = pusher.isConfigured();
     setConfigured(isConfigured);
     setConnected(pusher.isConnected());
+    setLinkedBefore(pusher.hasLinkedBefore?.() ?? false);
     if (isConfigured) {
       // 契約: connect() をジェスチャ内で同期的に呼べるよう、prepare は事前に済ませる
       void pusher.prepare().catch((err) => {
@@ -227,7 +241,8 @@ export function usePushQueue(): PushQueueUi {
 
   const connectAndDrain = useCallback(() => {
     const pusher = pusherRef.current;
-    if (!pusher || connecting) return;
+    if (!pusher || connecting || connectingRef.current) return;
+    connectingRef.current = true;
     setConnecting(true);
     setConnectError(null);
     // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
@@ -235,15 +250,50 @@ export function usePushQueue(): PushQueueUi {
     pusher
       .connect()
       .then(() => {
+        // 明示の接続が通ったので、静かな取り直しをまた許す
+        renewFailedRef.current = false;
         setConnected(true);
+        setLinkedBefore(true);
         maybeDrain({ force: true });
       })
       .catch((err) => {
         setConnected(pusher.isConnected());
         setConnectError(err instanceof Error ? err.message : String(err));
       })
-      .finally(() => setConnecting(false));
+      .finally(() => {
+        connectingRef.current = false;
+        setConnecting(false);
+      });
   }, [connecting, maybeDrain]);
+
+  const renewOnGesture = useCallback(() => {
+    const pusher = pusherRef.current;
+    if (!pusher || connectingRef.current) return;
+    if (!pusher.needsRenewal?.()) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    if (renewFailedRef.current) return;
+    // 準備前の connect() は reject するので呼ばない（ジェスチャ内で SDK ロードは待てない）
+    if (!pusher.isPrepared?.()) return;
+    connectingRef.current = true;
+    setConnecting(true);
+    // 契約: ここより前に await を置かないこと（connect() が同期でトークン要求に届く）。
+    pusher
+      .connect()
+      .then(() => {
+        setConnected(true);
+        setLinkedBefore(true);
+        maybeDrain({ force: true });
+      })
+      .catch(() => {
+        // 窓を閉じた・止められた等は静かに済ませる（connectError は出さない）
+        setConnected(pusher.isConnected());
+        renewFailedRef.current = true;
+      })
+      .finally(() => {
+        connectingRef.current = false;
+        setConnecting(false);
+      });
+  }, [maybeDrain]);
 
   const removeItem = useCallback(
     (id: string) => {
@@ -297,6 +347,7 @@ export function usePushQueue(): PushQueueUi {
   return {
     ready,
     configured,
+    linkedBefore,
     connected,
     connecting,
     connectError,
@@ -307,6 +358,7 @@ export function usePushQueue(): PushQueueUi {
     enqueueForSend,
     drainNow,
     connectAndDrain,
+    renewOnGesture,
     removeItem,
     retryFailed,
     getItemFile,
