@@ -49,10 +49,20 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: unknown): State {
     const err = error instanceof Error ? error : new Error(String(error));
+    // 包まれた本当の原因も残す。BlockNote は initialContent の失敗を
+    // 「Error creating document from blocks…」で包み、中身を cause に入れるので、
+    // message だけだと何が合わなかったのか問い合わせから辿れない
+    const causes: string[] = [];
+    let cause: unknown = (err as { cause?: unknown }).cause;
+    while (cause && causes.length < 3) {
+      causes.push(cause instanceof Error ? cause.message || cause.name : String(cause));
+      cause = cause instanceof Error ? (cause as { cause?: unknown }).cause : undefined;
+    }
+    const base = err.message || err.name || "Unknown error";
     return {
       crash: {
         at: new Date().toISOString(),
-        message: err.message || err.name || "Unknown error",
+        message: causes.length ? `${base} (cause: ${causes.join(" ← ")})` : base,
         stack: err.stack,
         location: typeof location !== "undefined" ? location.hash : undefined,
       },

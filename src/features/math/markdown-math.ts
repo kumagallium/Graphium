@@ -167,8 +167,13 @@ function soleSentinelIndex(block: any, math: MathStash[]): number | null {
   return idx;
 }
 
-/** inline content 配列内のセンチネルを inlineMath に展開する */
-function expandSentinelInlines(inlines: any[], math: MathStash[]): any[] {
+/**
+ * inline content 配列内のセンチネルを inlineMath に展開する。
+ * inLink: リンクの中身を展開しているとき。BlockNote のリンクは中に文字（styled text）しか
+ * 持てないので、数式の要素を入れるとノートが開けなくなる（initialContent で throw して
+ * 画面全損。md の `[$x$](url)` で起きた）。リンクの中では数式を元の表記の文字で残す。
+ */
+function expandSentinelInlines(inlines: any[], math: MathStash[], inLink = false): any[] {
   const result: any[] = [];
   for (const inline of inlines) {
     if (!inline || typeof inline !== "object") {
@@ -177,7 +182,7 @@ function expandSentinelInlines(inlines: any[], math: MathStash[]): any[] {
     }
     // link の中身にも数式が入りうるので再帰する
     if (inline.type === "link" && Array.isArray(inline.content)) {
-      result.push({ ...inline, content: expandSentinelInlines(inline.content, math) });
+      result.push({ ...inline, content: expandSentinelInlines(inline.content, math, true) });
       continue;
     }
     if (inline.type !== "text" || typeof inline.text !== "string" || !inline.text.includes(SENTINEL_PREFIX)) {
@@ -196,6 +201,9 @@ function expandSentinelInlines(inlines: any[], math: MathStash[]): any[] {
       if (!entry) {
         // 対応する stash が無い（ありえないが）場合は元のテキストを残す
         result.push({ ...inline, text: m[0] });
+      } else if (inLink) {
+        const shown = entry.display ? mathBlockToMarkdown(entry.latex) : inlineMathToMarkdown(entry.latex);
+        result.push({ ...inline, text: shown || m[0] });
       } else {
         result.push({ type: "inlineMath", props: { latex: entry.latex } });
       }

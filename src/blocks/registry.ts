@@ -180,12 +180,31 @@ function sanitizeInlineStyles(inline: any): any {
     }
   }
   if (Array.isArray(next.content)) {
-    const content = next.content.map(sanitizeInlineStyles);
-    if (content.some((c: any, i: number) => c !== next.content[i])) {
+    let content = next.content.map(sanitizeInlineStyles);
+    // リンクの中身は文字（styled text）しか持てない。数式などの要素が入っていると
+    // initialContent で throw してノートが開けなくなる（v0.173.7 までの md 取り込みが
+    // `[$x$](url)` から作っていた）。中身を文字に戻して開けるようにする。
+    if (next.type === "link") content = linkContentAsText(content);
+    if (content.length !== next.content.length || content.some((c: any, i: number) => c !== next.content[i])) {
       next = { ...next, content };
     }
   }
   return next;
+}
+
+/** リンクの中身のうち文字でないものを、見えていた表記の文字に置き換える */
+function linkContentAsText(content: any[]): any[] {
+  if (content.every((c: any) => c?.type === "text")) return content;
+  return content.flatMap((c: any) => {
+    if (c?.type === "text") return [c];
+    const text = c?.type === "inlineMath"
+      ? (c.props?.latex ? `$${c.props.latex}$` : "")
+      : typeof c?.text === "string" ? c.text
+      : typeof c?.props?.label === "string" ? c.props.label
+      : typeof c?.props?.alt === "string" ? c.props.alt
+      : "";
+    return text ? [{ type: "text", text, styles: c?.styles ?? {} }] : [];
+  });
 }
 
 // ブロックの content（inline 配列 / テーブル content）から未知 style キーを剥がす。
