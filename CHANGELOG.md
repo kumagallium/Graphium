@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.7](https://github.com/kumagallium/Graphium/compare/v0.173.6...v0.173.7) - 2026-11-27
+
+- Keep the model behind each AI reply, and delete inbox arrivals without using them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1911
+
 ## [v0.173.6](https://github.com/kumagallium/Graphium/compare/v0.173.5...v0.173.6) - 2026-11-27
 
 - [fix] Fill in the model of Topics saved as "unknown" from the AI usage log by @kumagallium in https://github.com/kumagallium/Graphium/pull/1907
