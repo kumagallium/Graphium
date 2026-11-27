@@ -678,6 +678,34 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   text-decoration: underline;
 }
 
+/* ナレッジページの引用を References の番号で見せる（features/wiki/citation-number-plugin.ts）。
+   文書は「@題」のまま。題の文字は大きさ 0 で隠し、同じ span の ::after に番号を出すので、
+   クリックは今までどおり @題 のリンクとして効く。普通のノートでは何も変わらない */
+.gm-cite-ref-num {
+  display: none;
+}
+[data-numbered-citations] .gm-cite-num {
+  font-size: 0;
+  /* 本文の letter-spacing は文字数ぶん積み重なり、隠した題の幅が残るので 0 にする。
+     隠した題の途中で行が折れないよう nowrap */
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+[data-numbered-citations] .gm-cite-num:not(.gm-cite-num-part)::after {
+  content: "[" attr(data-cite-num) "]";
+  font-size: 0.72rem;
+  vertical-align: super;
+  line-height: 0;
+  margin-left: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+[data-numbered-citations] .gm-cite-ref-num {
+  display: inline;
+  margin-right: 0.35em;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
 /* BlockNote エディタ背景は周囲（--color-background）と揃える
    --paper はわずかに緑寄りで余白と差が出るため、note 領域は親の背景を継承させる。
    文字色も接続する: BlockNote 既定は #3f3f3f（無彩色グレー）のハードコードで、

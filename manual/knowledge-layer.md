@@ -98,6 +98,8 @@ A knowledge page opens like any other note, and you can edit it like one. What m
 
 The body ends with a **References** section linking back to sources.
 
+Each sentence's source is shown as a number such as **[1]**. The numbers follow the order of **References**, and each References line starts with the same number. Hover over a number to see the source's title; click it to open the source. The page still stores each citation as an `@` link with the title, so exports and copies show titles. A citation to a source that is not in References stays an `@` link with the title.
+
 ### Which sources a sentence rests on {#sources-behind-sentences}
 
 <Badge type="tip" text="Added in v0.133.0 (2026-11-14)" /> On a Topic, a Q&A page or a Summary, **References** lists every source the page was built from. The ones the current text cites come first; a source that no sentence cites any more (for example, you re-imported it and it no longer says what the page quoted) stays in the list — it was read — but moves to the end with the note *read, but not cited in the current text*. When a new source disagrees with a sentence from another source, the old sentence is not dropped: both stay with their own sources, and the disagreement is listed under *Disagreements & open questions*. If the AI drops another source's sentences anyway, Graphium notices from the citations and asks it once more to keep them.

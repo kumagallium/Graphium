@@ -8510,6 +8510,8 @@ function NoteEditorInner({
               // 外部メディアの読み込み同意の単位。fileId 由来にしない: 新規ノートは最初の
               // 保存で fileId が付くが、開いている本文は同じなので、同意の単位は変えない。
               remoteContentScope={remoteScope}
+              // ナレッジページは本文の引用を References の番号で見せる
+              numberedCitations={isWikiDoc}
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}

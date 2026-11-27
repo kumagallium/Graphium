@@ -106,7 +106,7 @@ describe("parseInlineCitations - citations", () => {
     const noteIndex = [{ id: "n1", title, isWiki: false } as any];
     const { inlineContent } = parseInlineCitations(`値は 3 だった[[${title}]]。`, noteIndex);
     expect(inlineContent).toContainEqual({ type: "text", text: `@${title}`, styles: { textColor: "blue" } });
-    expect(inlineContent.at(-1)).toEqual({ type: "text", text: "。", styles: {} });
+    expect(inlineContent[inlineContent.length - 1]).toEqual({ type: "text", text: "。", styles: {} });
   });
 
   it("Wiki の [[title]] は 🤖 プレフィックス付きの青リンクになる", () => {
