@@ -32,6 +32,9 @@ type Labels = {
   me: string;
   ai: string;
   aiExcerpt: string;
+  /** モデル名の付いた AI の行（記録にモデル名があるとき） */
+  aiBy: (model: string) => string;
+  aiExcerptBy: (model: string) => string;
   brief: string;
   open: string;
   close: string;
@@ -43,12 +46,14 @@ const LABELS: Record<ConversationBodyLang, Labels> = {
   ja: {
     header: (provider) =>
       `この資料は、私（利用者）と AI（${provider}）の会話の記録である。「私」の行は私が書いた原文そのまま（複数行の発言は、2 行目以降を字下げしてある）。` +
-      `「AI」の行は、その直後の私の発言の前に AI が書いた返答で、長いものは抜粋（冒頭 ${ASSISTANT_EXCERPT_HEAD} 字と末尾 ${ASSISTANT_EXCERPT_TAIL} 字）である。`,
+      `「AI」の行は、その直後の私の発言の前に AI が書いた返答で、長いものは抜粋（冒頭 ${ASSISTANT_EXCERPT_HEAD} 字と末尾 ${ASSISTANT_EXCERPT_TAIL} 字）である。括弧の中にモデル名があれば、その返答を書いたモデルである。`,
     briefNote:
       "「依頼文」の行は、会話の始まりに置かれた長い文の原文である。私が打ったものか、別の会話が書いた依頼かは、記録からは見分けられない。",
     me: "私",
     ai: "AI（直前の返答）",
     aiExcerpt: "AI（直前の返答の抜粋）",
+    aiBy: (model) => `AI（${model}、直前の返答）`,
+    aiExcerptBy: (model) => `AI（${model}、直前の返答の抜粋）`,
     brief: "依頼文",
     open: "（",
     close: "）",
@@ -58,12 +63,14 @@ const LABELS: Record<ConversationBodyLang, Labels> = {
   en: {
     header: (provider) =>
       `This is a record of a conversation between me (the user) and an AI (${provider}). Lines marked "Me" are what I wrote, verbatim (later lines of a multi-line message are indented). ` +
-      `Lines marked "AI" are the reply the AI wrote just before my next line; long replies are excerpts (the first ${ASSISTANT_EXCERPT_HEAD} and the last ${ASSISTANT_EXCERPT_TAIL} characters).`,
+      `Lines marked "AI" are the reply the AI wrote just before my next line; long replies are excerpts (the first ${ASSISTANT_EXCERPT_HEAD} and the last ${ASSISTANT_EXCERPT_TAIL} characters). A model name in the parentheses is the model that wrote that reply.`,
     briefNote:
       'Lines marked "Brief" are the verbatim text of a long message placed at the start of the conversation. The record does not tell whether I typed it or another conversation wrote it as a request.',
     me: "Me",
     ai: "AI (previous reply)",
     aiExcerpt: "AI (excerpt of the previous reply)",
+    aiBy: (model) => `AI (${model}, previous reply)`,
+    aiExcerptBy: (model) => `AI (${model}, excerpt of the previous reply)`,
     brief: "Brief",
     open: " (",
     close: ")",
@@ -122,7 +129,10 @@ export function renderConversationBody(
       out.push(`## ${day}`, "");
     }
     if (turn.speaker === "assistant") {
-      out.push(`- ${turn.excerpt ? L.aiExcerpt : L.ai}${L.colon}${turn.text}`);
+      const label = turn.model
+        ? (turn.excerpt ? L.aiExcerptBy : L.aiBy)(turn.model)
+        : turn.excerpt ? L.aiExcerpt : L.ai;
+      out.push(`- ${label}${L.colon}${turn.text}`);
       continue;
     }
     const notes = [parts?.time, turn.command].filter((v): v is string => !!v);

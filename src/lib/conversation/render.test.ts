@@ -71,6 +71,22 @@ describe("renderConversationBody", () => {
     expect(body).toContain("- AI（直前の返答の抜粋）: 長い返答の冒頭 […] 末尾");
   });
 
+  it("記録にモデル名があれば、AI の行の括弧にモデル名が入る（日英とも）", () => {
+    const turns = [
+      ai("短い返答", undefined, { model: "claude-opus-4-1" }),
+      user("お願いします"),
+      ai("長い返答の冒頭 […] 末尾", undefined, { excerpt: true, model: "claude-sonnet-4-5" }),
+      user("辛さは中辛で"),
+    ];
+    const ja = renderConversationBody(material(turns), JST);
+    expect(ja).toContain("- AI（claude-opus-4-1、直前の返答）: 短い返答");
+    expect(ja).toContain("- AI（claude-sonnet-4-5、直前の返答の抜粋）: 長い返答の冒頭 […] 末尾");
+    expect(ja).toContain("括弧の中にモデル名があれば、その返答を書いたモデルである。");
+    const en = renderConversationBody(material(turns), { ...JST, lang: "en" });
+    expect(en).toContain("- AI (claude-opus-4-1, previous reply): 短い返答");
+    expect(en).toContain("- AI (claude-sonnet-4-5, excerpt of the previous reply): 長い返答の冒頭 […] 末尾");
+  });
+
   it("コマンド付きの発言は時刻のあとにコマンド名が付く", () => {
     const body = renderConversationBody(material([user("こね時間を見直して", undefined, { command: "/review" })]), JST);
     expect(body).toContain("- 私（06:28、/review）: こね時間を見直して");

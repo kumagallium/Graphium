@@ -296,6 +296,38 @@ describe("AI の返答", () => {
   });
 });
 
+describe("AI の返答を書いたモデル", () => {
+  const withModel = (model: unknown, content = "了解です") =>
+    assistantLine({ content, extra: { message: { role: "assistant", model, content } } });
+  const aiTurns = (lines: string[]) =>
+    (read(lines, { includeAssistant: true })?.turns ?? []).filter((t) => t.speaker === "assistant");
+
+  it("message.model を返答に残す", () => {
+    const turns = aiTurns([userLine(), withModel("claude-opus-4-1"), userLine({ content: "次へ" })]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0].model).toBe("claude-opus-4-1");
+  });
+
+  it("返答が何行かに分かれていれば、残した文を書いた行のモデルになる", () => {
+    const turns = aiTurns([
+      userLine(),
+      withModel("claude-sonnet-4-5", "前置き"),
+      withModel("claude-opus-4-1", "最後の返答"),
+      userLine({ content: "次へ" }),
+    ]);
+    expect(turns[0].text).toBe("最後の返答");
+    expect(turns[0].model).toBe("claude-opus-4-1");
+  });
+
+  it("記録が作った返答（<synthetic>）・空白や改行の入った名前・文字列でないものは残さない", () => {
+    for (const model of ["<synthetic>", "claude opus", "a\nb", 42, "", "x".repeat(81)]) {
+      const turns = aiTurns([userLine(), withModel(model), userLine({ content: "次へ" })]);
+      expect(turns[0].model).toBeUndefined();
+      expect("model" in turns[0]).toBe(false);
+    }
+  });
+});
+
 describe("excerptAssistantText の絵文字", () => {
   const BROKEN = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
