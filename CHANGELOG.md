@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.173.4](https://github.com/kumagallium/Graphium/compare/v0.173.3...v0.173.4) - 2026-11-27
+
+- [fix] Read the topic routing JSON when the model wraps it in prose by @kumagallium in https://github.com/kumagallium/Graphium/pull/1903
+- [fix] Record the model that wrote a Topic instead of "unknown" when building Topics from sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/1906
+
 ## [v0.173.3](https://github.com/kumagallium/Graphium/compare/v0.173.2...v0.173.3) - 2026-11-26
 
 - [fix] Choose the model right after connecting with a ChatGPT plan by @kumagallium in https://github.com/kumagallium/Graphium/pull/1900
