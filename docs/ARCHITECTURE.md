@@ -3613,7 +3613,8 @@ The same `src/` tree is built four different ways.
   (`script-src 'self' 'wasm-unsafe-eval'`, no `unsafe-eval`/`unsafe-inline`
   for scripts). The only additions are Google Identity Services for the Drive
   sign-in (`accounts.google.com/gsi/…` in `script-src` / `style-src` /
-  `frame-src`) and a `sha256-…` hash for each inline `<script>` left in the
+  `frame-src`; the **Stay connected** mode's calls to the token broker, §6.1,
+  are ordinary `https:` requests under `connect-src`) and a `sha256-…` hash for each inline `<script>` left in the
   HTML (the returning-visitor redirect in `index.html`). `object-src` and
   `frame-src` also allow `blob:` so the shared library's PDF preview
   (`<embed>` of a blob URL) works: Chrome's PDF viewer checks the embed
@@ -4543,14 +4544,38 @@ The same `src/` tree is built four different ways.
   everything captured goes to the inbox. Queue rows show memo captures as
   a note icon with the first line of text and URL captures as a link icon
   with title and domain. The primary transport drains the queue serially to the
-  user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
-  `drive.file` scope only, no secret; ≤5 MB multipart, larger files
-  resumable), from where Google Drive for desktop syncs it into the
-  folder inbox above. Everything sent this way — media, memos, URL
-  captures — is stored as ordinary files in the user's own cloud storage;
-  transfers use TLS, but there is no end-to-end encryption. Because SPA
-  tokens expire after about an hour, a token failure aborts the drain and
-  leaves the remaining items queued for the next connect. Captures
+  user's own Google Drive `Graphium/Inbox/` via OAuth (`drive.file` scope
+  only; ≤5 MB multipart, larger files resumable), from where Google Drive
+  for desktop syncs it into the folder inbox above. Everything sent this
+  way — media, memos, URL captures — is stored as ordinary files in the
+  user's own cloud storage; transfers use TLS, but there is no end-to-end
+  encryption. There are two ways to connect, chosen in the phone settings
+  sheet (**Stay connected**):
+  - **Stay connected (the default for new connections).** The phone gets an
+    authorization code from Google and sends it to the token broker
+    (`workers/token-broker/`, a small Cloudflare Worker, see §6.1). The
+    broker adds the client secret, exchanges the code at Google and returns
+    an access token and a refresh token. When the access token expires the
+    phone sends the refresh token to the broker and receives a new access
+    token, with no screen. The refresh token is kept in the phone browser's
+    `localStorage`; **Disconnect** revokes it at Google and removes it. This
+    mode uses its own Google client, separate from the hourly one, so the
+    files it can reach are only those created through it.
+  - **Hourly (GIS token model, no secret).** Used when **Stay connected** is
+    off, or when the user has set their own client ID. The access token
+    expires after about an hour and never passes through a Graphium server.
+
+  The app can tell an existing user only when the phone still holds a record
+  of the earlier connection; such a user switches when they turn **Stay
+  connected** on. A user who had disconnected earlier, with no record left,
+  gets **Stay connected** on the next connect. Because `drive.file` shows an
+  app only the files its own client created, the new client makes a new
+  `Graphium` folder in Drive either way and the desktop inbox folder has to
+  be picked again (or **Stay connected** turned off and the phone
+  reconnected). When a token cannot be obtained (the refresh token
+  was revoked or unused for six months, so a new **Connect** is needed; or
+  the broker is down), a token failure aborts the drain and leaves the
+  remaining items queued for the next attempt. Captures
   enqueue regardless of OAuth setup — the queue itself lives in this
   device's IndexedDB — and when no client ID resolves the queue shows
   setup guidance at send time; only when IndexedDB itself is unavailable
@@ -6000,6 +6025,58 @@ from OpenAI's published documentation (`services/chatgpt-plan/`, routes under
   pointer to ChatGPT's usage settings; Graphium does not guess what is left
   and does not switch to another billing path.
 
+**Token broker (`workers/token-broker/`, not part of the Node server).** The
+phone capture's **Stay connected** mode (§4.2) relies on a separate, small
+Cloudflare Worker that Graphium runs. It exists so that the Google client
+secret stays out of the phone PWA while still letting the phone renew its
+access.
+
+- **What passes through it:** the authorization code, the access token and
+  the refresh token. Files sent to Drive, notes, and the user's email address
+  or name do not (the only scope requested is `drive.file`).
+- **Stateless, no logs.** It stores nothing (no KV, no database) and keeps no
+  logs. The hosting provider (Cloudflare) can still see the caller's IP
+  address, the time and the User-Agent.
+- **Fixed destination.** It talks only to Google's token endpoint (and
+  revoke). The URL, `client_id`, `redirect_uri`, `grant_type` and scope are
+  never taken from the request.
+- **Callers.** It accepts only requests whose `Origin` matches the Graphium
+  site exactly (`https://kumagallium.github.io`) and that carry an
+  `X-Requested-With` header. This stops other websites from calling it
+  through a browser. It does not stop a non-browser client, which can set
+  both headers itself. The protection therefore rests on two assumptions:
+  the refresh token is kept safe on the device, and rotating the client
+  secret can invalidate everything.
+- **Rate limit.** Requests are limited per source IP address with a
+  Cloudflare Rate Limiting binding (30 per 60 seconds). If the binding is
+  missing or fails, requests pass. Cloudflare therefore counts source IPs;
+  the Worker's own code does not store or log them.
+- **Body size.** The body may be at most 4096 bytes; reading stops when it
+  is exceeded.
+- **Response.** Only `access_token`, `expires_in` and, for the first
+  exchange, `refresh_token`.
+- **Scope check.** If the granted scope is not exactly `drive.file`, nothing
+  is returned and the grant is revoked, on `/exchange` and on `/refresh`.
+- **Disconnect on the phone.** Disconnecting advances a generation counter
+  on the phone; a key that arrives after a disconnect is not saved and is
+  revoked.
+- **Shared origin.** Every site served from the allowed origin
+  (`https://kumagallium.github.io`) belongs to the same administrator and
+  shares `localStorage` with the PWA. No untrusted code may be placed on that
+  origin.
+- **A separate Google client.** The broker's client is not the one used by
+  the hourly mode. A `drive.file` grant reaches only the files the granting
+  client created, so a leaked refresh token exposes only what this mode sent,
+  not what the hourly client or the user's other files hold.
+- **If it is compromised:** rotate the client secret in Google Cloud and set
+  the new one on the Worker. This invalidates every refresh token issued so
+  far; users connect again once.
+- **What remains.** If the Worker's code were replaced, the tokens passing
+  through afterwards could be read. For that reason the Cloudflare account is
+  protected with two-step verification and handled by one person, and the
+  code is published in `workers/token-broker/`. It has no service-level
+  guarantee and can stop without notice; queued captures wait on the phone.
+
 ### 6.2 Seal routes (`/api/seal/*`)
 
 Timestamping a sealed snapshot (see DATA_MODEL §2.4) needs outbound HTTP to
@@ -6099,6 +6176,7 @@ people most often need to find.
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Linked files (materials that point at a file in a registered data place; state check, open / show in folder) | `src/features/linked-files/`, `src/features/settings/DataPlacesSection.tsx`, the `place_*` block in `src-tauri/src/lib.rs` (§4.2; DATA_MODEL.md §6.5) |
 | Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
+| Token broker (Cloudflare Worker that renews the phone capture's Google access; §6.1) | `workers/token-broker/` |
 | AI conversations as materials (reader, route, bring-in section, preview) | `src/lib/conversation/`, `src/server/services/claude-code-sessions.ts`, `src/server/routes/conversations.ts`, `src/features/conversation-import/`, `src/features/intake/`, `src/features/asset-browser/ConversationPreview.tsx` (§3.4) |
 | Web clip (browser extension → memo → note per page) | `extensions/chrome/`, `src/features/web-clip/`, `src/server/routes/clip.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |

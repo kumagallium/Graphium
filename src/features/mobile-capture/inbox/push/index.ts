@@ -18,12 +18,20 @@ export {
 
 export {
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
+  DEFAULT_GOOGLE_STAY_CLIENT_ID,
+  DEFAULT_TOKEN_BROKER_URL,
+  getAuthModePreference,
   getGoogleClientId,
   getGoogleClientIdOverride,
   getPushProvider,
+  getStayConnectedConfig,
+  isLegacyPushUser,
+  resolveAuthMode,
+  setAuthModePreference,
   setGoogleClientIdOverride,
   setPushProvider,
   type DriveInboxFolderCache,
+  type PushAuthMode,
 } from "./config";
 
 export { GoogleDrivePusher, type GoogleDrivePusherOptions } from "./drive-pusher";

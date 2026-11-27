@@ -16,6 +16,11 @@ import type { PusherKind } from "./types";
 
 const CLIENT_ID_OVERRIDE_KEY = "graphium-push-google-client-id";
 const FOLDER_CACHE_KEY = "graphium-push-drive-folders";
+const FOLDER_CACHE_STAY_KEY = "graphium-push-drive-folders-stay";
+const AUTH_MODE_KEY = "graphium-push-auth-mode";
+const LEGACY_USER_KEY = "graphium-push-legacy-user";
+/** hourly 方式のアクセストークン保存キー（google-auth.ts と同じ値。既存利用者の判定にだけ使う）。 */
+const HOURLY_TOKEN_KEY = "graphium-push-google-token";
 const PROVIDER_KEY = "graphium-push-provider";
 
 /**
@@ -30,6 +35,125 @@ const PROVIDER_KEY = "graphium-push-provider";
  */
 export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
+
+/**
+ * 「つないだまま」方式（stay）用の Google OAuth client_id（GIS code model / popup 型）。
+ * **hourly 方式（DEFAULT_GOOGLE_PUSH_CLIENT_ID）とは別の Google Cloud プロジェクトの client** を使う。
+ * 理由: 旧 Drive 連携（2026-04 撤去）が hourly の client で drive.file を使ってノートを
+ * Drive に保存していた。長く使える refresh token を同じ client で出すと、万一 token broker が
+ * 侵害されたときに旧ノートまで届いてしまう。client を分けることで、被害を stay で送った
+ * ファイルに閉じ込める。
+ * 空文字なら「未同梱」で stay は無効（型は string のまま — 理由は上と同じ）。
+ */
+export const DEFAULT_GOOGLE_STAY_CLIENT_ID: string = "";
+
+/**
+ * token broker（Cloudflare Worker）の URL。authorization code → refresh token の交換と
+ * アクセストークンの取り直しを担う。空文字なら stay は無効。
+ * 宛先の差し替え口（localStorage 上書き等）は意図的に作らない — XSS で宛先を
+ * 奪われると code / refresh token が外へ出るため、ビルド定数に固定する。
+ */
+export const DEFAULT_TOKEN_BROKER_URL: string = "";
+
+/** 認可の方式。stay = つないだまま（broker 経由の refresh token）、hourly = 約 1 時間ごとにつなぎ直し。 */
+export type PushAuthMode = "stay" | "hourly";
+
+/** テスト専用の注入口（メモリ上のみ。localStorage 等の外部入力からは差し替えられない）。 */
+let stayDefaultsForTest: { clientId: string; brokerUrl: string } | null = null;
+
+/** テスト専用: 同梱定数の代わりに使う stay 設定を差し込む。null で元に戻す。本番コードから呼ばない。 */
+export function __setStayDefaultsForTest(value: { clientId: string; brokerUrl: string } | null): void {
+  stayDefaultsForTest = value;
+}
+
+/**
+ * stay 方式の設定。定数のどちらかが空、または自前 client_id の上書きがあるときは null
+ * （自前 client の人は hourly のまま）。brokerUrl は末尾スラッシュを落とす。
+ */
+export function getStayConnectedConfig(): { clientId: string; brokerUrl: string } | null {
+  const clientIdConst = stayDefaultsForTest?.clientId ?? DEFAULT_GOOGLE_STAY_CLIENT_ID;
+  const brokerUrlConst = stayDefaultsForTest?.brokerUrl ?? DEFAULT_TOKEN_BROKER_URL;
+  if (clientIdConst === "" || brokerUrlConst === "") return null;
+  const override = getGoogleClientIdOverride();
+  if (override && override.trim() !== "") return null;
+  return {
+    clientId: clientIdConst,
+    brokerUrl: brokerUrlConst.replace(/\/+$/, ""),
+  };
+}
+
+/** 保存済みの方式の好み（未保存・不正値は null）。 */
+export function getAuthModePreference(): PushAuthMode | null {
+  try {
+    const raw = localStorage.getItem(AUTH_MODE_KEY);
+    return raw === "stay" || raw === "hourly" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 方式の好みを保存する。null で解除。購読面へ変更を伝える。 */
+export function setAuthModePreference(mode: PushAuthMode | null): void {
+  try {
+    if (mode === null) localStorage.removeItem(AUTH_MODE_KEY);
+    else localStorage.setItem(AUTH_MODE_KEY, mode);
+  } catch {
+    // localStorage 不可の環境では黙って無視（他の設定と同じ非致命的挙動）
+  }
+  emitPushStatusChanged();
+}
+
+/** 既存利用者の印を書いて固定する。 */
+function markLegacyPushUser(): void {
+  try {
+    localStorage.setItem(LEGACY_USER_KEY, "1");
+  } catch {
+    // 非致命的
+  }
+}
+
+/**
+ * 「hourly の client で Drive にフォルダを作ったことがある」既存利用者か。
+ * 印がある、または hourly のフォルダキャッシュ / トークンが残っていれば true で、
+ * その場合は印を書いて固定する（後でキャッシュを消されても判定が変わらないように）。
+ *
+ * 限界: 判定できるのは「この端末に以前の接続の跡が残っている人」だけ。以前に切断して
+ * 跡が消えた人は新規として扱われる（drive.file では、旧 client が作ったフォルダの有無を
+ * 新 client から調べられないため）。
+ */
+export function isLegacyPushUser(): boolean {
+  try {
+    if (localStorage.getItem(LEGACY_USER_KEY)) return true;
+    if (
+      localStorage.getItem(FOLDER_CACHE_KEY) !== null ||
+      localStorage.getItem(HOURLY_TOKEN_KEY) !== null
+    ) {
+      markLegacyPushUser();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 今使う方式を決める。
+ * - stay が使えない（定数が空・自前 client 上書き）→ hourly
+ * - 好みが保存済み → それ
+ * - 未保存 → 既存利用者なら hourly、そうでなければ stay
+ *
+ * 既存利用者を黙って切り替えない理由: client が違うと drive.file では相手が作った
+ * フォルダが見えず、stay は Drive に新しい `Graphium/Inbox` を作る。黙って切り替えると
+ * パソコン側が見張っている古いフォルダに届かなくなる（機能欠落）。そのため既存利用者は
+ * 自分で切り替えたときだけ stay にする。
+ */
+export function resolveAuthMode(): PushAuthMode {
+  if (getStayConnectedConfig() === null) return "hourly";
+  const preference = getAuthModePreference();
+  if (preference) return preference;
+  return isLegacyPushUser() ? "hourly" : "stay";
+}
 
 const INBOX_FOLDER_KEY = "graphium-mobile-inbox-folder";
 
@@ -160,10 +284,14 @@ export type DriveInboxFolderCache = {
   inboxId: string;
 };
 
-/** フォルダ ID キャッシュを読む（無い/壊れているなら null）。 */
-export function getDriveFolderCache(): DriveInboxFolderCache | null {
+function folderCacheKey(mode: PushAuthMode): string {
+  return mode === "stay" ? FOLDER_CACHE_STAY_KEY : FOLDER_CACHE_KEY;
+}
+
+/** フォルダ ID キャッシュを読む（無い/壊れているなら null）。キャッシュは方式ごとに別。 */
+export function getDriveFolderCache(mode: PushAuthMode): DriveInboxFolderCache | null {
   try {
-    const raw = localStorage.getItem(FOLDER_CACHE_KEY);
+    const raw = localStorage.getItem(folderCacheKey(mode));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<DriveInboxFolderCache>;
     if (typeof parsed.rootId === "string" && typeof parsed.inboxId === "string") {
@@ -175,13 +303,17 @@ export function getDriveFolderCache(): DriveInboxFolderCache | null {
   }
 }
 
-/** フォルダ ID キャッシュを保存する。null で破棄（404/権限エラー時・切断時）。 */
-export function setDriveFolderCache(cache: DriveInboxFolderCache | null): void {
+/**
+ * フォルダ ID キャッシュを保存する。null で破棄（404/権限エラー時・切断時）。
+ * hourly のキャッシュを書くときは既存利用者の印も付ける。
+ */
+export function setDriveFolderCache(mode: PushAuthMode, cache: DriveInboxFolderCache | null): void {
   try {
     if (cache === null) {
-      localStorage.removeItem(FOLDER_CACHE_KEY);
+      localStorage.removeItem(folderCacheKey(mode));
     } else {
-      localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(cache));
+      localStorage.setItem(folderCacheKey(mode), JSON.stringify(cache));
+      if (mode === "hourly") markLegacyPushUser();
     }
   } catch {
     // 非致命的

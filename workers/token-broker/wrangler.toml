@@ -1,0 +1,25 @@
+name = "graphium-token-broker"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# ログを残さない方針を設定でも明示する。
+[observability]
+enabled = false
+
+[vars]
+# 許可する Origin（カンマ区切り・完全一致）
+ALLOWED_ORIGINS = "https://kumagallium.github.io"
+# Google Cloud の Web client ID を入れる（公開してよい値）
+GOOGLE_CLIENT_ID = ""
+
+# GOOGLE_CLIENT_SECRET は vars に書かない。次で Worker の secret として入れる:
+#   wrangler secret put GOOGLE_CLIENT_SECRET
+
+# レート制限: 1 IP あたり 60 秒に 30 回。書式は wrangler の ratelimits 設定に合わせたもの。
+# デプロイ時に wrangler のドキュメントで書式・namespace_id を確かめること。
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 30
+  period = 60

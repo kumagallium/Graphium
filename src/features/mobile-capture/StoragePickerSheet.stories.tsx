@@ -80,3 +80,8 @@ export const Connecting: Story = {
 export const ConnectFailed: Story = {
   args: { ...baseProps, connectError: "Popup closed by user" },
 };
+
+/** 「つないだまま」方式: Google 行の下に説明と「詳しく」リンクが出る。 */
+export const StayConnected: Story = {
+  args: { ...baseProps, stayConnected: true },
+};

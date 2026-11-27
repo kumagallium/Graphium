@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-11-16
+**Last updated:** 2026-11-27
 
 Graphium is an open-source, local-first note editor with provenance tracking. This privacy policy explains how the application handles your data.
 
@@ -10,11 +10,11 @@ Graphium is a block-based note editor. Notes are stored on your filesystem (desk
 
 ## Data Collection
 
-**Graphium does not collect, store, or transmit any personal data to any server.**
+**Graphium does not collect or store any personal data, and sends none to any server of its own.** The one thing that passes through a server Graphium runs is Google's access keys for phone capture, and only while you use **Stay connected** (see "Token broker" below). Nothing is stored there.
 
 - No analytics or tracking
 - No cookies
-- No account or sign-in
+- No account or sign-in of its own
 - No server-side note storage
 
 ## Data Storage
@@ -28,14 +28,14 @@ Graphium is a block-based note editor. Notes are stored on your filesystem (desk
 
 The desktop app also runs a small local server on your own computer (`127.0.0.1`, never reachable from other machines). The app generates a secret at each launch, keeps it only in memory, and attaches it to its own requests; requests without it are refused. This keeps browser extensions, web pages and other user accounts on the same computer from using the server. It is not a barrier against programs running under your own account, which can already read your files. Two things work without the secret: the Web Clip endpoint used by the Graphium browser extension (protected by its own pairing token), and the image / PDF relay, which then downloads public URLs only (never loopback or local-network addresses) and returns none of your data. Besides these, a liveness check answers without the secret; it returns no notes or settings.
 
-If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not send your notes to any cloud storage. The one exception is the phone capture screen: only if you connect your own Google Drive there, the files you send from the phone queue go into a `Graphium/Inbox` folder of your Drive (see "What goes over the network" in the [manual](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network)).
+If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not send your notes to any cloud storage. The one exception is the phone capture screen: only if you connect your own Google Drive there, the files you send from the phone queue go into a `Graphium/Inbox` folder of your Drive, directly from the phone to Google (see "What goes over the network" in the [manual](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network)).
 
 ## Third-Party Services
 
-Graphium has no storage or sign-in service of its own, and your notes are not stored with any third party. Connections to outside services fall into three groups. The manual lists each one with what it sends, when it runs and how to stop it: [What goes over the network](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network).
+Graphium has no storage or sign-in service of its own (the token broker below only exchanges Google's keys and stores nothing), and your notes are not stored with any third party. Connections to outside services fall into three groups. The manual lists each one with what it sends, when it runs and how to stop it: [What goes over the network](https://kumagallium.github.io/Graphium/manual/storage-and-sync#what-goes-over-the-network).
 
 - **Nothing is sent by default:** your notes, media and settings stay on your computer or in your browser.
-- **Only when you choose it:** an AI provider or external tools (MCP servers) you set up, **Seal as evidence**, the lookup from a DOI (the DOI alone goes to Crossref), world grounding (Wikipedia and OpenAlex, only while it is on; if you have connected web search such as Tavily in Settings, the first 400 characters of the claim text are also sent to that search service), and phone capture to your own Google Drive (the sign-in script from Google is loaded when you open the phone capture screen, even before you connect; nothing of yours is sent at that point).
+- **Only when you choose it:** an AI provider or external tools (MCP servers) you set up, **Seal as evidence**, the lookup from a DOI (the DOI alone goes to Crossref), world grounding (Wikipedia and OpenAlex, only while it is on; if you have connected web search such as Tavily in Settings, the first 400 characters of the claim text are also sent to that search service), and phone capture to your own Google Drive (the sign-in script from Google is loaded when you open the phone capture screen, even before you connect; nothing of yours is sent at that point). While **Stay connected** is on, Google's keys also pass through the token broker described below.
 - **Automatic connections (desktop app):** the update check (GitHub Pages, with GitHub Releases as a fallback; it sends no notes or account details and can be turned off in Settings) and the one-time download of the on-this-computer search model from Hugging Face (only a request for the model files; none of your text is sent).
 
 If you configure an LLM provider (optional, opt-in) for AI features, your prompts are sent to that provider per their terms — Graphium does not relay or log this traffic. On the macOS desktop app, the API key you enter is stored in the macOS Keychain rather than on disk. The first launch of a version that supports Keychain storage automatically migrates any previously-stored plaintext key out of `models.json` and into the Keychain.
@@ -43,6 +43,21 @@ If you configure an LLM provider (optional, opt-in) for AI features, your prompt
 If you connect external tools (MCP servers), Graphium talks to them when you test a connection and when the AI chat lists or uses their tools, sending what each tool call needs. When you search **Search the official list** in Settings, the search words (and nothing else) are sent to the official MCP Registry (`registry.modelcontextprotocol.io`) through the Graphium backend. When you connect a checked tool that offers a key check (Tavily), the key is sent once to that tool's own API (`api.tavily.com/usage`) to confirm it before saving.
 
 When you press **Seal as evidence** on a saved point in a note's history, a value computed from its content (a 32-byte SHA-256 hash) is sent to timestamp services (FreeTSA, and the public OpenTimestamps calendars) through the Graphium backend. The text and media are not sent. The OpenTimestamps calendars receive that hash mixed with a random value, so they cannot match it with the one sent to FreeTSA. According to its usage policy (https://freetsa.org/freetsa.html), FreeTSA does not store the hashes it timestamps and records only the sending IP address, to detect and investigate abuse. Requests identify themselves as Graphium (with its version) in the User-Agent. The services can see the sending IP address, the time and the User-Agent. Later, to complete the proof and check it, Graphium asks the calendars whether it is confirmed and fetches Bitcoin block information (`blockstream.info`, `mempool.space`). Nothing is sent until you press the button, and the web build, which has no backend, sends nothing.
+
+## Token broker (phone capture, **Stay connected**)
+
+When you connect your Google Drive on the phone capture screen, **Stay connected** is on by default for new connections. It keeps the phone connected without asking you to sign in again each hour. It uses a small server that Graphium runs (the token broker, a Cloudflare Worker whose code is public in `workers/token-broker/`).
+
+- **How it works:** on the first connection, the one-time authorization code from Google is sent to the token broker. The broker adds Graphium's client secret, exchanges the code with Google, and returns an access token and a refresh token to your phone. Later, when the access token expires, the phone sends the refresh token to the broker and receives a new access token.
+- **What passes through it:** the authorization code, the access token and the refresh token.
+- **What does not pass through it:** the files you send (photos, memos, URLs), which go from your phone directly to Google Drive; your notes; your email address or name. Graphium requests only the `drive.file` scope.
+- **Nothing is stored and nothing is logged.** The broker talks only to Google's token endpoint and other websites cannot call it from your browser. Its hosting provider, Cloudflare, can see the IP address, the time and the User-Agent of each request, and counts requests per IP address to limit how often they can come (Graphium's own code does not store or log the address).
+- **Where the refresh token lives:** in your phone browser's storage (`localStorage`). **Disconnect** in the phone settings sheet sends a revocation to Google and deletes it from the phone. You can also revoke access from the "third-party access" page of your Google Account. Whoever gets hold of the refresh token itself can receive new access tokens through the broker, so when you give the phone away or lose it, press **Disconnect** or revoke access on the Google side.
+- **What the keys can reach:** only the files created by this way of connecting (what was sent to `Graphium/Inbox`), not your other Drive files. It uses a different Google client from the one-hour way, to keep any harm limited to those files.
+- **Turning it off:** switch **Stay connected** off in the phone settings sheet. The connection then uses Google's browser sign-in, whose keys last about an hour and do not pass through Graphium's server. If you set your own Google client ID, the one-hour way is used.
+- **Existing users:** Graphium can decide this by itself only when the phone still holds a record of the earlier connection; then nothing changes until you turn it on yourself. If you had pressed **Disconnect** earlier and no record is left, the next connection uses **Stay connected**. Either way a new `Graphium` folder is created in your Drive. If you see two `Graphium` folders, pick the newer one again as the desktop inbox folder (or switch **Stay connected** off and connect again).
+- **Availability:** the broker has no service guarantee and may stop without notice. While it cannot be reached, what you send waits in the phone's queue.
+- **If Google revokes the refresh token** (you revoked it, or it went unused for about six months), connect again.
 
 ## Children's Privacy
 

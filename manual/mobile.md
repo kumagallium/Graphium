@@ -121,7 +121,7 @@ Mobile upload closes the loop: captures made on your phone travel through your o
 
 The pipeline, end to end:
 
-1. **Connect storage on the phone — once.** Tap the gear in the phone header (or the queue's **Connect storage** button). The **Choose storage** picker offers **Google Drive** (OneDrive is listed as **Coming soon**). You sign in with your own Google account; Graphium gets access only to files it creates (`drive.file` scope) and no secret is involved. The settings sheet behind the gear also shows the connection status, lets you **Change** or **Disconnect**, and holds a folded **Advanced** client-ID override that most people never touch.
+1. **Connect storage on the phone — once.** Tap the gear in the phone header (or the queue's **Connect storage** button). The **Choose storage** picker offers **Google Drive** (OneDrive is listed as **Coming soon**). You sign in with your own Google account; Graphium gets access only to files it creates (`drive.file` scope). By default the connection stays on until you disconnect — see [Staying connected](#stay-connected) for what that means. The settings sheet behind the gear also shows the connection status, lets you **Change** or **Disconnect**, and holds a folded **Advanced** client-ID override that most people never touch.
 2. **Capture and send.** Tap **Send** on the queue and it drains into the `Graphium/Inbox` folder of your own Drive. Transfers use TLS, and the files sit as ordinary files in storage *you* control.
 3. **Sync the folder to your desktop.** Run your cloud client (for example Google Drive for desktop) so that folder exists on the desktop's disk.
 4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), expand **Send from your phone or browser** and open **Send from your phone** — it has the **Inbox folder** picker: choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.
@@ -153,10 +153,38 @@ By default, imported files are deleted from the inbox — their content is alrea
 
 ![The Send from your phone section in Settings → Storage, with the QR code that opens Graphium on your phone](/screenshots/mobile-upload-settings.png)
 
+### Staying connected {#stay-connected}
+
+Google's browser sign-in gives the phone a key that expires after about an hour, so the connection used to need renewing again and again. When you connect now, the phone stays connected: **Stay connected** is on by default.
+
+How it works:
+
+- The first time you connect, Google hands the phone a one-time code. The phone sends that code to a small server that Graphium runs, and the server trades it with Google for two keys — one for access, and a second for renewing the first. It sends both back to the phone.
+- When the access key runs out, the phone sends the renewing key to the same server and gets a new access key. No screen appears.
+- The renewing key is kept in your phone browser's storage. **Disconnect** in the settings sheet tells Google to cancel it and deletes it from the phone. You can also cancel it from the third-party access page of your Google account.
+
+What goes through that server, and what does not:
+
+| What | Through that server? |
+|---|---|
+| The one-time code and the two keys | Goes through |
+| The photos, memos and URLs you send | Does not go through (they go from the phone straight to your Google Drive) |
+| Your notes, and your email address or name | Does not go through (Graphium asks Google only for access to files it created) |
+
+- The server stores nothing and keeps no logs. It talks only to Google, and other websites cannot call it from your browser. Its hosting company, Cloudflare, can see the IP address, the time and the User-Agent of each request, and counts requests per IP address to limit how often they can come (Graphium's own code does not store or log the address).
+- Whoever gets hold of the renewing key itself can receive new access keys through that server. So keep the renewing key only inside your phone. When you give the phone away or lose it, press **Disconnect**, or cancel access on the Google account side.
+- The keys reach only the files created this way — what you send into `Graphium/Inbox` in your Drive. They cannot reach your other Drive files. This way of connecting uses a different Google client from the one-hour way, so the keys are limited to those files.
+- The server comes with no guarantee and may stop without notice. While the phone cannot get a new key, what you send waits in the phone's queue and goes out the next time it can.
+- If Google cancels the renewing key — you cancelled it, or it went unused for about six months — press **Connect** again.
+
+**Turning it off.** Switch **Stay connected** off in the phone's settings sheet and the connection goes back to the one-hour way. The keys then never pass through Graphium's server. If you have set your own Google client ID, the connection stays the one-hour way.
+
+**If you already used phone capture.** Graphium can decide this by itself only when the phone still holds a record of the earlier connection. In that case nothing changes until you switch **Stay connected** on yourself. When you do, a new `Graphium` folder appears in your Drive, because with this kind of access the new connection cannot see the folder the old one made. If you had pressed **Disconnect** earlier and no record is left, the next time you connect it is **Stay connected**, and a new `Graphium` folder appears in your Drive just the same. If you see two `Graphium` folders in your Drive, pick the newer one as the **Inbox folder** again in the desktop's **Send from your phone** section (or switch **Stay connected** off in the settings and connect again).
+
 ::: tip No cloud account? No problem
 The queue is a convenience, not a requirement: your phone's share sheet can save a photo straight into the synced `Graphium/Inbox` folder by hand (Photos → share → the Files/Drive app), and the desktop inbox imports it exactly the same way.
 :::
 
 ::: info Why cloud storage in the middle?
-Your phone and desktop never talk to a Graphium server — captures travel through storage *you* control (your Google Drive), and the desktop only reads a folder on its own disk. See [Storage & sync](/storage-and-sync).
+Your captures never go through a Graphium server — they travel through storage *you* control (your Google Drive), and the desktop only reads a folder on its own disk. The one thing the phone can send to a Graphium server is the Google key described in [Staying connected](#stay-connected), and you can turn that off. See [Storage & sync](/storage-and-sync).
 :::

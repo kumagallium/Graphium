@@ -131,8 +131,9 @@ export function usePushQueue(): PushQueueUi {
         const result = await mod.drainPushQueue(pusher, {
           onItemProgress: (id, p) => setProgress((prev) => ({ ...prev, [id]: p })),
         });
-        if (result.aborted === "auth") setConnected(false);
-        else setConnected(pusher.isConnected());
+        // stay は broker の一時不調でも refresh token が残る（つながったまま）ので、
+        // 中断の理由で決め打ちせず実際の接続状態を読む
+        setConnected(pusher.isConnected());
         // 送り終えたアイテムは「送信済み」の履歴行になるので進捗表示は畳む
         setProgress({});
       })().catch((err) => {

@@ -87,3 +87,13 @@ export const WithClientIdOverride: Story = {
     clientIdOverride: "my-own-id.apps.googleusercontent.com",
   },
 };
+
+/** 「つないだまま」を選べるビルド（新規利用者の既定はオン）。 */
+export const StayAvailable: Story = {
+  args: { ...baseProps, stayAvailable: true, stayConnected: true },
+};
+
+/** 既存利用者（今は約 1 時間ごとの方式）。オンにすると送り先フォルダが変わる補足が出る。 */
+export const StayAvailableLegacyUser: Story = {
+  args: { ...baseProps, connected: true, stayAvailable: true, stayConnected: false, legacyUser: true },
+};

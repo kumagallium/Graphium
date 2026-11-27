@@ -91,3 +91,19 @@ describe("StoragePickerSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("StoragePickerSheet: stay（つないだまま）の説明", () => {
+  it("shows the explanation and a Learn more link only when stayConnected", () => {
+    const { rerender } = renderSheet();
+    expect(screen.queryByText(/Stays connected/)).toBeNull();
+
+    rerender(
+      <LocaleProvider>
+        <StoragePickerSheet {...baseProps} stayConnected />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText(/Stays connected/)).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Learn more" });
+    expect(link.getAttribute("href")).toBe("https://kumagallium.github.io/Graphium/manual/mobile#stay-connected");
+  });
+});

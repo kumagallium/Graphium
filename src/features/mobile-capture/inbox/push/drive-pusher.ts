@@ -12,6 +12,9 @@
 //   （uploadType=resumable / 256KiB 倍数チャンク）。
 // - resumable 初期化応答の Location ヘッダが CORS で読めない環境に備え、
 //   X-GUploader-UploadID からセッション URI を再構成するフォールバックを持つ。
+// - 認可の方式は呼ぶたびに resolveAuthMode() で解決する（設定で切り替わるため）。
+//   stay（つないだまま）はアクセストークンを broker 経由で画面なしに取り直し、
+//   フォルダキャッシュも方式ごとに別（client が違うと drive.file では見えるフォルダが違う）。
 // - 401 は invalidateAccessToken() してから PushAuthError にする（queue 側の
 //   中断シグナル）。手元の期限が残っていても Google 側の判定を正とする。
 //
@@ -22,12 +25,16 @@
 import {
   getDriveFolderCache,
   getGoogleClientId,
+  getStayConnectedConfig,
+  resolveAuthMode,
   setDriveFolderCache,
+  type PushAuthMode,
 } from "./config";
 import {
   connectInteractive,
   disconnectGoogleAuth,
-  getValidAccessToken,
+  getFreshAccessToken,
+  hasGoogleConnection,
   invalidateAccessToken,
   prepareGoogleAuth,
 } from "./google-auth";
@@ -74,58 +81,73 @@ export class GoogleDrivePusher implements InboxPusher {
     this.chunkBytes = options.chunkBytes ?? CHUNK_BYTES;
   }
 
+  /** 今の方式と、その方式で使う client_id（未設定なら null）。呼ぶたびに解決する。 */
+  private resolveAuth(): { mode: PushAuthMode; clientId: string } | null {
+    const mode = resolveAuthMode();
+    if (mode === "stay") {
+      const stay = getStayConnectedConfig();
+      return stay ? { mode, clientId: stay.clientId } : null;
+    }
+    const clientId = getGoogleClientId();
+    return clientId ? { mode, clientId } : null;
+  }
+
   isConfigured(): boolean {
-    return getGoogleClientId() !== null;
+    return this.resolveAuth() !== null;
   }
 
   async prepare(): Promise<void> {
-    const clientId = getGoogleClientId();
-    if (!clientId) {
+    const auth = this.resolveAuth();
+    if (!auth) {
       throw new PushConfigError("Google client ID is not configured");
     }
-    await prepareGoogleAuth(clientId);
+    await prepareGoogleAuth(auth.clientId, auth.mode);
   }
 
   isConnected(): boolean {
-    return getValidAccessToken() !== null;
+    return hasGoogleConnection(resolveAuthMode());
   }
 
   connect(): Promise<void> {
-    // connectInteractive はこの同期呼び出しの中で requestAccessToken まで到達する。
+    // connectInteractive はこの同期呼び出しの中で requestAccessToken / requestCode まで到達する。
     // ここに await/async 前処理を足してはいけない（ユーザージェスチャが切れる）。
     return connectInteractive().then(() => undefined);
   }
 
   disconnect(): void {
     disconnectGoogleAuth();
-    // フォルダ ID はアカウントに紐づくので、別アカウント接続に備えて破棄する
-    setDriveFolderCache(null);
+    // フォルダ ID はアカウントに紐づくので、別アカウント接続に備えて両方式とも破棄する
+    setDriveFolderCache("hourly", null);
+    setDriveFolderCache("stay", null);
   }
 
   async push(file: File, opts?: PushOptions): Promise<PushResult> {
+    // 方式は 1 回の push の間で固定する（途中で設定が変わってもキャッシュを取り違えない）
+    const mode = resolveAuthMode();
     try {
-      return await this.pushOnce(file, opts);
+      return await this.pushOnce(mode, file, opts);
     } catch (err) {
       if (err instanceof FolderGoneError) {
         // キャッシュしていた Inbox フォルダが消された等 → 作り直して 1 回だけ再試行
-        setDriveFolderCache(null);
-        return await this.pushOnce(file, opts);
+        setDriveFolderCache(mode, null);
+        return await this.pushOnce(mode, file, opts);
       }
       throw err;
     }
   }
 
-  private async pushOnce(file: File, opts?: PushOptions): Promise<PushResult> {
-    const token = this.requireToken();
-    const inboxId = await this.ensureInboxFolder(token);
+  private async pushOnce(mode: PushAuthMode, file: File, opts?: PushOptions): Promise<PushResult> {
+    const token = await this.requireToken(mode);
+    const inboxId = await this.ensureInboxFolder(mode, token);
     if (file.size <= this.multipartLimitBytes) {
-      return await this.multipartUpload(token, inboxId, file, opts);
+      return await this.multipartUpload(mode, token, inboxId, file, opts);
     }
-    return await this.resumableUpload(token, inboxId, file, opts);
+    return await this.resumableUpload(mode, token, inboxId, file, opts);
   }
 
-  private requireToken(): string {
-    const token = getValidAccessToken();
+  private async requireToken(mode: PushAuthMode): Promise<string> {
+    // stay は期限切れなら broker で取り直す（失敗は PushAuthError）
+    const token = await getFreshAccessToken(mode);
     if (!token) {
       throw new PushAuthError("Google Drive is not connected or the token has expired");
     }
@@ -133,16 +155,17 @@ export class GoogleDrivePusher implements InboxPusher {
   }
 
   /** Graphium → Inbox の順に find-or-create し、Inbox の ID を返す（キャッシュ利用）。 */
-  private async ensureInboxFolder(token: string): Promise<string> {
-    const cached = getDriveFolderCache();
+  private async ensureInboxFolder(mode: PushAuthMode, token: string): Promise<string> {
+    const cached = getDriveFolderCache(mode);
     if (cached) return cached.inboxId;
-    const rootId = await this.findOrCreateFolder(token, ROOT_FOLDER_NAME, null);
-    const inboxId = await this.findOrCreateFolder(token, INBOX_FOLDER_NAME, rootId);
-    setDriveFolderCache({ rootId, inboxId });
+    const rootId = await this.findOrCreateFolder(mode, token, ROOT_FOLDER_NAME, null);
+    const inboxId = await this.findOrCreateFolder(mode, token, INBOX_FOLDER_NAME, rootId);
+    setDriveFolderCache(mode, { rootId, inboxId });
     return inboxId;
   }
 
   private async findOrCreateFolder(
+    mode: PushAuthMode,
     token: string,
     name: string,
     parentId: string | null,
@@ -157,6 +180,7 @@ export class GoogleDrivePusher implements InboxPusher {
     if (parentId) clauses.push(`'${parentId}' in parents`);
     const query = clauses.join(" and ");
     const searchRes = await this.driveFetch(
+      mode,
       token,
       `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name)&spaces=drive`,
     );
@@ -166,7 +190,7 @@ export class GoogleDrivePusher implements InboxPusher {
     const found = (await searchRes.json()) as { files?: Array<{ id: string }> };
     if (found.files && found.files.length > 0) return found.files[0].id;
 
-    const createRes = await this.driveFetch(token, `${DRIVE_API}/files?fields=id`, {
+    const createRes = await this.driveFetch(mode, token, `${DRIVE_API}/files?fields=id`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -188,6 +212,7 @@ export class GoogleDrivePusher implements InboxPusher {
 
   /** ≤5MB: multipart（メタデータ + 本体を 1 リクエストで）。 */
   private async multipartUpload(
+    mode: PushAuthMode,
     token: string,
     inboxId: string,
     file: File,
@@ -201,7 +226,7 @@ export class GoogleDrivePusher implements InboxPusher {
     form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
     form.append("file", file);
 
-    const res = await this.driveFetch(token, `${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
+    const res = await this.driveFetch(mode, token, `${UPLOAD_API}/files?uploadType=multipart&fields=id`, {
       method: "POST",
       body: form,
     });
@@ -219,12 +244,14 @@ export class GoogleDrivePusher implements InboxPusher {
 
   /** >5MB: resumable（セッション開始 → 256KiB 倍数チャンクの PUT）。 */
   private async resumableUpload(
+    mode: PushAuthMode,
     token: string,
     inboxId: string,
     file: File,
     opts?: PushOptions,
   ): Promise<PushResult> {
     const initRes = await this.driveFetch(
+      mode,
       token,
       `${UPLOAD_API}/files?uploadType=resumable&fields=id`,
       {
@@ -250,7 +277,7 @@ export class GoogleDrivePusher implements InboxPusher {
     while (offset < file.size) {
       const end = Math.min(offset + this.chunkBytes, file.size);
       const chunk = file.slice(offset, end);
-      const res = await this.driveFetch(token, sessionUri, {
+      const res = await this.driveFetch(mode, token, sessionUri, {
         method: "PUT",
         headers: {
           "Content-Range": `bytes ${offset}-${end - 1}/${file.size}`,
@@ -290,13 +317,14 @@ export class GoogleDrivePusher implements InboxPusher {
   }
 
   /** Authorization 付き fetch。401 はトークン破棄 + PushAuthError（queue の中断シグナル）。 */
-  private async driveFetch(token: string, url: string, init?: RequestInit): Promise<Response> {
+  private async driveFetch(mode: PushAuthMode, token: string, url: string, init?: RequestInit): Promise<Response> {
     const res = await fetch(url, {
       ...init,
       headers: { ...(init?.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) {
-      invalidateAccessToken();
+      // stay ではアクセストークンだけ捨てる（次の送信で自動的に取り直される）
+      invalidateAccessToken(mode);
       throw new PushAuthError("Google Drive rejected the access token (401)");
     }
     return res;

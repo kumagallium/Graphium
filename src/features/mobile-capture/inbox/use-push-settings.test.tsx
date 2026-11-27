@@ -31,6 +31,10 @@ const h = vi.hoisted(() => ({
   disconnect: vi.fn(),
   setPushProvider: vi.fn(),
   setGoogleClientIdOverride: vi.fn(),
+  stayConfig: { value: null as { clientId: string; brokerUrl: string } | null },
+  authMode: { value: "hourly" as "stay" | "hourly" },
+  legacy: { value: false },
+  setAuthModePreference: vi.fn(),
 }));
 
 vi.mock("./push", () => {
@@ -45,6 +49,10 @@ vi.mock("./push", () => {
       disconnect() { h.disconnect(); }
     },
     getGoogleClientIdOverride: () => h.override.value,
+    getStayConnectedConfig: () => h.stayConfig.value,
+    resolveAuthMode: () => h.authMode.value,
+    isLegacyPushUser: () => h.legacy.value,
+    setAuthModePreference: h.setAuthModePreference,
     setGoogleClientIdOverride: h.setGoogleClientIdOverride,
     setPushProvider: h.setPushProvider,
   };
@@ -55,6 +63,9 @@ beforeEach(() => {
   h.configured.value = true;
   h.connected.value = false;
   h.override.value = null;
+  h.stayConfig.value = null;
+  h.authMode.value = "hourly";
+  h.legacy.value = false;
   h.connectImpl.mockImplementation(() => Promise.resolve());
 });
 
@@ -131,5 +142,80 @@ describe("usePushSettings", () => {
       result.current.clearClientId();
     });
     expect(h.setGoogleClientIdOverride).toHaveBeenCalledWith(null);
+  });
+
+  it("exposes stay state from the module", async () => {
+    h.stayConfig.value = { clientId: "c", brokerUrl: "https://b.example" };
+    h.authMode.value = "stay";
+    h.legacy.value = true;
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.stayAvailable).toBe(true);
+    expect(result.current.stayConnected).toBe(true);
+    expect(result.current.legacyUser).toBe(true);
+  });
+
+  it("is not stay-available while the module reports no stay config", async () => {
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.stayAvailable).toBe(false);
+    expect(result.current.stayConnected).toBe(false);
+  });
+
+  it("setStayConnected saves the preference, disconnects, and re-prepares", async () => {
+    h.stayConfig.value = { clientId: "c", brokerUrl: "https://b.example" };
+    h.connected.value = true;
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    h.prepare.mockClear();
+
+    act(() => {
+      result.current.setStayConnected(true);
+    });
+    expect(h.disconnect).toHaveBeenCalledTimes(1);
+    expect(h.setAuthModePreference).toHaveBeenCalledWith("stay");
+    expect(h.prepare).toHaveBeenCalled(); // 次の接続をジェスチャ内で同期に呼べるよう作り直す
+
+    act(() => {
+      result.current.setStayConnected(false);
+    });
+    expect(h.setAuthModePreference).toHaveBeenCalledWith("hourly");
+  });
+
+  it("disconnects before saving an override when it flips the auth mode (stay -> hourly)", async () => {
+    h.stayConfig.value = { clientId: "c", brokerUrl: "https://b.example" };
+    h.authMode.value = "stay";
+    h.connected.value = true;
+    const order: string[] = [];
+    h.disconnect.mockImplementation(() => { order.push("disconnect"); });
+    h.setGoogleClientIdOverride.mockImplementation((v: string | null) => {
+      h.override.value = v;
+      // 自前 client があると stay は使えず hourly になる
+      h.authMode.value = v ? "hourly" : "stay";
+      order.push(v === null ? "set:null" : "set:" + v);
+    });
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    order.length = 0;
+
+    act(() => {
+      result.current.saveClientId("mine.apps.googleusercontent.com");
+    });
+    expect(h.disconnect).toHaveBeenCalledTimes(1);
+    // 最後の保存より前に切断している
+    expect(order.lastIndexOf("disconnect")).toBeLessThan(order.lastIndexOf("set:mine.apps.googleusercontent.com"));
+    expect(h.override.value).toBe("mine.apps.googleusercontent.com");
+    h.setGoogleClientIdOverride.mockReset();
+    h.disconnect.mockReset();
+  });
+
+  it("keeps the connection when saving an override does not change the mode", async () => {
+    h.connected.value = true;
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    act(() => {
+      result.current.saveClientId("mine.apps.googleusercontent.com");
+    });
+    expect(h.disconnect).not.toHaveBeenCalled();
   });
 });

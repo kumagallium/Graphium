@@ -37,6 +37,17 @@ export type PushSettingsUi = {
   connecting: boolean;
   /** 直近の接続エラー（表示用）。 */
   connectError: string | null;
+  /** 「つないだまま」方式を選べるビルド・設定か（同梱の client / broker があり、自前 client_id が無い）。 */
+  stayAvailable: boolean;
+  /** 今「つないだまま」方式か。 */
+  stayConnected: boolean;
+  /** 既存利用者（hourly の client で Drive にフォルダを作ったことがある）か。 */
+  legacyUser: boolean;
+  /**
+   * 方式を切り替える。好みを保存し、今の接続を切断する（方式ごとに client と送り先フォルダが
+   * 違うので、つなぎ直しが要る）。切り替え後は prepare をやり直す。
+   */
+  setStayConnected: (on: boolean) => void;
   /** 切断（トークン revoke + 破棄）。他の購読面へはイベント経由で伝播する。 */
   disconnect: () => void;
   /** 自前 client_id を保存する（空は不可 — 解除は clearClientId）。 */
@@ -60,6 +71,9 @@ export function usePushSettings(active: boolean): PushSettingsUi {
   const [clientIdOverride, setClientIdOverride] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [stayAvailable, setStayAvailable] = useState(false);
+  const [stayConnected, setStayConnectedState] = useState(false);
+  const [legacyUser, setLegacyUser] = useState(false);
 
   /** configured/connected/上書き値を localStorage から読み直す。 */
   const refreshStatus = useCallback(() => {
@@ -69,6 +83,9 @@ export function usePushSettings(active: boolean): PushSettingsUi {
     setConfigured(pusher.isConfigured());
     setConnected(pusher.isConnected());
     setClientIdOverride(mod.getGoogleClientIdOverride() ?? "");
+    setStayAvailable(mod.getStayConnectedConfig() !== null);
+    setStayConnectedState(mod.resolveAuthMode() === "stay");
+    setLegacyUser(mod.isLegacyPushUser());
     if (pusher.isConfigured()) {
       // 契約: connect() をジェスチャ内で同期的に呼べるよう、prepare は事前に済ませる
       void pusher.prepare().catch(() => {
@@ -117,21 +134,47 @@ export function usePushSettings(active: boolean): PushSettingsUi {
     setConnected(false);
   }, []);
 
-  const saveClientId = useCallback((value: string) => {
+  const setStayConnected = useCallback((on: boolean) => {
     const mod = moduleRef.current;
+    const pusher = pusherRef.current;
+    if (!mod || !pusher) return;
+    // 先に今の接続を切る（切断は今の方式の保存だけでなく両方を片付ける）。
+    // その後で好みを保存する — 保存が emit して refreshStatus → prepare をやり直し、
+    // 次の「接続」がジェスチャ内で同期に呼べる状態に戻る。
+    pusher.disconnect();
+    setConnected(false);
+    setConnectError(null);
+    mod.setAuthModePreference(on ? "stay" : "hourly");
+    refreshStatus();
+  }, [refreshStatus]);
+
+  /**
+   * 自前 client_id を変えて方式（resolveAuthMode）が変わるときは、**変更の前に**切断する。
+   * 切断は両方式の revoke と消去を行うので、stay の refresh token が UI から見えないまま
+   * 残らない。方式が変わらないなら接続は保つ。
+   */
+  const changeClientId = useCallback((next: string | null) => {
+    const mod = moduleRef.current;
+    const pusher = pusherRef.current;
     if (!mod) return;
-    mod.setGoogleClientIdOverride(value);
+    const before = mod.resolveAuthMode();
+    const prev = mod.getGoogleClientIdOverride();
+    // 変更後の方式を先に調べる（上書きを仮に入れて読み、元へ戻す）
+    mod.setGoogleClientIdOverride(next);
+    const after = mod.resolveAuthMode();
+    mod.setGoogleClientIdOverride(prev);
+    if (before !== after && pusher) {
+      pusher.disconnect();
+      setConnected(false);
+    }
+    mod.setGoogleClientIdOverride(next);
     setConnectError(null);
     refreshStatus();
   }, [refreshStatus]);
 
-  const clearClientId = useCallback(() => {
-    const mod = moduleRef.current;
-    if (!mod) return;
-    mod.setGoogleClientIdOverride(null);
-    setConnectError(null);
-    refreshStatus();
-  }, [refreshStatus]);
+  const saveClientId = useCallback((value: string) => changeClientId(value), [changeClientId]);
+
+  const clearClientId = useCallback(() => changeClientId(null), [changeClientId]);
 
   return {
     ready,
@@ -141,6 +184,10 @@ export function usePushSettings(active: boolean): PushSettingsUi {
     clientIdOverride,
     connecting,
     connectError,
+    stayAvailable,
+    stayConnected,
+    legacyUser,
+    setStayConnected,
     disconnect,
     saveClientId,
     clearClientId,

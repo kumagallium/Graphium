@@ -17,6 +17,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // google-auth をモック（vi.hoisted パターンは transport.test.ts と同じ）
 const authMock = vi.hoisted(() => ({
   getValidAccessToken: vi.fn<() => string | null>(() => "tok-1"),
+  // 方式別の入口は getValidAccessToken のモックへ委譲する（既存の各ケースは hourly 前提のまま）
+  getFreshAccessToken: vi.fn(async (_mode: string) => authMock.getValidAccessToken()),
+  hasGoogleConnection: vi.fn((_mode: string) => authMock.getValidAccessToken() !== null),
   invalidateAccessToken: vi.fn(),
   prepareGoogleAuth: vi.fn(async (_clientId: string) => {}),
   connectInteractive: vi.fn(async () => "tok-1"),
@@ -26,6 +29,7 @@ vi.mock("./google-auth", () => authMock);
 
 import { GoogleDrivePusher } from "./drive-pusher";
 import {
+  __setStayDefaultsForTest,
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
   getDriveFolderCache,
   setDriveFolderCache,
@@ -79,7 +83,7 @@ describe("設定と接続状態", () => {
     expect(pusher.isConfigured()).toBe(true);
     // prepare は同梱 ID をそのまま auth 層へ渡す
     await pusher.prepare();
-    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith(DEFAULT_GOOGLE_PUSH_CLIENT_ID);
+    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith(DEFAULT_GOOGLE_PUSH_CLIENT_ID, "hourly");
   });
 
   it("isConfigured stays true with a localStorage override, and prepare passes the override through", async () => {
@@ -87,7 +91,7 @@ describe("設定と接続状態", () => {
     const pusher = new GoogleDrivePusher();
     expect(pusher.isConfigured()).toBe(true);
     await pusher.prepare();
-    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith("my-id");
+    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith("my-id", "hourly");
   });
 
   it("prepare rejects with a config error when no client id resolves (build without a bundled id)", async () => {
@@ -119,10 +123,10 @@ describe("設定と接続状態", () => {
   });
 
   it("disconnect clears the auth and the folder cache (account may change)", () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "i" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "i" });
     new GoogleDrivePusher().disconnect();
     expect(authMock.disconnectGoogleAuth).toHaveBeenCalled();
-    expect(getDriveFolderCache()).toBeNull();
+    expect(getDriveFolderCache("hourly")).toBeNull();
   });
 });
 
@@ -162,11 +166,11 @@ describe("multipart アップロード（≤5MB 相当）", () => {
     // 進捗は開始/完了の 2 点
     expect(progress).toEqual([0, 10]);
     // フォルダ ID がキャッシュされる
-    expect(getDriveFolderCache()).toEqual({ rootId: "root-1", inboxId: "inbox-1" });
+    expect(getDriveFolderCache("hourly")).toEqual({ rootId: "root-1", inboxId: "inbox-1" });
   });
 
   it("skips folder queries entirely when the cache is warm", async () => {
-    setDriveFolderCache({ rootId: "root-1", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "root-1", inboxId: "inbox-1" });
     const { calls } = installFetchQueue([json({ id: "file-2" })]);
     const result = await new GoogleDrivePusher().push(makeFile(4));
     expect(result.fileId).toBe("file-2");
@@ -174,7 +178,7 @@ describe("multipart アップロード（≤5MB 相当）", () => {
   });
 
   it("drops a stale folder cache on 404, re-ensures the folders, and retries once", async () => {
-    setDriveFolderCache({ rootId: "root-old", inboxId: "inbox-old" });
+    setDriveFolderCache("hourly", { rootId: "root-old", inboxId: "inbox-old" });
     const { calls } = installFetchQueue([
       new Response("not found", { status: 404 }), // 旧 inbox 宛の multipart → 404
       json({ files: [{ id: "root-new" }] }), // 再解決: Graphium
@@ -184,11 +188,11 @@ describe("multipart アップロード（≤5MB 相当）", () => {
     const result = await new GoogleDrivePusher().push(makeFile(4));
     expect(result.fileId).toBe("file-3");
     expect(calls).toHaveLength(4);
-    expect(getDriveFolderCache()).toEqual({ rootId: "root-new", inboxId: "inbox-new" });
+    expect(getDriveFolderCache("hourly")).toEqual({ rootId: "root-new", inboxId: "inbox-new" });
   });
 
   it("maps 401 to PushAuthError and invalidates the local token", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "i" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "i" });
     installFetchQueue([new Response("unauthorized", { status: 401 })]);
     await expect(new GoogleDrivePusher().push(makeFile(4))).rejects.toMatchObject({
       name: "PushAuthError",
@@ -204,7 +208,7 @@ describe("resumable アップロード（>5MB 相当）", () => {
     new GoogleDrivePusher({ multipartLimitBytes: 8, chunkBytes: 4 });
 
   it("switches to resumable above the limit and uploads in Content-Range chunks", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "inbox-1" });
     const { calls } = installFetchQueue([
       new Response(null, {
         status: 200,
@@ -243,7 +247,7 @@ describe("resumable アップロード（>5MB 相当）", () => {
   });
 
   it("reconstructs the session URI from X-GUploader-UploadID when Location is unreadable (CORS)", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "inbox-1" });
     const { calls } = installFetchQueue([
       new Response(null, {
         status: 200,
@@ -259,7 +263,7 @@ describe("resumable アップロード（>5MB 相当）", () => {
   });
 
   it("fails clearly when neither Location nor X-GUploader-UploadID is available", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "inbox-1" });
     installFetchQueue([new Response(null, { status: 200 })]);
     await expect(smallPusher().push(makeFile(9))).rejects.toThrow(
       /session URI is unavailable/,
@@ -267,7 +271,7 @@ describe("resumable アップロード（>5MB 相当）", () => {
   });
 
   it("aborts the attempt when the server confirms no progress (no infinite chunk loop)", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "inbox-1" });
     installFetchQueue([
       new Response(null, { status: 200, headers: { Location: "https://upload.example/s" } }),
       new Response(null, { status: 308 }), // Range 無し = 何も受信されていない
@@ -276,7 +280,7 @@ describe("resumable アップロード（>5MB 相当）", () => {
   });
 
   it("maps 401 during a chunk to PushAuthError (token expired mid-upload)", async () => {
-    setDriveFolderCache({ rootId: "r", inboxId: "inbox-1" });
+    setDriveFolderCache("hourly", { rootId: "r", inboxId: "inbox-1" });
     installFetchQueue([
       new Response(null, { status: 200, headers: { Location: "https://upload.example/s" } }),
       new Response(null, { status: 308, headers: { Range: "bytes=0-3" } }),
@@ -286,5 +290,84 @@ describe("resumable アップロード（>5MB 相当）", () => {
       name: "PushAuthError",
     });
     expect(authMock.invalidateAccessToken).toHaveBeenCalled();
+  });
+});
+
+describe("stay（つないだまま）方式", () => {
+  const STAY = { clientId: "stay-client", brokerUrl: "https://broker.example" };
+
+  beforeEach(() => {
+    __setStayDefaultsForTest(STAY);
+  });
+  afterEach(() => {
+    __setStayDefaultsForTest(null);
+  });
+
+  it("prepare passes the stay client id and mode; isConfigured follows the stay config", async () => {
+    const pusher = new GoogleDrivePusher();
+    expect(pusher.isConfigured()).toBe(true);
+    await pusher.prepare();
+    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith("stay-client", "stay");
+  });
+
+  it("an existing user stays on hourly until they opt in", async () => {
+    localStorage.setItem("graphium-push-legacy-user", "1");
+    await new GoogleDrivePusher().prepare();
+    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith(DEFAULT_GOOGLE_PUSH_CLIENT_ID, "hourly");
+  });
+
+  it("uses the stay folder cache and fetches the token via getFreshAccessToken(stay)", async () => {
+    // hourly のキャッシュを書くと既存利用者の印が付くので、stay は好みで明示する
+    localStorage.setItem("graphium-push-auth-mode", "stay");
+    setDriveFolderCache("hourly", { rootId: "h-r", inboxId: "h-i" });
+    setDriveFolderCache("stay", { rootId: "s-r", inboxId: "s-i" });
+    authMock.getFreshAccessToken.mockResolvedValueOnce("stay-tok");
+    const { calls } = installFetchQueue([json({ id: "file-s" })]);
+    await new GoogleDrivePusher().push(makeFile(4));
+    expect(authMock.getFreshAccessToken).toHaveBeenCalledWith("stay");
+    const form = calls[0].init?.body as FormData;
+    const metadata = JSON.parse(await (form.get("metadata") as Blob).text());
+    expect(metadata.parents).toEqual(["s-i"]);
+    expect((calls[0].init?.headers as Record<string, string>).Authorization).toBe("Bearer stay-tok");
+  });
+
+  it("writes the stay cache (not the hourly one) when it creates the folders", async () => {
+    installFetchQueue([
+      json({ files: [{ id: "root-1" }] }),
+      json({ files: [{ id: "inbox-1" }] }),
+      json({ id: "file-1" }),
+    ]);
+    await new GoogleDrivePusher().push(makeFile(4));
+    expect(getDriveFolderCache("stay")).toEqual({ rootId: "root-1", inboxId: "inbox-1" });
+    expect(getDriveFolderCache("hourly")).toBeNull();
+  });
+
+  it("401 invalidates with the stay mode and raises PushAuthError", async () => {
+    setDriveFolderCache("stay", { rootId: "r", inboxId: "i" });
+    installFetchQueue([new Response("unauthorized", { status: 401 })]);
+    await expect(new GoogleDrivePusher().push(makeFile(4))).rejects.toMatchObject({
+      name: "PushAuthError",
+    });
+    expect(authMock.invalidateAccessToken).toHaveBeenCalledWith("stay");
+  });
+
+  it("push rejects with PushAuthError when getFreshAccessToken returns null", async () => {
+    authMock.getFreshAccessToken.mockResolvedValueOnce(null);
+    await expect(new GoogleDrivePusher().push(makeFile(3))).rejects.toMatchObject({
+      name: "PushAuthError",
+    });
+  });
+
+  it("isConnected asks hasGoogleConnection with the resolved mode", () => {
+    new GoogleDrivePusher().isConnected();
+    expect(authMock.hasGoogleConnection).toHaveBeenCalledWith("stay");
+  });
+
+  it("disconnect drops both folder caches", () => {
+    setDriveFolderCache("hourly", { rootId: "h-r", inboxId: "h-i" });
+    setDriveFolderCache("stay", { rootId: "s-r", inboxId: "s-i" });
+    new GoogleDrivePusher().disconnect();
+    expect(getDriveFolderCache("hourly")).toBeNull();
+    expect(getDriveFolderCache("stay")).toBeNull();
   });
 });

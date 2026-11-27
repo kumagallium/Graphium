@@ -115,3 +115,29 @@ describe("MobileSettingsSheet", () => {
     expect(screen.queryByText(/queue and connection stay on this device/)).toBeNull();
   });
 });
+
+describe("MobileSettingsSheet: stay（つないだまま）の切り替え", () => {
+  it("hides the switch unless stayAvailable", () => {
+    renderSheet();
+    expect(screen.queryByRole("switch", { name: "Stay connected" })).toBeNull();
+  });
+
+  it("shows the switch reflecting stayConnected and reports toggles", () => {
+    const onSetStayConnected = vi.fn();
+    renderSheet({ stayAvailable: true, stayConnected: true, onSetStayConnected });
+    const sw = screen.getByRole("switch", { name: "Stay connected" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw);
+    expect(onSetStayConnected).toHaveBeenCalledWith(false);
+  });
+
+  it("shows the legacy note only for an existing user who is on hourly", () => {
+    const note = /creates a new Graphium folder/;
+    const { unmount } = renderSheet({ stayAvailable: true, stayConnected: false, legacyUser: true });
+    expect(screen.getByText(note)).toBeTruthy();
+    unmount();
+
+    renderSheet({ stayAvailable: true, stayConnected: true, legacyUser: true });
+    expect(screen.queryByText(note)).toBeNull();
+  });
+});

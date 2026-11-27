@@ -23,7 +23,8 @@
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect } from "react";
 import { Cloud, Loader2, ChevronRight, AlertCircle } from "lucide-react";
-import { useT } from "../../i18n";
+import { useLocale } from "../../i18n";
+import { manualHomeUrl } from "../app-help/manual-url";
 
 export type StoragePickerSheetProps = {
   /** Google 行を押せるか（push モジュールのロード + prepare 完了まで false）。 */
@@ -32,6 +33,8 @@ export type StoragePickerSheetProps = {
   connecting: boolean;
   /** 直近の接続エラー（ポップアップを閉じた・権限拒否など）。 */
   connectError?: string | null;
+  /** 「つないだまま」方式か（true のとき Google 行の下に説明と「詳しく」リンクを出す）。 */
+  stayConnected?: boolean;
   /** Google Drive を選択。**click から同期的に呼ばれる**。 */
   onSelectGoogle: () => void;
   onClose: () => void;
@@ -41,10 +44,11 @@ export function StoragePickerSheet({
   googleReady,
   connecting,
   connectError,
+  stayConnected,
   onSelectGoogle,
   onClose,
 }: StoragePickerSheetProps) {
-  const t = useT();
+  const { t, locale } = useLocale();
 
   // ESC で閉じる（モバイル主対象だが、狭いデスクトップウィンドウでも使われる）
   useEffect(() => {
@@ -100,6 +104,21 @@ export function StoragePickerSheet({
                 <ChevronRight size={16} className="text-muted-foreground shrink-0" />
               )}
             </button>
+
+            {/* つないだまま方式の説明（サインインの鍵だけが Graphium のサーバーを通る） */}
+            {stayConnected && (
+              <p className="px-1 text-[11px] text-muted-foreground leading-relaxed">
+                {t("mobile.storagePicker.stayHelp")}{" "}
+                <a
+                  href={`${manualHomeUrl(locale)}mobile#stay-connected`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  {t("mobile.storagePicker.stayLearnMore")}
+                </a>
+              </p>
+            )}
 
             {/* OneDrive（準備中・P1.5 で活性化する枠） */}
             <button

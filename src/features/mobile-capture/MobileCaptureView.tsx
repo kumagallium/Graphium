@@ -862,6 +862,10 @@ export function MobileCaptureView({
           connected={pushSettings.connected}
           hasBundledId={pushSettings.hasBundledId}
           clientIdOverride={pushSettings.clientIdOverride}
+          stayAvailable={pushSettings.stayAvailable}
+          stayConnected={pushSettings.stayConnected}
+          legacyUser={pushSettings.legacyUser}
+          onSetStayConnected={pushSettings.setStayConnected}
           onSaveClientId={pushSettings.saveClientId}
           onClearClientId={pushSettings.clearClientId}
           onDisconnect={pushSettings.disconnect}
@@ -877,6 +881,7 @@ export function MobileCaptureView({
           googleReady={push.ready && push.configured}
           connecting={push.connecting}
           connectError={push.connectError}
+          stayConnected={pushSettings.stayAvailable && pushSettings.stayConnected}
           onSelectGoogle={handlePickGoogle}
           onClose={closeStoragePicker}
         />

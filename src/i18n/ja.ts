@@ -3142,10 +3142,15 @@ export const ja: Record<string, string> = {
   "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",
   "mobile.storagePicker.googleHelp": "Google アカウントで接続します",
   "mobile.storagePicker.comingSoon": "準備中",
+  "mobile.storagePicker.stayHelp": "つないだままにできます。Graphium のサーバーを通るのはサインインの鍵だけで、ファイルはあなたのドライブへ直接送られます",
+  "mobile.storagePicker.stayLearnMore": "詳しく",
 
   // ── モバイル最小設定シート ──
   "mobile.settings.storage": "ストレージ",
   "mobile.settings.changeStorage": "変更",
+  "mobile.settings.stayConnected": "つないだままにする",
+  "mobile.settings.stayConnectedHelp": "オフにすると、約 1 時間ごとにつなぎ直します。そのときはサインインの鍵が Graphium のサーバーを通りません",
+  "mobile.settings.stayLegacyNote": "オンにすると、ドライブに新しい Graphium フォルダができます。パソコン側の受信箱のフォルダを、新しいほうに選び直してください",
 
   // ── PDF エクスポート ──
   "pdf.export": "印刷・PDF",

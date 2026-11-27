@@ -241,7 +241,7 @@ A short list of protections that did not come up in the sections above.
 | You choose what the AI sees | In chat, you choose the scope given to the AI and the folders it searches. See [Chat & Ask](/ai-chat-and-ask) |
 | Edits by an outside AI can be undone | When an outside AI assistant rewrites, merges or archives a knowledge page, the operation is recorded and can be undone one at a time later. See [Connecting from an AI assistant (MCP)](/mcp-server) |
 | Other people's notes in a shared folder are not overwritten | Inside Graphium, other people's notes are read-only. To change one, you duplicate it and send a suggested change. Who can edit the file itself is decided by the folder's permissions |
-| Google Drive access is kept narrow | Capturing from your phone asks only for access to files and folders Graphium created. It cannot see the rest of your Drive |
+| Google Drive access is kept narrow | Capturing from your phone asks only for access to files and folders Graphium created. It cannot see the rest of your Drive. With **Stay connected** (the default for new connections), Google's keys pass through a small server Graphium runs, which stores nothing; your files and notes do not. You can turn it off. See [Staying connected](/mobile#stay-connected) |
 | Downloaded components are checked before use | The bundled runtime (Node.js) is checked against the official hash when the app is built. The search and transcription models fetched later are checked when they are downloaded |
 
 ## When you self-host {#self-hosting}

@@ -3076,10 +3076,15 @@ export const ko: Record<string, string> = {
   "mobile.storagePicker.help": "기록한 것은 여기서 고른 스토리지를 거쳐 데스크톱으로 전달됩니다.",
   "mobile.storagePicker.googleHelp": "Google 계정으로 연결합니다",
   "mobile.storagePicker.comingSoon": "준비 중",
+  "mobile.storagePicker.stayHelp": "연결을 유지할 수 있습니다. Graphium 서버를 거치는 것은 로그인 키뿐이며, 파일은 내 드라이브로 바로 전송됩니다.",
+  "mobile.storagePicker.stayLearnMore": "자세히 보기",
 
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "스토리지",
   "mobile.settings.changeStorage": "변경",
+  "mobile.settings.stayConnected": "연결 유지",
+  "mobile.settings.stayConnectedHelp": "끄면 약 1시간마다 다시 연결합니다. 이때는 로그인 키가 Graphium 서버를 거치지 않습니다.",
+  "mobile.settings.stayLegacyNote": "켜면 드라이브에 새 Graphium 폴더가 만들어집니다. 컴퓨터 쪽 받은 편지함 폴더를 새 폴더로 다시 지정해 주세요.",
 
   // ── PDF エクスポート ──
   "pdf.export": "인쇄 / PDF",

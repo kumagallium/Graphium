@@ -24,6 +24,7 @@ import {
   RotateCcw,
   XCircle,
 } from "lucide-react";
+import { SettingToggle } from "../settings/SettingToggle";
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { toGenerationLanguage } from "../../lib/language";
 import { getAppVersion } from "../../lib/updater";
@@ -39,6 +40,13 @@ export type MobileSettingsSheetProps = {
   hasBundledId: boolean;
   /** 自前 client_id 上書きの現在値（未設定は空文字）。 */
   clientIdOverride: string;
+  /** 「つないだまま」方式を選べるか（同梱の client / broker があり、自前 client_id が無い）。 */
+  stayAvailable?: boolean;
+  /** 今「つないだまま」方式か。 */
+  stayConnected?: boolean;
+  /** 既存利用者か（今 hourly のとき、オンにすると送り先が変わる補足を出す）。 */
+  legacyUser?: boolean;
+  onSetStayConnected?: (on: boolean) => void;
   onSaveClientId: (value: string) => void;
   onClearClientId: () => void;
   onDisconnect: () => void;
@@ -53,6 +61,10 @@ export function MobileSettingsSheet({
   connected,
   hasBundledId,
   clientIdOverride,
+  stayAvailable,
+  stayConnected,
+  legacyUser,
+  onSetStayConnected,
   onSaveClientId,
   onClearClientId,
   onDisconnect,
@@ -173,6 +185,25 @@ export function MobileSettingsSheet({
                 >
                   {t("settings.mobilePush.disconnect")}
                 </button>
+              )}
+
+              {/* 接続方式（つないだまま / 約 1 時間ごとにつなぎ直し）。切り替えると接続は切れる */}
+              {stayAvailable && (
+                <div className="pt-1 border-t border-border space-y-1.5">
+                  <SettingToggle
+                    checked={!!stayConnected}
+                    onChange={() => onSetStayConnected?.(!stayConnected)}
+                    label={t("mobile.settings.stayConnected")}
+                    summary={t("mobile.settings.stayConnectedHelp")}
+                    disabled={!ready}
+                  />
+                  {legacyUser && !stayConnected && (
+                    <p className="ml-10 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                      <Info size={12} className="mt-0.5 shrink-0" />
+                      <span>{t("mobile.settings.stayLegacyNote")}</span>
+                    </p>
+                  )}
+                </div>
               )}
 
               {/* 同梱 ID の無いビルドでは自前 client ID が必須（設定モーダルと同じ注記） */}

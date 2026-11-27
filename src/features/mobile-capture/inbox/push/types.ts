@@ -7,7 +7,9 @@
 // 同じ interface で追加する予定なので、プロバイダ固有の概念（トークン、
 // フォルダ ID 等）はこのファイルに漏らさない。
 //
-// 認可トークンは SPA では約 1 時間で失効する（refresh token なし）。その UX は
+// 認可トークンは、hourly 方式（SPA の token model）では約 1 時間で失効する（refresh token なし）。
+// stay（つないだまま）方式は token broker 経由の refresh token で画面なしに取り直す。
+// どちらでも、取り直せないときの UX は
 // queue.ts の store-and-forward（撮ったら即 IndexedDB へ永続化 → 認証が生きて
 // いれば drain）で吸収する。push 層は「失効していたら PushAuthError を投げる」
 // ことだけを約束し、リトライ・保全はキュー側の責務とする。

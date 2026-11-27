@@ -3143,10 +3143,15 @@ export const en: Record<string, string> = {
   "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",
   "mobile.storagePicker.googleHelp": "Connect with your Google account",
   "mobile.storagePicker.comingSoon": "Coming soon",
+  "mobile.storagePicker.stayHelp": "Stays connected. Only the sign-in keys pass through a Graphium server — your files go straight to your Drive.",
+  "mobile.storagePicker.stayLearnMore": "Learn more",
 
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "Storage",
   "mobile.settings.changeStorage": "Change",
+  "mobile.settings.stayConnected": "Stay connected",
+  "mobile.settings.stayConnectedHelp": "When off, you reconnect about once an hour, and the sign-in keys never pass through a Graphium server.",
+  "mobile.settings.stayLegacyNote": "Turning this on creates a new Graphium folder in your Drive. On your computer, point the inbox folder at the new one.",
 
   // ── PDF エクスポート ──
   "pdf.export": "Print / PDF",
