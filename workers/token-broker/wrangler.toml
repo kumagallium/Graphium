@@ -10,7 +10,7 @@ enabled = false
 # 許可する Origin（カンマ区切り・完全一致）
 ALLOWED_ORIGINS = "https://kumagallium.github.io"
 # Google Cloud の Web client ID を入れる（公開してよい値）
-GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_ID = "646458374293-s1ag4e5hglrckjvlvgev5mj7a7r8sd2s.apps.googleusercontent.com"
 
 # GOOGLE_CLIENT_SECRET は vars に書かない。次で Worker の secret として入れる:
 #   wrangler secret put GOOGLE_CLIENT_SECRET

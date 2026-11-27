@@ -11,8 +11,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   __setStayDefaultsForTest,
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
-  DEFAULT_GOOGLE_STAY_CLIENT_ID,
-  DEFAULT_TOKEN_BROKER_URL,
   getAuthModePreference,
   getStayConnectedConfig,
   isLegacyPushUser,
@@ -146,8 +144,7 @@ describe("stay（つないだまま）の設定と方式の解決", () => {
   });
 
   it("stay is unavailable while the bundled constants are empty (same as before)", () => {
-    expect(DEFAULT_GOOGLE_STAY_CLIENT_ID).toBe("");
-    expect(DEFAULT_TOKEN_BROKER_URL).toBe("");
+    __setStayDefaultsForTest({ clientId: "", brokerUrl: "" });
     expect(getStayConnectedConfig()).toBeNull();
     expect(resolveAuthMode()).toBe("hourly");
   });

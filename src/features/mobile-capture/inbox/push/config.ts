@@ -45,7 +45,8 @@ export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
  * ファイルに閉じ込める。
  * 空文字なら「未同梱」で stay は無効（型は string のまま — 理由は上と同じ）。
  */
-export const DEFAULT_GOOGLE_STAY_CLIENT_ID: string = "";
+export const DEFAULT_GOOGLE_STAY_CLIENT_ID: string =
+  "646458374293-s1ag4e5hglrckjvlvgev5mj7a7r8sd2s.apps.googleusercontent.com";
 
 /**
  * token broker（Cloudflare Worker）の URL。authorization code → refresh token の交換と
