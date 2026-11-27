@@ -71,7 +71,7 @@ function mockTopicApis() {
       return { ok: true, json: async () => ({ update: existing.map((t) => t.id), create: existing.length === 0 ? ["焼き色"] : [] }) };
     }
     if (url.includes("/revise-topic")) {
-      return { ok: true, json: async () => ({ body: `## 定義\n本文[[source:${body.source.id}]]` }) };
+      return { ok: true, json: async () => ({ body: `## 定義\n本文[[source:${body.source.id}]]`, model: "server-model-id" }) };
     }
     if (url.includes("/survey-source")) {
       return { ok: true, json: async () => ({ survey: "見取り図" }) };
@@ -219,6 +219,22 @@ describe("トピック段は取り込みと同じモデルで走る（表示名 
     const [createdDoc] = (deps.handleCreateWikiFile as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(createdDoc.wikiMeta.generatedBy.model).toBe("Insight (verify)");
   });
+
+  it("記録用のモデル名も deps.model も無い（資料からトピックを作る一括処理）ときは、改訂 API が返したモデルを記録する", async () => {
+    const { deps } = makeDeps();
+    await runSourceTopicStage([{ id: "note-1", title: "焼成温度の検討", text: "200℃ で焼くと色づく。" }], deps);
+
+    const [createdDoc] = (deps.handleCreateWikiFile as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(createdDoc.wikiMeta.generatedBy.model).toBe("server-model-id");
+  });
+
+  it("既存トピックの改訂でも、記録用のモデル名が無ければ改訂 API が返したモデルを記録する", async () => {
+    const { deps, docs } = makeDeps({ existingTopicRefs: [{ id: "topic-1", title: "焼き色" }] });
+    docs.set("wiki:topic-1", makeWikiDoc("焼き色", { topicMarkdown: "## 定義\n旧本文", derivedFromNotes: [] }));
+    await runSourceTopicStage([{ id: "note-1", title: "焼成温度の検討", text: "200℃ で焼くと色づく。" }], deps);
+
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.generatedBy.model).toBe("server-model-id");
+  });
 });
 
 describe("rebuildTopicFromSources（手動の作り直し）", () => {
@@ -253,11 +269,13 @@ describe("rebuildTopicFromSources（手動の作り直し）", () => {
   });
 
   it("モデルを渡さなければ、先頭のモデルではなく設定の既定モデルで頼む", async () => {
-    const { deps } = rebuildDeps();
+    const { deps, docs } = rebuildDeps();
     await rebuildTopicFromSources("topic-1", ["note-1"], deps);
 
     const [call] = fetchCalls();
     expect(call.body.model).toBe("Mock (verify)");
+    // 記録用のモデル名が無いので、改訂 API が返したモデルを記録する（"unknown" にしない）
+    expect(docs.get("wiki:topic-1")?.wikiMeta?.generatedBy.model).toBe("server-model-id");
     expect(resolvedModelId(call)).toBe("m-verify");
   });
 });

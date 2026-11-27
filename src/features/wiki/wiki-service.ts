@@ -3713,6 +3713,8 @@ export async function reviseTopicFromSource(
   onError?: (err: unknown) => void,
   /** 1 回の呼び出しの待ち時間の上限（ミリ秒）。テストで短くするための引数 */
   timeoutMs: number = REVISE_TOPIC_CALL_TIMEOUT_MS,
+  /** 本文を書いたモデル（サーバーが返した ID）を受け取る。呼び出し側が記録用のモデル名を持たないときに使う */
+  onModel?: (model: string) => void,
 ): Promise<string | null> {
   // 書き直し（2 回目）の失敗は 1 回目の本文で済ませるので、onError に渡さない
   let quiet = false;
@@ -3810,8 +3812,11 @@ export async function reviseTopicFromSource(
       reportError(err);
       return null;
     }
-    const data = await res.json() as { body?: string };
-    if (typeof data.body === "string" && data.body.trim()) return data.body;
+    const data = await res.json() as { body?: string; model?: string };
+    if (typeof data.body === "string" && data.body.trim()) {
+      if (typeof data.model === "string" && data.model.trim()) onModel?.(data.model);
+      return data.body;
+    }
     // 今のサーバーは本文が空なら 200 ではなく 500 で断るので、ここには来ない想定。
     // 将来サーバー側の作りが変わっても、理由を残さず null を返して黙って失敗させない備え
     const err = new CodedError("revise-topic returned an empty body", "TOPIC_OUTPUT_UNPARSEABLE");

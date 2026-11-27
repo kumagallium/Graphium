@@ -786,7 +786,10 @@ export async function runSourceTopicStage(
     if (deps.signal?.aborted) break;
     const windows = splitIntoWindows(source.text);
     // 保存するトピックに記録するモデル名。API へのモデル指定（deps.model）とは別に持つ。
-    const generatedByModel = source.generatedByModel ?? deps.model ?? null;
+    // どちらも無い（一括処理など、設定の既定モデルに任せた呼び出し）ときは、改訂 API が返した
+    // モデルを記録する。無いままだと generatedBy.model が "unknown" で保存される。
+    let generatedByModel: string | null = source.generatedByModel ?? deps.model ?? null;
+    const noteModel = (model: string) => { generatedByModel ??= model; };
 
     if (windows.length === 1) {
       deps.onStageProgress?.({ sourceId: source.id, phase: "reading", written: 0, planned: 0, windowIndex: 0, windowTotal: 1 });
@@ -864,6 +867,8 @@ export async function runSourceTopicStage(
               deps.signal,
               deps.knowledgeSchema,
               noteFailure,
+              undefined,
+              noteModel,
             );
             if (!revisedBody) {
               // 停止で改訂が返らなかった場合は失敗に数えない
@@ -947,6 +952,8 @@ export async function runSourceTopicStage(
             deps.signal,
             deps.knowledgeSchema,
             noteFailure,
+            undefined,
+            noteModel,
           );
           if (!revisedBody) {
             if (deps.signal?.aborted) return;
@@ -1140,6 +1147,8 @@ export async function runSourceTopicStage(
             deps.signal,
             deps.knowledgeSchema,
             noteFailure,
+            undefined,
+            noteModel,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -1181,6 +1190,8 @@ export async function runSourceTopicStage(
               deps.signal,
               deps.knowledgeSchema,
               noteFailure,
+              undefined,
+              noteModel,
             );
             if (revisedBody && state) {
               touched.set(existingId, { ...state, body: revisedBody });
@@ -1202,6 +1213,8 @@ export async function runSourceTopicStage(
             deps.signal,
             deps.knowledgeSchema,
             noteFailure,
+            undefined,
+            noteModel,
           );
           if (!revisedBody) {
             // 停止で改訂が返らなかった場合は失敗に数えない。
@@ -1354,6 +1367,8 @@ export async function rebuildTopicFromSources(
   const usedRefs: TopicSourceRef[] = [];
   let skipped = 0;
   let stoppedByAbort = false;
+  // 記録用のモデル名が渡されないときに、改訂 API が返したモデルを記録する
+  let reportedModel: string | null = null;
   // 中断されずに最後まで処理し終えた資料の件数（取り消した分の数え方に使う）
   let finishedSources = 0;
   // 読んだ資料の文字（前後の文の控えを取り直す）
@@ -1398,6 +1413,8 @@ export async function rebuildTopicFromSources(
         deps.signal,
         deps.knowledgeSchema,
         noteFailure,
+        undefined,
+        (model) => { reportedModel ??= model; },
       );
       if (!revised) {
         log("トピック改訂に失敗し飛ばした:", sourceId, "窓", win.index);
@@ -1426,7 +1443,7 @@ export async function rebuildTopicFromSources(
   }
 
   // kind は既存ドキュメントのものを維持する（answer を組み直しても topic に化けない）。
-  const rewritten = withPassageContexts(rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.generatedByModel ?? deps.model ?? null, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale), readTexts);
+  const rewritten = withPassageContexts(rebuildSourceBackedWikiDocument(topicDoc, body, usedRefs, deps.generatedByModel ?? deps.model ?? reportedModel, deps.noteIndex, topicDoc.wikiMeta.kind, deps.locale), readTexts);
   await deps.handleSaveWikiFile(topicId, rewritten, {
     activityType: "wiki_cross_update",
     sources: usedRefs.map((r) => r.id),
