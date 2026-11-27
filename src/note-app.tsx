@@ -9066,6 +9066,7 @@ function NoteEditorInner({
                     // ダブルクリック・＋・まとめて入れる → カーソルの位置へ
                     // （ドラッグで落とした場合は本文の drop リスナーが位置を決めて呼ぶ）
                     onInsert={(refs) => { void insertFromInbox(refs); }}
+                    onDiscard={mobileInbox.discardRefs}
                   />
                 )}
                 {rightTab === "comments" && sharedRoot && sharedRefState && (
@@ -15524,6 +15525,24 @@ export function NoteApp() {
     }
     return refs.map((r) => done.get(r.name)).filter((x): x is InboxInsertable => !!x);
   }, [handleImportFromInbox]);
+  // 受信箱のアイテムを、ノートにも素材にも入れずに消す（右パネルと全画面の受信箱で共用）。
+  // 確認は呼び出し側のダイアログで済んでいる。1 件ずつ消し、失敗があればまとめて知らせる
+  const discardInboxRefs = useCallback(async (refs: CaptureRef[]) => {
+    const root = getInboxRoot();
+    if (!isTauri() || !root || refs.length === 0) return;
+    const transport = new FolderInbox(root);
+    const failed: string[] = [];
+    for (const ref of refs) {
+      try {
+        await transport.discard(ref);
+      } catch (e) {
+        failed.push(`${ref.name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    void refreshInboxPending();
+    if (failed.length > 0) throw new Error(failed.join("\n"));
+  }, [refreshInboxPending]);
+
   const mobileInboxBinding = useMemo<MobileInboxBinding | null>(
     () =>
       inboxSource
@@ -15533,9 +15552,10 @@ export function NoteApp() {
             loading: inboxPending.loading,
             refresh: () => { void refreshInboxPending(); },
             importRefs: importInboxForNote,
+            discardRefs: discardInboxRefs,
           }
         : null,
-    [inboxSource, inboxPending.items, inboxPending.loading, refreshInboxPending, importInboxForNote],
+    [inboxSource, inboxPending.items, inboxPending.loading, refreshInboxPending, importInboxForNote, discardInboxRefs],
   );
 
   // ── Web クリップ（ブラウザ拡張機能 → sidecar の受け取り待ち → メモ・URL 素材・ノート） ──
@@ -18847,6 +18867,7 @@ export function NoteApp() {
             onKeepArchiveChange={handleInboxKeepArchiveChange}
             onImport={async (refs) => { await handleImportFromInbox(refs); }}
             onPendingCount={setInboxPendingCount}
+            onDiscard={discardInboxRefs}
             onBack={() => setShowMobile(false)}
           />
         ) : activeWikiView === "log" ? (

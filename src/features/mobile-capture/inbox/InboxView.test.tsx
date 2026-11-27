@@ -79,6 +79,7 @@ function renderView(
     keepArchive?: boolean;
     onKeepArchiveChange?: (keep: boolean) => void;
     onPickRoot?: () => void;
+    onDiscard?: (refs: CaptureRef[]) => Promise<void>;
   } = {},
 ) {
   render(
@@ -90,6 +91,7 @@ function renderView(
         keepArchive={opts.keepArchive ?? false}
         onKeepArchiveChange={opts.onKeepArchiveChange ?? vi.fn()}
         onImport={onImport}
+        onDiscard={opts.onDiscard}
         onBack={vi.fn()}
       />
     </LocaleProvider>,
@@ -137,6 +139,27 @@ describe("InboxView", () => {
     // 取り込み後に再スキャン → 一覧から消えて空状態になる
     await waitFor(() => expect(listPending).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("Nothing new")).toBeTruthy());
+  });
+
+  it("deletes the checked rows without importing them, after confirming, then rescans", async () => {
+    // 2 回目の listPending は消したあと
+    const { source, listPending } = makeSource([ITEMS, [ITEMS[0]]]);
+    const onImport = vi.fn(async (_refs?: CaptureRef[]) => {});
+    const onDiscard = vi.fn(async (_refs: CaptureRef[]) => {});
+    renderView(source, onImport, true, { onDiscard });
+    await waitFor(() => expect(screen.getByText("IMG_2.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByLabelText("IMG_2.jpg"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected (1)" }));
+    expect(onDiscard).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(onDiscard).toHaveBeenCalledTimes(1));
+    expect(onDiscard.mock.calls[0][0]).toEqual([ITEMS[1]]);
+    expect(onImport).not.toHaveBeenCalled();
+    await waitFor(() => expect(listPending).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("IMG_2.jpg")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("shows the connect CTA instead of a list when no folder is connected", () => {

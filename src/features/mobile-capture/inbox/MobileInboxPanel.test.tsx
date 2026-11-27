@@ -11,7 +11,7 @@
 // 文言は LocaleProvider の既定（jsdom → en）で照合する。
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { MobileInboxPanel, INBOX_DRAG_MIME } from "./MobileInboxPanel";
 import type { InboxSource } from "./InboxView";
 import { LocaleProvider } from "../../../i18n";
@@ -135,5 +135,57 @@ describe("MobileInboxPanel", () => {
     const setData2 = vi.fn();
     fireEvent.dragStart(tileOf("IMG_2.jpg"), { dataTransfer: { setData: setData2, effectAllowed: "" } });
     expect(setData2).toHaveBeenCalledWith(INBOX_DRAG_MIME, JSON.stringify(["IMG_2.jpg"]));
+  });
+
+  describe("使わずに削除", () => {
+    it("onDiscard を渡さなければ、選んでも削除のボタンは出ない", () => {
+      renderPanel();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select: IMG_3.jpg" }));
+      expect(screen.queryByRole("button", { name: /Delete selected/ })).toBeNull();
+    });
+
+    it("確認のあと、選んだものが古い順で onDiscard に渡り、onInsert は呼ばれない", async () => {
+      const onDiscard = vi.fn(async (_refs: CaptureRef[]) => {});
+      const { onInsert } = renderPanel({ onDiscard });
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select: IMG_3.jpg" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select: IMG_1.jpg" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+      // 押しただけでは消さない（確認を待つ）
+      expect(onDiscard).not.toHaveBeenCalled();
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.textContent).toContain("Delete 2 selected item(s)");
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+      await waitFor(() => expect(onDiscard).toHaveBeenCalledTimes(1));
+      expect(onDiscard.mock.calls[0][0]).toEqual([R1, R3]);
+      expect(onInsert).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      // 消したあとは選択が解ける
+      expect(screen.queryByRole("button", { name: /Delete selected/ })).toBeNull();
+    });
+
+    it("キャンセルでは何も消さない", () => {
+      const onDiscard = vi.fn(async (_refs: CaptureRef[]) => {});
+      renderPanel({ onDiscard });
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select: IMG_2.jpg" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete selected (1)" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(onDiscard).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("消せなかったら、ダイアログを開いたまま理由を出す", async () => {
+      const onDiscard = vi.fn(async (_refs: CaptureRef[]) => {
+        throw new Error("IMG_2.jpg: permission denied");
+      });
+      renderPanel({ onDiscard });
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select: IMG_2.jpg" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete selected (1)" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+      expect(await screen.findByRole("alert")).toHaveProperty(
+        "textContent",
+        "Couldn't delete: IMG_2.jpg: permission denied",
+      );
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    });
   });
 });
