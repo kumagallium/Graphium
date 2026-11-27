@@ -23,16 +23,30 @@
 ; 他のソフトに掴まれた旧 Graphium.exe を退避した先（退避していなければ空）
 Var GraphiumMovedExe
 
+; ログ欄に出し、%TEMP%\graphium-installer.log にも残す（wait-app-exit.ps1 と同じファイル）
+!macro GraphiumLog text
+  DetailPrint "${text}"
+  ClearErrors
+  FileOpen $9 "$TEMP\graphium-installer.log" a
+  ${IfNot} ${Errors}
+    FileSeek $9 0 END
+    FileWrite $9 "${text}$\r$\n"
+    FileClose $9
+  ${EndIf}
+!macroend
+
 ; 退避したあとでインストールが失敗したら、Graphium.exe が無いまま終わらないよう戻す
 Function .onInstFailed
   ${If} $GraphiumMovedExe != ""
   ${AndIfNot} ${FileExists} "$INSTDIR\Graphium.exe"
     Rename "$GraphiumMovedExe" "$INSTDIR\Graphium.exe"
+    !insertmacro GraphiumLog "Install failed: restored the old Graphium.exe"
   ${EndIf}
 FunctionEnd
 
 !macro NSIS_HOOK_PREINSTALL
   StrCpy $GraphiumMovedExe ""
+  !insertmacro GraphiumLog "--- Graphium ${VERSION} installer (update mode: $UpdateMode)"
   ; 前回までに退避した旧 Graphium.exe を消す（まだ掴まれていれば残るが、害は無い）
   Delete "$INSTDIR\Graphium.exe.*.old"
   DetailPrint "Stopping Graphium processes..."
@@ -52,6 +66,7 @@ FunctionEnd
   File "/oname=$PLUGINSDIR\wait-app-exit.ps1" "${GRAPHIUM_HOOKS_DIR}\wait-app-exit.ps1"
   nsExec::ExecToLog `powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\wait-app-exit.ps1" -InstallDir "$INSTDIR"`
   Pop $0
+  !insertmacro GraphiumLog "wait-app-exit.ps1 exit code: $0"
   ; 4. 掴んでいるのが Graphium 以外（ウイルス対策ソフトなど）だけなら、旧 Graphium.exe
   ;    の名前を変えて退ける。テンプレートの判定は $INSTDIR\Graphium.exe を見るので、
   ;    ファイルが無ければ先へ進み、新しい Graphium.exe が置かれる。v0.172.2 で、
@@ -63,10 +78,10 @@ FunctionEnd
     ClearErrors
     Rename "$INSTDIR\Graphium.exe" "$GraphiumMovedExe"
     ${If} ${Errors}
-      DetailPrint "Could not move the old Graphium.exe aside (another program blocks renaming it)"
+      !insertmacro GraphiumLog "Could not move the old Graphium.exe aside (another program blocks renaming it)"
       StrCpy $GraphiumMovedExe ""
     ${Else}
-      DetailPrint "Moved the old Graphium.exe aside to $GraphiumMovedExe"
+      !insertmacro GraphiumLog "Moved the old Graphium.exe aside to $GraphiumMovedExe"
     ${EndIf}
   ${EndIf}
   ; 5. OS がファイルハンドルを解放するまで少し待つ
@@ -78,4 +93,5 @@ FunctionEnd
   ${If} $GraphiumMovedExe != ""
     Delete "$GraphiumMovedExe"
   ${EndIf}
+  !insertmacro GraphiumLog "Install finished"
 !macroend

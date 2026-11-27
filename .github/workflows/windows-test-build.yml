@@ -313,7 +313,9 @@ jobs:
           Get-ChildItem -LiteralPath $installDir -Filter 'Graphium.exe*' | Format-Table Name, Length -AutoSize
           if ($u2.ExitCode -ne 0) { throw "update install with another holder failed: exit=$($u2.ExitCode)" }
           if (-not (Test-Path -LiteralPath $exe)) { throw 'Graphium.exe missing after update' }
-          if ($holder.HasExited) { throw 'the holder was shut down: the old Graphium.exe was not moved aside' }
+          Write-Host '--- graphium-installer.log'
+          Get-Content -LiteralPath (Join-Path $env:TEMP 'graphium-installer.log') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+          if ($holder.HasExited) { throw "the holder was shut down (exit=$($holder.ExitCode)): the old Graphium.exe was not moved aside" }
           $holder.Kill()
 
           # 7. 片付け（/R で立ち上がり直したアプリも止める）

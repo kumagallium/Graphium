@@ -25,6 +25,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# インストーラのログ欄に出すのと同じ行を %TEMP%\graphium-installer.log にも残す
+# （自動更新はログ欄がすぐ閉じるので、問い合わせのときに後から読めるように）
+$GraphiumLog = Join-Path $env:TEMP 'graphium-installer.log'
+function Say([string]$Line) {
+  Write-Output $Line
+  try { Add-Content -LiteralPath $GraphiumLog -Value $Line -ErrorAction Stop } catch { }
+}
+
 try {
   Add-Type -TypeDefinition @'
 using System;
@@ -103,7 +111,7 @@ public static class GraphiumRestartManager {
 
   $exe = Join-Path $InstallDir 'Graphium.exe'
   if (-not (Test-Path -LiteralPath $exe)) {
-    Write-Output "Graphium.exe not installed yet: nothing to wait for"
+    Say "Graphium.exe not installed yet: nothing to wait for"
     exit 0
   }
 
@@ -114,12 +122,12 @@ public static class GraphiumRestartManager {
   while ($true) {
     $holders = [GraphiumRestartManager]::List($exe, [ref]$reasons)
     if ($null -eq $holders) {
-      Write-Output "Could not query processes using Graphium.exe (Restart Manager failed)"
+      Say "Could not query processes using Graphium.exe (Restart Manager failed)"
       exit 1
     }
     if ($holders.Count -eq 0) {
       $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
-      Write-Output "Graphium.exe is free (waited ${waited}s)"
+      Say "Graphium.exe is free (waited ${waited}s)"
       exit 0
     }
     $ours = @($holders | Where-Object {
@@ -143,20 +151,20 @@ public static class GraphiumRestartManager {
 
   # 待っても残った。原因を調べられるよう、開いているプロセスを全部出す
   $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
-  Write-Output "Still in use after ${waited}s. Processes using Graphium.exe:"
+  Say "Still in use after ${waited}s. Processes using Graphium.exe:"
   foreach ($h in $holders) {
     $path = ''
     try { $path = (Get-Process -Id $h.Pid -ErrorAction Stop).Path } catch { $path = '(path not readable)' }
-    Write-Output ("  - {0} (PID {1}, type {2}) {3}" -f $h.Name, $h.Pid, $h.AppType, $path)
+    Say ("  - {0} (PID {1}, type {2}) {3}" -f $h.Name, $h.Pid, $h.AppType, $path)
   }
   # 1=権限が足りない（管理者として動いている等） 2=別のセッション 4=重要なプロセス
-  Write-Output "Reboot reasons: $reasons (1=permission denied, 2=other session, 4=critical process)"
+  Say "Reboot reasons: $reasons (1=permission denied, 2=other session, 4=critical process)"
   if ($ours.Count -eq 0) {
-    Write-Output "Only other programs are using it: moving the old Graphium.exe aside"
+    Say "Only other programs are using it: moving the old Graphium.exe aside"
     exit 2
   }
   exit 1
 } catch {
-  Write-Output "wait-app-exit failed: $($_.Exception.Message)"
+  Say "wait-app-exit failed: $($_.Exception.Message)"
 }
 exit 1
