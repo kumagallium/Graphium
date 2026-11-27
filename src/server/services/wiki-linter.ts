@@ -82,6 +82,11 @@ export type LintReport = {
    * できた窓の AI 解析とクイックの結果を合わせたもの
    */
   lintParts?: { total: number; failed: number };
+  /**
+   * 「専用ページが無い」(gap) と報告されたが、既存トピックがすでに扱っていると判定されて外した穴の記録。
+   * 省略可能 — 古い保存済みレポートには無い。
+   */
+  coveredGaps?: Array<{ title: string; coveredByTopicId: string; coveredByTitle: string }>;
 };
 
 /** 問いに答えるのに必要な情報の在りか */
@@ -896,4 +901,94 @@ export function detectMissingSourceIssues(
     });
   }
   return issues;
+}
+
+// ---- gap（専用ページが無い話題）の被覆確認 ----
+// 窓の外にあるトピックを LLM が知らない・見落とすため、gap の多くは偽の指摘になる。
+// 窓の結果をまとめた後、全トピックの題だけを見せて「すでに扱っているか」を 1 回だけ確かめる。
+
+export function buildGapCoverageSystemPrompt(language: string): string {
+  return `You verify "missing page" reports from a knowledge-base check.
+
+You receive a list of reported gaps (subjects that the check says have no dedicated page) and the titles of ALL existing topic pages. For each gap, decide whether an existing topic page already has THAT subject as its main subject.
+
+Rules:
+- covered: true only when an existing topic's subject is the very subject the gap says is missing. Differences in wording, parenthetical notes, or added words such as "principles" or "overview" do not matter (e.g. gap "Sourdough starter care" vs. existing "Sourdough Starter (maintenance)" -> covered).
+- A topic that covers only ONE ASPECT of the gap's subject is NOT covered (e.g. gap "Bread proofing" vs. existing "Humidity of proofing" or "Proofing of bread dough: temperature" -> covered: false).
+- A gap that is NARROWER than an existing topic is NOT covered (e.g. gap "Overall picture of integrating curry roux and spices" vs. existing "Curry roux" -> covered: false).
+- If you are unsure, answer covered: false.
+- Refer to existing topics only by their number (T<n>) from the list. Never invent a number.
+
+Output JSON only, with no other text:
+{"verdicts":[{"gap":1,"covered":true,"topic":"T12"},{"gap":2,"covered":false}]}
+"topic" is present only when covered is true.
+Write any free text in ${language === "ja" ? "Japanese" : "English"}; JSON keys stay in English.`;
+}
+
+export function buildGapCoverageUserMessage(
+  gaps: LintIssue[],
+  topics: { id: string; title: string }[],
+): string {
+  const gapLines = gaps.map((g, i) => `G${i + 1}: ${g.title} — ${g.description}`);
+  const topicLines = topics.map((t, i) => `T${i + 1}: ${t.title}`);
+  return `## Reported gaps\n${gapLines.join("\n")}\n\n## Existing topic titles\n${topicLines.join("\n")}`;
+}
+
+/**
+ * 被覆確認の応答から「すでに扱われている穴」を取り出す。
+ * 解決できない答え（範囲外の gap・実在しない T 番号など）は捨てる＝穴を残す。
+ */
+export function parseGapCoverage(
+  text: string,
+  gaps: LintIssue[],
+  topics: { id: string; title: string }[],
+): Array<{ gapIndex: number; topicId: string }> {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) jsonText = jsonMatch[1].trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      // 前後に文があるときは最初の { から最後の } までを拾う
+      const a = jsonText.indexOf("{");
+      const b = jsonText.lastIndexOf("}");
+      if (a < 0 || b <= a) return [];
+      parsed = JSON.parse(jsonText.slice(a, b + 1));
+    }
+    const verdicts = parsed?.verdicts;
+    if (!Array.isArray(verdicts)) return [];
+
+    // 題で引き直せるのは、その題のトピックが 1 件だけのとき（同じ題が複数あるとどれを指すか決まらない）
+    const titleCount = new Map<string, number>();
+    for (const t of topics) titleCount.set(t.title, (titleCount.get(t.title) ?? 0) + 1);
+    const titleToTopicId = new Map(topics.filter((t) => titleCount.get(t.title) === 1).map((t) => [t.title, t.id]));
+    const seen = new Set<number>();
+    const out: Array<{ gapIndex: number; topicId: string }> = [];
+    for (const v of verdicts) {
+      if (!v || v.covered !== true) continue;
+      const gapMatch = String(v.gap ?? "").trim().match(/^G?(\d+)$/i);
+      if (!gapMatch) continue;
+      const gapNo = Number(gapMatch[1]);
+      if (gapNo < 1 || gapNo > gaps.length) continue;
+      const rawTopic = String(v.topic ?? "").trim();
+      let topicId: string | undefined;
+      const topicMatch = rawTopic.match(/^T?(\d+)$/i);
+      if (topicMatch) {
+        const n = Number(topicMatch[1]);
+        if (n >= 1 && n <= topics.length) topicId = topics[n - 1].id;
+      } else if (rawTopic) {
+        topicId = titleToTopicId.get(rawTopic);
+      }
+      if (!topicId) continue;
+      if (seen.has(gapNo)) continue;
+      seen.add(gapNo);
+      out.push({ gapIndex: gapNo - 1, topicId });
+    }
+    return out;
+  } catch (err) {
+    console.error("gap 被覆確認の出力のパース失敗:", err);
+    return [];
+  }
 }

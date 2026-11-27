@@ -29,6 +29,7 @@ What goes here are the measurements that decided the app's defaults or behavior.
 
 | What it does now | What it rests on | Measurement |
 |---|---|---|
+| A Full check's gap is checked against the titles of existing topics before it is shown. If the check fails, the gap is shown as it is | Subjects the old check named as "has no page" came up 9 times, and in 6 a topic about that very subject already existed. With the check, 4 of 6 gaps were dropped, and of 4 built examples each was kept or dropped as expected | [Gaps in the Full check](/evaluations/lint-gap-coverage) (2026-11-28) |
 | Claims go only as far as being split apart and readable without the note. The body gives the point first, then the note's record | With `gpt-5.6-luna`, outputs passing every criterion went from 4 to 10 of 20, and claims stretching beyond the note from 20% to 3%. With `gpt-oss-120b` the improvement was small | [Claims within the note](/evaluations/claim-scope) (2026-11-11) |
 | One section is added to the claim instructions, only when the source is an AI conversation | Claims grounded only in the user's own words went from 69% to 85%. Run-to-run variation is large | [Insights from AI conversations](/evaluations/ai-conversation-claims) (2026-11-18) |
 | The AI names the existing insight, and only claims that pass a separate call's check are added. Nothing is added if the check cannot be obtained | Closeness of wording is not used as an entry | [Reinforcing existing insights](/evaluations/insight-reinforcement) (2026-11-11) |
@@ -89,6 +90,7 @@ I also keep results that did not work out, points I could not settle, and points
 | Letting the AI merge bodies when merging pages by thing | Not adopted. Of 54 kinds of numbers with units, 22 stayed in the same notation | [Merging pages by thing](/evaluations/merging-pages-by-thing) |
 | Using the "name it after the thing itself" rule when tidying up existing topics | It could not be used. Many titles had no page to merge into | [Topic granularity](/evaluations/topic-granularity) |
 | Using the same rule in a library with many "X's Y" titles | Undecided. Six runs could not say whether it worked or not. The rule is still used when a source is imported | [Topic granularity](/evaluations/topic-granularity) |
+| Adding a count of supporting pages to a gap, and a "make a topic" button on a gap | Not adopted. Almost no gap was left that would have been worth making a topic for | [Gaps in the Full check](/evaluations/lint-gap-coverage) |
 | Reading handwritten sentences with OCR of the size that was adopted (PP-OCR, 22 to 180 MB) | Not reached. In handwriting it read dates and numbers but not sentences. The engine itself is adopted. Windows was not measured | [OCR engines](/evaluations/ocr-engines) |
 | Checking a plan by hindsight | On hold until the answer key is rebuilt | [Checking where a plan comes from](/evaluations/plan-grounding-check) |
 | Picking Japanese hint words for voice input from my notes | Not adopted. Frequent words did not help (8 → 9 of 26), and words that share characters with a misheard word were mostly unrelated. Japanese words are left to Frequent terms | [Hints for voice input](/evaluations/voice-input-hints) |
@@ -115,6 +117,7 @@ Most of these use my own working notes, so the questions and answers themselves 
 
 | Measured | Question | Area |
 |---|---|---|
+| 2026-11-28 | [How often is a Full check's "gap" right?](/evaluations/lint-gap-coverage) | Knowledge |
 | 2026-11-22 | [Do hints from my own notes help voice input spell technical words?](/evaluations/voice-input-hints) | Voice input |
 | 2026-11-20 | [Does gemma on one lab GPU keep the quality measured through an API?](/evaluations/workstation-gemma) | Choosing a model |
 | 2026-11-19 | [Asking another AI about past conversations](/evaluations/ai-conversation-recall) | Answers and search |
