@@ -9,8 +9,14 @@
 # ここではテンプレートと同じ Restart Manager の一覧で判定し、
 #   1. 一覧が空になるまで最大 $TimeoutSec 秒待つ（Graphium 自身は待つ間も止め直す）
 #   2. それでも残ったら、名前・PID・種類をインストーラのログ欄へ出す
-# Graphium 以外（ウイルス対策ソフトなど）は止めない。インストールの成否は
-# テンプレート側の判定に任せ、このスクリプトは常に exit 0 で抜ける。
+# Graphium 以外（ウイルス対策ソフトなど）は止めない。
+#
+# 終了コード（hooks.nsh が見る）:
+#   0 = 空いた
+#   2 = 残っているのは Graphium 以外だけ（v0.172.2 で、McAfee Framework Host が
+#       終了後も Graphium.exe を開いたままにし、権限不足で閉じられずに毎回止まる
+#       利用者がいた）。hooks.nsh が旧 Graphium.exe の名前を変えて先へ進める
+#   1 = Graphium 自身が残っている・調べられなかった。テンプレートの判定に任せる
 
 param(
   [Parameter(Mandatory = $true)][string]$InstallDir,
@@ -18,6 +24,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# インストーラのログ欄に出すのと同じ行を %TEMP%\graphium-installer.log にも残す
+# （自動更新はログ欄がすぐ閉じるので、問い合わせのときに後から読めるように）
+$GraphiumLog = Join-Path $env:TEMP 'graphium-installer.log'
+function Say([string]$Line) {
+  Write-Output $Line
+  try { Add-Content -LiteralPath $GraphiumLog -Value $Line -ErrorAction Stop } catch { }
+}
 
 try {
   Add-Type -TypeDefinition @'
@@ -97,45 +111,60 @@ public static class GraphiumRestartManager {
 
   $exe = Join-Path $InstallDir 'Graphium.exe'
   if (-not (Test-Path -LiteralPath $exe)) {
-    Write-Output "Graphium.exe not installed yet: nothing to wait for"
+    Say "Graphium.exe not installed yet: nothing to wait for"
     exit 0
   }
 
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   $started = Get-Date
   $reasons = [uint32]0
+  $othersOnlySince = $null
   while ($true) {
     $holders = [GraphiumRestartManager]::List($exe, [ref]$reasons)
     if ($null -eq $holders) {
-      Write-Output "Could not query processes using Graphium.exe (Restart Manager failed)"
-      exit 0
+      Say "Could not query processes using Graphium.exe (Restart Manager failed)"
+      exit 1
     }
     if ($holders.Count -eq 0) {
       $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
-      Write-Output "Graphium.exe is free (waited ${waited}s)"
+      Say "Graphium.exe is free (waited ${waited}s)"
       exit 0
+    }
+    $ours = @($holders | Where-Object {
+      $p = Get-Process -Id $_.Pid -ErrorAction SilentlyContinue
+      $p -and $p.ProcessName -eq 'Graphium'
+    })
+    if ($ours.Count -eq 0) {
+      # 他のソフトだけが 3 秒続いたら、待っても変わらないとみて抜ける
+      if ($null -eq $othersOnlySince) { $othersOnlySince = Get-Date }
+      if (((Get-Date) - $othersOnlySince).TotalSeconds -ge 3) { break }
+    } else {
+      $othersOnlySince = $null
     }
     if ((Get-Date) -ge $deadline) { break }
     # 待つ間も Graphium 自身だけは止め直す（終了中なら失敗するが、それは無視して待つ）
-    foreach ($h in $holders) {
-      $p = Get-Process -Id $h.Pid -ErrorAction SilentlyContinue
-      if ($p -and $p.ProcessName -eq 'Graphium') {
-        Stop-Process -Id $h.Pid -Force -ErrorAction SilentlyContinue
-      }
+    foreach ($h in $ours) {
+      Stop-Process -Id $h.Pid -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep -Milliseconds 500
   }
 
   # 待っても残った。原因を調べられるよう、開いているプロセスを全部出す
-  Write-Output "Still in use after ${TimeoutSec}s. Processes using Graphium.exe:"
+  $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+  Say "Still in use after ${waited}s. Processes using Graphium.exe:"
   foreach ($h in $holders) {
     $path = ''
     try { $path = (Get-Process -Id $h.Pid -ErrorAction Stop).Path } catch { $path = '(path not readable)' }
-    Write-Output ("  - {0} (PID {1}, type {2}) {3}" -f $h.Name, $h.Pid, $h.AppType, $path)
+    Say ("  - {0} (PID {1}, type {2}) {3}" -f $h.Name, $h.Pid, $h.AppType, $path)
   }
   # 1=権限が足りない（管理者として動いている等） 2=別のセッション 4=重要なプロセス
-  Write-Output "Reboot reasons: $reasons (1=permission denied, 2=other session, 4=critical process)"
+  Say "Reboot reasons: $reasons (1=permission denied, 2=other session, 4=critical process)"
+  if ($ours.Count -eq 0) {
+    Say "Only other programs are using it: moving the old Graphium.exe aside"
+    exit 2
+  }
+  exit 1
 } catch {
-  Write-Output "wait-app-exit failed: $($_.Exception.Message)"
+  Say "wait-app-exit failed: $($_.Exception.Message)"
 }
-exit 0
+exit 1
