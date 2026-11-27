@@ -13,7 +13,7 @@ const MIN_BASE_LENGTH = 3;
 
 /** NFKC にして出典の印 [[...]] を取り除く */
 function normalizeBody(body: string): string {
-  return body.normalize("NFKC").replace(/\[\[[^\]]*\]\]/g, " ");
+  return body.normalize("NFKC").replace(/\[\[(?:[^\]]|\](?!\])|\](?=\]\](?!\])))*\]\](?!\])/g, " ");
 }
 
 /** NFKC にして末尾の括弧書き（1 つ）を外した題 */

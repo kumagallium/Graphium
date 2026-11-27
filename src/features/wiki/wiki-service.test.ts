@@ -88,6 +88,27 @@ describe("parseInlineCitations - citations", () => {
     expect(knowledgeLinks[0].targetNoteId).toBe("n1");
   });
 
+  it("題に [ ] を含む資料の [[title]] もリンクになる（文末の引用も含む）", () => {
+    const title = "[第三部] ループのボトルネックは、人間だ ｜稲見 昌彦";
+    const noteIndex = [{ id: "n1", title, isWiki: false } as any];
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      `可能性がある[[${title}]]。続きは[[${title}]]`,
+      noteIndex,
+    );
+    const links = inlineContent.filter((c: any) => c.text === `@${title}`);
+    expect(links).toHaveLength(2);
+    expect(inlineContent.some((c: any) => typeof c.text === "string" && c.text.includes("[["))).toBe(false);
+    expect(knowledgeLinks).toHaveLength(2);
+  });
+
+  it("題が ] で終わる資料の [[title]] は、末尾の ] を題に含める", () => {
+    const title = "測定ログ [2]";
+    const noteIndex = [{ id: "n1", title, isWiki: false } as any];
+    const { inlineContent } = parseInlineCitations(`値は 3 だった[[${title}]]。`, noteIndex);
+    expect(inlineContent).toContainEqual({ type: "text", text: `@${title}`, styles: { textColor: "blue" } });
+    expect(inlineContent.at(-1)).toEqual({ type: "text", text: "。", styles: {} });
+  });
+
   it("Wiki の [[title]] は 🤖 プレフィックス付きの青リンクになる", () => {
     const noteIndex = [{ id: "w1", title: "Wikiページ", isWiki: true } as any];
     const { inlineContent } = parseInlineCitations("[[Wikiページ]]", noteIndex);
