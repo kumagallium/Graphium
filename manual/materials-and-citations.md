@@ -155,14 +155,14 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 | What goes in | What does not |
 |---|---|
 | Your own messages, in full and word for word | Tool calls and their output |
-| An excerpt of the AI's reply just before each of your messages (long ones: the first 200 and last 300 characters — see [the measurement](/evaluations/ai-conversation-claims)) | The rest of the AI's replies |
+| An excerpt of the AI's reply just before each of your messages (long ones: the first 200 and last 300 characters — see [the measurement](/evaluations/ai-conversation-claims)), marked with the model that wrote it when the record names one, as in **AI (claude-opus-4-1, previous reply)** | The rest of the AI's replies |
 | A long text (over 700 characters) placed at the start of a conversation, kept as a **Brief** | |
 
 - Anything you typed, such as an email address or a name, is kept as it is, as part of your message. Know this before you bring a conversation in.
 - A conversation with no message from you at all (one that only handed over work, say) is not brought in. The list says **Not brought in: N with no message from you**.
 - A long first text is kept as a **Brief** because the record cannot tell whether another conversation wrote it or you typed it.
 
-**Bringing in again.** The same conversation never lands twice. If it has grown, its contents are replaced. The final screen counts **Conversations brought in**, **Conversations updated**, **Unchanged since last time** and **Failed**.
+**Bringing in again.** The same conversation never lands twice. If it has grown, its contents are replaced. A conversation brought in before the model names were kept is also replaced once, so that its replies get their model names. The final screen counts **Conversations brought in**, **Conversations updated**, **Unchanged since last time** and **Failed**.
 
 ![The report after bringing in: 21 brought in, 3 updated, 8 unchanged, 0 failed](/screenshots/intake-conversations-report.png)
 

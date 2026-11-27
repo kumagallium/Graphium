@@ -42,6 +42,11 @@ export type MobileInboxBinding = {
    * 取り込めなかったものは返らない（Inbox に残り、知らせは呼び出し側が出す）。
    */
   importRefs: (refs: CaptureRef[]) => Promise<InboxInsertable[]>;
+  /**
+   * refs を取り込まずに Inbox から消す（同期フォルダのファイルを消す）。消せなかったものが
+   * あれば throw する（消せたものは消えたまま）。終わったら一覧を数え直す。
+   */
+  discardRefs: (refs: CaptureRef[]) => Promise<void>;
 };
 
 /** 入れる場所。blockId のブロックの前か後ろ。 */

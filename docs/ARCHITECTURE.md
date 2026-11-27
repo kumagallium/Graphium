@@ -3328,7 +3328,8 @@ record files ──► reader ──► ConversationMaterial ──► importCon
 - **Common shape** (`src/lib/conversation/types.ts`). `ConversationMaterial`
   is what every reader produces: provider, session id, working folder, time
   range, and the turns — the user's lines verbatim, the AI's reply before
-  each line as an excerpt. Adding another tool means writing another reader;
+  each line as an excerpt, with the model that wrote it when the record names
+  one (`message.model`; `<synthetic>` and malformed names are dropped). Adding another tool means writing another reader;
   nothing downstream changes.
 - **Reader for Claude Code** (`src/lib/conversation/claude-code-reader.ts`).
   A pure function over the lines of a session record (JSONL). The record

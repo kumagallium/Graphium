@@ -218,6 +218,11 @@ function PanelHost({
           onConnect={() => {}}
           // ダブルクリック・＋・まとめて入れる → カーソルの位置へ
           onInsert={(refs) => insertAt(refs.map((r) => r.name), caretIndex)}
+          // 使わずに削除 → 一覧から外す（実物は同期フォルダの Inbox/ から消す）
+          onDiscard={async (refs) => {
+            const names = new Set(refs.map((r) => r.name));
+            setItems((prev) => prev.filter((r) => !names.has(r.name)));
+          }}
         />
       </div>
     </div>

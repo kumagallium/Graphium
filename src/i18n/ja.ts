@@ -2856,6 +2856,12 @@ export const ja: Record<string, string> = {
   "mobile.panel.insertOne": "ノートに入れる",
   "mobile.panel.select": "選ぶ",
   "mobile.panel.insertSelected": "選んだ {count} 件をノートに入れる",
+  // 使わずに消す: 同期フォルダの Inbox/ からファイルを消す（Graphium には何も残らない）
+  "mobile.discardSelected": "削除",
+  "mobile.discardSelectedCount": "選んだものを削除（{count}）",
+  "mobile.discardConfirmTitle": "受信箱から削除",
+  "mobile.discardConfirmMessage": "選んだ {count} 件を、ノートにも素材にも入れずに削除します。同期フォルダの Inbox フォルダから消えます。",
+  "mobile.discardFailed": "削除できませんでした: {error}",
 
   // ── モバイルの記録履歴（スマホ → クラウド Inbox） ──
   // 撮ったものはまずこの端末に永続化され、Google Drive の Graphium/Inbox へ

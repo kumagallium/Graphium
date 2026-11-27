@@ -1962,7 +1962,13 @@ type ConversationMeta = {
   cut marked ` […] `). Tool calls and tool output are never stored. The text
   is plain Markdown: one explanatory paragraph, then `## <date>` headings and
   one list item per line (`- AI（直前の返答の抜粋）: …` / `- 私（06:28）: …`; an
-  English variant uses `AI` / `Me`). Dates and times are in the time zone of
+  English variant uses `AI` / `Me`). When the record names the model that
+  wrote a reply (`message.model` of the record whose text was kept; not
+  `<synthetic>`, letters, digits and `._:@/-` only, up to 80 characters), the
+  AI label carries it: `- AI（claude-opus-4-1、直前の返答の抜粋）: …` /
+  `- AI (claude-opus-4-1, excerpt of the previous reply): …`. The name changes
+  the length of the text, so a conversation stored without model names is
+  replaced once on the next bring-in. Dates and times are in the time zone of
   the device that brought the conversation in. The text is fixed at that
   moment and is what quoted passages are checked against; it is not rebuilt
   on read.
@@ -4381,6 +4387,7 @@ Graphium/
 │   ├── <fileId>.txt          # persisted URL source text (B-persist)
 │   ├── conv-<provider>-<sessionId>.txt  # the stored text of an AI conversation material (§2.7):
 │                                 #   the user's lines verbatim, the AI's replies as excerpts
+│                                 #   (labelled with the model that wrote them when the record has it)
 │                                 #   (the desktop app writes every media-text file into media/
 │                                 #   beside the binaries; the Node server uses media-text/; the
 │                                 #   `local` provider keeps it as a `textContent` record in its

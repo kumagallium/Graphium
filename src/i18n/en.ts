@@ -2857,6 +2857,12 @@ export const en: Record<string, string> = {
   "mobile.panel.insertOne": "Put in note",
   "mobile.panel.select": "Select",
   "mobile.panel.insertSelected": "Put {count} selected in note",
+  // Discard without using: removes the file from the sync folder's Inbox/ (nothing is kept in Graphium)
+  "mobile.discardSelected": "Delete",
+  "mobile.discardSelectedCount": "Delete selected ({count})",
+  "mobile.discardConfirmTitle": "Delete from the inbox",
+  "mobile.discardConfirmMessage": "Delete {count} selected item(s) without putting them in a note or your materials. They are removed from the Inbox folder in your sync folder.",
+  "mobile.discardFailed": "Couldn't delete: {error}",
 
   // ── Mobile capture history (phone → cloud Inbox) ──
   // Captures land here first (persisted on this device), then upload to

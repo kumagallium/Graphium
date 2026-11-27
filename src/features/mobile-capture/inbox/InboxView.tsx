@@ -25,6 +25,7 @@ import {
   FolderCog,
   RefreshCw,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { useT } from "../../../i18n";
 import { useFloatingPlacement } from "../../../ui/floating-position";
@@ -41,6 +42,7 @@ import {
   type GraphiumCapturePayload,
 } from "./capture-file";
 import { buildInboxPeekEntry } from "./preview";
+import { DiscardInboxDialog } from "./DiscardInboxDialog";
 import type { CaptureRef } from "./types";
 import { reconcileCaptureRefs, useAutoRescan } from "./use-inbox-pending";
 
@@ -333,6 +335,11 @@ export type InboxViewProps = {
    * 呼び出し側は「開いたとき」「取り込み後」に自前で数え直す必要がない（IPC が二重にならない）。
    */
   onPendingCount?: (count: number) => void;
+  /**
+   * 選んだものを、取り込まずに受信箱から消す（確認のあと）。渡さなければボタンを出さない。
+   * 失敗は throw で返す（ダイアログに理由を出す）。終わったらビュー側で数え直す。
+   */
+  onDiscard?: (refs: CaptureRef[]) => Promise<void>;
   onBack: () => void;
 };
 
@@ -344,6 +351,7 @@ export function InboxView({
   onKeepArchiveChange,
   onImport,
   onPendingCount,
+  onDiscard,
   onBack,
 }: InboxViewProps) {
   const t = useT();
@@ -480,6 +488,28 @@ export function InboxView({
     },
     [importing, onImport, scan],
   );
+
+  // 取り込まずに消す（確認ダイアログ → 消す → 数え直す）。対象は開いた時点の選択で固定する
+  const [discardTargets, setDiscardTargets] = useState<CaptureRef[] | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
+  const confirmDiscard = useCallback(async () => {
+    if (!onDiscard || !discardTargets || discarding) return;
+    setDiscarding(true);
+    setDiscardError(null);
+    importingRef.current = true;
+    try {
+      await onDiscard(discardTargets);
+      setDiscardTargets(null);
+      setSelected(new Set());
+    } catch (e) {
+      setDiscardError(e instanceof Error ? e.message : String(e));
+    } finally {
+      importingRef.current = false;
+      setDiscarding(false);
+      await scan();
+    }
+  }, [onDiscard, discardTargets, discarding, scan]);
 
   // ── プレビュー（サイドピーク） ──
   // 未取り込みファイルは MediaIndexEntry ではないので、メモピークと同じ流儀で
@@ -658,6 +688,21 @@ export function InboxView({
               <FolderInput size={12} />
               {t("mobile.importSelected", { count: String(selectedRefs.length) })}
             </button>
+            {onDiscard && (
+              <button
+                onClick={() => {
+                  setDiscardError(null);
+                  setDiscardTargets(selectedRefs);
+                }}
+                disabled={importing || discarding || selectedRefs.length === 0}
+                data-tooltip={t("mobile.discardSelected")}
+                aria-label={t("mobile.discardSelectedCount", { count: String(selectedRefs.length) })}
+                data-test="inboxDiscard"
+                className="inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-md border border-border text-muted-foreground hover:text-destructive hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
             <button
               onClick={() => { void runImport(); }}
               disabled={importing || items.length === 0}
@@ -796,6 +841,15 @@ export function InboxView({
           onClose={() => setPreviewName(null)}
           previewOverride={previewOverride}
           footer={previewFooter}
+        />
+      )}
+      {discardTargets && (
+        <DiscardInboxDialog
+          count={discardTargets.length}
+          deleting={discarding}
+          error={discardError}
+          onConfirm={() => { void confirmDiscard(); }}
+          onCancel={() => setDiscardTargets(null)}
         />
       )}
     </div>

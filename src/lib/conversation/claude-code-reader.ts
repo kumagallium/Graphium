@@ -193,6 +193,19 @@ export function excerptAssistantText(text: string): { text: string; excerpt: boo
   };
 }
 
+/** モデル名として受け付ける形（本文と来歴の行にそのまま出すので、英数字と記号の一部だけ） */
+const MODEL_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}$/;
+
+/**
+ * 返答を書いたモデルの名前（message.model）。記録が作った返答（"<synthetic>"）や
+ * 形の合わないものは省く。
+ */
+function cleanModelName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  return MODEL_NAME_RE.test(name) ? name : undefined;
+}
+
 /** message.content から文字の部分だけを取り出す。道具の出力を含む記録は null */
 function textOfContent(content: unknown): string | null {
   if (typeof content === "string") return content;
@@ -258,7 +271,7 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
   let ownChars = 0;
   let userTurns = 0;
   let mainRecords = 0;
-  let lastAssistant: { text: string; at: string } | null = null;
+  let lastAssistant: { text: string; at: string; model?: string } | null = null;
   // create_note の呼び出し（tool_use の id）で、結果をまだ読んでいないもの
   const pendingCreateNote = new Set<string>();
   const createdNoteIds: string[] = [];
@@ -364,13 +377,14 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
         .slice(0, MAX_WORKDIR_CHARS);
     }
     const at = validTimestamp(record.timestamp);
-    const message = record.message as { content?: unknown } | undefined;
+    const message = record.message as { content?: unknown; model?: unknown } | undefined;
 
     if (type === "assistant") {
       if (!includeAssistant) return;
       const text = textOfContent(message?.content);
       if (text && text.trim()) {
-        lastAssistant = { text, at };
+        const model = cleanModelName(message?.model);
+        lastAssistant = { text, at, ...(model ? { model } : {}) };
         noteTime(at);
       }
       return;
@@ -405,6 +419,7 @@ export function createClaudeCodeSessionReader(options: ClaudeCodeReaderOptions =
         at: lastAssistant.at,
         text: ex.text,
         ...(ex.excerpt ? { excerpt: true as const } : {}),
+        ...(lastAssistant.model ? { model: lastAssistant.model } : {}),
       });
       lastAssistant = null;
     }

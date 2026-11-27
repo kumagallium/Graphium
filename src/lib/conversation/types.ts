@@ -27,6 +27,8 @@ export type ConversationTurn = {
   text: string;
   /** assistant: 途中を省いた抜粋であることの印（短い返答は全文なので付かない） */
   excerpt?: true;
+  /** assistant: その返答を書いたモデルの名前（記録にあるとき。例 "claude-opus-4-1"） */
+  model?: string;
   /** user: スラッシュコマンドで始めた発言のコマンド名（"/review" など）。text は引数の原文 */
   command?: string;
   /**

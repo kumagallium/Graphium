@@ -10,7 +10,7 @@
 // 呼び出し側が全画面の受信箱と共用する。
 
 import { useMemo, useState } from "react";
-import { Check, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Check, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useT } from "../../../i18n";
 import { formatDateTime } from "../../../lib/format-datetime";
 import { extractDomain } from "../../asset-browser/media-index";
@@ -22,6 +22,7 @@ import {
   useInboxThumbnailUrl,
   type InboxSource,
 } from "./InboxView";
+import { DiscardInboxDialog } from "./DiscardInboxDialog";
 import type { CaptureRef } from "./types";
 
 export type MobileInboxPanelProps = {
@@ -40,6 +41,11 @@ export type MobileInboxPanelProps = {
   onInsert: (refs: CaptureRef[]) => void;
   onRefresh?: () => void;
   onConnect?: () => void;
+  /**
+   * 選んだものを、ノートにも素材にも入れずに受信箱から消す（確認のあと）。
+   * 渡さなければ削除のボタンを出さない。失敗は throw で返す（ダイアログに理由を出す）。
+   */
+  onDiscard?: (refs: CaptureRef[]) => Promise<void>;
 };
 
 /** ドラッグで運ぶときの種別（中身は Inbox のファイル名の JSON 配列）。 */
@@ -181,8 +187,27 @@ export function MobileInboxPanel({
   onInsert,
   onRefresh,
   onConnect,
+  onDiscard,
 }: MobileInboxPanelProps) {
   const t = useT();
+  // 削除の確認ダイアログ（開いた時点の対象を持つ。見張りで一覧が変わっても対象はずれない）
+  const [discardTargets, setDiscardTargets] = useState<CaptureRef[] | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
+  const confirmDiscard = async () => {
+    if (!onDiscard || !discardTargets || discarding) return;
+    setDiscarding(true);
+    setDiscardError(null);
+    try {
+      await onDiscard(discardTargets);
+      setDiscardTargets(null);
+      setSelectedNames(new Set());
+    } catch (e) {
+      setDiscardError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiscarding(false);
+    }
+  };
   const sorted = useMemo(() => [...items].sort(byNewest), [items]);
   const [selectedNames, setSelectedNames] = useState<ReadonlySet<string>>(new Set());
 
@@ -297,9 +322,33 @@ export function MobileInboxPanel({
               >
                 {t("mobile.deselectAll")}
               </button>
+              {onDiscard && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscardError(null);
+                    setDiscardTargets(selectedRefs);
+                  }}
+                  data-tooltip={t("mobile.discardSelected")}
+                  aria-label={t("mobile.discardSelectedCount", { count: String(selectedRefs.length) })}
+                  data-test="mobileInboxDiscard"
+                  className="inline-flex items-center justify-center w-8 h-8 shrink-0 rounded border border-border text-muted-foreground hover:text-destructive hover:bg-muted transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
           )}
         </>
+      )}
+      {discardTargets && (
+        <DiscardInboxDialog
+          count={discardTargets.length}
+          deleting={discarding}
+          error={discardError}
+          onConfirm={() => { void confirmDiscard(); }}
+          onCancel={() => setDiscardTargets(null)}
+        />
       )}
     </div>
   );
