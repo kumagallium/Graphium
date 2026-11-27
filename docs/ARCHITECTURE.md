@@ -4418,7 +4418,20 @@ The same `src/` tree is built four different ways.
   reply are not trusted for this decision. The sidecar additionally runs a watchdog that
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
-  old code and return 404 for routes added after that build. On Windows —
+  old code and return 404 for routes added after that build. All of the above
+  runs on the sidecar's event loop (the `SIGTERM` handler, the watchdog timer,
+  the HTTP reply the startup check looks for), so none of it works while a
+  long synchronous job blocks that loop. Three measures cover that case on
+  macOS / Linux: (1) every `SIGTERM` the app sends is followed up by a
+  detached `sh` that sends `SIGKILL` 3 seconds later if the process is still
+  a sidecar (`spawn_kill_escalation`; it survives the app's own exit);
+  (2) right before spawning, `start_native_sidecar` asks the OS (`lsof`) who
+  holds the port and `SIGKILL`s any Graphium sidecar still there, without
+  relying on an HTTP reply (`kill_stale_sidecars_on_port`; other programs
+  are never touched); (3) the sidecar runs a second parent watchdog in a
+  worker thread (`src/server/parent-watchdog-worker.ts`), which has its own
+  event loop and `SIGKILL`s the process 5 seconds after the parent is gone
+  if the main-thread watchdog has not already exited. On Windows —
   where killing a parent process does not kill its children, and a running
   `node.exe` locks its file so an installer cannot overwrite it — the app
   additionally assigns the sidecar to a Job Object with
