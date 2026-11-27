@@ -315,12 +315,16 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe)) { throw 'Graphium.exe missing after update' }
           Write-Host '--- graphium-installer.log'
           Get-Content -LiteralPath (Join-Path $env:TEMP 'graphium-installer.log') -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+          Write-Host "holder alive after update: $(-not $holder.HasExited)"
           if ($holder.HasExited) { throw "the holder was shut down (exit=$($holder.ExitCode)): the old Graphium.exe was not moved aside" }
           $holder.Kill()
 
           # 7. 片付け（/R で立ち上がり直したアプリも止める）
           Get-Process -Name Graphium -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$installDir\sidecar\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          # 途中で呼んだ wait-app-exit.ps1 の終了コード（1 や 2）が $LASTEXITCODE に残り、
+          # ステップの結果として扱われないよう、ここまで来たら成功で終える
+          exit 0
 
       - name: Collect artifacts
         shell: pwsh
