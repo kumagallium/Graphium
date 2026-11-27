@@ -29,6 +29,11 @@ const h = vi.hoisted(() => ({
   getPushQueueFiles: vi.fn(async (_ids?: string[]) => [] as Array<{ id: string; file: File }>),
   getPushQueueThumbnail: vi.fn(async (_id: string) => null as Blob | null),
   enqueuePushFiles: vi.fn(async (_files?: File[]) => {}),
+  needsRenewal: { value: true },
+  prepared: { value: true },
+  connected: { value: false },
+  connect: vi.fn(() => Promise.resolve()),
+  drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
 }));
 
 vi.mock("./push", () => {
@@ -36,7 +41,11 @@ vi.mock("./push", () => {
   return {
     GoogleDrivePusher: class {
       isConfigured() { return h.pusherConfigured.value; }
-      isConnected() { return false; }
+      isConnected() { return h.connected.value; }
+      isPrepared() { return h.prepared.value; }
+      needsRenewal() { return h.needsRenewal.value; }
+      hasLinkedBefore() { return true; }
+      connect() { return h.connect(); }
       prepare() { return Promise.resolve(); }
     },
     subscribePushQueue: (cb: (snap: { items: never[]; draining: boolean; activeId: null }) => void) => {
@@ -44,7 +53,7 @@ vi.mock("./push", () => {
       return () => {};
     },
     enqueuePushFiles: h.enqueuePushFiles,
-    drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
+    drainPushQueue: h.drainPushQueue,
     getPushQueueFiles: h.getPushQueueFiles,
     getPushQueueThumbnail: h.getPushQueueThumbnail,
     removePushQueueItem: vi.fn(async () => {}),
@@ -55,6 +64,11 @@ vi.mock("./push", () => {
 beforeEach(() => {
   vi.clearAllMocks();
   h.pusherConfigured.value = false;
+  h.needsRenewal.value = true;
+  h.prepared.value = true;
+  h.connected.value = false;
+  h.connect.mockImplementation(() => Promise.resolve());
+  Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
 });
 
 afterEach(cleanup);
@@ -140,5 +154,72 @@ describe("usePushQueue のサムネイル復元と状態イベント", () => {
       window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
     });
     await waitFor(() => expect(result.current.configured).toBe(true));
+  });
+});
+
+describe("usePushQueue の renewOnGesture（保存タップへの相乗り）", () => {
+  async function ready() {
+    h.pusherConfigured.value = true;
+    const hook = renderHook(() => usePushQueue());
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+    return hook;
+  }
+
+  it("does not call connect when no renewal is needed", async () => {
+    h.needsRenewal.value = false;
+    const { result } = await ready();
+    act(() => result.current.renewOnGesture());
+    expect(h.connect).not.toHaveBeenCalled();
+  });
+
+  it("calls connect synchronously and drains on success", async () => {
+    const { result } = await ready();
+    h.drainPushQueue.mockClear();
+    // 成功すると有効なトークンが手に入る
+    h.connect.mockImplementation(() => {
+      h.connected.value = true;
+      return Promise.resolve();
+    });
+    let calledSync = false;
+    act(() => {
+      result.current.renewOnGesture();
+      calledSync = h.connect.mock.calls.length === 1;
+    });
+    expect(calledSync).toBe(true);
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    await waitFor(() => expect(h.drainPushQueue).toHaveBeenCalledTimes(1));
+  });
+
+  it("stays quiet on failure (no connectError) and does not retry in the same session", async () => {
+    h.connect.mockImplementation(() => Promise.reject(new Error("popup closed")));
+    const { result } = await ready();
+    act(() => result.current.renewOnGesture());
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(result.current.connectError).toBeNull();
+    expect(h.connect).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.renewOnGesture());
+    expect(h.connect).toHaveBeenCalledTimes(1);
+
+    // 明示の接続が通れば静かな取り直しをまた許す
+    h.connect.mockImplementation(() => Promise.resolve());
+    act(() => result.current.connectAndDrain());
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    h.connect.mockClear();
+    act(() => result.current.renewOnGesture());
+    expect(h.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing while offline or before auth is prepared", async () => {
+    const { result } = await ready();
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    act(() => result.current.renewOnGesture());
+    expect(h.connect).not.toHaveBeenCalled();
+
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    h.prepared.value = false;
+    act(() => result.current.renewOnGesture());
+    expect(h.connect).not.toHaveBeenCalled();
   });
 });

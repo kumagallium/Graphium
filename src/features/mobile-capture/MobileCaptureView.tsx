@@ -443,6 +443,11 @@ export function MobileCaptureView({
   const enqueueForSend = push.enqueueForSend;
   const handleSubmit = useCallback(
     async (text: string) => {
+      // 保存タップに相乗りして接続を静かに取り直す。Google の窓はジェスチャ直下の
+      // 同期呼び出しでしか開けないので、最初の await より前に置く。
+      // 写真・動画・ライブラリ・音声のボタンには入れない（ファイル選択や録音の許可と
+      // Google の窓が同じタップを取り合うため）。
+      push.renewOnGesture();
       // 画面上部で選んだ送り先。メディアは queue が名前に埋めるが、捕獲ファイルは
       // JSON の中に入れる（normalizeCaptureName は .graphium.json を別分岐で扱う）
       const queued = await enqueueForSend([
@@ -455,7 +460,7 @@ export function MobileCaptureView({
       await onCreateCapture(text);
       setShowCaptureDialog(false);
     },
-    [enqueueForSend, onCreateCapture]
+    [enqueueForSend, onCreateCapture, push.renewOnGesture]
   );
 
   // URL ブックマーク登録。UrlBookmarkModal の入力（タイトル・説明・OGP はモバイル側で
@@ -463,6 +468,8 @@ export function MobileCaptureView({
   // まま URL 素材を作る。キュー不可時は従来のローカル登録へ退避。
   const handleRegisterBookmark = useCallback(
     (entry: MediaIndexEntry) => {
+      // 登録タップに相乗りして接続を静かに取り直す（同期。理由は handleSubmit 参照）
+      push.renewOnGesture();
       void enqueueForSend([
         buildUrlCaptureFile({
           url: entry.url,
@@ -476,7 +483,7 @@ export function MobileCaptureView({
       });
       setShowBookmarkModal(false);
     },
-    [enqueueForSend, onAddUrlBookmark]
+    [enqueueForSend, onAddUrlBookmark, push.renewOnGesture]
   );
 
   // メディアキャプチャ共通。
@@ -753,6 +760,8 @@ export function MobileCaptureView({
           connected={push.connected}
           connecting={push.connecting}
           connectError={push.connectError}
+          linkedBefore={push.linkedBefore}
+          onReconnectAndSend={push.connectAndDrain}
           onSend={push.drainNow}
           onOpenStoragePicker={() => setShowStoragePicker(true)}
           onRemoveItem={push.removeItem}

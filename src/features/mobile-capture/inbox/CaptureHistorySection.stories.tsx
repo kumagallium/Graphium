@@ -223,6 +223,17 @@ export const Disconnected: Story = {
   args: { ...baseProps, connected: false, items: [...baseItems, ...sentItems] },
 };
 
+/** 以前つないだことがある人の未接続。主ボタンは警告でなく [送信 (n)]（1 タップで取り直して送る）。 */
+export const LinkedBeforeReconnect: Story = {
+  args: {
+    ...baseProps,
+    connected: false,
+    linkedBefore: true,
+    onReconnectAndSend: () => {},
+    items: [...baseItems, ...sentItems],
+  },
+};
+
 /** 接続失敗（ポップアップを閉じた・権限拒否など）。 */
 export const ConnectFailed: Story = {
   args: {

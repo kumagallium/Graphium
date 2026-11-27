@@ -17,11 +17,14 @@
 // PKCE/デスクトップ分岐・サイレントリフレッシュは持ち込まない（push 専用に最小化）。
 
 import { emitPushStatusChanged } from "../push-events";
+import { getDriveFolderCache } from "./config";
 import { PushAuthError, PushConfigError } from "./types";
 
 const GSI_SRC = "https://accounts.google.com/gsi/client";
 const SCOPE = "https://www.googleapis.com/auth/drive.file";
 const TOKEN_STORAGE_KEY = "graphium-push-google-token";
+/** 「以前つないだことがある」印。切断（disconnectGoogleAuth）でだけ消す。 */
+const LINKED_STORAGE_KEY = "graphium-push-google-linked";
 /** 期限ぎりぎりのトークンでアップロードを始めないための余裕。 */
 const EXPIRY_MARGIN_MS = 60 * 1000;
 
@@ -84,6 +87,46 @@ function loadStoredToken(): StoredToken | null {
   }
 }
 
+function markLinked(): void {
+  try {
+    localStorage.setItem(LINKED_STORAGE_KEY, "1");
+  } catch {
+    // localStorage 不可でも致命的にしない
+  }
+}
+
+function clearLinked(): void {
+  try {
+    localStorage.removeItem(LINKED_STORAGE_KEY);
+  } catch {
+    // 同上
+  }
+}
+
+/**
+ * 以前この端末で Google Drive につないだことがあるか。
+ * 印が無くても Drive のフォルダキャッシュがあれば「つないだことがある」とみなす
+ * （印を入れる前から使っていた既存利用者の移行）。
+ */
+export function hasLinkedBefore(): boolean {
+  try {
+    if (localStorage.getItem(LINKED_STORAGE_KEY) === "1") return true;
+  } catch {
+    // 読めなければキャッシュ側で判定
+  }
+  return getDriveFolderCache() !== null;
+}
+
+/**
+ * 保存トークンの期限までの残り ms（負もありうる）。保存トークンが無ければ null。
+ * 純粋な読み取りで、期限切れトークンを破棄しない（getValidAccessToken との違い）。
+ */
+export function getAccessTokenRemainingMs(): number | null {
+  const stored = loadStoredToken();
+  if (!stored) return null;
+  return stored.expiresAt - Date.now();
+}
+
 function saveStoredToken(token: StoredToken | null): void {
   try {
     if (token === null) {
@@ -131,6 +174,7 @@ function handleTokenResponse(response: GsiTokenResponse): void {
   }
   const expiresInSec = Number(response.expires_in ?? 0);
   const expiresAt = Date.now() + (Number.isFinite(expiresInSec) ? expiresInSec : 0) * 1000;
+  markLinked();
   saveStoredToken({ accessToken: response.access_token, expiresAt });
   pending.resolve(response.access_token);
 }
@@ -225,5 +269,6 @@ export function disconnectGoogleAuth(): void {
       method: "POST",
     }).catch(() => {});
   }
+  clearLinked();
   saveStoredToken(null);
 }

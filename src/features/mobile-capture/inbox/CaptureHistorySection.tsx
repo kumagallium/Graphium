@@ -94,6 +94,10 @@ export type CaptureHistorySectionProps = {
   connected: boolean;
   connecting: boolean;
   connectError?: string | null;
+  /** 以前つないだことがあるか。true かつ未送信ありなら、主ボタンは 1 タップで取り直して送る。 */
+  linkedBefore?: boolean;
+  /** 取り直して送る（use-push-queue の connectAndDrain。click ハンドラから直接呼ぶ）。 */
+  onReconnectAndSend?: () => void;
   /** 手動送信（接続済みモード・見出し行の定位置ボタン）。 */
   onSend: () => void;
   /** ストレージ選択（StoragePickerSheet）を開く。connect の実体はピッカー側。 */
@@ -399,6 +403,8 @@ export function CaptureHistorySection({
   connected,
   connecting,
   connectError,
+  linkedBefore,
+  onReconnectAndSend,
   onSend,
   onOpenStoragePicker,
   onRemoveItem,
@@ -519,7 +525,27 @@ export function CaptureHistorySection({
           選択・接続はピッカー側の責務。未設定（client_id 無し）は案内 + 設定導線のみ */}
       {unsentCount > 0 &&
         (configured ? (
-          !connected && (
+          !connected &&
+          (linkedBefore && onReconnectAndSend ? (
+            // 以前つないだ人: 警告の見せ方はせず、いつもの「送信 (n)」を 1 タップで取り直して送る
+            <button
+              onClick={onReconnectAndSend}
+              disabled={connecting}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
+            >
+              {connecting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  {t("mobile.send.connecting")}
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  {t("mobile.send.action", { count: String(unsentCount) })}
+                </>
+              )}
+            </button>
+          ) : (
             <button
               onClick={onOpenStoragePicker}
               disabled={connecting}
@@ -534,7 +560,7 @@ export function CaptureHistorySection({
                 t("mobile.send.connectStorage")
               )}
             </button>
-          )
+          ))
         ) : (
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex flex-col gap-2">
             <p className="text-xs text-muted-foreground leading-relaxed">

@@ -242,6 +242,42 @@ describe("CaptureHistorySection", () => {
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
   });
 
+  it("offers one-tap reconnect-and-send for someone who linked before", () => {
+    const onReconnectAndSend = vi.fn();
+    const onOpenStoragePicker = vi.fn();
+    renderSection({
+      connected: false,
+      linkedBefore: true,
+      onReconnectAndSend,
+      onOpenStoragePicker,
+      items: [item("a", "graphium-a.jpg"), item("b", "graphium-b.jpg")],
+    });
+
+    expect(screen.queryByRole("button", { name: "Connect storage" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Send \(2\)/ }));
+    expect(onReconnectAndSend).toHaveBeenCalledTimes(1);
+    expect(onOpenStoragePicker).not.toHaveBeenCalled();
+  });
+
+  it("keeps the storage picker entry when linkedBefore is false or nothing is unsent", () => {
+    renderSection({
+      connected: false,
+      linkedBefore: false,
+      onReconnectAndSend: () => {},
+      items: [item("a", "graphium-a.jpg")],
+    });
+    expect(screen.getByRole("button", { name: "Connect storage" })).toBeTruthy();
+
+    cleanup();
+    renderSection({
+      connected: false,
+      linkedBefore: true,
+      onReconnectAndSend: () => {},
+      items: [sentItem("a", "graphium-a.jpg")],
+    });
+    expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+  });
+
   it("hides the connect and setup prompts once everything has been sent", () => {
     // 送るものが無い履歴だけの状態で接続を迫らない
     renderSection({ connected: false, items: [sentItem("a", "graphium-a.jpg")] });

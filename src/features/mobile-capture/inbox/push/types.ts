@@ -82,6 +82,21 @@ export interface InboxPusher {
    */
   connect(): Promise<void>;
 
+  /**
+   * 認証の準備（prepare）が済んでいるか。同期判定。connect() をジェスチャ内で
+   * 呼べる状態かの確認に使う（オプショナル: 実装しないプロバイダは「不明」扱い）。
+   */
+  isPrepared?(): boolean;
+
+  /** 以前この端末でつないだことがあるか（表示用。同期・副作用なし）。 */
+  hasLinkedBefore?(): boolean;
+
+  /**
+   * 静かに取り直したほうがよいか（以前つないだことがあり、トークンが無い／もうすぐ切れる）。
+   * 一度もつないでいない人は常に false（勝手に窓を出さない）。同期・副作用なし。
+   */
+  needsRenewal?(): boolean;
+
   /** 認証を破棄する（トークン失効・キャッシュ破棄）。ベストエフォート。 */
   disconnect(): void;
 

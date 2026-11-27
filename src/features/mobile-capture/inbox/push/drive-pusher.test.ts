@@ -21,6 +21,9 @@ const authMock = vi.hoisted(() => ({
   prepareGoogleAuth: vi.fn(async (_clientId: string) => {}),
   connectInteractive: vi.fn(async () => "tok-1"),
   disconnectGoogleAuth: vi.fn(),
+  hasLinkedBefore: vi.fn<() => boolean>(() => true),
+  getAccessTokenRemainingMs: vi.fn<() => number | null>(() => 3_600_000),
+  isAuthPrepared: vi.fn<() => boolean>(() => true),
 }));
 vi.mock("./google-auth", () => authMock);
 
@@ -67,6 +70,9 @@ beforeEach(() => {
   authMock.prepareGoogleAuth.mockReset().mockResolvedValue(undefined);
   authMock.connectInteractive.mockReset().mockResolvedValue("tok-1");
   authMock.disconnectGoogleAuth.mockReset();
+  authMock.hasLinkedBefore.mockReset().mockReturnValue(true);
+  authMock.getAccessTokenRemainingMs.mockReset().mockReturnValue(3_600_000);
+  authMock.isAuthPrepared.mockReset().mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -123,6 +129,31 @@ describe("設定と接続状態", () => {
     new GoogleDrivePusher().disconnect();
     expect(authMock.disconnectGoogleAuth).toHaveBeenCalled();
     expect(getDriveFolderCache()).toBeNull();
+  });
+});
+
+describe("needsRenewal（次のタップで取り直すか）", () => {
+  it("is false for someone who never linked (no surprise popups)", () => {
+    authMock.hasLinkedBefore.mockReturnValue(false);
+    authMock.getAccessTokenRemainingMs.mockReturnValue(null);
+    expect(new GoogleDrivePusher().needsRenewal()).toBe(false);
+  });
+
+  it("is true when linked before and there is no valid token", () => {
+    authMock.getAccessTokenRemainingMs.mockReturnValue(null);
+    expect(new GoogleDrivePusher().needsRenewal()).toBe(true);
+  });
+
+  it("is true when less than 10 minutes remain, false when plenty remain", () => {
+    authMock.getAccessTokenRemainingMs.mockReturnValue(9 * 60 * 1000);
+    expect(new GoogleDrivePusher().needsRenewal()).toBe(true);
+    authMock.getAccessTokenRemainingMs.mockReturnValue(30 * 60 * 1000);
+    expect(new GoogleDrivePusher().needsRenewal()).toBe(false);
+  });
+
+  it("exposes prepared state from the auth layer", () => {
+    authMock.isAuthPrepared.mockReturnValue(false);
+    expect(new GoogleDrivePusher().isPrepared()).toBe(false);
   });
 });
 
