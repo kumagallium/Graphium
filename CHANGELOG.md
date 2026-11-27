@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.5](https://github.com/kumagallium/Graphium/compare/v0.173.4...v0.173.5) - 2026-11-27
+
+- fix(windows): move the old Graphium.exe aside when only another program holds it by @kumagallium in https://github.com/kumagallium/Graphium/pull/1905
+
 ## [v0.173.4](https://github.com/kumagallium/Graphium/compare/v0.173.3...v0.173.4) - 2026-11-27
 
 - [fix] Read the topic routing JSON when the model wraps it in prose by @kumagallium in https://github.com/kumagallium/Graphium/pull/1903
