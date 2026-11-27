@@ -68,7 +68,8 @@ import {
 import { sideMenuPlacementMiddleware } from "./side-menu-placement";
 import { createGraphiumHighlighter } from "./shiki-bundle";
 import { suggestionMenuImeKeyAction } from "../lib/ime-enter";
-import { FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, FC, MutableRefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isInitialContentError, repairBlocksForSchema } from "./repair-initial-content";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
@@ -793,9 +794,11 @@ const FIXED_MENU_FLOATING_UI = {
   elementProps: { style: { zIndex: FIXED_MENU_Z_INDEX } },
 };
 
-export function SandboxEditor({
+function SandboxEditorInner({
   blocks = [],
-  initialContent,
+  initialContent: rawInitialContent,
+  repairContent = false,
+  onRepaired,
   sideMenu,
   formattingToolbar,
   extraSlashMenuItems,
@@ -808,9 +811,9 @@ export function SandboxEditor({
   resolveFileUrl,
   onMentionSelect,
   getMentionSuggestions,
-  editable = true,
+  editable: editableProp = true,
   remoteContentScope,
-}: SandboxEditorProps) {
+}: SandboxEditorProps & { repairContent?: boolean; onRepaired?: (replaced: number) => void }) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
   );
@@ -843,6 +846,25 @@ export function SandboxEditor({
       ...scriptStyleSpecs,
     } as any,
   });
+
+  // 保存内容からエディタを作れなかったときだけ（外側の境界が repairContent を立てる）、
+  // スキーマに合わないブロックを文字だけの段落にして開く。通常の読み込みでは素通し
+  // 修復はこのエディタの生成に 1 回だけ使う（エディタは初回の initialContent しか読まない）。
+  // 呼び出し側には描画ごとに新しい配列を渡すもの（SidePeek）があるので、内容の参照で
+  // 作り直すと描画のたびに修復をやり直してしまう
+  const repairedRef = useRef<ReturnType<typeof repairBlocksForSchema> | null>(null);
+  if (repairContent && !repairedRef.current && rawInitialContent?.length) {
+    repairedRef.current = repairBlocksForSchema(schema, rawInitialContent);
+  }
+  const repaired = repairContent ? repairedRef.current : null;
+  const initialContent = repaired ? repaired.blocks : rawInitialContent;
+  // 本文の編集で修復した内容が保存されないよう、読み取り専用で開く
+  // （文字だけにした部分は元に戻せない。元の本文が残っていれば、直った版で開き直せる）。
+  // 題の変更など本文以外の保存は残るので、知らせでは「書き換えていない」とは言わない
+  const editable = repaired ? false : editableProp;
+  useEffect(() => {
+    if (repaired) onRepaired?.(repaired.replaced);
+  }, [repaired, onRepaired]);
 
   // BlockNote 内蔵 UI の文言をアプリの言語設定に連動させる。
   // プレースホルダはエディタ生成時に CSS ルールとして固定されるため、辞書の
@@ -1463,5 +1485,72 @@ export function SandboxEditor({
         />
       )}
     </BlockNoteView>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 保存内容からエディタを作れなかったときの境界
+//
+// BlockNote は initialContent が 1 か所でもスキーマに合わないとエディタの生成で throw する。
+// 受ける境界が無いとアプリ全体のエラー画面になり、再読み込みしても同じノートを開いて
+// また落ちる（md の取り込みで起きた）。ここで受けて、合わないブロックだけ文字にして
+// 開き直す。それでも作れないとき・別の種類のエラーは、これまでどおり外へ投げる。
+// ─────────────────────────────────────────────
+
+// ノートの切り替えでは呼び出し側が key でエディタごと作り直すので（note-app / SidePeek /
+// SharedEntryBody）、この境界の修復の状態も一緒に捨てられる。内容の参照では戻さない
+// （描画ごとに新しい配列を渡す呼び出し側があり、戻すと知らせが消える）。
+type ContentBoundaryProps = {
+  children: (repair: boolean, onRepaired: (replaced: number) => void) => ReactNode;
+};
+type ContentBoundaryState = { repair: boolean; replaced: number; error: unknown };
+
+/** 描画中に受け取った例外を、外側の境界へ投げ直す */
+function Rethrow({ error }: { error: unknown }): null {
+  throw error;
+}
+
+class InitialContentBoundary extends Component<ContentBoundaryProps, ContentBoundaryState> {
+  state: ContentBoundaryState = { repair: false, replaced: 0, error: null };
+
+  static getDerivedStateFromError(error: unknown): Partial<ContentBoundaryState> {
+    return { error };
+  }
+
+  componentDidCatch(error: unknown) {
+    if (!this.state.repair && isInitialContentError(error)) {
+      console.warn("[editor] 保存内容からエディタを作れなかったので、合わないブロックを文字にして開き直します:", error, (error as any)?.cause);
+      this.setState({ repair: true, error: null });
+    }
+  }
+
+  private onRepaired = (replaced: number) => {
+    if (replaced !== this.state.replaced) this.setState({ replaced });
+  };
+
+  render() {
+    const { error, repair, replaced } = this.state;
+    // 修復しても作れない・別の種類のエラーは外へ（アプリ全体のエラー画面）
+    if (error && (repair || !isInitialContentError(error))) return <Rethrow error={error} />;
+    // componentDidCatch が修復に切り替えるまでの 1 回の描画
+    if (error) return null;
+    return (
+      <>
+        {repair && replaced > 0 && (
+          <div role="status" className="mx-2 mb-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {t("editor.repairedContent", { count: String(replaced) })}
+          </div>
+        )}
+        {this.props.children(repair, this.onRepaired)}
+      </>
+    );
+  }
+}
+
+export function SandboxEditor(props: SandboxEditorProps) {
+  return (
+    <InitialContentBoundary>
+      {(repair, onRepaired) => <SandboxEditorInner {...props} repairContent={repair} onRepaired={onRepaired} />}
+    </InitialContentBoundary>
   );
 }

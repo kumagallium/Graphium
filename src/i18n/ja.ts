@@ -75,6 +75,7 @@ export const ja: Record<string, string> = {
   "crash.copy": "内容をコピー",
   "crash.copied": "コピーしました",
   "crash.details": "エラーの内容",
+  "editor.repairedContent": "このノートには、そのままでは表示できない部分が {count} か所ありました。その部分を文字にして、読み取り専用で開いています。",
   "startup.initFailedPermission": "ノートフォルダを開けませんでした。macOS がアクセスを保留しているようです。",
   "startup.initFailedTimeout": "ノートフォルダの読み込みに時間がかかっています。再読み込みで直ることがほとんどです。",
   "startup.initFailedMissing": "ノートフォルダが見つかりませんでした。外付けドライブや同期フォルダに置いている場合は、使える状態か確認してください。",

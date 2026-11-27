@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.8](https://github.com/kumagallium/Graphium/compare/v0.173.7...v0.173.8) - 2026-11-27
+
+- fix: open notes the editor cannot load instead of crashing the whole app by @kumagallium in https://github.com/kumagallium/Graphium/pull/1914
+
 ## [v0.173.7](https://github.com/kumagallium/Graphium/compare/v0.173.6...v0.173.7) - 2026-11-27
 
 - Keep the model behind each AI reply, and delete inbox arrivals without using them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1911

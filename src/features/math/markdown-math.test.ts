@@ -174,13 +174,18 @@ describe("restoreMath", () => {
     expect(out[0].children[0]).toMatchObject({ type: "math", props: { latex: "y = ax" } });
   });
 
-  it("リンクの中の数式も展開する", () => {
+  // BlockNote のリンクは中に文字しか持てない。数式の要素を入れるとノートが開けなくなる
+  // （md の `[$z$](url)` を取り込むと「画面を表示できなくなりました」になった）
+  it("リンクの中の数式は元の表記の文字で残す", () => {
     const blocks = [{
       id: "b", type: "paragraph", props: {}, children: [],
-      content: [{ type: "link", href: "https://example.com", content: [{ type: "text", text: "{{GWMATH_0}}", styles: {} }] }],
+      content: [{ type: "link", href: "https://example.com", content: [{ type: "text", text: "式 {{GWMATH_0}} と {{GWMATH_1}}", styles: { bold: true } }] }],
     }];
-    const out = restoreMath(blocks, [{ latex: "z", display: false }]);
-    expect(out[0].content[0].content[0]).toEqual({ type: "inlineMath", props: { latex: "z" } });
+    const out = restoreMath(blocks, [{ latex: "z", display: false }, { latex: "y\n= x", display: true }]);
+    const inner = out[0].content[0].content;
+    expect(inner.every((c: any) => c.type === "text")).toBe(true);
+    expect(inner.map((c: any) => c.text).join("")).toBe("式 $z$ と $$ y = x $$");
+    expect(inner.every((c: any) => c.styles?.bold === true)).toBe(true);
   });
 
   it("stash が空なら入力をそのまま返す", () => {

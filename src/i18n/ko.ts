@@ -80,6 +80,7 @@ export const ko: Record<string, string> = {
   "crash.copy": "내용 복사",
   "crash.copied": "복사했습니다",
   "crash.details": "오류 내용",
+  "editor.repairedContent": "이 노트에 그대로 표시할 수 없는 부분이 {count}곳 있어, 그 부분을 텍스트로 바꾸고 읽기 전용으로 열었습니다.",
   "startup.initFailedPermission": "노트 폴더를 열지 못했습니다. macOS가 접근을 허용하지 않고 있습니다.",
   "startup.initFailedTimeout": "노트 폴더를 읽는 데 평소보다 오래 걸리고 있습니다. 대부분 다시 불러오면 해결됩니다.",
   "startup.initFailedMissing": "노트 폴더를 찾지 못했습니다. 외장 드라이브나 동기화 폴더에 두었다면 사용할 수 있는 상태인지 확인해 주세요.",
