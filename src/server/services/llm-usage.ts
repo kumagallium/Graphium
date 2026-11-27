@@ -9,7 +9,12 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getServerMode, type TokenRate, type RateCurrency } from "../config/models.js";
+import {
+  getServerMode,
+  type ModelConfig,
+  type TokenRate,
+  type RateCurrency,
+} from "../config/models.js";
 
 export type { TokenRate, RateCurrency };
 
@@ -179,6 +184,32 @@ export function recordUsage(
       `[llm-usage] failed to record event: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+}
+
+/**
+ * 登録モデルの一覧から、event ごとの単価を引く関数を作る。
+ *
+ * 一覧は呼び出し側で 1 回だけ読んで渡すこと。`getModel()` / `listModels()` は
+ * 呼ぶたびに全モデルの API キーを Keychain（`security` コマンド）から読むため、
+ * event ごとに呼ぶと「記録件数 × モデル数」回の子プロセス起動になり、
+ * 数万件の記録で何時間も sidecar を止めてしまう。
+ *
+ * 引き方:
+ *   1) modelConfigId で厳密一致（Tauri / Docker のローカル登録モデル）
+ *   2) provider + modelId で一致。Web / header 経由の呼び出しは modelConfigId が
+ *      "header-injected" になり ID 一致しないため、モデル名で登録モデルに紐づける。
+ */
+export function makeRateResolver(
+  models: readonly Pick<ModelConfig, "id" | "provider" | "modelId" | "rate">[],
+): (ev: AIUsageEvent) => TokenRate | undefined {
+  const byId = new Map(models.map((m) => [m.id, m]));
+  return (ev) => {
+    if (ev.modelConfigId) {
+      const rate = byId.get(ev.modelConfigId)?.rate;
+      if (rate) return rate;
+    }
+    return models.find((m) => m.provider === ev.provider && m.modelId === ev.modelId)?.rate;
+  };
 }
 
 /**
