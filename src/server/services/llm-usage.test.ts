@@ -10,9 +10,11 @@ import { join } from "node:path";
 import { setServerMode } from "../config/models.js";
 import {
   recordUsage,
+  makeRateResolver,
   recalculateUsageCosts,
   loadUsageLog,
   setUsageDataDir,
+  type AIUsageEvent,
 } from "./llm-usage.js";
 
 describe("recalculateUsageCosts", () => {
@@ -128,5 +130,40 @@ describe("recalculateUsageCosts", () => {
     // (2M/1M)*150 = 300 JPY
     expect(ev.cost).toBeCloseTo(300);
     expect(ev.costCurrency).toBe("jpy");
+  });
+});
+
+describe("makeRateResolver", () => {
+  const ev = (over: Partial<AIUsageEvent>): AIUsageEvent => ({
+    ts: "2026-06-01T00:00:00.000Z",
+    feature: "agent.chat",
+    provider: "openai-compatible",
+    modelId: "gpt-oss-120b",
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    ...over,
+  });
+  const models = [
+    { id: "m1", provider: "openai-compatible", modelId: "gpt-oss-120b", rate: { input: 1, output: 2 } },
+    { id: "m2", provider: "openai-compatible", modelId: "gpt-oss-120b", rate: { input: 9, output: 9 } },
+    { id: "m3", provider: "anthropic", modelId: "claude-x" },
+  ];
+
+  it("modelConfigId で一致したモデルの単価を返す", () => {
+    expect(makeRateResolver(models)(ev({ modelConfigId: "m2" }))).toEqual({ input: 9, output: 9 });
+  });
+
+  it("ID が一致しなければ provider + modelId で引く", () => {
+    expect(makeRateResolver(models)(ev({ modelConfigId: "header-injected" }))).toEqual({
+      input: 1,
+      output: 2,
+    });
+  });
+
+  it("単価が未設定・該当モデルなしなら undefined", () => {
+    const resolve = makeRateResolver(models);
+    expect(resolve(ev({ modelConfigId: "m3", provider: "anthropic", modelId: "claude-x" }))).toBeUndefined();
+    expect(resolve(ev({ modelConfigId: "gone", provider: "x", modelId: "y" }))).toBeUndefined();
   });
 });
