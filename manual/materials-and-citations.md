@@ -155,7 +155,7 @@ This keeps what you decided, and why, in a conversation with an AI next to the r
 | What goes in | What does not |
 |---|---|
 | Your own messages, in full and word for word | Tool calls and their output |
-| An excerpt of the AI's reply just before each of your messages (long ones: the first 200 and last 300 characters — see [the measurement](/evaluations/ai-conversation-claims)), marked with the model that wrote it when the record names one, as in **AI (claude-opus-4-1, previous reply)** | The rest of the AI's replies |
+| An excerpt of the AI's reply just before each of your messages (long ones: the first 200 and last 300 characters — see [the measurement](/evaluations/ai-conversation-claims)), <Badge type="tip" text="Added in v0.173.7 (2026-11-27)" /> marked with the model that wrote it when the record names one, as in **AI (claude-opus-4-1, previous reply)** | The rest of the AI's replies |
 | A long text (over 700 characters) placed at the start of a conversation, kept as a **Brief** | |
 
 - Anything you typed, such as an email address or a name, is kept as it is, as part of your message. Know this before you bring a conversation in.
