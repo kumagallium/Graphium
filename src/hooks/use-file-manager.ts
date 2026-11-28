@@ -342,6 +342,13 @@ export function useFileManager(authenticated: boolean) {
   const [activeWikiKind, setActiveWikiKind] = useState<WikiKind | null>(null);
   // Wiki メタデータ（サイドバーカウント・リスト表示用、noteIndex とは独立）
   const [wikiMetas, setWikiMetas] = useState<Map<string, WikiMetaSummary>>(new Map());
+  // 一覧・グラフに出す wiki（アーカイブ・ゴミ箱を除く）。参照を固定する — 描画のたびに
+  // filter し直すと、これに依存する useMemo / useEffect（一覧の行・AI 用の索引の組み立てなど）が
+  // 毎回走り直し、ナレッジが数千件あると画面の操作のたびに止まっていた
+  const visibleWikiFiles = useMemo(
+    () => wikiFiles.filter((f) => !archivedIdSet.has(f.id) && !trashedIdSet.has(f.id)),
+    [wikiFiles, archivedIdSet, trashedIdSet]
+  );
   // Skill 関連の状態
   const [skillFiles, setSkillFiles] = useState<GraphiumFile[]>([]);
   const [skillMetas, setSkillMetas] = useState<Map<string, SkillMetaSummary>>(new Map());
@@ -4375,7 +4382,7 @@ export function useFileManager(authenticated: boolean) {
     handleSaveImportedDoc,
     // Wiki — アーカイブ・ゴミ箱のエントリは UI 表示・グラフから除外する
     // （ファイル本体は残るので、リンクや regenerate からは引き続き透過解決できる）
-    wikiFiles: wikiFiles.filter((f) => !archivedIdSet.has(f.id) && !trashedIdSet.has(f.id)),
+    wikiFiles: visibleWikiFiles,
     allWikiFiles: wikiFiles,
     wikiMetas,
     activeWikiKind,

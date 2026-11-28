@@ -4,7 +4,7 @@
 
 import { DIALOG_LAYER } from "@/ui/z-layers";
 import type { DropdownPosition } from "@/ui/dropdown";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Bot, Filter, Search, Share2, Trash2, RefreshCw, Globe2, Eraser, Merge } from "lucide-react";
 import { BulkActionBar, type BulkAction } from "@/ui/bulk-action-bar";
 import { WikiListMenu } from "./WikiListMenu";
@@ -33,6 +33,7 @@ import { listCollationLocale } from "../../lib/locale-format";
 import { ExperimentalMark } from "../../ui/experimental-mark";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { useResponsiveColumns } from "../../hooks/use-responsive-columns";
+import { useIncrementalRows } from "../../hooks/use-incremental-rows";
 import { tableMinWidth } from "../../lib/responsive-columns";
 import {
   WIKI_LIST_TITLE_COMPACT_MIN_WIDTH,
@@ -439,7 +440,7 @@ export function WikiListView({
     return map;
   }, [noteIndex]);
 
-  const wikiEntries = useMemo(() => {
+  const wikiEntries = useMemo((): WikiListEntry[] => {
     const real = wikiFiles
       .filter((f) => {
         const meta = wikiMetas.get(f.id);
@@ -618,7 +619,33 @@ export function WikiListView({
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
+  // 行はスクロールに合わせて少しずつ描く（DOM を小さく保つ。理由は use-incremental-rows.ts）。
+  // 描き直しの起点は利用者が変えた条件だけ — 保存などで中身が更新されても、読んでいる位置は保つ
+  const rowWindow = useIncrementalRows(
+    filtered.length,
+    `${wikiKind}|${searchQuery}|${sortKey}|${sortDir}|${typeFilter.join(",")}|${sourceCheckNeedsReviewOnly}`,
+  );
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
+
+  // 行に渡すハンドラの束。親（note-app）の再描画のたびに onOpenWiki などの関数が作り直されても、
+  // 束の参照は変えない（中身は ref から最新のものを読む）。参照が変わると memo した行が
+  // 親の再描画のたびに全部描き直される
+  const rowHandlerSourceRef = useRef({ range, onOpenWiki, onOpenWikiFull });
+  useLayoutEffect(() => {
+    rowHandlerSourceRef.current = { range, onOpenWiki, onOpenWikiFull };
+  });
+  const rowHandlers = useMemo<WikiListRowHandlers>(() => ({
+    onRowMouseDown: (e, index) => rowHandlerSourceRef.current.range.onRowMouseDown(e, index),
+    onRowMouseEnter: (index) => rowHandlerSourceRef.current.range.onRowMouseEnter(index),
+    onCheckboxMouseDown: (e, index) => rowHandlerSourceRef.current.range.onCheckboxMouseDown(e, index),
+    onOpen: (id) => {
+      const { range: r, onOpenWiki: open } = rowHandlerSourceRef.current;
+      if (r.shouldSuppressClick()) return;
+      open(id);
+    },
+    onOpenFull: (id) => rowHandlerSourceRef.current.onOpenWikiFull?.(id),
+    onDelete: (id) => setDeleteTarget([id]),
+  }), []);
 
   // 表を包む枠が狭いとき、補助の列（モデル → 作成日 → 世界照合 → 参照先 → 被参照 → 出典数）から隠す。タイトル・種別・状態などの
   // 中身を識別する列は残す。列が出る条件は th / td の描画条件と同じ
@@ -864,7 +891,7 @@ export function WikiListView({
       </div>
 
       {/* テーブル */}
-      <div className="flex-1 overflow-auto px-6">
+      <div ref={(el) => { rowWindow.rootRef.current = el; }} className="flex-1 overflow-auto px-6">
         {wikiMetas.size === 0 && wikiFiles.length > 0 ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">{t("wikiList.loading")}</p>
@@ -1038,134 +1065,28 @@ export function WikiListView({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((entry, index) => (
-                <tr
+              {filtered.slice(0, rowWindow.visible).map((entry, index) => (
+                <WikiListRow
                   key={entry.id}
-                  className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
-                    selectedIds.has(entry.id) ? "bg-primary/5" : ""
-                  }`}
-                  onMouseDown={(e) => range.onRowMouseDown(e, index)}
-                  onMouseEnter={() => range.onRowMouseEnter(index)}
-                  onClick={() => {
-                    if (range.shouldSuppressClick()) return;
-                    onOpenWiki(entry.id);
-                  }}
-                  onDoubleClick={() => onOpenWikiFull?.(entry.id)}
-                >
-                  <td
-                    className="py-2 px-2 cursor-pointer"
-                    data-tooltip={t("wikiList.dragToRangeSelect")}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(entry.id)}
-                      readOnly
-                      tabIndex={-1}
-                      className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
-                    />
-                  </td>
-                  <td className="py-2 px-3">
-                    <span className="inline-flex items-center gap-2">
-                      <Bot size={14} className="text-primary shrink-0" />
-                      <span className="text-foreground hover:text-primary transition-colors">
-                        {entry.title}
-                      </span>
-                      {sharedIds.has(entry.id) && (
-                        // 開いたページの「共有済み」と同じ印と色（ノートの一覧と揃える）
-                        <span
-                          className="inline-flex text-primary shrink-0"
-                          data-tooltip={t("share.badgeTooltip")}
-                          aria-label={t("share.badge")}
-                          role="img"
-                          data-testid="wiki-list-shared-mark"
-                        >
-                          <Share2 size={12} aria-hidden />
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 text-xs">
-                    <TypeBadge
-                      kind={entry.kind}
-                      claimRole={entry.claimRole}
-                      atomType={entry.atomType}
-                      synthesisMode={entry.synthesisMode}
-                      topicType={entry.topicType}
-                    />
-                  </td>
-                  <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
-                    {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
-                  </td>
-                  {showDerived && (
-                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                      {entry.derived > 0 ? entry.derived : <span className="text-muted-foreground/40">—</span>}
-                    </td>
-                  )}
-                  {showOutgoing && (
-                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("outgoing") && "hidden")}>
-                      {entry.outgoing > 0
-                        ? <LinkCountBadge direction="outgoing" count={entry.outgoing} />
-                        : <span className="pl-1.5 text-muted-foreground/40">—</span>}
-                    </td>
-                  )}
-                  {showIncoming && (
-                    <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("incoming") && "hidden")}>
-                      {entry.incoming > 0
-                        ? <LinkCountBadge direction="incoming" count={entry.incoming} />
-                        : <span className="pl-1.5 text-muted-foreground/40">—</span>}
-                    </td>
-                  )}
-                  {wikiKind !== "summary" && wikiKind !== "topic" && wikiKind !== "answer" && worldGroundingEnabled && (
-                    <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
-                      <WorldVerdictCell grounding={entry.worldGrounding} />
-                    </td>
-                  )}
-                  {(wikiKind === "claim" || wikiKind === "topic") && (
-                    <td className="py-2 pl-3 text-xs">
-                      <SourceVerdictCell sourceCheck={entry.sourceCheck} />
-                    </td>
-                  )}
-                  <td
-                    className={cn(
-                      "py-2 px-2 text-xs text-muted-foreground truncate",
-                      hide.has("model") && "hidden",
-                    )}
-                    title={entry.model ?? ""}
-                  >
-                    {entry.model ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="inline-block text-xs font-medium rounded px-1 py-0.5 bg-muted">🤖</span>
-                        <span className="truncate">{entry.model}</span>
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
-                    )}
-                  </td>
-                  <td
-                    className={cn(
-                      "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
-                      hide.has("createdAt") && "hidden",
-                    )}
-                  >
-                    {formatDateTime(entry.createdAt)}
-                  </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {formatDateTime(entry.modifiedAt)}
-                  </td>
-                  <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setDeleteTarget([entry.id])}
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                      data-tooltip={t("wikiList.deleteRowTitle")}
-                      aria-label={t("wikiList.deleteRowTitle")}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
+                  entry={entry}
+                  index={index}
+                  selected={selectedIds.has(entry.id)}
+                  shared={sharedIds.has(entry.id)}
+                  hide={hide}
+                  showDerived={showDerived}
+                  showOutgoing={showOutgoing}
+                  showIncoming={showIncoming}
+                  showWorldVerdict={showWorldVerdict}
+                  showSourceVerdict={showSourceVerdict}
+                  handlers={rowHandlers}
+                />
               ))}
+              {rowWindow.hasMore && (
+                // 続きを描く目印。スクロール枠の下端に近づくと次の行を足す
+                <tr ref={rowWindow.sentinelRef} aria-hidden data-testid="wiki-list-more-rows">
+                  <td colSpan={99} className="py-3 text-center text-xs text-muted-foreground/60">…</td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}
@@ -1279,3 +1200,195 @@ function SourceVerdictCell({
     </span>
   );
 }
+
+/** 一覧の 1 行の値（WikiListView の wikiEntries の要素） */
+type WikiListEntry = {
+  id: string;
+  title: string;
+  modifiedAt: string;
+  createdAt: string;
+  kind: WikiKind;
+  level: WikiMetaSummary["level"];
+  status: WikiMetaSummary["status"];
+  model: WikiMetaSummary["model"];
+  claimRole: WikiMetaSummary["claimRole"];
+  atomType: WikiMetaSummary["atomType"];
+  synthesisMode: WikiMetaSummary["synthesisMode"];
+  topicType: WikiMetaSummary["topicType"];
+  hypothesisStatus: WikiMetaSummary["hypothesisStatus"];
+  sources: number;
+  incoming: number;
+  outgoing: number;
+  derived: number;
+  worldGrounding: WikiMetaSummary["groundingValidity"];
+  sourceCheck: WikiMetaSummary["sourceCheckVerdict"];
+};
+
+/** 一覧の 1 行が受け取るハンドラ（WikiListView が参照を固定して渡す） */
+type WikiListRowHandlers = {
+  onRowMouseDown: (e: ReactMouseEvent, index: number) => void;
+  onRowMouseEnter: (index: number) => void;
+  onCheckboxMouseDown: (e: ReactMouseEvent, index: number) => void;
+  onOpen: (id: string) => void;
+  onOpenFull: (id: string) => void;
+  onDelete: (id: string) => void;
+};
+
+type WikiListRowProps = {
+  entry: WikiListEntry;
+  index: number;
+  selected: boolean;
+  shared: boolean;
+  hide: ReadonlySet<WikiListHideableColumn>;
+  showDerived: boolean;
+  showOutgoing: boolean;
+  showIncoming: boolean;
+  showWorldVerdict: boolean;
+  showSourceVerdict: boolean;
+  handlers: WikiListRowHandlers;
+};
+
+/**
+ * 一覧の 1 行。memo して、props が変わった行だけを描き直す
+ * （親の note-app はページを開く・閉じるなどで何度も描き直されるため）
+ */
+const WikiListRow = memo(function WikiListRow({
+  entry,
+  index,
+  selected,
+  shared,
+  hide,
+  showDerived,
+  showOutgoing,
+  showIncoming,
+  showWorldVerdict,
+  showSourceVerdict,
+  handlers,
+}: WikiListRowProps) {
+  const t = useT();
+  return (
+      <tr
+        key={entry.id}
+        className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
+          selected ? "bg-primary/5" : ""
+        }`}
+        onMouseDown={(e) => handlers.onRowMouseDown(e, index)}
+        onMouseEnter={() => handlers.onRowMouseEnter(index)}
+        onClick={() => handlers.onOpen(entry.id)}
+        onDoubleClick={() => handlers.onOpenFull(entry.id)}
+      >
+        <td
+          className="py-2 px-2 cursor-pointer"
+          data-tooltip={t("wikiList.dragToRangeSelect")}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => handlers.onCheckboxMouseDown(e, index)}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            readOnly
+            tabIndex={-1}
+            className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
+          />
+        </td>
+        <td className="py-2 px-3">
+          <span className="inline-flex items-center gap-2">
+            <Bot size={14} className="text-primary shrink-0" />
+            <span className="text-foreground hover:text-primary transition-colors">
+              {entry.title}
+            </span>
+            {shared && (
+              // 開いたページの「共有済み」と同じ印と色（ノートの一覧と揃える）
+              <span
+                className="inline-flex text-primary shrink-0"
+                data-tooltip={t("share.badgeTooltip")}
+                aria-label={t("share.badge")}
+                role="img"
+                data-testid="wiki-list-shared-mark"
+              >
+                <Share2 size={12} aria-hidden />
+              </span>
+            )}
+          </span>
+        </td>
+        <td className="py-2 px-3 text-xs">
+          <TypeBadge
+            kind={entry.kind}
+            claimRole={entry.claimRole}
+            atomType={entry.atomType}
+            synthesisMode={entry.synthesisMode}
+            topicType={entry.topicType}
+          />
+        </td>
+        <td className={cn("py-2 pl-3 text-xs text-muted-foreground tabular-nums", hide.has("sources") && "hidden")}>
+          {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
+        </td>
+        {showDerived && (
+          <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+            {entry.derived > 0 ? entry.derived : <span className="text-muted-foreground/40">—</span>}
+          </td>
+        )}
+        {showOutgoing && (
+          <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("outgoing") && "hidden")}>
+            {entry.outgoing > 0
+              ? <LinkCountBadge direction="outgoing" count={entry.outgoing} />
+              : <span className="pl-1.5 text-muted-foreground/40">—</span>}
+          </td>
+        )}
+        {showIncoming && (
+          <td className={cn("py-2 pl-1.5 text-xs text-muted-foreground tabular-nums", hide.has("incoming") && "hidden")}>
+            {entry.incoming > 0
+              ? <LinkCountBadge direction="incoming" count={entry.incoming} />
+              : <span className="pl-1.5 text-muted-foreground/40">—</span>}
+          </td>
+        )}
+        {showWorldVerdict && (
+          <td className={cn("py-2 pl-3 text-xs", hide.has("worldVerdict") && "hidden")}>
+            <WorldVerdictCell grounding={entry.worldGrounding} />
+          </td>
+        )}
+        {showSourceVerdict && (
+          <td className="py-2 pl-3 text-xs">
+            <SourceVerdictCell sourceCheck={entry.sourceCheck} />
+          </td>
+        )}
+        <td
+          className={cn(
+            "py-2 px-2 text-xs text-muted-foreground truncate",
+            hide.has("model") && "hidden",
+          )}
+          title={entry.model ?? ""}
+        >
+          {entry.model ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block text-xs font-medium rounded px-1 py-0.5 bg-muted">🤖</span>
+              <span className="truncate">{entry.model}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </td>
+        <td
+          className={cn(
+            "py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap",
+            hide.has("createdAt") && "hidden",
+          )}
+        >
+          {formatDateTime(entry.createdAt)}
+        </td>
+        <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+          {formatDateTime(entry.modifiedAt)}
+        </td>
+        <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => handlers.onDelete(entry.id)}
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
+            data-tooltip={t("wikiList.deleteRowTitle")}
+            aria-label={t("wikiList.deleteRowTitle")}
+          >
+            <Trash2 size={14} />
+          </button>
+        </td>
+      </tr>
+  );
+});
