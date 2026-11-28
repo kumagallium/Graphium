@@ -26,6 +26,8 @@ export {
   type DriveInboxFolderCache,
 } from "./config";
 
+export { createPusher } from "./create-pusher";
+
 export { GoogleDrivePusher, type GoogleDrivePusherOptions } from "./drive-pusher";
 
 export {

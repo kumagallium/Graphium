@@ -101,7 +101,7 @@ export function usePushQueue(): PushQueueUi {
   const loadModule = useCallback((): Promise<PushModule> => {
     if (!moduleRef.current) {
       moduleRef.current = import("./push").then((mod) => {
-        if (!pusherRef.current) pusherRef.current = new mod.GoogleDrivePusher();
+        if (!pusherRef.current) pusherRef.current = mod.createPusher();
         return mod;
       });
     }
