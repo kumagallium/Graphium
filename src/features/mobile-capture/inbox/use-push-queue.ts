@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PUSH_STATUS_EVENT } from "./push-events";
 import type {
   InboxPusher,
+  PusherKind,
   PushProgress,
   PushQueueItemMeta,
   PushQueueSnapshot,
@@ -33,6 +34,12 @@ export type PushQueueUi = {
   connected: boolean;
   /** connect() のポップアップ進行中か。 */
   connecting: boolean;
+  /** 接続中の送り先（接続していないときは null。ピッカーのスピナーの出し分け用）。 */
+  connectingKind: PusherKind | null;
+  /** OneDrive の client ID があるか（ピッカーの OneDrive の行を有効にできるか）。 */
+  oneDriveConfigured: boolean;
+  /** OneDrive の認可の準備（PKCE など）が済んでいて、タップから同期で接続できるか。 */
+  oneDriveReady: boolean;
   /** 直近の接続エラー（表示用）。 */
   connectError: string | null;
   /** 捕獲履歴のアイテム（enqueue 順。**送信済みも含む** — 送っても消えない）。 */
@@ -51,10 +58,15 @@ export type PushQueueUi = {
   /** 明示の「送信」。接続が生きていればキューを直列送信する。 */
   drainNow: () => void;
   /**
-   * Google Drive へ接続 → 成功したら即 drain。
+   * 今の送り先へ接続 → 成功したら即 drain。
    * **click ハンドラから同期的に呼ぶこと**（内部で await を挟まず connect() に到達する）。
    */
   connectAndDrain: () => void;
+  /**
+   * 指定した送り先へ接続 → 成功したら送り先として覚え（setPushProvider）、即 drain。
+   * 送り先を選ぶ画面用。**click ハンドラから同期的に呼ぶこと**。
+   */
+  connectProvider: (kind: PusherKind) => void;
   /**
    * 保存・登録などの**同期タップ**に相乗りして、期限が近い/切れた接続を静かに取り直す。
    * ハンドラの最初（await より前）から呼ぶこと。条件に合わなければ何もしない。
@@ -81,7 +93,11 @@ export type PushQueueUi = {
 
 export function usePushQueue(): PushQueueUi {
   const moduleRef = useRef<Promise<PushModule> | null>(null);
+  /** 今の送り先の pusher（キューの drain と状態表示はこれを見る）。 */
   const pusherRef = useRef<InboxPusher | null>(null);
+  /** 送り先ごとの pusher。選ぶ画面で同期接続できるよう、どちらも作って prepare しておく。 */
+  const pushersRef = useRef<Partial<Record<PusherKind, InboxPusher>>>({});
+  const modRef = useRef<PushModule | null>(null);
   const snapshotRef = useRef<PushQueueSnapshot | null>(null);
   /** connecting の最新値（renewOnGesture を安定した参照のまま二重起動から守る）。 */
   const connectingRef = useRef(false);
@@ -93,6 +109,9 @@ export function usePushQueue(): PushQueueUi {
   const [connected, setConnected] = useState(false);
   const [linkedBefore, setLinkedBefore] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [connectingKind, setConnectingKind] = useState<PusherKind | null>(null);
+  const [oneDriveConfigured, setOneDriveConfigured] = useState(false);
+  const [oneDriveReady, setOneDriveReady] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PushQueueSnapshot | null>(null);
   const [progress, setProgress] = useState<Record<string, PushProgress>>({});
@@ -101,7 +120,14 @@ export function usePushQueue(): PushQueueUi {
   const loadModule = useCallback((): Promise<PushModule> => {
     if (!moduleRef.current) {
       moduleRef.current = import("./push").then((mod) => {
-        if (!pusherRef.current) pusherRef.current = mod.createPusher();
+        modRef.current = mod;
+        if (!pusherRef.current) {
+          pushersRef.current = {
+            "google-drive": mod.createPusher("google-drive"),
+            onedrive: mod.createPusher("onedrive"),
+          };
+          pusherRef.current = pushersRef.current[mod.getPushProvider()] ?? null;
+        }
         return mod;
       });
     }
@@ -110,17 +136,33 @@ export function usePushQueue(): PushQueueUi {
 
   /** configured/connected を読み直し、新たに configured なら prepare を先回りする。 */
   const refreshStatus = useCallback(() => {
+    // 送り先が（別の面で）変わっていたら、キューもそちらへ向ける
+    const mod = modRef.current;
+    if (mod) {
+      const active = pushersRef.current[mod.getPushProvider()];
+      if (active) pusherRef.current = active;
+    }
     const pusher = pusherRef.current;
     if (!pusher) return;
     const isConfigured = pusher.isConfigured();
     setConfigured(isConfigured);
     setConnected(pusher.isConnected());
     setLinkedBefore(pusher.hasLinkedBefore?.() ?? false);
-    if (isConfigured) {
-      // 契約: connect() をジェスチャ内で同期的に呼べるよう、prepare は事前に済ませる
-      void pusher.prepare().catch((err) => {
-        console.warn("push prepare failed:", err instanceof Error ? err.message : err);
-      });
+    const oneDrive = pushersRef.current.onedrive;
+    setOneDriveConfigured(oneDrive?.isConfigured() ?? false);
+    setOneDriveReady(oneDrive?.isConfigured() === true && (oneDrive.isPrepared?.() ?? false));
+    // 契約: connect() をジェスチャ内で同期的に呼べるよう、configured な送り先は
+    // どちらも prepare を事前に済ませる
+    for (const p of Object.values(pushersRef.current)) {
+      if (!p?.isConfigured()) continue;
+      void p
+        .prepare()
+        .then(() => {
+          if (p.kind === "onedrive") setOneDriveReady(p.isPrepared?.() ?? false);
+        })
+        .catch((err) => {
+          console.warn("push prepare failed:", err instanceof Error ? err.message : err);
+        });
     }
   }, []);
 
@@ -205,6 +247,10 @@ export function usePushQueue(): PushQueueUi {
   useEffect(() => {
     const onStatusChanged = () => {
       refreshStatus();
+      // 接続の途中（鍵の保存 → 送り先の記録の間）に届いた通知では流さない。
+      // ここで流すと、切り替える前の送り先へ送ってしまう。接続が済めば
+      // connectWith が自分で drain する。
+      if (connectingRef.current) return;
       maybeDrain();
     };
     window.addEventListener(PUSH_STATUS_EVENT, onStatusChanged);
@@ -239,32 +285,51 @@ export function usePushQueue(): PushQueueUi {
 
   const drainNow = useCallback(() => maybeDrain({ force: true }), [maybeDrain]);
 
-  const connectAndDrain = useCallback(() => {
-    const pusher = pusherRef.current;
-    if (!pusher || connecting || connectingRef.current) return;
-    connectingRef.current = true;
-    setConnecting(true);
-    setConnectError(null);
-    // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
-    // ここより前に await を置かないこと（iOS がポップアップをブロックする）。
-    pusher
-      .connect()
-      .then(() => {
-        // 明示の接続が通ったので、静かな取り直しをまた許す
-        renewFailedRef.current = false;
-        setConnected(true);
-        setLinkedBefore(true);
-        maybeDrain({ force: true });
-      })
-      .catch((err) => {
-        setConnected(pusher.isConnected());
-        setConnectError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        connectingRef.current = false;
-        setConnecting(false);
-      });
-  }, [connecting, maybeDrain]);
+  /** kind を渡すとその送り先へ（成功したら送り先に記録）、省略は今の送り先へ接続する。 */
+  const connectWith = useCallback(
+    (kind?: PusherKind) => {
+      const pusher = kind ? pushersRef.current[kind] : pusherRef.current;
+      if (!pusher || connecting || connectingRef.current) return;
+      connectingRef.current = true;
+      setConnecting(true);
+      setConnectingKind(pusher.kind);
+      setConnectError(null);
+      // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
+      // ここより前に await を置かないこと（iOS がポップアップをブロックする）。
+      pusher
+        .connect()
+        .then(() => {
+          // 明示の接続が通ったので、静かな取り直しをまた許す
+          renewFailedRef.current = false;
+          if (kind) {
+            // 実際に使えた経路だけを送り先として覚える（emit で他の面も追従する）
+            const previous = pusherRef.current;
+            pusherRef.current = pusher;
+            modRef.current?.setPushProvider(kind);
+            // 送り先を替えたら、使わなくなった側の鍵を端末に残さない
+            // （設定の「切断」は今の送り先にしか効かないため）
+            if (previous && previous !== pusher) previous.disconnect();
+          }
+          setConnected(true);
+          setLinkedBefore(true);
+          maybeDrain({ force: true });
+        })
+        .catch((err) => {
+          // 失敗したのが別の送り先への切り替えでも、表示は今の送り先の状態のまま
+          setConnected(pusherRef.current?.isConnected() ?? false);
+          setConnectError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          connectingRef.current = false;
+          setConnecting(false);
+          setConnectingKind(null);
+        });
+    },
+    [connecting, maybeDrain],
+  );
+
+  const connectAndDrain = useCallback(() => connectWith(), [connectWith]);
+  const connectProvider = useCallback((kind: PusherKind) => connectWith(kind), [connectWith]);
 
   const renewOnGesture = useCallback(() => {
     const pusher = pusherRef.current;
@@ -350,6 +415,9 @@ export function usePushQueue(): PushQueueUi {
     linkedBefore,
     connected,
     connecting,
+    connectingKind,
+    oneDriveConfigured,
+    oneDriveReady,
     connectError,
     items: snapshot?.items ?? [],
     draining: snapshot?.draining ?? false,
@@ -358,6 +426,7 @@ export function usePushQueue(): PushQueueUi {
     enqueueForSend,
     drainNow,
     connectAndDrain,
+    connectProvider,
     renewOnGesture,
     removeItem,
     retryFailed,

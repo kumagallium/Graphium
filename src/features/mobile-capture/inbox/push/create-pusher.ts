@@ -6,6 +6,7 @@
 
 import { getPushProvider } from "./config";
 import { GoogleDrivePusher } from "./drive-pusher";
+import { OneDrivePusher } from "./onedrive-pusher";
 import type { InboxPusher, PusherKind } from "./types";
 
 /**
@@ -16,6 +17,8 @@ export function createPusher(kind: PusherKind = getPushProvider()): InboxPusher 
   switch (kind) {
     case "google-drive":
       return new GoogleDrivePusher();
+    case "onedrive":
+      return new OneDrivePusher();
     default: {
       // PusherKind を足して case を書き忘れたら、ここで型エラーになる
       const unreachable: never = kind;

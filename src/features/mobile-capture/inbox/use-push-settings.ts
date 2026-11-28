@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PUSH_STATUS_EVENT } from "./push-events";
-import type { InboxPusher } from "./push";
+import type { InboxPusher, PusherKind } from "./push";
 
 type PushModule = typeof import("./push");
 
@@ -29,6 +29,8 @@ export type PushSettingsUi = {
   configured: boolean;
   /** 有効期限内のトークンがあるか。 */
   connected: boolean;
+  /** 今の送り先（設定シートの「Google Drive・接続済み」の名前の出し分け用）。 */
+  providerKind: PusherKind;
   /** 同梱 client_id のあるビルドか。 */
   hasBundledId: boolean;
   /** 自前 client_id 上書きの現在値（未設定は空文字）。 */
@@ -56,6 +58,7 @@ export function usePushSettings(active: boolean): PushSettingsUi {
   const [ready, setReady] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [providerKind, setProviderKind] = useState<PusherKind>("google-drive");
   const [hasBundledId, setHasBundledId] = useState(true);
   const [clientIdOverride, setClientIdOverride] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -64,8 +67,12 @@ export function usePushSettings(active: boolean): PushSettingsUi {
   /** configured/connected/上書き値を localStorage から読み直す。 */
   const refreshStatus = useCallback(() => {
     const mod = moduleRef.current;
+    if (!mod || !pusherRef.current) return;
+    // 送り先が（ピッカーで）変わっていたら、その pusher に付け替える
+    const kind = mod.getPushProvider();
+    if (pusherRef.current.kind !== kind) pusherRef.current = mod.createPusher(kind);
     const pusher = pusherRef.current;
-    if (!mod || !pusher) return;
+    setProviderKind(kind);
     setConfigured(pusher.isConfigured());
     setConnected(pusher.isConnected());
     setClientIdOverride(mod.getGoogleClientIdOverride() ?? "");
@@ -137,6 +144,7 @@ export function usePushSettings(active: boolean): PushSettingsUi {
     ready,
     configured,
     connected,
+    providerKind,
     hasBundledId,
     clientIdOverride,
     connecting,

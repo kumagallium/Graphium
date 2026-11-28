@@ -131,6 +131,9 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     linkedBefore: false,
     connected: true,
     connecting: false,
+    connectingKind: null,
+    oneDriveConfigured: false,
+    oneDriveReady: false,
     connectError: null,
     items: [],
     draining: false,
@@ -139,6 +142,7 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     enqueueForSend: vi.fn(async () => true),
     drainNow: vi.fn(),
     connectAndDrain: vi.fn(),
+    connectProvider: vi.fn(),
     renewOnGesture: vi.fn(),
     removeItem: vi.fn(),
     retryFailed: vi.fn(),
@@ -154,6 +158,7 @@ function pushSettingsUi(overrides: Partial<PushSettingsUi> = {}): PushSettingsUi
     ready: true,
     configured: true,
     connected: false,
+    providerKind: "google-drive",
     hasBundledId: true,
     clientIdOverride: "",
     connecting: false,
@@ -480,12 +485,12 @@ describe("捕獲履歴ホーム", () => {
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
   });
 
-  it("opens the storage picker from the queue's connect button and wires Google to connectAndDrain", () => {
-    const connectAndDrain = vi.fn();
+  it("opens the storage picker from the queue's connect button and wires Google to connectProvider", () => {
+    const connectProvider = vi.fn();
     usePushQueueMock.mockReturnValue(
       pushUi({
         connected: false,
-        connectAndDrain,
+        connectProvider,
         items: [queueItem("a", "graphium-a.jpg")],
       }),
     );
@@ -494,13 +499,35 @@ describe("捕獲履歴ホーム", () => {
     // 未接続時の主ボタンはプロバイダ直結でなくストレージ選択を開く
     fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
     expect(screen.getByTestId("storage-picker-sheet")).toBeTruthy();
-    // OneDrive は「準備中」枠で無効（P1.5 で活性化）
+    // OneDrive は client ID が空の間は「準備中」枠で無効
     const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
     expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
-    // Google 行の click がキュー配線の connectAndDrain へ（同期契約は hook 側）
+    // Google 行の click がキュー配線の connectProvider へ（同期契約は hook 側）
     fireEvent.click(screen.getByRole("button", { name: /Google Drive/ }));
-    expect(connectAndDrain).toHaveBeenCalledTimes(1);
+    expect(connectProvider).toHaveBeenCalledTimes(1);
+    expect(connectProvider).toHaveBeenCalledWith("google-drive");
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+  });
+
+  it("wires the OneDrive row to connectProvider when a client ID is present", () => {
+    const connectProvider = vi.fn();
+    usePushQueueMock.mockReturnValue(
+      pushUi({
+        connected: false,
+        connectProvider,
+        oneDriveConfigured: true,
+        oneDriveReady: true,
+        items: [queueItem("a", "graphium-a.jpg")],
+      }),
+    );
+    renderView();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
+    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
+    expect((oneDrive as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(oneDrive);
+    expect(connectProvider).toHaveBeenCalledTimes(1);
+    expect(connectProvider).toHaveBeenCalledWith("onedrive");
   });
 
   it("closes the picker once the queue-side connect succeeds", () => {

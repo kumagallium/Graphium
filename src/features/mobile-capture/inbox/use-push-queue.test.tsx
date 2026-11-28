@@ -25,6 +25,7 @@ import { PUSH_STATUS_EVENT } from "./push-events";
 // pusher の状態はテストから動かせるよう可変の knob にする。
 const h = vi.hoisted(() => ({
   pushModuleLoads: vi.fn(),
+  disconnect: vi.fn((_kind?: string) => {}),
   pusherConfigured: { value: false },
   getPushQueueFiles: vi.fn(async (_ids?: string[]) => [] as Array<{ id: string; file: File }>),
   getPushQueueThumbnail: vi.fn(async (_id: string) => null as Blob | null),
@@ -32,20 +33,27 @@ const h = vi.hoisted(() => ({
   needsRenewal: { value: true },
   prepared: { value: true },
   connected: { value: false },
-  connect: vi.fn(() => Promise.resolve()),
+  connect: vi.fn((_kind?: string) => Promise.resolve()),
+  provider: { value: "google-drive" as "google-drive" | "onedrive" },
+  oneDriveConfigured: { value: false },
+  setPushProvider: vi.fn(),
   drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
 }));
 
 vi.mock("./push", () => {
   h.pushModuleLoads();
   return {
-    createPusher: () => new (class {
-      isConfigured() { return h.pusherConfigured.value; }
+    getPushProvider: () => h.provider.value,
+    setPushProvider: h.setPushProvider,
+    createPusher: (kind: string = "google-drive") => new (class {
+      readonly kind = kind;
+      isConfigured() { return kind === "onedrive" ? h.oneDriveConfigured.value : h.pusherConfigured.value; }
       isConnected() { return h.connected.value; }
       isPrepared() { return h.prepared.value; }
       needsRenewal() { return h.needsRenewal.value; }
       hasLinkedBefore() { return true; }
-      connect() { return h.connect(); }
+      connect() { return h.connect(kind); }
+      disconnect() { h.disconnect(kind); }
       prepare() { return Promise.resolve(); }
     })(),
     subscribePushQueue: (cb: (snap: { items: never[]; draining: boolean; activeId: null }) => void) => {
@@ -67,6 +75,8 @@ beforeEach(() => {
   h.needsRenewal.value = true;
   h.prepared.value = true;
   h.connected.value = false;
+  h.provider.value = "google-drive";
+  h.oneDriveConfigured.value = false;
   h.connect.mockImplementation(() => Promise.resolve());
   Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
 });
@@ -154,6 +164,85 @@ describe("usePushQueue のサムネイル復元と状態イベント", () => {
       window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
     });
     await waitFor(() => expect(result.current.configured).toBe(true));
+  });
+});
+
+describe("usePushQueue の送り先の切り替え", () => {
+  it("connects the picked provider, remembers it on success, and exposes OneDrive readiness", async () => {
+    h.pusherConfigured.value = true;
+    h.oneDriveConfigured.value = true;
+    const { result } = renderHook(() => usePushQueue());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.oneDriveConfigured).toBe(true);
+    await waitFor(() => expect(result.current.oneDriveReady).toBe(true));
+
+    let calledSync = false;
+    act(() => {
+      result.current.connectProvider("onedrive");
+      calledSync = h.connect.mock.calls.length === 1;
+    });
+    // 同期で OneDrive の connect に届き、Google 側は呼ばれない
+    expect(calledSync).toBe(true);
+    expect(h.connect).toHaveBeenCalledWith("onedrive");
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(h.setPushProvider).toHaveBeenCalledWith("onedrive");
+  });
+
+  it("switching: does not drain to the old destination mid-connect, then drops the old key", async () => {
+    h.pusherConfigured.value = true;
+    h.oneDriveConfigured.value = true;
+    h.connected.value = true;
+    let finish!: () => void;
+    h.connect.mockImplementation(() => new Promise<void>((res) => (finish = res)));
+    const { result } = renderHook(() => usePushQueue());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await waitFor(() => expect(h.drainPushQueue).toHaveBeenCalled());
+    h.drainPushQueue.mockClear();
+
+    act(() => result.current.connectProvider("onedrive"));
+    // 鍵の保存の通知が、送り先の記録より先に届く
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
+    });
+    expect(h.drainPushQueue).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(h.setPushProvider).toHaveBeenCalledWith("onedrive");
+    // 使わなくなった Google 側の鍵は端末に残さない
+    expect(h.disconnect).toHaveBeenCalledWith("google-drive");
+    expect(h.disconnect).not.toHaveBeenCalledWith("onedrive");
+    await waitFor(() => expect(h.drainPushQueue).toHaveBeenCalled());
+  });
+
+  it("does not remember the provider when connecting fails", async () => {
+    h.oneDriveConfigured.value = true;
+    h.connect.mockImplementation(() => Promise.reject(new Error("popup closed")));
+    const { result } = renderHook(() => usePushQueue());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    act(() => result.current.connectProvider("onedrive"));
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(h.setPushProvider).not.toHaveBeenCalled();
+    expect(result.current.connectError).toBe("popup closed");
+  });
+
+  it("points the queue at the new pusher when the saved provider changes", async () => {
+    h.pusherConfigured.value = true;
+    h.oneDriveConfigured.value = true;
+    const { result } = renderHook(() => usePushQueue());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    // 送り先が OneDrive に変わった（別の面で選ばれた）
+    h.provider.value = "onedrive";
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
+    });
+    // 今の送り先への再接続は OneDrive の connect へ向く
+    act(() => result.current.connectAndDrain());
+    expect(h.connect).toHaveBeenCalledWith("onedrive");
   });
 });
 

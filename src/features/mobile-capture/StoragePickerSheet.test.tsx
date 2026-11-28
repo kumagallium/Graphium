@@ -5,7 +5,8 @@
 // - Google Drive 行は googleReady まで無効（connect() は prepare 済みが前提 —
 //   押せる時点で必ずジェスチャ内同期接続できる）。click は onSelectGoogle を
 //   **同期的に** 呼ぶ（ハンドラ内に await を挟まない契約の入口）
-// - OneDrive 行は常に無効 + 「準備中」バッジ（P1.5 で活性化する枠）
+// - OneDrive 行は client ID が空の間は無効 + 「準備中」バッジ。あれば（準備完了で）
+//   有効になり、click は onSelectOneDrive を同期的に呼ぶ
 // - 並ぶのは接続するストレージだけ（かつての共有シート行は撤去済み — 出ない）
 // - connecting 中は Google 行が無効（スピナー）/ connectError は文言に出る
 // - 背景タップ・✕ で onClose
@@ -59,7 +60,28 @@ describe("StoragePickerSheet", () => {
     expect(onSelectGoogle).not.toHaveBeenCalled();
   });
 
-  it("keeps OneDrive disabled with a Coming soon badge (P1.5 slot)", () => {
+  it("enables the OneDrive row once a client ID exists and calls onSelectOneDrive synchronously", () => {
+    const onSelectOneDrive = vi.fn();
+    renderSheet({ oneDriveConfigured: true, oneDriveReady: true, onSelectOneDrive });
+
+    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
+    expect((oneDrive as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Coming soon")).toBeNull();
+    fireEvent.click(oneDrive);
+    expect(onSelectOneDrive).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the OneDrive row locked until its auth is prepared", () => {
+    const onSelectOneDrive = vi.fn();
+    renderSheet({ oneDriveConfigured: true, oneDriveReady: false, onSelectOneDrive });
+
+    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
+    expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(oneDrive);
+    expect(onSelectOneDrive).not.toHaveBeenCalled();
+  });
+
+  it("keeps OneDrive disabled with a Coming soon badge while no client ID is bundled", () => {
     renderSheet();
     const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
     expect((oneDrive as HTMLButtonElement).disabled).toBe(true);

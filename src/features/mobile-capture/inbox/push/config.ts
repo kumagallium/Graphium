@@ -5,9 +5,11 @@
 //   同梱 ID の割当枯渇時の逃げ道でもある。
 // - Drive フォルダ ID キャッシュ: Graphium/Inbox の find-or-create 結果を保存し、
 //   毎回のフォルダ解決クエリを省く。404/権限エラー時は drive-pusher 側が破棄する。
+// - OneDrive client ID（Microsoft Entra のアプリ登録の Application (client) ID）:
+//   同梱値 + localStorage の上書き（読むだけ。設定 UI は無い）。GUID の形でなければ無視する。
 // - 選択プロバイダ: ストレージ選択画面（StoragePickerSheet）でユーザーが選んだ
-//   push プロバイダ。現状は google-drive 一択だが、P1.5 の OneDrive 追加時に
-//   「どの pusher を組み立てるか」の分岐点になる（未保存は google-drive 扱い）。
+//   push プロバイダ。「どの pusher を組み立てるか」の分岐点になる
+//   （未保存・不正値は google-drive 扱い）。
 //
 // 既存 inbox/config.ts（getInboxRoot/setInboxRoot）と同じ try/catch ガード形。
 
@@ -17,6 +19,7 @@ import type { PusherKind } from "./types";
 const CLIENT_ID_OVERRIDE_KEY = "graphium-push-google-client-id";
 const FOLDER_CACHE_KEY = "graphium-push-drive-folders";
 const PROVIDER_KEY = "graphium-push-provider";
+const ONEDRIVE_CLIENT_ID_OVERRIDE_KEY = "graphium-push-onedrive-client-id";
 
 /**
  * 同梱の Google OAuth client_id（GIS token model / popup 型、secret なし）。
@@ -30,6 +33,32 @@ const PROVIDER_KEY = "graphium-push-provider";
  */
 export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
+
+/**
+ * 同梱の OneDrive client ID（個人の Microsoft アカウント向け・SPA・secret なし）。
+ * 空文字の間は「未同梱」で、ストレージ選択の OneDrive の行は「準備中」のまま無効。
+ * 登録が済んだら GUID を入れる。型注釈は string のまま（Google 側と同じ理由）。
+ */
+export const DEFAULT_ONEDRIVE_PUSH_CLIENT_ID: string = "";
+
+/** Application (client) ID は GUID。形が違う値は設定ミスとして使わない。 */
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 実際に使う OneDrive client ID: 上書き（GUID の形のときだけ）→ 同梱値（同じく GUID の形のときだけ）。
+ * どちらも使えなければ null（= 未設定）。
+ */
+export function getOneDriveClientId(): string | null {
+  try {
+    const override = localStorage.getItem(ONEDRIVE_CLIENT_ID_OVERRIDE_KEY)?.trim();
+    if (override && GUID_PATTERN.test(override)) return override;
+  } catch {
+    // 読めなければ同梱値で判定
+  }
+  const bundled = DEFAULT_ONEDRIVE_PUSH_CLIENT_ID.trim();
+  if (GUID_PATTERN.test(bundled)) return bundled;
+  return null;
+}
 
 const INBOX_FOLDER_KEY = "graphium-mobile-inbox-folder";
 
@@ -126,13 +155,13 @@ export function getGoogleClientId(): string | null {
 }
 
 /**
- * 選択済みの push プロバイダを読む。未保存・不正値は google-drive（v1 の唯一の実体）。
- * 保存値の検証はホワイトリスト方式 — 将来 "onedrive" を足すときにここへ追記する。
+ * 選択済みの push プロバイダを読む。未保存・不正値は google-drive。
+ * 保存値の検証はホワイトリスト方式 — 送り先を足すときはここへ追記する。
  */
 export function getPushProvider(): PusherKind {
   try {
     const raw = localStorage.getItem(PROVIDER_KEY);
-    if (raw === "google-drive") return raw;
+    if (raw === "google-drive" || raw === "onedrive") return raw;
     return "google-drive";
   } catch {
     return "google-drive";

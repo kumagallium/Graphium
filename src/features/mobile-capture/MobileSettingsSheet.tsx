@@ -35,6 +35,8 @@ export type MobileSettingsSheetProps = {
   configured: boolean;
   /** 有効期限内のトークンがあるか。 */
   connected: boolean;
+  /** 今の送り先の名前（「Google Drive・接続済み」の頭。省略は Google Drive）。 */
+  providerName?: string;
   /** 同梱 client_id のあるビルドか（無いと自前 ID 必須の注記を出す）。 */
   hasBundledId: boolean;
   /** 自前 client_id 上書きの現在値（未設定は空文字）。 */
@@ -51,6 +53,7 @@ export function MobileSettingsSheet({
   ready,
   configured,
   connected,
+  providerName = "Google Drive",
   hasBundledId,
   clientIdOverride,
   onSaveClientId,
@@ -138,7 +141,7 @@ export function MobileSettingsSheet({
                       <span className="text-foreground flex items-center gap-1 min-w-0">
                         <Cloud size={12} className="text-muted-foreground shrink-0" />
                         <span className="truncate">
-                          Google Drive・{t("settings.mobilePush.statusConnected")}
+                          {providerName}・{t("settings.mobilePush.statusConnected")}
                         </span>
                       </span>
                     </>

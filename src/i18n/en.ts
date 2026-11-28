@@ -3144,6 +3144,7 @@ export const en: Record<string, string> = {
   "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",
   "mobile.storagePicker.googleHelp": "Connect with your Google account",
   "mobile.storagePicker.comingSoon": "Coming soon",
+  "mobile.storagePicker.oneDriveHelp": "Connect with your personal Microsoft account",
 
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "Storage",

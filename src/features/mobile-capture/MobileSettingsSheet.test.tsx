@@ -57,6 +57,12 @@ describe("MobileSettingsSheet", () => {
     expect(onOpenStoragePicker).toHaveBeenCalledTimes(1);
   });
 
+  it("names the connected provider after the destination (OneDrive)", () => {
+    renderSheet({ connected: true, providerName: "OneDrive" });
+    expect(screen.getByText(/OneDrive・Connected/)).toBeTruthy();
+    expect(screen.queryByText(/Google Drive・Connected/)).toBeNull();
+  });
+
   it("shows the connected provider with Change and Disconnect", () => {
     const onOpenStoragePicker = vi.fn();
     const onDisconnect = vi.fn();

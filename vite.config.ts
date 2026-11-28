@@ -271,6 +271,17 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
+            // モバイル送信の OneDrive（個人の Microsoft アカウント）。サインインと
+            // ファイル操作は絶対にキャッシュしない
+            // （features/mobile-capture/inbox/push/onedrive-auth.ts / onedrive-pusher.ts）
+            urlPattern: /^https:\/\/login\.microsoftonline\.com\//,
+            handler: "NetworkOnly",
+          },
+          {
+            urlPattern: /^https:\/\/graph\.microsoft\.com\//,
+            handler: "NetworkOnly",
+          },
+          {
             urlPattern: /^https:\/\/lh3\.googleusercontent\.com\//,
             handler: "CacheFirst",
             options: {

@@ -3143,6 +3143,7 @@ export const ja: Record<string, string> = {
   "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",
   "mobile.storagePicker.googleHelp": "Google アカウントで接続します",
   "mobile.storagePicker.comingSoon": "準備中",
+  "mobile.storagePicker.oneDriveHelp": "個人の Microsoft アカウントで接続します",
 
   // ── モバイル最小設定シート ──
   "mobile.settings.storage": "ストレージ",

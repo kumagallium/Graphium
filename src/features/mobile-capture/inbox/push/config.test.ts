@@ -15,6 +15,7 @@ import {
   getDriveFolderCache,
   getGoogleClientId,
   getGoogleClientIdOverride,
+  getOneDriveClientId,
   getPushProvider,
   setDriveFolderCache,
   setGoogleClientIdOverride,
@@ -72,6 +73,24 @@ describe("Drive フォルダ ID キャッシュ", () => {
   });
 });
 
+describe("OneDrive client ID の解決", () => {
+  const GUID = "11111111-2222-4333-8444-555555555555";
+
+  it("is null while nothing is bundled or overridden", () => {
+    expect(getOneDriveClientId()).toBeNull();
+  });
+
+  it("uses a GUID-shaped override", () => {
+    localStorage.setItem("graphium-push-onedrive-client-id", `  ${GUID}  `);
+    expect(getOneDriveClientId()).toBe(GUID);
+  });
+
+  it("ignores an override that is not a GUID", () => {
+    localStorage.setItem("graphium-push-onedrive-client-id", "not-a-guid");
+    expect(getOneDriveClientId()).toBeNull();
+  });
+});
+
 describe("選択プロバイダの永続", () => {
   it("defaults to google-drive while nothing is stored (v1 sole provider)", () => {
     expect(getPushProvider()).toBe("google-drive");
@@ -81,6 +100,12 @@ describe("選択プロバイダの永続", () => {
     setPushProvider("google-drive");
     expect(localStorage.getItem("graphium-push-provider")).toBe("google-drive");
     expect(getPushProvider()).toBe("google-drive");
+  });
+
+  it("accepts onedrive as a stored provider", () => {
+    setPushProvider("onedrive");
+    expect(localStorage.getItem("graphium-push-provider")).toBe("onedrive");
+    expect(getPushProvider()).toBe("onedrive");
   });
 
   it("falls back to google-drive for unknown stored values (whitelist)", () => {

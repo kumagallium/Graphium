@@ -74,6 +74,11 @@ export const Connected: Story = {
   args: { ...baseProps, connected: true },
 };
 
+/** OneDrive 接続済み。送り先の名前が OneDrive になる。 */
+export const ConnectedOneDrive: Story = {
+  args: { ...baseProps, connected: true, providerName: "OneDrive" },
+};
+
 /** 同梱 client ID の無いビルド。自前 ID 必須の注記が常時見える。 */
 export const NoBundledClientId: Story = {
   args: { ...baseProps, configured: false, hasBundledId: false },
