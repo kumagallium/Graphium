@@ -699,6 +699,20 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   margin-left: 0.1em;
   font-variant-numeric: tabular-nums;
 }
+/* 資料に見つからなかった一節の注記は、番号表示では隠して番号の「*」と References の下の注釈に畳む */
+.gm-cite-footnote {
+  display: none;
+}
+[data-numbered-citations] .gm-cite-note {
+  display: none;
+}
+[data-numbered-citations] .gm-cite-footnote {
+  display: block;
+  margin-top: 0.75em;
+  font-size: 0.8rem;
+  color: var(--color-muted-foreground);
+  user-select: none;
+}
 [data-numbered-citations] .gm-cite-ref-num {
   display: inline;
   margin-right: 0.35em;

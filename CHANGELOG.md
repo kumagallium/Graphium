@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.173.13](https://github.com/kumagallium/Graphium/compare/v0.173.12...v0.173.13) - 2026-11-28
+
+- [feat] Tell the phone user when a new version is ready by @kumagallium in https://github.com/kumagallium/Graphium/pull/1928
+
+## [v0.173.12](https://github.com/kumagallium/Graphium/compare/v0.173.11...v0.173.12) - 2026-11-28
+
+- Fold the missing-passage note into a * on numbered citations by @kumagallium in https://github.com/kumagallium/Graphium/pull/1926
+
+## [v0.173.11](https://github.com/kumagallium/Graphium/compare/v0.173.10...v0.173.11) - 2026-11-28
+
+- [fix] Check a Full check's gaps against existing topic titles before showing them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1924
+
 ## [v0.173.10](https://github.com/kumagallium/Graphium/compare/v0.173.9...v0.173.10) - 2026-11-27
 
 - Stop a sidecar whose event loop is blocked by @kumagallium in https://github.com/kumagallium/Graphium/pull/1919

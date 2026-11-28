@@ -3083,6 +3083,16 @@ export const ko: Record<string, string> = {
   "mobile.settings.storage": "스토리지",
   "mobile.settings.changeStorage": "변경",
 
+  // ── PWA update notice (mobile capture home and settings sheet) ──
+  "mobile.update.ready": "새 버전이 준비되었습니다",
+  "mobile.update.reload": "다시 불러오기",
+  "mobile.update.check": "업데이트 확인",
+  "mobile.update.checking": "확인하는 중…",
+  "mobile.update.downloading": "새 버전을 받는 중…",
+  "mobile.update.upToDate": "최신 버전입니다",
+  "mobile.update.failed": "확인하지 못했습니다",
+  "mobile.update.idle": "업데이트",
+
   // ── PDF エクスポート ──
   "pdf.export": "인쇄 / PDF",
   "pdf.exporting": "준비하는 중…",

@@ -20,6 +20,9 @@ import {
 } from "../services/frame-backfill.js";
 import {
   buildLinterSystemPrompt,
+  buildGapCoverageSystemPrompt,
+  buildGapCoverageUserMessage,
+  parseGapCoverage,
   buildLinterWindowMessages,
   LINT_INPUT_BUDGET_TOKENS,
   mergeWindowIssues,
@@ -400,8 +403,9 @@ app.post("/lint", async (c) => {
     if (progressId) setLintProgress(progressId, { done: windowsDone, total: windowMessages.length });
   };
   reportProgress();
+  let model: Awaited<ReturnType<typeof createModel>> | undefined;
   try {
-    const model = await createModel(modelConfig);
+    model = await createModel(modelConfig);
     for (const userMessage of windowMessages) {
       try {
         const result = await runAgentLoop({
@@ -455,6 +459,48 @@ app.post("/lint", async (c) => {
   // ローカル検出 + 窓ごとの LLM 分析をマージ（重複排除）
   const allIssues = mergeIssues(localIssues, mergeWindowIssues(issuesPerWindow));
   const questions = mergeWindowQuestions(questionsPerWindow);
+
+  // gap（専用ページが無い話題）が窓の外のトピックですでに扱われていないか、全トピックの題だけで 1 回確かめる。
+  // 失敗・予算超過・解決できない答えは穴をそのまま残す（lintError は付けない）
+  const coveredGaps: NonNullable<LintReport["coveredGaps"]> = [];
+  const gapIssues = allIssues.filter((i) => i.type === "gap");
+  const topicTitles = body.wikis.filter((w) => w.kind === "topic").map(({ id, title }) => ({ id, title }));
+  if (model && gapIssues.length > 0 && topicTitles.length > 0) {
+    const coverageSystem = buildGapCoverageSystemPrompt(body.language || "en");
+    const coverageUser = buildGapCoverageUserMessage(gapIssues, topicTitles);
+    if (estimateTokens(coverageSystem) + estimateTokens(coverageUser) <= LINT_INPUT_BUDGET_TOKENS) {
+      try {
+        const result = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt: coverageSystem,
+          messages: [{ role: "user" as const, content: coverageUser }],
+          maxSteps: 1,
+          feature: "wiki.lint",
+          modelConfig,
+          abortSignal: c.req.raw.signal,
+        });
+        usages.push(result.tokenUsage);
+        const titleById = new Map(topicTitles.map((t) => [t.id, t.title]));
+        const drop = new Set<LintIssue>();
+        for (const { gapIndex, topicId } of parseGapCoverage(result.message, gapIssues, topicTitles)) {
+          drop.add(gapIssues[gapIndex]);
+          coveredGaps.push({
+            title: gapIssues[gapIndex].title,
+            coveredByTopicId: topicId,
+            coveredByTitle: titleById.get(topicId) ?? "",
+          });
+        }
+        for (let i = allIssues.length - 1; i >= 0; i--) {
+          if (drop.has(allIssues[i])) allIssues.splice(i, 1);
+        }
+      } catch (err) {
+        // 利用者が止めたときは記録しない（応答は捨てられる）
+        if (!c.req.raw.signal.aborted) console.error("Wiki lint error (gap coverage):", err);
+      }
+    }
+  }
+
   const report: LintReport = {
     issues: allIssues,
     summary: buildSummary(allIssues),
@@ -462,6 +508,7 @@ app.post("/lint", async (c) => {
     // フル点検（AI 呼び出しが成功した経路）のときだけ questions を持たせる。
     // クイック点検（localOnly）はこの分岐に来ないので、AI 呼び出しを増やさない設計を保つ。
     ...(questions.length > 0 ? { questions } : {}),
+    ...(coveredGaps.length > 0 ? { coveredGaps } : {}),
     ...(lintParts ? { lintParts } : {}),
     // 一部の窓だけ失敗したとき: できた分の結果は返し、失敗したことも伝える
     ...(failed > 0 ? lintErrorFields(lastError) : {}),

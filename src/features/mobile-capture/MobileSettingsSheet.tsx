@@ -27,6 +27,13 @@ import {
 import { getEnabledLocales, LOCALE_DISPLAY_NAMES, useLocale } from "../../i18n";
 import { toGenerationLanguage } from "../../lib/language";
 import { getAppVersion } from "../../lib/updater";
+import type { PwaUpdateState } from "../../lib/pwa-update";
+
+/** PWA の更新の状態と操作。service worker の無い環境（dev・デスクトップ版）では渡さない。 */
+export type MobileSettingsUpdate = PwaUpdateState & {
+  onCheck: () => void;
+  onReload: () => void;
+};
 
 export type MobileSettingsSheetProps = {
   /** push モジュールのロードが済んだか。false の間はストレージ操作を無効化する。 */
@@ -51,6 +58,8 @@ export type MobileSettingsSheetProps = {
   onDisconnect: () => void;
   /** ストレージ選択（StoragePickerSheet）を開く。ピッカーはこのシートの上に重なる。 */
   onOpenStoragePicker: () => void;
+  /** 更新の状態（ホーム画面に追加した PWA だけ）。無ければバージョンだけを出す。 */
+  update?: MobileSettingsUpdate;
   onClose: () => void;
 };
 
@@ -66,6 +75,7 @@ export function MobileSettingsSheet({
   onClearClientId,
   onDisconnect,
   onOpenStoragePicker,
+  update,
   onClose,
 }: MobileSettingsSheetProps) {
   const { locale, setLocale, t } = useLocale();
@@ -291,6 +301,54 @@ export function MobileSettingsSheet({
                 <span className="text-muted-foreground">{t("settings.about.version")}</span>
                 <span className="font-mono text-foreground">{version || "—"}</span>
               </div>
+              {/* 更新の状態 — いまの版が最新か、新しい版が入っているかを見せる */}
+              {update?.supported && (
+                <div
+                  className="pt-1.5 border-t border-border flex items-center justify-between gap-2"
+                  data-testid="mobile-update-row"
+                >
+                  <span className="min-w-0 flex items-center gap-1.5">
+                    {update.updateReady ? (
+                      <>
+                        <Info size={13} className="text-primary shrink-0" />
+                        <span className="text-foreground">{t("mobile.update.ready")}</span>
+                      </>
+                    ) : update.phase === "checking" ? (
+                      <span className="text-muted-foreground">{t("mobile.update.checking")}</span>
+                    ) : update.phase === "downloading" ? (
+                      <span className="text-muted-foreground">{t("mobile.update.downloading")}</span>
+                    ) : update.phase === "upToDate" ? (
+                      <>
+                        <CheckCircle size={13} className="text-green-600 shrink-0" />
+                        <span className="text-foreground">{t("mobile.update.upToDate")}</span>
+                      </>
+                    ) : update.phase === "failed" ? (
+                      <>
+                        <AlertCircle size={13} className="text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">{t("mobile.update.failed")}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">{t("mobile.update.idle")}</span>
+                    )}
+                  </span>
+                  {update.updateReady ? (
+                    <button
+                      onClick={update.onReload}
+                      className="shrink-0 px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium active:opacity-80 transition-opacity"
+                    >
+                      {t("mobile.update.reload")}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={update.onCheck}
+                      disabled={update.phase === "checking" || update.phase === "downloading"}
+                      className="shrink-0 px-2.5 py-1.5 rounded-md border border-border text-foreground active:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {t("mobile.update.check")}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

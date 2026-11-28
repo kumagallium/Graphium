@@ -43,6 +43,8 @@ import { MobileCaptureBar } from "./MobileCaptureBar";
 import { AudioRecorderSheet } from "./AudioRecorderSheet";
 import { isAudioRecordingSupported } from "./audio-recorder";
 import { MobileSettingsSheet } from "./MobileSettingsSheet";
+import { UpdateReadyBanner } from "./UpdateReadyBanner";
+import { checkForPwaUpdate, reloadForPwaUpdate, usePwaUpdate } from "../../lib/pwa-update";
 import {
   getInboxFolder,
   setInboxFolder,
@@ -295,6 +297,8 @@ export function MobileCaptureView({
   // 設定モーダルでの client_id 変更・接続・切断は push-events 経由で hook が読み直す
   // ので、常時見えているチップ・キューが古い状態のまま残ることはない。
   const push = usePushQueue();
+  // PWA の更新の状態（新しい版が入ったら帯で知らせ、設定シートで最新かを見せる）
+  const pwaUpdate = usePwaUpdate();
   // 撮ったものをキュー経路へ送れる環境か。キューはこの端末の IndexedDB で動くので
   // client_id 未設定でも積める（未設定の案内は送信キュー側が出す）— configured では
   // ゲートしない。false のときだけ従来のローカル保存に落ちる（残った退路は
@@ -706,7 +710,11 @@ export function MobileCaptureView({
           {/* 設定入口。開き先はスマホ専用の最小設定シート（ストレージ・言語・
               アプリ情報）— フル設定モーダルはスマホホームからは開かない。 */}
           <button
-            onClick={() => setShowSettingsSheet(true)}
+            onClick={() => {
+              setShowSettingsSheet(true);
+              // 開いた時点で確かめておく（「最新の版です」がすぐ出る）
+              void checkForPwaUpdate();
+            }}
             aria-label={t("settings.title")}
             className="p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
           >
@@ -714,6 +722,9 @@ export function MobileCaptureView({
           </button>
         </div>
       </div>
+
+      {/* 新しい版が入った知らせ。読み込み直しは利用者のタップで行う */}
+      {pwaUpdate.updateReady && <UpdateReadyBanner onReload={reloadForPwaUpdate} />}
 
       {/* タイムライン一覧（Pull-to-Refresh 対応） */}
       <div
@@ -878,6 +889,11 @@ export function MobileCaptureView({
           onClearClientId={pushSettings.clearClientId}
           onDisconnect={pushSettings.disconnect}
           onOpenStoragePicker={() => setShowStoragePicker(true)}
+          update={{
+            ...pwaUpdate,
+            onCheck: () => void checkForPwaUpdate(),
+            onReload: reloadForPwaUpdate,
+          }}
           onClose={() => setShowSettingsSheet(false)}
         />
       )}
