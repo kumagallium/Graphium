@@ -48,6 +48,8 @@ Everything you capture here is meant to travel to your desktop. Each capture joi
 
 ::: tip Install it like an app
 Graphium is an installable web app (PWA). Use your phone browser's "Add to Home Screen" and it launches full-screen, no browser chrome.
+
+The installed app picks up new versions on its own. When one has finished downloading, **A new version is ready** appears at the top of the screen. Tap **Reload** to switch to it. If you have a memo half-written, save it first. The version you are on is listed under **About this app** in the settings sheet behind the gear. Tap **Check for updates** there to see right away whether you are on the latest one.
 :::
 
 ::: warning Captures wait until you send them
