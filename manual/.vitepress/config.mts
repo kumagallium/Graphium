@@ -93,6 +93,7 @@ const enSidebar = [
         text: 'Knowledge',
         collapsed: true,
         items: [
+          { text: 'Gaps in the Full check', link: '/evaluations/lint-gap-coverage' },
           { text: 'Insights from AI conversations', link: '/evaluations/ai-conversation-claims' },
           { text: 'Source passages behind sentences', link: '/evaluations/sentence-passages' },
           { text: 'Claims within the note', link: '/evaluations/claim-scope' },
@@ -224,6 +225,7 @@ const jaSidebar = [
         text: 'ナレッジ',
         collapsed: true,
         items: [
+          { text: 'フル点検の「穴」', link: '/ja/evaluations/lint-gap-coverage' },
           { text: 'AI との会話から知見を作る', link: '/ja/evaluations/ai-conversation-claims' },
           { text: '文ごとに元の一節を控える', link: '/ja/evaluations/sentence-passages' },
           { text: '知見の範囲', link: '/ja/evaluations/claim-scope' },

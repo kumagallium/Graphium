@@ -139,3 +139,64 @@ describe("POST /api/wiki/lint の進み具合（GET /api/wiki/lint/progress/:id�
     expect((await app.request("/api/wiki/lint/progress/" + encodeURIComponent("a b"))).status).toBe(404);
   });
 });
+
+describe("POST /api/wiki/lint の gap 被覆確認", () => {
+  const topics = () => [
+    { id: "tp1", title: "Bread proofing", kind: "topic", derivedFromNotes: ["n1"], derivedFromClaims: ["c0"], relatedClaims: [], bodyPreview: "", modifiedAt: "2026-10-01T00:00:00Z" },
+    { id: "tp2", title: "Curry roux", kind: "topic", derivedFromNotes: ["n1"], derivedFromClaims: ["c1"], relatedClaims: [], bodyPreview: "", modifiedAt: "2026-10-01T00:00:00Z" },
+  ];
+  const claims = () => bigVault().slice(0, 5);
+  const gapReply = (titles: string[]) => ({
+    message: JSON.stringify({
+      issues: titles.map((t, i) => ({ type: "gap", severity: "info", title: t, description: "d", affectedWikiIds: [`c${i}`], suggestion: "" })),
+      questions: [],
+    }),
+    toolCalls: [],
+    tokenUsage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 },
+    model: "gpt-oss-120b",
+  });
+  const verdictReply = (verdicts: unknown[]) => ({
+    message: JSON.stringify({ verdicts }),
+    toolCalls: [],
+    tokenUsage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 },
+    model: "gpt-oss-120b",
+  });
+
+  it("gap があってトピックがあるとき追加で 1 回呼び、covered の gap を外して coveredGaps に記録する", async () => {
+    runAgentLoop
+      .mockResolvedValueOnce(gapReply(["Proofing basics", "Spice blending"]))
+      .mockResolvedValueOnce(verdictReply([{ gap: 1, covered: true, topic: "T1" }, { gap: 2, covered: false }]));
+    const body = await lint([...topics(), ...claims()]);
+    expect(runAgentLoop).toHaveBeenCalledTimes(2);
+    const titles = body.issues.filter((i: { type: string }) => i.type === "gap").map((i: { title: string }) => i.title);
+    expect(titles).toEqual(["Spice blending"]);
+    expect(body.summary.gaps).toBe(1);
+    expect(body.coveredGaps).toEqual([{ title: "Proofing basics", coveredByTopicId: "tp1", coveredByTitle: "Bread proofing" }]);
+    expect(body.tokenUsage.total_tokens).toBe(18);
+  });
+
+  it("判定の呼び出しが失敗しても gap は残り、lintError は付かない", async () => {
+    runAgentLoop
+      .mockResolvedValueOnce(gapReply(["Proofing basics"]))
+      .mockRejectedValueOnce(new Error("Upstream error 502 Bad Gateway"));
+    const body = await lint([...topics(), ...claims()]);
+    expect(runAgentLoop).toHaveBeenCalledTimes(2);
+    expect(body.summary.gaps).toBe(1);
+    expect(body.lintError).toBeUndefined();
+    expect(body.coveredGaps).toBeUndefined();
+  });
+
+  it("gap が 0 件なら追加の呼び出しは無い", async () => {
+    runAgentLoop.mockResolvedValue(gapReply([]));
+    const body = await lint([...topics(), ...claims()]);
+    expect(runAgentLoop).toHaveBeenCalledTimes(1);
+    expect(body.coveredGaps).toBeUndefined();
+  });
+
+  it("トピックが 0 件なら追加の呼び出しは無い", async () => {
+    runAgentLoop.mockResolvedValue(gapReply(["Proofing basics"]));
+    const body = await lint(claims());
+    expect(runAgentLoop).toHaveBeenCalledTimes(1);
+    expect(body.summary.gaps).toBe(1);
+  });
+});

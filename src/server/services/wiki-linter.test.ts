@@ -3,7 +3,7 @@
 // detectLocalIssues の orphan topic 検出（メンバー知見 0 件の話題ページ）を検証する。
 
 import { describe, it, expect } from "vitest";
-import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, parseLinterOutput, buildLinterUserMessage, buildLinterSystemPrompt, type WikiSnapshot } from "./wiki-linter.ts";
+import { detectLocalIssues, detectAutoArchivable, detectMissingSourceIssues, parseLinterOutput, buildLinterUserMessage, buildLinterSystemPrompt, parseGapCoverage, buildGapCoverageUserMessage, buildGapCoverageSystemPrompt, type WikiSnapshot, type LintIssue } from "./wiki-linter.ts";
 
 const base = (overrides: Partial<WikiSnapshot>): WikiSnapshot => ({
   id: "id-1",
@@ -714,5 +714,88 @@ describe("parseLinterOutput - #N 参照番号の引き直し（実データ規�
     });
     const { issues } = parseLinterOutput(text, validWikiIds, titleToId, numberToId);
     expect(issues[0].affectedWikiIds).toEqual([]);
+  });
+});
+
+describe("gap 被覆確認（parseGapCoverage / buildGapCoverageUserMessage）", () => {
+  const gap = (title: string): LintIssue => ({
+    type: "gap",
+    severity: "info",
+    title,
+    description: `${title} の説明`,
+    affectedWikiIds: [],
+    suggestion: "",
+  });
+  const gaps = [gap("パンの発酵"), gap("カレーのスパイス")];
+  const topics = [
+    { id: "t-a", title: "パン作り" },
+    { id: "t-b", title: "カレーのスパイス" },
+    { id: "t-c", title: "発酵" },
+  ];
+
+  it("user message は Reported gaps と Existing topic titles を番号つきで並べる", () => {
+    const msg = buildGapCoverageUserMessage(gaps, topics);
+    expect(msg).toContain("## Reported gaps");
+    expect(msg).toContain("G1: パンの発酵 — パンの発酵 の説明");
+    expect(msg).toContain("G2: カレーのスパイス");
+    expect(msg).toContain("## Existing topic titles");
+    expect(msg).toContain("T1: パン作り");
+    expect(msg).toContain("T3: 発酵");
+  });
+
+  it("system prompt は JSON のみの出力と covered の規則を示す", () => {
+    const p = buildGapCoverageSystemPrompt("en");
+    expect(p).toContain("verdicts");
+    expect(p).toContain("covered: false");
+  });
+
+  it("covered:true の gap を topic id に解決して返す", () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":1,"covered":true,"topic":"T3"},{"gap":2,"covered":false}]}', gaps, topics);
+    expect(r).toEqual([{ gapIndex: 0, topicId: "t-c" }]);
+  });
+
+  it("covered:false だけなら空", () => {
+    expect(parseGapCoverage('{"verdicts":[{"gap":1,"covered":false}]}', gaps, topics)).toEqual([]);
+  });
+
+  it("存在しない T 番号は捨てる", () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":1,"covered":true,"topic":"T99"},{"gap":2,"covered":true,"topic":"T0"}]}', gaps, topics);
+    expect(r).toEqual([]);
+  });
+
+  it("gap 番号が範囲外なら捨てる", () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":0,"covered":true,"topic":"T1"},{"gap":3,"covered":true,"topic":"T1"},{"gap":1.5,"covered":true,"topic":"T1"}]}', gaps, topics);
+    expect(r).toEqual([]);
+  });
+
+  it('"G1" / "T3" 形式と数字だけの形式を受ける', () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":"G1","covered":true,"topic":"T2"},{"gap":"2","covered":true,"topic":"3"}]}', gaps, topics);
+    expect(r).toEqual([
+      { gapIndex: 0, topicId: "t-b" },
+      { gapIndex: 1, topicId: "t-c" },
+    ]);
+  });
+
+  it("題そのものが書かれたときは完全一致で引き直す", () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":2,"covered":true,"topic":"カレーのスパイス"},{"gap":1,"covered":true,"topic":"存在しない題"}]}', gaps, topics);
+    expect(r).toEqual([{ gapIndex: 1, topicId: "t-b" }]);
+  });
+
+  it("同じ gap が 2 回出たら最初だけ", () => {
+    const r = parseGapCoverage('{"verdicts":[{"gap":1,"covered":true,"topic":"T1"},{"gap":1,"covered":true,"topic":"T2"}]}', gaps, topics);
+    expect(r).toEqual([{ gapIndex: 0, topicId: "t-a" }]);
+  });
+
+  it("壊れた JSON・verdicts が配列でないときは空", () => {
+    expect(parseGapCoverage("not json", gaps, topics)).toEqual([]);
+    expect(parseGapCoverage('{"verdicts":', gaps, topics)).toEqual([]);
+    expect(parseGapCoverage('{"verdicts":{"gap":1}}', gaps, topics)).toEqual([]);
+  });
+
+  it("コードフェンスや前後の文があっても拾う", () => {
+    const fenced = '```json\n{"verdicts":[{"gap":1,"covered":true,"topic":"T1"}]}\n```';
+    expect(parseGapCoverage(fenced, gaps, topics)).toEqual([{ gapIndex: 0, topicId: "t-a" }]);
+    const prose = 'Here you go: {"verdicts":[{"gap":2,"covered":true,"topic":"T2"}]} done.';
+    expect(parseGapCoverage(prose, gaps, topics)).toEqual([{ gapIndex: 1, topicId: "t-b" }]);
   });
 });
