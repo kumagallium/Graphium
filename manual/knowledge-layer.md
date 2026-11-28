@@ -98,7 +98,7 @@ A knowledge page opens like any other note, and you can edit it like one. What m
 
 The body ends with a **References** section linking back to sources.
 
-Each sentence's source is shown as a number such as **[1]**. The numbers follow the order of **References**, and each References line starts with the same number. Hover over a number to see the source's title; click it to open the source. The page still stores each citation as an `@` link with the title, so exports and copies show titles. A citation to a source that is not in References stays an `@` link with the title.
+Each sentence's source is shown as a number such as **[1]**. The numbers follow the order of **References**, and each References line starts with the same number. Hover over a number to see the source's title; click it to open the source. The page still stores each citation as an `@` link with the title, so exports and copies show titles. A citation to a source that is not in References stays an `@` link with the title. When the passage the AI copied for a citation isn't in the source, the number has a `*` (such as **[1\*]**), and one note under References explains it.
 
 ### Which sources a sentence rests on {#sources-behind-sentences}
 
@@ -106,7 +106,7 @@ Each sentence's source is shown as a number such as **[1]**. The numbers follow 
 
 <Badge type="tip" text="Added in v0.133.0 (2026-11-14)" /> When a Topic or a Q&A page is revised from a source, the AI also copies, inside each citation, the passage of that source the sentence restates, word for word. Before the page is saved, Graphium checks each passage against the whole text of the source — no AI is involved in that check, so it gives the same result every time. You don't see the passages in the text, but press the `@source` after a sentence and a PDF opens at that passage, highlighted. The source check also shows it as the quote when its AI gives none (and the sentence isn't judged *Not in source*).
 
-<Badge type="tip" text="Added in v0.135.0 (2026-11-14)" /> A passage that can't be found in the source is not quietly dropped. Usually the AI changed a word as it copied, or you edited the note after the page was written and it no longer says that. The sentence then shows *(the passage the AI copied isn't in the source)* after its `@source`, and the source check details show the passage the AI wrote, so you can see what changed. Such a passage is never used to open the PDF or as a quote. If a later read finds it in the source again, the note goes away.
+<Badge type="tip" text="Added in v0.135.0 (2026-11-14)" /> A passage that can't be found in the source is not quietly dropped. Usually the AI changed a word as it copied, or you edited the note after the page was written and it no longer says that. On a page shown with numbers, the citation gets a `*` (such as **[1\*]**) and one note under References explains it; elsewhere the sentence shows *(the passage the AI copied isn't in the source)* after its `@source`. The source check details show the passage the AI wrote, so you can see what changed. Such a passage is never used to open the PDF or as a quote. If a later read finds it in the source again, the note goes away.
 
 <Badge type="tip" text="Added in v0.135.0 (2026-11-14)" /> Under *Disagreements & open questions*, each source is followed by its date: a note's [source date](/notes-and-editor#source-date) (its creation date when it has none), or a paper's year when Graphium knows it. Two figures side by side then show which came later — though that alone doesn't say which one is right.
 

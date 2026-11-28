@@ -82,3 +82,48 @@ describe("buildCitationNumberDecorations", () => {
     expect(inline).toEqual([{ text: "@資料A", num: "1", title: "資料A" }]);
   });
 });
+
+describe("資料に見つからなかった一節の注記", () => {
+  const gray = (text: string) => ({ type: "text", text, styles: { textColor: "gray" } });
+  const NOTE = "（AI が写した一節が資料に見つからない）";
+
+  function read(blocks: any[]) {
+    const doc = docOf(blocks);
+    const found = buildCitationNumberDecorations(doc).find() as any[];
+    return {
+      nums: found.filter((d) => d.type?.attrs?.["data-cite-num"]).map((d) => d.type.attrs["data-cite-num"]),
+      hidden: found.filter((d) => d.type?.attrs?.class === "gm-cite-note").map((d) => doc.textBetween(d.from, d.to)),
+      footnotes: found.filter((d) => d.spec?.key?.startsWith("cite-footnote")).map((d) => d.spec.key),
+    };
+  }
+
+  it("引用の直後の注記を隠し、番号に * を付け、References の下に注釈を 1 つ置く", () => {
+    const r = read([
+      { type: "paragraph", content: [plain("一つ目"), blue("@資料A"), gray(NOTE), plain("。二つ目"), blue("@資料A"), plain("。")] },
+      { type: "paragraph", content: [plain("三つ目"), blue("@資料A"), gray(NOTE), blue("@資料A"), gray(NOTE), plain("。")] },
+      ...references(["資料A"]),
+    ]);
+    expect(r.nums).toEqual(["1*", "1", "1*", "1*"]);
+    expect(r.hidden).toEqual([NOTE, NOTE, NOTE]);
+    expect(r.footnotes).toEqual(["cite-footnote-ja"]);
+  });
+
+  it("番号にしない引用（References に無い資料）の注記はそのまま見せる", () => {
+    const r = read([
+      { type: "paragraph", content: [blue("@載っていない資料"), gray(NOTE), plain(" "), blue("@資料A")] },
+      ...references(["資料A"]),
+    ]);
+    expect(r.hidden).toEqual([]);
+    expect(r.footnotes).toEqual([]);
+    expect(r.nums).toEqual(["1"]);
+  });
+
+  it("引用から離れた灰色の文字は注記として扱わない", () => {
+    const r = read([
+      { type: "paragraph", content: [blue("@資料A"), plain("。別の文"), gray(NOTE)] },
+      ...references(["資料A"]),
+    ]);
+    expect(r.hidden).toEqual([]);
+    expect(r.nums).toEqual(["1"]);
+  });
+});

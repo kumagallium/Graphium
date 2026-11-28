@@ -33,6 +33,7 @@ import { extractDocxText } from "../../lib/docx-text";
 import { buildTopicMentionLinks, findTopicMentions } from "./topic-mention-links";
 import {
   SOURCE_CITATION_RE,
+  UNVERIFIED_PASSAGE_NOTE,
   formatSourceCitation,
   parseSourceCitations,
   passageAppearsIn,
@@ -2938,12 +2939,6 @@ export function setSourceDateLookup(fn: ((sourceId: string) => string | undefine
 /** 「食い違い・未解決」の節の見出し（日英韓。改訂の指示が書かせる見出しと同じ） */
 const DISAGREEMENT_HEADING_RE = /^#{1,6}\s*(食い違い|disagreements|견해\s*차이)/i;
 
-/** 資料に見つからなかった一節の注記（ページの言語。無い言語は英語） */
-const UNVERIFIED_PASSAGE_NOTE: Record<string, string> = {
-  ja: "（AI が写した一節が資料に見つからない）",
-  en: " (the passage the AI copied isn't in the source)",
-  ko: " (AI가 옮긴 구절이 자료에 없음)",
-};
 
 /** 引用の題の後ろに付ける一節の目印（`[[題⟦P:n⟧]]`）。一節の文字（* や $ 等）を本文の書式の
  *  解釈に通さないよう、本文には番号だけを置き、一節そのものは別の配列で渡す */
