@@ -3,17 +3,19 @@
 //（デスクトップが同期フォルダから拾う）であるのに対し、こちらは送信側で、
 // ブラウザからプロバイダ API へ直接書き込む。
 //
-// v1 の実体は GoogleDrivePusher（drive-pusher.ts）。P1.5 で OneDrive を
-// 同じ interface で追加する予定なので、プロバイダ固有の概念（トークン、
-// フォルダ ID 等）はこのファイルに漏らさない。
+// 実体は GoogleDrivePusher（drive-pusher.ts）と OneDrivePusher
+//（onedrive-pusher.ts。個人の Microsoft アカウントの OneDrive）。同じ interface で
+// 並べるので、プロバイダ固有の概念（トークン、フォルダ ID 等）はこのファイルに
+// 漏らさない。
 //
-// 認可トークンは SPA では約 1 時間で失効する（refresh token なし）。その UX は
-// queue.ts の store-and-forward（撮ったら即 IndexedDB へ永続化 → 認証が生きて
-// いれば drain）で吸収する。push 層は「失効していたら PushAuthError を投げる」
-// ことだけを約束し、リトライ・保全はキュー側の責務とする。
+// Google の認可トークンは SPA では約 1 時間で失効する（refresh token なし）。
+// OneDrive は更新用の鍵が 24 時間だけ有効。いずれも失効の UX は queue.ts の
+// store-and-forward（撮ったら即 IndexedDB へ永続化 → 認証が生きていれば drain）で
+// 吸収する。push 層は「失効していたら PushAuthError を投げる」ことだけを約束し、
+// リトライ・保全はキュー側の責務とする。
 
-/** push プロバイダの種別。P1.5 で "onedrive" を追加予定。 */
-export type PusherKind = "google-drive";
+/** push プロバイダの種別。 */
+export type PusherKind = "google-drive" | "onedrive";
 
 /** push 進捗。resumable はチャンクごと、multipart は開始/完了時に通知される。 */
 export type PushProgress = {

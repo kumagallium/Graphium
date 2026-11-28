@@ -57,6 +57,29 @@ describe("MobileSettingsSheet", () => {
     expect(onOpenStoragePicker).toHaveBeenCalledTimes(1);
   });
 
+  it("names the connected provider after the destination (OneDrive)", () => {
+    renderSheet({ connected: true, providerName: "OneDrive" });
+    expect(screen.getByText(/OneDrive・Connected/)).toBeTruthy();
+    expect(screen.queryByText(/Google Drive・Connected/)).toBeNull();
+  });
+
+  it("hides the Google client ID section while the destination is OneDrive", () => {
+    // 既定（Google Drive）では詳細設定が出る
+    const { unmount } = renderSheet({ connected: true });
+    expect(screen.getByText("Google OAuth client ID")).toBeTruthy();
+    unmount();
+
+    // OneDrive では Google の欄も「自前 ID 必須」の注記も出さない
+    renderSheet({
+      connected: true,
+      providerName: "OneDrive",
+      showGoogleClientId: false,
+      hasBundledId: false,
+    });
+    expect(screen.queryByText("Google OAuth client ID")).toBeNull();
+    expect(screen.queryByText(/Google/)).toBeNull();
+  });
+
   it("shows the connected provider with Change and Disconnect", () => {
     const onOpenStoragePicker = vi.fn();
     const onDisconnect = vi.fn();

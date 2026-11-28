@@ -4556,14 +4556,36 @@ The same `src/` tree is built four different ways.
   everything captured goes to the inbox. Queue rows show memo captures as
   a note icon with the first line of text and URL captures as a link icon
   with title and domain. The primary transport drains the queue serially to the
-  user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
+  user's own cloud storage, either Google Drive or OneDrive. Google
+  Drive receives `Graphium/Inbox/` via OAuth (GIS token model,
   `drive.file` scope only, no secret; ≤5 MB multipart, larger files
   resumable), from where Google Drive for desktop syncs it into the
-  folder inbox above. Everything sent this way — media, memos, URL
+  folder inbox above. OneDrive receives `Apps/Graphium/Inbox/` via the
+  Microsoft identity platform (authorization code flow with PKCE, no
+  secret, no Microsoft script loaded: sign-in opens
+  `login.microsoftonline.com` in a small window and never passes
+  through a Graphium server). Only personal Microsoft accounts work;
+  work and school accounts are not supported yet. The scopes are
+  `Files.ReadWrite.AppFolder` (Graphium's own app folder only, so the
+  rest of the OneDrive is out of reach) and `offline_access`; files go
+  to Microsoft Graph (`graph.microsoft.com`) as chunked uploads of
+  10 MiB each, and the OneDrive sync app carries them into the folder
+  inbox above. Everything sent this way — media, memos, URL
   captures — is stored as ordinary files in the user's own cloud storage;
-  transfers use TLS, but there is no end-to-end encryption. Because SPA
-  tokens expire after about an hour, a token failure aborts the drain and
-  leaves the remaining items queued for the next connect. Captures
+  transfers use TLS, but there is no end-to-end encryption. Google's
+  SPA tokens expire after about an hour, so a token failure aborts the
+  drain and leaves the remaining items queued for the next connect.
+  OneDrive keeps an access token (about an hour) and a refresh token
+  that expires 24 hours after sign-in and is not extended by use; both
+  sit in the device's `localStorage`. Within those 24 hours the token
+  is renewed without a window, and after that a small Microsoft window
+  opens again from a user tap, as with Google. Disconnect removes the
+  device's tokens only: Microsoft offers no revocation API, so the
+  grant itself is withdrawn at `account.live.com/consent/Manage`.
+  The sign-in return page is `public/app/auth/onedrive.html`, and the
+  result comes back over a same-origin `BroadcastChannel` and
+  `window.opener.postMessage` (target: its own origin), accepted only
+  when `state` matches. Captures
   enqueue regardless of OAuth setup — the queue itself lives in this
   device's IndexedDB — and when no client ID resolves the queue shows
   setup guidance at send time; only when IndexedDB itself is unavailable
@@ -4580,26 +4602,32 @@ The same `src/` tree is built four different ways.
   gear opens a phone-only minimal settings sheet: storage (status,
   connect/change, disconnect, and the folded client-ID override),
   language and app version. Connecting goes through a storage picker
-  (Google Drive selectable, OneDrive as a disabled coming-soon slot for
-  P1.5) reachable from that sheet and from the queue's own Connect
-  storage button; the provider that actually connected is remembered
-  (`graphium-push-provider`) as the future branching point. The OAuth
+  (Google Drive or OneDrive, both selectable) reachable from that sheet
+  and from the queue's own Connect storage button; the provider that
+  actually connected is remembered (`graphium-push-provider`) and
+  `createPusher()` builds the matching pusher from it
+  (`push/drive-pusher`, `push/onedrive-pusher`, with
+  `push/onedrive-auth`). Changing storage clears the tokens of the side
+  no longer used. For Google, the OAuth
   client ID resolves from the per-device override first, then from the ID
   bundled with the build, so pushing works out of the box; the override
-  remains as the escape hatch for self-hosting or a dead bundled ID.
+  remains as the escape hatch for self-hosting or a dead bundled ID, and
+  its Advanced section is hidden while OneDrive is the destination.
   Sending is available on both the web and desktop builds — only the
   receiving inbox is desktop-only, because only there is there a
   filesystem to enumerate.
 - **Connecting storage is phone-only; the desktop only receives.** The
-  OAuth token and the client-ID override both live in per-device
-  `localStorage`, so connecting on the desktop would grant the desktop
-  an upload token the phone never sees — and the desktop never uploads.
-  On top of that, Google Identity Services authorizes through
-  `window.open`, which the Tauri WebView cannot open at all. The desktop
+  OAuth tokens (Google or OneDrive) and the client-ID override all live
+  in per-device `localStorage`, so connecting on the desktop would grant
+  the desktop an upload token the phone never sees — and the desktop
+  never uploads. On top of that, Google Identity Services authorizes
+  through `window.open`, which the Tauri WebView cannot open at all. The desktop
   therefore offers no connect, disconnect or client-ID control. Its
   Settings → Storage → Mobile upload section carries exactly the
   desktop's own half of the job: the inbox root picker (same shape as
-  the shared-folder pickers) and the "keep processed files in
+  the shared-folder pickers; for OneDrive it points at the synced
+  `Apps/Graphium` folder, for Google Drive at the `Graphium` folder,
+  and Graphium reads the `Inbox` inside) and the "keep processed files in
   `_imported/`" toggle, plus a locally rendered QR code (`qrcode.react`,
   inline SVG — no network) that opens Graphium on the phone, where the
   storage connection is actually made. Both settings live in the same

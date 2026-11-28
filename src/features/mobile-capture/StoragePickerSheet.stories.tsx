@@ -49,10 +49,10 @@ const meta: Meta<typeof SheetHost> = {
       description: {
         component:
           "スマホの「ストレージに接続」の行き先となるストレージ選択シート。Google Drive（利用可）/ " +
-          "OneDrive（準備中・P1.5 で活性化する枠）を並べる。並ぶのは接続するストレージだけ — " +
+          "OneDrive（client ID が同梱されるまでは準備中で無効）を並べる。並ぶのは接続するストレージだけ — " +
           "送り方のバリエーションは置かない。開く入口は 2 つ — 捕獲履歴ホームの未接続時主ボタンと、" +
-          "最小設定シートの [接続/変更]。onSelectGoogle は " +
-          "click から同期的に呼ばれる（GIS の user activation 契約）。",
+          "最小設定シートの [接続/変更]。onSelectGoogle / onSelectOneDrive は " +
+          "click から同期的に呼ばれる（GIS・window.open の user activation 契約）。",
       },
     },
   },
@@ -61,9 +61,26 @@ export default meta;
 
 type Story = StoryObj<typeof SheetHost>;
 
-/** 既定: Google 利用可 / OneDrive 準備中。 */
+/** 既定: Google 利用可 / OneDrive 準備中（client ID が空の間）。 */
 export const Default: Story = {
   args: { ...baseProps },
+};
+
+/** OneDrive の client ID が入ったあと: OneDrive の行も有効。 */
+export const OneDriveEnabled: Story = {
+  args: { ...baseProps, oneDriveConfigured: true, oneDriveReady: true, onSelectOneDrive: noop },
+};
+
+/** OneDrive の接続ポップアップ進行中（OneDrive の行がスピナー）。 */
+export const OneDriveConnecting: Story = {
+  args: {
+    ...baseProps,
+    oneDriveConfigured: true,
+    oneDriveReady: true,
+    onSelectOneDrive: noop,
+    connecting: true,
+    connectingKind: "onedrive",
+  },
 };
 
 /** push モジュールの準備中（prepare 未完了）。Google 行は押せない。 */

@@ -3077,6 +3077,7 @@ export const ko: Record<string, string> = {
   "mobile.storagePicker.help": "기록한 것은 여기서 고른 스토리지를 거쳐 데스크톱으로 전달됩니다.",
   "mobile.storagePicker.googleHelp": "Google 계정으로 연결합니다",
   "mobile.storagePicker.comingSoon": "준비 중",
+  "mobile.storagePicker.oneDriveHelp": "개인 Microsoft 계정으로 연결합니다",
 
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "스토리지",

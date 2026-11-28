@@ -1,7 +1,7 @@
 // ストレージ選択ボトムシート（スマホの「ストレージに接続」の行き先）。
 //
 // 接続 CTA は「どこへ送るか」を選ぶ画面に一本化する: Google Drive（利用可）/
-// OneDrive（準備中・P1.5 で活性化する枠）。ピッカーに並ぶのは**接続するストレージ**
+// OneDrive（個人の Microsoft アカウント。client ID が同梱されるまでは「準備中」で無効）。ピッカーに並ぶのは**接続するストレージ**
 // だけ — 送り方のバリエーション（かつての共有シート行）は概念が混ざるので置かない。
 // OAuth を使いたくない場合は OS の共有シートから同期フォルダへ手動保存すればよく、
 // それは Graphium のコード無しで成立する（docs/ARCHITECTURE.md §4.2）。
@@ -11,10 +11,11 @@
 // usePushSettings）は親が握り、ここは選択肢と進行状態を出すだけ（Storybook で
 // 全状態を再現できる）。
 //
-// ジェスチャ契約: onSelectGoogle は **click から同期的に呼ぶ**
-// （GIS の requestAccessToken の user activation 契約。
+// ジェスチャ契約: onSelectGoogle / onSelectOneDrive は **click から同期的に呼ぶ**
+// （GIS の requestAccessToken・OneDrive の window.open の user activation 契約。
 // ハンドラ内で await を挟んではいけない — 親側の実装規約も同じ）。
-// Google 行は準備完了（googleReady）まで無効化する — connect() は prepare 済みで
+// Google 行は準備完了（googleReady）、OneDrive 行は client ID があり準備完了
+// （oneDriveConfigured && oneDriveReady）まで無効化する — connect() は prepare 済みで
 // ないと PushConfigError になるため、押せる時点で必ず同期接続できる状態にしておく。
 //
 // z-index は最小設定シート（z-50）の上に重ねる z-[60] — 設定シートの [変更] から
@@ -24,27 +25,42 @@ import { DIALOG_LAYER } from "@/ui/z-layers";
 import { useEffect } from "react";
 import { Cloud, Loader2, ChevronRight, AlertCircle } from "lucide-react";
 import { useT } from "../../i18n";
+import type { PusherKind } from "./inbox/push";
 
 export type StoragePickerSheetProps = {
   /** Google 行を押せるか（push モジュールのロード + prepare 完了まで false）。 */
   googleReady: boolean;
-  /** connect() のポップアップ進行中（Google 行をスピナーにして再タップを防ぐ）。 */
+  /** connect() のポップアップ進行中（行をスピナーにして再タップを防ぐ）。 */
   connecting: boolean;
+  /** 接続中の送り先（スピナーを出す行。省略は Google Drive）。 */
+  connectingKind?: PusherKind | null;
+  /** OneDrive の client ID があるか。false の間は「準備中」で無効（既定 false）。 */
+  oneDriveConfigured?: boolean;
+  /** OneDrive の認可の準備が済んでいるか（既定 false）。 */
+  oneDriveReady?: boolean;
   /** 直近の接続エラー（ポップアップを閉じた・権限拒否など）。 */
   connectError?: string | null;
   /** Google Drive を選択。**click から同期的に呼ばれる**。 */
   onSelectGoogle: () => void;
+  /** OneDrive を選択。**click から同期的に呼ばれる**。 */
+  onSelectOneDrive?: () => void;
   onClose: () => void;
 };
 
 export function StoragePickerSheet({
   googleReady,
   connecting,
+  connectingKind = null,
+  oneDriveConfigured = false,
+  oneDriveReady = false,
   connectError,
   onSelectGoogle,
+  onSelectOneDrive,
   onClose,
 }: StoragePickerSheetProps) {
   const t = useT();
+  const googleConnecting = connecting && connectingKind !== "onedrive";
+  const oneDriveConnecting = connecting && connectingKind === "onedrive";
 
   // ESC で閉じる（モバイル主対象だが、狭いデスクトップウィンドウでも使われる）
   useEffect(() => {
@@ -94,26 +110,47 @@ export function StoragePickerSheet({
                   {t("mobile.storagePicker.googleHelp")}
                 </span>
               </span>
-              {connecting ? (
+              {googleConnecting ? (
                 <Loader2 size={16} className="animate-spin text-primary shrink-0" />
               ) : (
                 <ChevronRight size={16} className="text-muted-foreground shrink-0" />
               )}
             </button>
 
-            {/* OneDrive（準備中・P1.5 で活性化する枠） */}
-            <button
-              disabled
-              className="flex items-center gap-3 px-3 py-3 rounded-xl border border-border bg-card text-left opacity-60"
-            >
-              <Cloud size={20} className="text-muted-foreground shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-foreground">OneDrive</span>
-              </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-                {t("mobile.storagePicker.comingSoon")}
-              </span>
-            </button>
+            {/* OneDrive（個人の Microsoft アカウント）。client ID が空の間は「準備中」で無効 */}
+            {oneDriveConfigured ? (
+              <button
+                onClick={onSelectOneDrive}
+                disabled={!oneDriveReady || connecting}
+                className="flex items-center gap-3 px-3 py-3 rounded-xl border border-border bg-card text-left active:bg-muted transition-colors disabled:opacity-50"
+              >
+                <Cloud size={20} className="text-primary shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">OneDrive</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {t("mobile.storagePicker.oneDriveHelp")}
+                  </span>
+                </span>
+                {oneDriveConnecting ? (
+                  <Loader2 size={16} className="animate-spin text-primary shrink-0" />
+                ) : (
+                  <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+                )}
+              </button>
+            ) : (
+              <button
+                disabled
+                className="flex items-center gap-3 px-3 py-3 rounded-xl border border-border bg-card text-left opacity-60"
+              >
+                <Cloud size={20} className="text-muted-foreground shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">OneDrive</span>
+                </span>
+                <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                  {t("mobile.storagePicker.comingSoon")}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* 接続エラー（ポップアップを閉じた・権限拒否など） */}

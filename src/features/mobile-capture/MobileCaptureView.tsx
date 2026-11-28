@@ -548,25 +548,26 @@ export function MobileCaptureView({
     return out;
   }, [vaultFolders, folderHistory]);
 
-  // ピッカーの Google 選択。**click から同期的に connect へ到達させる**（GIS 契約）。
-  // 接続成功 → 残キューを即送信（connectAndDrain）。
+  // ピッカーの Google / OneDrive 選択。**click から同期的に connect へ到達させる**
+  // （GIS・window.open の user activation 契約）。接続成功 → 送り先として記録し
+  // （setPushProvider は connectProvider の中）、残キューを即送信する。
   const handlePickGoogle = useCallback(() => {
     setPickerConnectRequested(true);
-    push.connectAndDrain();
-  }, [push.connectAndDrain]);
+    push.connectProvider("google-drive");
+  }, [push.connectProvider]);
+  const handlePickOneDrive = useCallback(() => {
+    setPickerConnectRequested(true);
+    push.connectProvider("onedrive");
+  }, [push.connectProvider]);
 
-  // 接続成功でピッカーを閉じる（+ 実際に使えた経路を記録）。
+  // 接続成功でピッカーを閉じる。
   useEffect(() => {
     if (!showStoragePicker || !pickerConnectRequested) return;
-    if (push.connected && !push.connecting) {
+    if (push.connected && !push.connecting && !push.connectError) {
       setShowStoragePicker(false);
       setPickerConnectRequested(false);
-      // プロバイダ永続はジェスチャ外なので動的 import でよい（起動時バンドル境界の維持）
-      void import("./inbox/push")
-        .then((mod) => mod.setPushProvider("google-drive"))
-        .catch(() => {});
     }
-  }, [showStoragePicker, pickerConnectRequested, push.connected, push.connecting]);
+  }, [showStoragePicker, pickerConnectRequested, push.connected, push.connecting, push.connectError]);
 
   const closeStoragePicker = useCallback(() => {
     setShowStoragePicker(false);
@@ -880,6 +881,8 @@ export function MobileCaptureView({
           ready={pushSettings.ready}
           configured={pushSettings.configured}
           connected={pushSettings.connected}
+          providerName={pushSettings.providerKind === "onedrive" ? "OneDrive" : "Google Drive"}
+          showGoogleClientId={pushSettings.providerKind !== "onedrive"}
           hasBundledId={pushSettings.hasBundledId}
           clientIdOverride={pushSettings.clientIdOverride}
           onSaveClientId={pushSettings.saveClientId}
@@ -901,8 +904,12 @@ export function MobileCaptureView({
         <StoragePickerSheet
           googleReady={push.ready && push.configured}
           connecting={push.connecting}
+          connectingKind={push.connectingKind}
+          oneDriveConfigured={push.oneDriveConfigured}
+          oneDriveReady={push.oneDriveReady}
           connectError={push.connectError}
           onSelectGoogle={handlePickGoogle}
+          onSelectOneDrive={handlePickOneDrive}
           onClose={closeStoragePicker}
         />
       )}

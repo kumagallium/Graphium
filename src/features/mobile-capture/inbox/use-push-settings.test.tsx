@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   prepare: vi.fn(() => Promise.resolve()),
   disconnect: vi.fn(),
   setPushProvider: vi.fn(),
+  provider: { value: "google-drive" as "google-drive" | "onedrive" },
   setGoogleClientIdOverride: vi.fn(),
 }));
 
@@ -37,7 +38,9 @@ vi.mock("./push", () => {
   h.pushModuleLoads();
   return {
     DEFAULT_GOOGLE_PUSH_CLIENT_ID: "bundled.apps.googleusercontent.com",
-    createPusher: () => new (class {
+    getPushProvider: () => h.provider.value,
+    createPusher: (kind: string = "google-drive") => new (class {
+      readonly kind = kind;
       isConfigured() { return h.configured.value; }
       isConnected() { return h.connected.value; }
       prepare() { return h.prepare(); }
@@ -55,6 +58,7 @@ beforeEach(() => {
   h.configured.value = true;
   h.connected.value = false;
   h.override.value = null;
+  h.provider.value = "google-drive";
   h.connectImpl.mockImplementation(() => Promise.resolve());
 });
 
@@ -116,6 +120,18 @@ describe("usePushSettings", () => {
 
     await waitFor(() => expect(result.current.connected).toBe(true));
     expect(result.current.clientIdOverride).toBe("changed.apps.googleusercontent.com");
+  });
+
+  it("follows the saved provider (OneDrive) and exposes its kind", async () => {
+    const { result } = renderHook(() => usePushSettings(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.providerKind).toBe("google-drive");
+
+    h.provider.value = "onedrive";
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
+    });
+    await waitFor(() => expect(result.current.providerKind).toBe("onedrive"));
   });
 
   it("saves and clears the client_id override through the module", async () => {

@@ -45,6 +45,21 @@
     <li>You can revoke access at any time via <a href="https://myaccount.google.com/permissions">Google Account Permissions</a></li>
   </ul>
 
+  <h2>OneDrive (phone capture)</h2>
+  <p>On the phone capture screen, you can choose OneDrive as the destination. Only personal Microsoft accounts are supported. When you sign in with Microsoft, Graphium requests the following permissions:</p>
+  <ul>
+    <li><strong><code>Files.ReadWrite.AppFolder</code></strong> — Access only to Graphium's own app folder in your OneDrive</li>
+    <li><strong><code>offline_access</code></strong> — Lets the sign-in be renewed without asking again for a limited time</li>
+  </ul>
+  <h3>What this means:</h3>
+  <ul>
+    <li>Graphium <strong>can</strong> write the files you send from the phone into <code>Apps/Graphium/Inbox</code> in your OneDrive</li>
+    <li>Graphium <strong>cannot</strong> access any other files in your OneDrive</li>
+    <li>Sign-in uses the Microsoft identity platform (authorization code flow with PKCE, no secret); it does not pass through any Graphium server</li>
+    <li>Your access token and refresh token are stored in this device's browser <code>localStorage</code>; the refresh token expires 24 hours after sign-in</li>
+    <li>Disconnect in Graphium deletes the tokens from the device. The permission itself stays on the Microsoft side until you remove Graphium at <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a></li>
+  </ul>
+
   <h2>Data Storage</h2>
   <table>
     <tr><th>Data</th><th>Where it is stored</th></tr>
@@ -59,6 +74,8 @@
   <ul>
     <li><strong>Google Identity Services</strong> — for OAuth 2.0 authentication</li>
     <li><strong>Google Drive API</strong> — for file storage (only when you sign in)</li>
+    <li><strong>Microsoft identity platform</strong> — for OAuth 2.0 sign-in (only when you connect OneDrive on the phone)</li>
+    <li><strong>Microsoft Graph API</strong> — for file storage (only when you connect OneDrive on the phone)</li>
   </ul>
   <p>No other third-party services are used.</p>
 

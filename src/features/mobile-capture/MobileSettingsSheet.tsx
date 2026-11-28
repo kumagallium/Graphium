@@ -42,6 +42,13 @@ export type MobileSettingsSheetProps = {
   configured: boolean;
   /** 有効期限内のトークンがあるか。 */
   connected: boolean;
+  /** 今の送り先の名前（「Google Drive・接続済み」の頭。省略は Google Drive）。 */
+  providerName?: string;
+  /**
+   * Google の client ID の欄（詳細設定と「自前 ID 必須」の注記）を出すか。
+   * 送り先が OneDrive のときは false にする — Google の話だけが並ぶと取り違えるため。
+   */
+  showGoogleClientId?: boolean;
   /** 同梱 client_id のあるビルドか（無いと自前 ID 必須の注記を出す）。 */
   hasBundledId: boolean;
   /** 自前 client_id 上書きの現在値（未設定は空文字）。 */
@@ -60,6 +67,8 @@ export function MobileSettingsSheet({
   ready,
   configured,
   connected,
+  providerName = "Google Drive",
+  showGoogleClientId = true,
   hasBundledId,
   clientIdOverride,
   onSaveClientId,
@@ -148,7 +157,7 @@ export function MobileSettingsSheet({
                       <span className="text-foreground flex items-center gap-1 min-w-0">
                         <Cloud size={12} className="text-muted-foreground shrink-0" />
                         <span className="truncate">
-                          Google Drive・{t("settings.mobilePush.statusConnected")}
+                          {providerName}・{t("settings.mobilePush.statusConnected")}
                         </span>
                       </span>
                     </>
@@ -186,7 +195,7 @@ export function MobileSettingsSheet({
               )}
 
               {/* 同梱 ID の無いビルドでは自前 client ID が必須（設定モーダルと同じ注記） */}
-              {!hasBundledId && (
+              {showGoogleClientId && !hasBundledId && (
                 <p className="pt-1 border-t border-border text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
                   <Info size={12} className="mt-0.5 shrink-0" />
                   <span>{t("settings.mobilePush.noDefaultNote")}</span>
@@ -194,6 +203,7 @@ export function MobileSettingsSheet({
               )}
 
               {/* 詳細（client_id 上書き）— 既定は畳む。一般ユーザーには見せない保険 */}
+              {showGoogleClientId && (
               <details className={`group ${hasBundledId ? "pt-1 border-t border-border" : ""}`}>
                 <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
@@ -248,6 +258,7 @@ export function MobileSettingsSheet({
                   </p>
                 </div>
               </details>
+              )}
             </div>
           </div>
 
