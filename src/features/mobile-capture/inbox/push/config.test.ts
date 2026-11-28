@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
+  DEFAULT_ONEDRIVE_PUSH_CLIENT_ID,
   getInboxFolderHistory,
   rememberInboxFolder,
   getDriveFolderCache,
@@ -76,8 +77,9 @@ describe("Drive フォルダ ID キャッシュ", () => {
 describe("OneDrive client ID の解決", () => {
   const GUID = "11111111-2222-4333-8444-555555555555";
 
-  it("is null while nothing is bundled or overridden", () => {
-    expect(getOneDriveClientId()).toBeNull();
+  it("falls back to the bundled ID while nothing is overridden", () => {
+    expect(DEFAULT_ONEDRIVE_PUSH_CLIENT_ID).toMatch(/^[0-9a-f-]{36}$/);
+    expect(getOneDriveClientId()).toBe(DEFAULT_ONEDRIVE_PUSH_CLIENT_ID);
   });
 
   it("uses a GUID-shaped override", () => {
@@ -87,7 +89,7 @@ describe("OneDrive client ID の解決", () => {
 
   it("ignores an override that is not a GUID", () => {
     localStorage.setItem("graphium-push-onedrive-client-id", "not-a-guid");
-    expect(getOneDriveClientId()).toBeNull();
+    expect(getOneDriveClientId()).toBe(DEFAULT_ONEDRIVE_PUSH_CLIENT_ID);
   });
 });
 

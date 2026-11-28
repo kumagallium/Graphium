@@ -36,10 +36,11 @@ export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
 
 /**
  * 同梱の OneDrive client ID（個人の Microsoft アカウント向け・SPA・secret なし）。
- * 空文字の間は「未同梱」で、ストレージ選択の OneDrive の行は「準備中」のまま無効。
- * 登録が済んだら GUID を入れる。型注釈は string のまま（Google 側と同じ理由）。
+ * 公開してよい値（secret ではない）。守りは Microsoft 側に登録したリダイレクト URI。
+ * 空文字にすると「未同梱」で、ストレージ選択の OneDrive の行は「準備中」のまま無効になる。
+ * 型注釈は string のまま（Google 側と同じ理由）。
  */
-export const DEFAULT_ONEDRIVE_PUSH_CLIENT_ID: string = "";
+export const DEFAULT_ONEDRIVE_PUSH_CLIENT_ID: string = "7f668148-e0c4-4178-9a6c-d886f48d42cc";
 
 /** Application (client) ID は GUID。形が違う値は設定ミスとして使わない。 */
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

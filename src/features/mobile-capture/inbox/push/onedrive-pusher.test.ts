@@ -25,6 +25,15 @@ const authMock = vi.hoisted(() => ({
 }));
 vi.mock("./onedrive-auth", () => authMock);
 
+// 同梱の client ID の有無に左右されないよう、解決だけ差し替える
+const configMock = vi.hoisted(() => ({
+  getOneDriveClientId: vi.fn<() => string | null>(() => null),
+}));
+vi.mock("./config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config")>()),
+  getOneDriveClientId: configMock.getOneDriveClientId,
+}));
+
 import { OneDrivePusher } from "./onedrive-pusher";
 import { PushAuthError, PushConfigError } from "./types";
 
@@ -68,7 +77,7 @@ function headerOf(call: FetchCall, name: string): string | undefined {
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem("graphium-push-onedrive-client-id", CLIENT_ID);
+  configMock.getOneDriveClientId.mockReset().mockReturnValue(CLIENT_ID);
   authMock.getValidAccessToken.mockReset().mockResolvedValue("tok-1");
   authMock.invalidateAccessToken.mockReset();
   authMock.prepareOneDriveAuth.mockReset().mockResolvedValue(undefined);
@@ -92,7 +101,7 @@ describe("設定と接続状態", () => {
     await pusher.prepare();
     expect(authMock.prepareOneDriveAuth).toHaveBeenCalledWith(CLIENT_ID);
 
-    localStorage.clear();
+    configMock.getOneDriveClientId.mockReturnValue(null);
     expect(pusher.isConfigured()).toBe(false);
     await expect(pusher.prepare()).rejects.toBeInstanceOf(PushConfigError);
   });
@@ -126,7 +135,7 @@ describe("設定と接続状態", () => {
     authMock.hasLinkedBefore.mockReturnValue(false);
     expect(pusher.needsRenewal()).toBe(false);
     authMock.hasLinkedBefore.mockReturnValue(true);
-    localStorage.clear();
+    configMock.getOneDriveClientId.mockReturnValue(null);
     expect(pusher.needsRenewal()).toBe(false);
   });
 
