@@ -74,9 +74,9 @@ export const Connected: Story = {
   args: { ...baseProps, connected: true },
 };
 
-/** OneDrive 接続済み。送り先の名前が OneDrive になる。 */
+/** OneDrive 接続済み。送り先の名前が OneDrive になり、Google の詳細設定は出ない。 */
 export const ConnectedOneDrive: Story = {
-  args: { ...baseProps, connected: true, providerName: "OneDrive" },
+  args: { ...baseProps, connected: true, providerName: "OneDrive", showGoogleClientId: false },
 };
 
 /** 同梱 client ID の無いビルド。自前 ID 必須の注記が常時見える。 */

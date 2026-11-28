@@ -871,6 +871,7 @@ export function MobileCaptureView({
           configured={pushSettings.configured}
           connected={pushSettings.connected}
           providerName={pushSettings.providerKind === "onedrive" ? "OneDrive" : "Google Drive"}
+          showGoogleClientId={pushSettings.providerKind !== "onedrive"}
           hasBundledId={pushSettings.hasBundledId}
           clientIdOverride={pushSettings.clientIdOverride}
           onSaveClientId={pushSettings.saveClientId}
