@@ -89,7 +89,7 @@ export function usePushSettings(active: boolean): PushSettingsUi {
       .then((mod) => {
         if (cancelled) return;
         moduleRef.current = mod;
-        if (!pusherRef.current) pusherRef.current = new mod.GoogleDrivePusher();
+        if (!pusherRef.current) pusherRef.current = mod.createPusher();
         setHasBundledId(mod.DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "");
         setReady(true);
         refreshStatus();

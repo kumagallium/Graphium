@@ -37,13 +37,13 @@ vi.mock("./push", () => {
   h.pushModuleLoads();
   return {
     DEFAULT_GOOGLE_PUSH_CLIENT_ID: "bundled.apps.googleusercontent.com",
-    GoogleDrivePusher: class {
+    createPusher: () => new (class {
       isConfigured() { return h.configured.value; }
       isConnected() { return h.connected.value; }
       prepare() { return h.prepare(); }
       connect() { return h.connectImpl(); }
       disconnect() { h.disconnect(); }
-    },
+    })(),
     getGoogleClientIdOverride: () => h.override.value,
     setGoogleClientIdOverride: h.setGoogleClientIdOverride,
     setPushProvider: h.setPushProvider,

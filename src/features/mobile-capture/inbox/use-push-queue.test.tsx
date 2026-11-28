@@ -39,7 +39,7 @@ const h = vi.hoisted(() => ({
 vi.mock("./push", () => {
   h.pushModuleLoads();
   return {
-    GoogleDrivePusher: class {
+    createPusher: () => new (class {
       isConfigured() { return h.pusherConfigured.value; }
       isConnected() { return h.connected.value; }
       isPrepared() { return h.prepared.value; }
@@ -47,7 +47,7 @@ vi.mock("./push", () => {
       hasLinkedBefore() { return true; }
       connect() { return h.connect(); }
       prepare() { return Promise.resolve(); }
-    },
+    })(),
     subscribePushQueue: (cb: (snap: { items: never[]; draining: boolean; activeId: null }) => void) => {
       cb({ items: [], draining: false, activeId: null });
       return () => {};
