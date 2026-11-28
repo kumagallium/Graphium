@@ -227,6 +227,10 @@ function buildAuthorizeUrl(p: PreparedAuth): string {
     code_challenge: p.codeChallenge,
     code_challenge_method: "S256",
   });
+  // 初めての接続と、切断したあとのつなぎ直しでは、アカウントを選ぶ画面を必ず出す。
+  // 出さないと、ブラウザに残った Microsoft のサインインで前と同じアカウントに黙って
+  // つながり、別のアカウントへ替えられない。24 時間ごとの取り直しでは出さない（印が残る）。
+  if (!hasLinkedBefore()) params.set("prompt", "select_account");
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }
 

@@ -124,6 +124,30 @@ describe("準備と同期の window.open", () => {
     promise.catch(() => {});
   });
 
+  it("asks which account to use on a first connect, but not when renewing", async () => {
+    // 初回（印なし）: アカウントを選ぶ画面を出す。出さないと別のアカウントへ替えられない
+    const auth = await freshAuth();
+    const first = await startConnect(auth);
+    first.promise.catch(() => {});
+    expect(first.url.searchParams.get("prompt")).toBe("select_account");
+
+    // 取り直し（つないだ印あり）: 選ぶ画面は出さない
+    openMock.mockClear();
+    localStorage.setItem("graphium-push-onedrive-linked", "1");
+    const auth2 = await freshAuth();
+    const renew = await startConnect(auth2);
+    renew.promise.catch(() => {});
+    expect(renew.url.searchParams.get("prompt")).toBeNull();
+
+    // 切断すると印が消え、次の接続ではまた選ぶ画面が出る
+    openMock.mockClear();
+    auth2.disconnectOneDriveAuth();
+    const auth3 = await freshAuth();
+    const again = await startConnect(auth3);
+    again.promise.catch(() => {});
+    expect(again.url.searchParams.get("prompt")).toBe("select_account");
+  });
+
   it("builds a PKCE authorize URL with the fixed redirect and no secret", async () => {
     const auth = await freshAuth();
     const { url, promise } = await startConnect(auth);
