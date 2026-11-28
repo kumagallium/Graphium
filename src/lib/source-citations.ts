@@ -28,6 +28,21 @@ export type SourceCitation = {
 
 const UNVERIFIED_PREFIX = "?|";
 
+/** 資料に見つからなかった一節の注記（ページの言語。無い言語は英語）。本文の引用の直後に
+ *  灰色の文字で保存される。番号表示（citation-number-plugin）はこの文字を探して「*」に畳む */
+export const UNVERIFIED_PASSAGE_NOTE: Record<string, string> = {
+  ja: "（AI が写した一節が資料に見つからない）",
+  en: " (the passage the AI copied isn't in the source)",
+  ko: " (AI가 옮긴 구절이 자료에 없음)",
+};
+
+/** 番号表示で、References の下に置く「*」の注釈（注記と同じ言語の組） */
+export const UNVERIFIED_PASSAGE_FOOTNOTE: Record<string, string> = {
+  ja: "* AI が写した一節が、資料の文字に見つからなかった引用です。出典照合で確かめられます。",
+  en: "* For this citation, the passage the AI copied isn't in the source. Source check can verify it.",
+  ko: "* AI가 옮긴 구절이 자료에 없는 인용입니다. 출처 확인에서 검증할 수 있습니다.",
+};
+
 /** 正規表現の m[2]（一節の部分）を、一節と「見つからなかった」の印に分ける */
 export function splitPassage(raw: string | undefined): { passage?: string; unverified?: boolean } {
   const t = raw?.trim();
