@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.13](https://github.com/kumagallium/Graphium/compare/v0.173.12...v0.173.13) - 2026-11-28
+
+- [feat] Tell the phone user when a new version is ready by @kumagallium in https://github.com/kumagallium/Graphium/pull/1928
+
 ## [v0.173.12](https://github.com/kumagallium/Graphium/compare/v0.173.11...v0.173.12) - 2026-11-28
 
 - Fold the missing-passage note into a * on numbered citations by @kumagallium in https://github.com/kumagallium/Graphium/pull/1926
