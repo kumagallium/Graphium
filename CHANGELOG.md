@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.174.0](https://github.com/kumagallium/Graphium/compare/v0.173.14...v0.174.0) - 2026-11-28
+
+- [feat] Send phone captures to OneDrive (personal accounts) by @kumagallium in https://github.com/kumagallium/Graphium/pull/1932
+
 ## [v0.173.14](https://github.com/kumagallium/Graphium/compare/v0.173.13...v0.173.14) - 2026-11-28
 
 - [fix] Keep the knowledge list DOM small so opening a page stays fast by @kumagallium in https://github.com/kumagallium/Graphium/pull/1930
