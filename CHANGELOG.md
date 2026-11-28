@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.173.12](https://github.com/kumagallium/Graphium/compare/v0.173.11...v0.173.12) - 2026-11-28
+
+- Fold the missing-passage note into a * on numbered citations by @kumagallium in https://github.com/kumagallium/Graphium/pull/1926
+
 ## [v0.173.11](https://github.com/kumagallium/Graphium/compare/v0.173.10...v0.173.11) - 2026-11-28
 
 - [fix] Check a Full check's gaps against existing topic titles before showing them by @kumagallium in https://github.com/kumagallium/Graphium/pull/1924
