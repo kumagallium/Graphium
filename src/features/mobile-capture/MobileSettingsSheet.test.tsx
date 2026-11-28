@@ -115,3 +115,51 @@ describe("MobileSettingsSheet", () => {
     expect(screen.queryByText(/queue and connection stay on this device/)).toBeNull();
   });
 });
+
+describe("MobileSettingsSheet update row", () => {
+  const update = {
+    supported: true,
+    phase: "idle" as const,
+    updateReady: false,
+    onCheck: () => {},
+    onReload: () => {},
+  };
+
+  it("hides the update row when no service worker is registered", () => {
+    renderSheet();
+    expect(screen.queryByTestId("mobile-update-row")).toBeNull();
+    renderSheet({ update: { ...update, supported: false } });
+    expect(screen.queryByTestId("mobile-update-row")).toBeNull();
+  });
+
+  it("offers a manual check and reports the latest version", () => {
+    const onCheck = vi.fn();
+    const { rerender } = renderSheet({ update: { ...update, onCheck } });
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(onCheck).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <LocaleProvider>
+        <MobileSettingsSheet {...baseProps} update={{ ...update, phase: "upToDate" }} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("You're on the latest version")).toBeTruthy();
+  });
+
+  it("disables the check while checking or downloading", () => {
+    renderSheet({ update: { ...update, phase: "downloading" } });
+    expect(screen.getByText("Downloading the new version…")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Check for updates" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("switches to Reload once a new version is ready", () => {
+    const onReload = vi.fn();
+    renderSheet({ update: { ...update, updateReady: true, onReload } });
+    expect(screen.getByText("A new version is ready")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+});

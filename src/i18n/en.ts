@@ -3149,6 +3149,16 @@ export const en: Record<string, string> = {
   "mobile.settings.storage": "Storage",
   "mobile.settings.changeStorage": "Change",
 
+  // ── PWA の更新の知らせ（スマホの捕獲ホームと設定シート） ──
+  "mobile.update.ready": "A new version is ready",
+  "mobile.update.reload": "Reload",
+  "mobile.update.check": "Check for updates",
+  "mobile.update.checking": "Checking…",
+  "mobile.update.downloading": "Downloading the new version…",
+  "mobile.update.upToDate": "You're on the latest version",
+  "mobile.update.failed": "Couldn't check",
+  "mobile.update.idle": "Updates",
+
   // ── PDF エクスポート ──
   "pdf.export": "Print / PDF",
   "pdf.exporting": "Preparing...",
